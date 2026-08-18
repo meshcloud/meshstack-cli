@@ -28,7 +28,23 @@ tasks:
     cmds:
       - go mod tidy
 
+  release:check:
+    desc: Validate .goreleaser.yml
+    cmds:
+      - goreleaser check
+
+  release:snapshot:
+    desc: Build the release artifacts into dist/ without publishing them
+    cmds:
+      - goreleaser release --snapshot --clean {{.CLI_ARGS}}
+
+  image:
+    desc: Build the container image locally
+    cmds:
+      - docker build -t meshstack:dev {{.CLI_ARGS}} .
+
   clean:
     desc: Remove build artifacts
     cmds:
       - rm -f meshstack
+      - rm -rf dist

@@ -17,6 +17,9 @@ a library. This file is the always-on source of truth for both AI agents and hum
 - **meshStack CLI** — the product name, used in prose and docs.
 - `github.com/meshcloud/meshstack-cli` — the repository and Go module.
 
+Everything *published* carries the repository name — the release archives, the checksum file and the
+container image are all `meshstack-cli` — while the binary inside them is `meshstack`.
+
 The binary gets its name from its directory, `cmd/meshstack`, which is why there is no `-o` flag
 anywhere: `go build ./cmd/meshstack` and
 `go install github.com/meshcloud/meshstack-cli/cmd/meshstack@latest` both produce `meshstack`. **Do
@@ -91,10 +94,13 @@ on disk will hook in later.
 Everything runs through the Taskfile, inside `nix develop`:
 
 ```shell
-task build   # ./meshstack
-task test    # go test ./...
-task lint    # golangci-lint run
-task tidy    # go mod tidy
+task build             # ./meshstack
+task test              # go test ./...
+task lint              # golangci-lint run
+task tidy              # go mod tidy
+task release:check     # validate .goreleaser.yml
+task release:snapshot  # build the release artifacts into dist/ without publishing
+task image             # docker build -t meshstack:dev
 ```
 
 The Go version is pinned in `go.mod` and in `flake.nix`; **keep them in lock-step when bumping**, and
@@ -108,3 +114,21 @@ provider and the CLI share one definition — use those consts rather than the s
 Taskfile reads a git-ignored `.env` for local runs.
 
 `MESHSTACK_SKIP_VERSION_CHECK=true` skips the minimum backend version check in `client/client.go`.
+
+## Releasing
+
+Pushing a `v*` tag runs goreleaser, which publishes the archives and checksums, and then builds the
+container image for the same tag. The image goes to GHCR only, as
+`ghcr.io/meshcloud/meshstack-cli`, and its entrypoint is the `meshstack` binary, so
+`docker run ghcr.io/meshcloud/meshstack-cli buildingblock list` reads like the local invocation. A
+push to `main` refreshes `:main`, so an image exists before the first release does.
+
+<rules id="release-version">
+The version comes from the git tag through an ldflag on `main.Version` in `cmd/meshstack`, in two
+places that must agree: `.goreleaser.yml` and the `Dockerfile`. A build without the ldflag reports
+`dev`, which is correct for a working copy but must never reach a published artifact — check with
+`meshstack --version` after `task release:snapshot`.
+</rules>
+
+Pin every GitHub Action by commit SHA with the version in a trailing comment, as the existing
+workflows do.

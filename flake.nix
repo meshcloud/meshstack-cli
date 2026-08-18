@@ -28,6 +28,9 @@
 
             # https://taskfile.dev
             go-task
+
+            # https://goreleaser.com — task release:check / release:snapshot
+            goreleaser
           ];
 
           shellHook = ''
