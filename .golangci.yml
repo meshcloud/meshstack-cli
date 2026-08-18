@@ -1,0 +1,106 @@
+# Visit https://golangci-lint.run/ for usage documentation
+# and information on other useful linters.
+#
+# Kept deliberately close to the meshStack Terraform provider's configuration, so
+# that code moving between the two repositories does not trip a different linter set.
+version: "2"
+issues:
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+  settings:
+    gci:
+      sections:
+        - standard     # Go standard library
+        - default      # All other external dependencies
+        - localmodule  # This repository's modules
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - durationcheck
+    - errcheck
+    - copyloopvar
+    - forcetypeassert
+    - godot
+    - ineffassign
+    - makezero
+    - misspell
+    - nilerr
+    - predeclared
+    - staticcheck
+    - usetesting
+    - unconvert
+    - unparam
+    - unused
+    - govet
+    - testifylint
+    - thelper
+  settings:
+    # This repository is allowed exactly one external dependency, cobra, and only the
+    # cmd/ tree may use it. Everything else stays on the standard library, with testify
+    # permitted in tests. The rules below are what enforces that; read them as the
+    # dependency policy rather than as lint configuration.
+    depguard:
+      rules:
+        # client/ must stay free of external dependencies. The meshStack Terraform
+        # provider consumes this package, so anything added here lands in the
+        # provider's dependency tree as well.
+        client:
+          files:
+            # Both patterns are needed: '**/dir/**/*.go' only matches files in
+            # subdirectories of dir, never files directly inside it.
+            - "**/client/*.go"
+            - "**/client/**/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/client
+
+        # pkg/ holds logic reusable outside a CLI process — the Terraform provider
+        # imports pkg/login — so cobra must not reach it.
+        pkg:
+          files:
+            - "**/pkg/*.go"
+            - "**/pkg/**/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: github.com/spf13/cobra
+              desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/meshcloud/meshstack-cli/pkg
+
+        # cmd/ builds the command tree, and is the only place cobra is used.
+        cmd:
+          files:
+            - "**/cmd/*.go"
+            - "**/cmd/**/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Write user-facing output through the command's own streams
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+
+        # Tests may additionally use testify, which is what the client's moved tests
+        # are written against.
+        tests:
+          files:
+            - "$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+            - github.com/stretchr/testify

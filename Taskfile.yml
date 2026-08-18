@@ -1,0 +1,34 @@
+version: '3'
+
+dotenv: ['.env']
+
+tasks:
+  build:
+    desc: Build the meshstack binary
+    cmds:
+      - go build {{.CLI_ARGS}} ./cmd/meshstack
+
+  install:
+    desc: Install the meshstack binary into GOBIN
+    cmds:
+      - go install {{.CLI_ARGS}} ./cmd/meshstack
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run {{.CLI_ARGS}}
+
+  tidy:
+    desc: Tidy go.mod and go.sum
+    cmds:
+      - go mod tidy
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f meshstack
