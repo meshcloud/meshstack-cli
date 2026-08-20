@@ -43,17 +43,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read  # Required for only-new-issues on PRs
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: stable
+          # The repository's pinned Go, because it is what builds the linter below.
+          go-version-file: 'go.mod'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
-          only-new-issues: true  # Show only issues in changed code on PRs
+          # golangci-lint's formatters use the go/format compiled into the binary, so the
+          # formatting they enforce comes from the Go release that BUILT the linter, not
+          # from the toolchain on PATH. The published binaries are built with whatever Go
+          # was current at release time, which made 'version: latest' with install-mode
+          # 'binary' enforce a different gofmt than the pinned Go: 1.27 widens end-of-line
+          # comment alignment groups, and 1.26 rejects the result, so the two disagree with
+          # no formatting that satisfies both. Building the linter here with go.mod's Go
+          # ties formatting to the version the code is written against.
+          install-mode: goinstall
+          version: v2.13.0
+          # Deliberately no only-new-issues: this repository starts clean and CI keeps it
+          # that way, so filtering to changed code cannot help and can only hide a finding.
+          # It hid this one, and still hides it in the provider's identical job.
       - name: Suggest fix command on failure
         if: failure()
         run: |
