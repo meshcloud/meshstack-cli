@@ -59,8 +59,26 @@ checksum database. `depguard` in `.golangci.yml` enforces the boundaries per dir
 rules as the policy. Widening them is a deliberate decision, not a lint fix.
 
 <rules id="client-package">
-`client/` keeps the import path it had in the Terraform provider, so moving code between the two
-repositories stays a plain path rewrite.
+`client/` is a **git subtree** imported from
+[terraform-provider-meshstack](https://github.com/meshcloud/terraform-provider-meshstack), where it
+used to live, and it keeps the `client` path prefix it had there. Carry changes across with
+`git subtree`, not by copying files:
+
+```shell
+git subtree pull --prefix=client https://github.com/meshcloud/terraform-provider-meshstack.git main
+git subtree push --prefix=client https://github.com/meshcloud/terraform-provider-meshstack.git <branch>
+```
+
+A pull conflicts only where a file genuinely diverged, because the one local edit the move needed was
+rewriting the client's own import path.
+
+Reading the pre-import history takes both paths, since the split history carries the files at the
+repository root and the import merge re-roots them under `client/`:
+
+```shell
+git log -- client/client.go client.go   # a path-limited log from client/ alone stops at the merge
+git blame client/client.go              # traverses the merge on its own
+```
 
 The login exchange lives in `client/internal/auth.go`, which posts to `/api/login`, caches the access
 token and refreshes it before expiry. Go's internal rule keeps that code inside `client/`; reach it
