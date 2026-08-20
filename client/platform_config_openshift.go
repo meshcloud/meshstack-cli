@@ -1,6 +1,6 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type OpenShiftPlatformConfig struct {
 	BaseUrl              string                      `json:"baseUrl" tfsdk:"base_url"`

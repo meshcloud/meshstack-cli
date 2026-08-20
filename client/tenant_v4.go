@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
 )
 
 type TenantLifecycleState string

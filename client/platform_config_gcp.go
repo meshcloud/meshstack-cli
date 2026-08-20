@@ -1,6 +1,6 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type GcpPlatformConfig struct {
 	Replication *GcpReplicationConfig `json:"replication,omitempty" tfsdk:"replication"`

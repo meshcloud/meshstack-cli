@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/variant"
+	"github.com/meshcloud/meshstack-cli/client/types/variant"
 )
 
 type (

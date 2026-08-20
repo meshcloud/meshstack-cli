@@ -1,6 +1,6 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/internal"
+import "github.com/meshcloud/meshstack-cli/client/internal"
 
 // Logger exposes logging for client operations within this package (including internal).
 type Logger = internal.Logger
