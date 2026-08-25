@@ -11,6 +11,10 @@ a library. This file is the always-on source of truth for both AI agents and hum
 > access can follow it. Tag meshcloud-internal shortcuts clearly as internal, and never let
 > understanding a rule *depend* on them.
 
+A relative path like `../meshfed-release` refers to a **sibling checkout**: meshcloud developers
+clone the `meshcloud` org flat, so every repository in it is a sibling of this one. Write cross-repo
+paths that way rather than bare, so they resolve as written.
+
 ## Naming
 
 - **`meshstack`** — the binary, so every invocation reads `meshstack buildingblock list`.
@@ -108,7 +112,7 @@ on disk will hook in later.
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
   decision tree and settle every open question with a recommended answer first. Catching a wrong turn
   at the plan stage is far cheaper than after the code and tests exist. (*meshcloud-internal*: the
-  `grill-me` skill in `meshfed-release/.agents/skills/`.)
+  `grill-me` skill in `../meshfed-release/.agents/skills/`.)
 
 </rules>
 
