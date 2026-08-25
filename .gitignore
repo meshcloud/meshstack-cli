@@ -13,3 +13,6 @@
 # Editor and IDE directories
 .vscode/
 .idea/
+
+# Per-developer Claude Code settings; .claude/settings.json is shared and committed
+.claude/settings.local.json

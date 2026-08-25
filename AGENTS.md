@@ -97,13 +97,13 @@ on disk will hook in later.
 - **Lean comments.** A comment earns its place only by saying what the code cannot — the *why*, a
   trade-off, a non-obvious constraint. Don't restate what a name, type or signature already conveys;
   prefer one sharp line over a paragraph.
-- **Lint only via `task lint`** (golangci-lint, which also enforces gci import ordering and gofmt).
-  It already runs `govet`, so **do not run `go vet` separately**. Auto-fix with `task lint -- --fix`.
-  CI builds golangci-lint from source with `go.mod`'s Go (`install-mode: goinstall`) instead of
-  downloading a release binary, and that is not incidental. The formatters use the `go/format`
-  compiled into the linter, so a binary built with a newer Go enforces a different gofmt than the one
-  the code is written against — and the two can disagree with no formatting that satisfies both.
-  Switching CI to the faster binary install brings that back.
+- **Lint and format only via golangci-lint**, which covers gofmt, gci import ordering and `govet` in
+  one — so **never run `gofmt` or `go vet` separately**. `task lint` is the gate and
+  `task lint -- --fix` the manual fix; a `PostToolUse` hook in `.claude/settings.json` runs
+  `golangci-lint fmt` on every `.go` file an agent writes, so formatting should never reach the gate.
+- **Keep CI's `install-mode: goinstall`.** golangci-lint's formatters embed the `go/format` of the Go
+  that *built* the linter, not the one on `PATH`, so a release binary built with a newer Go demands a
+  gofmt that `go.mod`'s Go rejects — with no formatting that satisfies both.
 - **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`, `feat!:` for breaking).
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
   decision tree and settle every open question with a recommended answer first. Catching a wrong turn
