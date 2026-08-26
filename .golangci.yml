@@ -41,15 +41,17 @@ linters:
     - testifylint
     - thelper
   settings:
-    # This repository is allowed exactly one external dependency, cobra, and only the
-    # cmd/ tree may use it. Everything else stays on the standard library, with testify
-    # permitted in tests. The rules below are what enforces that; read them as the
-    # dependency policy rather than as lint configuration.
+    # These rules are the dependency policy, not an enforcement of one written down
+    # elsewhere, so widening one is a decision rather than a lint fix. The lists below
+    # are exhaustive by intent: one external dependency, cobra, confined to cmd/.
+    #
+    # The reason to keep it that tight is outside this repository. The meshStack
+    # Terraform provider imports client/ and pkg/login, so every dependency reachable
+    # from those packages lands in the provider's dependency tree, and from there in
+    # the public checksum database.
     depguard:
       rules:
-        # client/ must stay free of external dependencies. The meshStack Terraform
-        # provider consumes this package, so anything added here lands in the
-        # provider's dependency tree as well.
+        # The package the Terraform provider consumes most directly.
         client:
           files:
             # Both patterns are needed: '**/dir/**/*.go' only matches files in
@@ -62,8 +64,6 @@ linters:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
 
-        # pkg/ holds logic reusable outside a CLI process — the Terraform provider
-        # imports pkg/login — so cobra must not reach it.
         pkg:
           files:
             - "**/pkg/*.go"

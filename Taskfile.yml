@@ -1,9 +1,16 @@
+# Run these inside `nix develop`, which provides the pinned Go toolchain and every tool
+# named below.
+#
+# {{.CLI_ARGS}} passes everything after `--` to the underlying tool, which is how
+# `task lint -- --fix` and `task test -- -run TestFoo` work.
 version: '3'
 
+# Git-ignored, and holds the MESHSTACK_* credentials that AGENTS.md lists.
 dotenv: ['.env']
 
 tasks:
   build:
+    # Writes ./meshstack, named after the directory, so no -o flag is needed.
     desc: Build the meshstack binary
     cmds:
       - go build {{.CLI_ARGS}} ./cmd/meshstack
@@ -19,6 +26,8 @@ tasks:
       - go test ./... {{.CLI_ARGS}}
 
   lint:
+    # The whole gate. This also formats, so there is no separate fmt task: a gofmt built
+    # against another Go release enforces different formatting than this linter does.
     desc: Run golangci-lint
     cmds:
       - golangci-lint run {{.CLI_ARGS}}
@@ -34,6 +43,8 @@ tasks:
       - goreleaser check
 
   release:snapshot:
+    # Check `dist/*/meshstack --version` afterwards: a build that missed the ldflag
+    # reports `dev` rather than failing.
     desc: Build the release artifacts into dist/ without publishing them
     cmds:
       - goreleaser release --snapshot --clean {{.CLI_ARGS}}

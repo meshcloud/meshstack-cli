@@ -15,6 +15,24 @@ A relative path like `../meshfed-release` refers to a **sibling checkout**: mesh
 clone the `meshcloud` org flat, so every repository in it is a sibling of this one. Write cross-repo
 paths that way rather than bare, so they resolve as written.
 
+<rules id="keep-this-lean">
+**This file is loaded into every session, so keep it short.** A rule earns a place here only if it
+has no closer home. Everything else belongs next to what it governs, and this file links to it:
+
+| Belongs in | Rather than here |
+|---|---|
+| `.golangci.yml` | Which dependency may reach which package, and why |
+| `Taskfile.yml` | What a command does, and what surprises it holds — `task --list` prints the list |
+| A doc comment on the code | Why a package, type or command is built the way it is |
+| The file that holds the setting | Why the setting has that value: `flake.nix`, `go.mod`, `.goreleaser.yml`, `Dockerfile` |
+| A skill | A procedure long enough to need its own steps, loaded only when the work starts |
+
+Before adding a section, check whether one of those places already covers it. Before adding a
+*paragraph* of reasoning, move the reasoning to the code or config it explains and leave a link.
+Restating a rule in two places is worse than leaving it in one: the copies drift, and neither one
+looks stale.
+</rules>
+
 ## Naming
 
 - **`meshstack`** — the binary, so every invocation reads `meshstack buildingblock list`.
@@ -55,12 +73,11 @@ other reason.
 ## Dependency policy
 
 The CLI is allowed **exactly one external dependency, cobra**, and only `cmd/` may use it. Everything
-else is standard library, with `testify` permitted in tests.
+else is standard library, with `testify` in tests.
 
-This is not austerity for its own sake. The Terraform provider imports `client/` and `pkg/login`, so
-every dependency added here lands in the provider's dependency tree, and from there in the public
-checksum database. `depguard` in `.golangci.yml` enforces the boundaries per directory; read those
-rules as the policy. Widening them is a deliberate decision, not a lint fix.
+**The policy lives in `.golangci.yml`**, in the comments on the `depguard` rules — which package may
+import what, and why each boundary is where it is. `depguard` does not merely enforce the policy,
+it *is* the policy, so widening a boundary is a deliberate edit rather than a lint fix.
 
 <rules id="client-package">
 `client/` is a **git subtree** imported from
@@ -101,13 +118,10 @@ on disk will hook in later.
 - **Lean comments.** A comment earns its place only by saying what the code cannot — the *why*, a
   trade-off, a non-obvious constraint. Don't restate what a name, type or signature already conveys;
   prefer one sharp line over a paragraph.
-- **Lint and format only via golangci-lint**, which covers gofmt, gci import ordering and `govet` in
-  one — so **never run `gofmt` or `go vet` separately**. `task lint` is the gate and
-  `task lint -- --fix` the manual fix; a `PostToolUse` hook in `.claude/settings.json` runs
-  `golangci-lint fmt` on every `.go` file an agent writes, so formatting should never reach the gate.
-- **Keep CI's `install-mode: goinstall`.** golangci-lint's formatters embed the `go/format` of the Go
-  that *built* the linter, not the one on `PATH`, so a release binary built with a newer Go demands a
-  gofmt that `go.mod`'s Go rejects — with no formatting that satisfies both.
+- **Lint and format only via `task lint`**, and **never run `gofmt` or `go vet` separately** — a
+  differently built gofmt enforces different formatting. `Taskfile.yml` and
+  `.github/workflows/test.yml` explain why at the settings that depend on it. A `PostToolUse` hook in
+  `.claude/settings.json` formats every `.go` file an agent writes, so it rarely reaches the gate.
 - **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`, `feat!:` for breaking).
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
   decision tree and settle every open question with a recommended answer first. Catching a wrong turn
@@ -118,20 +132,11 @@ on disk will hook in later.
 
 ## Commands
 
-Everything runs through the Taskfile, inside `nix develop`:
+Everything runs through the Taskfile, inside `nix develop`. **`task --list` is the list**, and
+`Taskfile.yml` comments the tasks that hold a surprise.
 
-```shell
-task build             # ./meshstack
-task test              # go test ./...
-task lint              # golangci-lint run
-task tidy              # go mod tidy
-task release:check     # validate .goreleaser.yml
-task release:snapshot  # build the release artifacts into dist/ without publishing
-task image             # docker build -t meshstack:dev
-```
-
-The Go version is pinned in `go.mod` and in `flake.nix`; **keep them in lock-step when bumping**, and
-keep them aligned with the Terraform provider, which consumes this module.
+The Go version is pinned in **two** places, `go.mod` and `flake.nix`, which both say so at the pin.
+Keep them in lock-step when bumping, and keep them aligned with the Terraform provider.
 
 ## Authentication
 
@@ -151,10 +156,9 @@ container image for the same tag. The image goes to GHCR only, as
 push to `main` refreshes `:main`, so an image exists before the first release does.
 
 <rules id="release-version">
-The version comes from the git tag through an ldflag on `main.Version` in `cmd/meshstack`, in two
-places that must agree: `.goreleaser.yml` and the `Dockerfile`. A build without the ldflag reports
-`dev`, which is correct for a working copy but must never reach a published artifact — check with
-`meshstack --version` after `task release:snapshot`.
+The version reaches the binary through an ldflag on `main.Version`, set in **two places that must
+agree**: `.goreleaser.yml` and the `Dockerfile`, both of which say so at the ldflag. A build without
+it reports `dev` — check with `meshstack --version` after `task release:snapshot`.
 </rules>
 
 Pin every GitHub Action by commit SHA with the version in a trailing comment, as the existing
