@@ -43,7 +43,8 @@ linters:
   settings:
     # These rules are the dependency policy, not an enforcement of one written down
     # elsewhere, so widening one is a decision rather than a lint fix. The lists below
-    # are exhaustive by intent: one external dependency, cobra, confined to cmd/.
+    # are exhaustive by intent: two external dependencies, cobra and charmbracelet/log,
+    # each confined to a smaller area than the module.
     #
     # The reason to keep it that tight is outside this repository. The meshStack
     # Terraform provider imports client/ and pkg/login, so every dependency reachable
@@ -83,6 +84,10 @@ linters:
           files:
             - "**/cmd/*.go"
             - "**/cmd/**/*.go"
+            # Excluding cmd/meshstack is what lets the next rule grant more than this
+            # one does. A file matching two rules has to satisfy both, so overlapping
+            # rules intersect and never widen.
+            - "!**/cmd/meshstack/*.go"
             - "!$test"
           list-mode: strict
           deny:
@@ -90,8 +95,27 @@ linters:
               desc: Write user-facing output through the command's own streams
           allow:
             - $gostd
+            - log/slog # a longer prefix than the deny above, so it outranks it
             - github.com/meshcloud/meshstack-cli
             - github.com/spf13/cobra
+
+        # The one package that configures a logger, and therefore the only one that may
+        # name a logging implementation. Everywhere else logs through log/slog against
+        # the handler installed here.
+        cmd-meshstack:
+          files:
+            - "**/cmd/meshstack/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Write user-facing output through the command's own streams
+          allow:
+            - $gostd
+            - log/slog
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+            - github.com/charmbracelet/log
 
         # Tests may additionally use testify, which is what the client's moved tests
         # are written against.

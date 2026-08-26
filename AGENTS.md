@@ -65,15 +65,20 @@ function returning its `*cobra.Command`, and `cmd/meshstack` wires children in w
 `cmd/meshstack` is the one exception to that rule, and is not a subcommand: it is the binary's
 `package main`, holding `main()` and the root command together.
 
-Register commands **explicitly in `cmd/meshstack`, never from `init()`**, so the command tree reads in
-one place and a command cannot appear in the binary just because its package was imported for some
-other reason.
+Three rules hold the tree together, and `cmd/meshstack/meshstack.go` and `cmd/auth/login.go` carry
+the reasoning for each in their doc comments:
+
+- Register commands **explicitly in `cmd/meshstack`, never from `init()`**.
+- A command with a **top-level shortcut** — `meshstack login` for `meshstack auth login` — is
+  registered twice by calling its constructor twice. `Aliases` cannot do this.
+- A constructor keeps its flag targets in **locals captured by the closure, never package-level
+  vars**, and a **parent command sets `RunE` as well as `Args`**.
 </rules>
 
 ## Dependency policy
 
-The CLI is allowed **exactly one external dependency, cobra**, and only `cmd/` may use it. Everything
-else is standard library, with `testify` in tests.
+The CLI is allowed **two external dependencies**: cobra, and `charmbracelet/log`. Each is confined to
+a smaller area than the module. Everything else is standard library, with `testify` in tests.
 
 **The policy lives in `.golangci.yml`**, in the comments on the `depguard` rules — which package may
 import what, and why each boundary is where it is. `depguard` does not merely enforce the policy,

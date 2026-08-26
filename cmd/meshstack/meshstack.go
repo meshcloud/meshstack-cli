@@ -13,9 +13,13 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 
+	clog "github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
+
+	"github.com/meshcloud/meshstack-cli/cmd/auth"
 )
 
 // Version identifies this build. A release overrides it with
@@ -31,7 +35,9 @@ func main() {
 }
 
 func newRootCommand() *cobra.Command {
-	return &cobra.Command{
+	var debug bool
+
+	cmd := &cobra.Command{
 		Use:   "meshstack",
 		Short: "Command line interface for meshStack",
 		// Running `meshstack` on its own prints the help text. RunE also has to be set
@@ -45,5 +51,31 @@ func newRootCommand() *cobra.Command {
 		// A command that fails prints its error, not the whole help text. The user asks
 		// for help explicitly.
 		SilenceUsage: true,
+		PersistentPreRun: func(_ *cobra.Command, _ []string) {
+			setupLogging(debug)
+		},
 	}
+
+	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "log at debug level")
+
+	cmd.AddCommand(auth.New())
+	// `meshstack login` is a shortcut for `meshstack auth login`. Cobra matches an
+	// argument against one command's children, so Aliases never reach past siblings
+	// and cannot express this. The second call is deliberate: adding the value
+	// auth.New() already registered would overwrite its parent, and both paths would
+	// then print the same usage line.
+	cmd.AddCommand(auth.NewLogin())
+
+	return cmd
+}
+
+func setupLogging(debug bool) {
+	options := clog.Options{
+		ReportTimestamp: true,
+		Level:           clog.InfoLevel,
+	}
+	if debug {
+		options.Level = clog.DebugLevel
+	}
+	slog.SetDefault(slog.New(clog.NewWithOptions(os.Stderr, options)))
 }
