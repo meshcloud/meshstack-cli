@@ -1,8 +1,8 @@
-package internal
+package http
 
 import (
 	"fmt"
-	"net/http"
+	gohttp "net/http"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -47,14 +47,14 @@ func TestRetryAfterBackoff(t *testing.T) {
 		{"capped at 5 minutes", "600", 5 * time.Minute},                 // capped
 		{"empty header", "", 1 * time.Second},                           // falls back
 		{"unparseable header", "not-a-number-or-date", 1 * time.Second}, // falls back
-		{"HTTP-date in the past", bubbleStart.Add(-10 * time.Second).Format(http.TimeFormat), 1 * time.Second}, // falls back
-		{"HTTP-date in the future", bubbleStart.Add(45 * time.Second).Format(http.TimeFormat), 45 * time.Second},
+		{"HTTP-date in the past", bubbleStart.Add(-10 * time.Second).Format(gohttp.TimeFormat), 1 * time.Second}, // falls back
+		{"HTTP-date in the future", bubbleStart.Add(45 * time.Second).Format(gohttp.TimeFormat), 45 * time.Second},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				b := retryAfterBackoff{
-					Response: &http.Response{Header: http.Header{"Retry-After": {tt.header}}},
+					Response: &gohttp.Response{Header: gohttp.Header{"Retry-After": {tt.header}}},
 					Fallback: fallback,
 				}
 				assert.Equal(t, tt.want, b.Calculate(1))

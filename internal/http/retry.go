@@ -1,4 +1,4 @@
-package internal
+package http
 
 import (
 	"bytes"
@@ -6,70 +6,59 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
-	"net/http"
+	gohttp "net/http"
 	"strconv"
-	"sync"
 	"time"
 )
 
-// WithRetry sets up the given client to retry certain requests.
-// The idempotent methods GET, PUT and DELETE are retried by default, POST only if the path is
-// explicitly whitelisted. See RetryOptions.
-func WithRetry(c HttpClient, options RetryOptions) HttpClient {
-	next := http.DefaultTransport
+// withRetry sets up the given client to retry certain requests. The idempotent methods GET, PUT
+// and DELETE are retried by default; any other method only where the caller marked the request
+// with Retryable.
+//
+// It is private, and applied once to the client every caller shares, because which requests are
+// safe to replay is a property of the request rather than of the client making it. It used to
+// take a list of whitelisted paths per client, joined onto that client's root URL — a shape
+// that cannot survive one shared client, and that nothing used.
+func withRetry(c *gohttp.Client, options retryOptions) *gohttp.Client {
+	next := gohttp.DefaultTransport
 	if c.Transport != nil {
 		next = c.Transport
 	}
-	whitelistedByMethodAndUrl := func() (m map[string]*sync.Map) {
-		m = make(map[string]*sync.Map)
-		for method, paths := range options.WhitelistedPaths {
-			m[method] = new(sync.Map)
-			for _, path := range paths {
-				m[method].Store(c.RootUrl.JoinPath(path).String(), nil)
-			}
-		}
-		return
-	}()
 	c.Transport = &retryRoundTripper{
 		Next:       next,
 		MaxRetries: options.MaxRetries,
-		// ShouldRetryRequest checks if the request method/path is eligible for retry.
-		ShouldRetryRequest: func(req *http.Request) (retry bool) {
+		// ShouldRetryRequest checks if the request method is eligible for retry.
+		ShouldRetryRequest: func(req *gohttp.Request) bool {
 			if options.Backoff == nil {
 				return false
 			}
 			switch req.Method {
-			case http.MethodGet, http.MethodPut, http.MethodDelete:
+			case gohttp.MethodGet, gohttp.MethodPut, gohttp.MethodDelete:
 				// Idempotent methods are safe to retry: replaying them cannot create duplicate
 				// side effects. A DELETE that actually succeeded server-side before a proxy 503
 				// simply yields a 404 on replay, which delete handlers already treat as done.
 				return true
 			}
-			if whitelisted, found := whitelistedByMethodAndUrl[req.Method]; found {
-				_, retry = whitelisted.Load(req.URL.String())
-			}
-			return
+			return isRetryable(req.Context())
 		},
 		// ShouldRetryResponse returns the backoff policy if the response/error indicates a retryable condition,
 		// otherwise nil is returned to indicate no retry.
-		ShouldRetryResponse: func(resp *http.Response, err error) RetryBackoff {
+		ShouldRetryResponse: func(resp *gohttp.Response, err error) RetryBackoff {
 			if err != nil {
 				return options.Backoff
 			}
 			switch resp.StatusCode {
-			case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+			case gohttp.StatusTooManyRequests, gohttp.StatusServiceUnavailable:
 				return retryAfterBackoff{Response: resp, Fallback: options.Backoff}
-			case http.StatusBadGateway, http.StatusGatewayTimeout:
+			case gohttp.StatusBadGateway, gohttp.StatusGatewayTimeout:
 				return options.Backoff
-			case http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
-				if locationRedirectUrl, _ := resp.Request.URL.Parse(resp.Header.Get("Location")); locationRedirectUrl != nil {
-					if whitelisted, found := whitelistedByMethodAndUrl[resp.Request.Method]; found {
-						whitelisted.Store(locationRedirectUrl.String(), nil)
-					}
-				}
-				return nil
 			default:
+				// A redirect needed a case of its own while retryability was a list of URLs,
+				// so that the URL a redirect pointed at joined the list. Marking the request
+				// covers it for free: gohttp.Client carries the context into the request it
+				// issues for the Location, so the mark travels with it.
 				return nil
 			}
 		},
@@ -77,14 +66,12 @@ func WithRetry(c HttpClient, options RetryOptions) HttpClient {
 	return c // for fluent API
 }
 
-// RetryOptions configure WithRetry.
-type RetryOptions struct {
+// retryOptions configure withRetry.
+type retryOptions struct {
 	// MaxRetries limits the attempts to retries. If zero, retries will never be attempted.
 	MaxRetries int
 	// Backoff to use when retrying. If nil, retries will never be attempted.
 	Backoff RetryBackoff
-	// WhitelistedPaths allow methods beyond GET and PUT to be retried as well, see WithRetry.
-	WhitelistedPaths map[string][]string
 }
 
 // RetryBackoff calculates the duration to wait before the next retry attempt.
@@ -108,7 +95,7 @@ func (b ExponentialBackoff) Calculate(attempt int) time.Duration {
 var timeNow = time.Now
 
 type retryAfterBackoff struct {
-	Response *http.Response
+	Response *gohttp.Response
 	Fallback RetryBackoff
 }
 
@@ -136,22 +123,22 @@ func (b retryAfterBackoff) Calculate(attempt int) (waitTime time.Duration) {
 	}
 
 	// Try as HTTP-date (RFC 7231).
-	if date, err := http.ParseTime(header); err == nil {
+	if date, err := gohttp.ParseTime(header); err == nil {
 		return date.Sub(timeNow())
 	}
 	return -1
 }
 
-// retryRoundTripper wraps an http.RoundTripper to retry failed requests.
-// See WithRetry for which methods are retried.
+// retryRoundTripper wraps an gohttp.RoundTripper to retry failed requests.
+// See withRetry for which methods are retried.
 type retryRoundTripper struct {
-	Next                http.RoundTripper
+	Next                gohttp.RoundTripper
 	MaxRetries          int
-	ShouldRetryRequest  func(req *http.Request) bool
-	ShouldRetryResponse func(resp *http.Response, err error) RetryBackoff
+	ShouldRetryRequest  func(req *gohttp.Request) bool
+	ShouldRetryResponse func(resp *gohttp.Response, err error) RetryBackoff
 }
 
-func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
 	if !r.ShouldRetryRequest(req) {
 		return r.Next.RoundTrip(req)
 	}
@@ -175,7 +162,7 @@ func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 			}
 		}
 		waitTime := backoff.Calculate(attempt)
-		Log.Warn(req.Context(), "retrying request", append(
+		slog.WarnContext(req.Context(), "retrying request", append(
 			func() []any {
 				if err != nil {
 					return []any{"error", err.Error()}
@@ -197,11 +184,11 @@ func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 }
 
-func makeRequestBodyRetryable(req *http.Request) *http.Request {
+func makeRequestBodyRetryable(req *gohttp.Request) *gohttp.Request {
 	if req.Body == nil {
 		return req
 	}
-	// If GetBody already returns independent readers (e.g. set by http.NewRequestWithContext
+	// If GetBody already returns independent readers (e.g. set by gohttp.NewRequestWithContext
 	// for *bytes.Buffer, *bytes.Reader, *strings.Reader), use it as-is for retries.
 	if req.GetBody != nil {
 		return req
@@ -252,19 +239,19 @@ func (w *appendWriter) Write(p []byte) (int, error) {
 }
 
 // drainAndCloseResponseBody reads up to maxBytes from the response body before closing it.
-// Draining enables Go's http.Transport to reuse the underlying TCP connection for
+// Draining enables Go's gohttp.Transport to reuse the underlying TCP connection for
 // subsequent requests. The maxBytes limit prevents getting stuck on large or slow
 // responses — if the body exceeds this limit, the connection won't be reused, but
 // we won't block indefinitely either.
-func drainAndCloseResponseBody(ctx context.Context, resp *http.Response) {
+func drainAndCloseResponseBody(ctx context.Context, resp *gohttp.Response) {
 	const maxBytes = 16 * 1024
 	if resp != nil && resp.Body != nil {
 		drainedBytes, err := io.CopyN(io.Discard, resp.Body, maxBytes)
 		if err != nil && !errors.Is(err, io.EOF) {
-			Log.Debug(ctx, fmt.Sprintf("failed to drain response body: %s", err.Error()))
+			slog.DebugContext(ctx, fmt.Sprintf("failed to drain response body: %s", err.Error()))
 		}
 		if err := resp.Body.Close(); err != nil {
-			Log.Debug(ctx, fmt.Sprintf("failed to close response body after draining %d bytes: %s", drainedBytes, err.Error()))
+			slog.DebugContext(ctx, fmt.Sprintf("failed to close response body after draining %d bytes: %s", drainedBytes, err.Error()))
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockType string
@@ -71,7 +72,7 @@ type meshBuildingBlockDefinitionClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinition]
 }
 
-func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockDefinitionClient {
+func newBuildingBlockDefinitionClient(ctx context.Context, httpClient http.Client) MeshBuildingBlockDefinitionClient {
 	return meshBuildingBlockDefinitionClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinition](ctx, httpClient, "v1-preview"),
 	}
@@ -86,7 +87,7 @@ type meshBuildingBlockDefinitionListQuery struct {
 }
 
 func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
 		IncludeAllPublished: true,
 		OwnedByWorkspace:    workspaceIdentifier,
 	}))

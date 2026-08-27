@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
+	gohttp "net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
@@ -183,24 +183,28 @@ func postToken(ctx context.Context, cfg ClientConfig, form url.Values) (tokenRes
 	return tok, nil
 }
 
+// postForm runs one grant and hands back what the provider said, status and all. A refusal is
+// data here rather than a failure: the OAuth error document is the only thing that distinguishes
+// a reused refresh token from a dead session, so the caller reads it and decides.
+//
+// No request here is marked Retryable, which is deliberate and the reason marking is opt-in: a
+// refresh grant rotates the refresh token, and keycloak ends the whole session when a rotated
+// token is used twice. Replaying one after a gateway hiccup would log the user out.
 func postForm(ctx context.Context, target string, form url.Values) (body []byte, status int, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, strings.NewReader(form.Encode()))
+	parsed, err := url.Parse(target)
 	if err != nil {
 		return nil, 0, fmt.Errorf("cannot build a request for %s: %w", target, err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent)
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
+	body, err = http.DoRawRequest(ctx, client(parsed), http.MethodPost, parsed, http.WithFormPayload(form))
+	var httpErr http.Error
+	switch {
+	case errors.As(err, &httpErr):
+		return httpErr.ResponseBody, httpErr.StatusCode, nil
+	case err != nil:
 		return nil, 0, fmt.Errorf("cannot reach %s: %w", target, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("cannot read the response from %s: %w", target, err)
-	}
-	return body, resp.StatusCode, nil
+	return body, gohttp.StatusOK, nil
 }

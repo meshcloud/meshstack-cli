@@ -56,6 +56,8 @@ the flag back.
 | `cmd/<subcommand>/` | One package per subcommand of the cobra command tree. |
 | `pkg/` | Logic that does not need a CLI process, and that the Terraform provider can import. |
 | `client/` | The meshStack API client. Path-identical to the provider's former `client/`. |
+| `internal/http` | The process's one HTTP client, and the request building both front ends share. |
+| `internal/cli` | The CLI's half of `auth.Input`: flags, stdin, a terminal prompt, the browser login. |
 
 <rules id="command-tree">
 In `cmd/`, **the package name is the subcommand and the file name is the leaf command**:
@@ -121,6 +123,22 @@ caching it in a profile, refreshing before expiry — is `pkg/auth`. Both front 
 through `auth.Session.Client`, so the endpoint and the authorization always agree with what was
 resolved. Do **not** add a login exchange here or anywhere else: a second one gets a static token and
 starts returning 401 once it expires, and for a browser login it would end the user's session.
+
+**`client/` no longer owns HTTP either.** The client, the request options and the retry policy are
+`internal/http`, one directory above, because `pkg/oidc` and `pkg/auth` need them and Go's internal
+rule closes `client/internal` to both. Its names carry no `Http` prefix — the package is what says
+that — so it reads `http.Client`, `http.Error`, `http.NewClient`.
+
+**A file that needs both packages imports `net/http` as `gohttp`.** `internal/http` takes the plain
+name, because it is the one a meshStack call goes through; `net/http` is left for the status and
+method constants and for the loopback server. The `forbidigo` rule in `.golangci.yml` matches on the
+type, not on the written name, so it catches `gohttp.Client` and leaves `http.Client` alone.
+
+**`client/` has no logging seam.** It logs through `slog`'s default logger like everything else, so
+there is no `client.SetLogger` any more. `cmd/meshstack` installs a `charmbracelet/log` handler and
+the Terraform provider a `tflog` bridge, each before the first request. Log with the `Context` form —
+`slog.DebugContext` — because the provider's handler reads terraform's logger out of the context, and
+drops a record that arrives without one.
 </rules>
 
 ## Always-on rules

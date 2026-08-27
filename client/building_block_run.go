@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockRun struct {
@@ -43,18 +44,18 @@ type meshBuildingBlockRunClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockRun]
 }
 
-func newBuildingBlockRunClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockRunClient {
+func newBuildingBlockRunClient(ctx context.Context, httpClient http.Client) MeshBuildingBlockRunClient {
 	return meshBuildingBlockRunClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockRun](ctx, httpClient, "v1"),
 	}
 }
 
 func (c meshBuildingBlockRunClient) GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error) {
-	return internal.DoAuthorizedRequest[MeshBuildingBlockRunLogs](
+	return http.DoAuthorizedRequest[MeshBuildingBlockRunLogs](
 		ctx,
-		c.meshObject.HttpClient,
+		c.meshObject.Client,
 		"GET",
 		c.meshObject.ApiUrl.JoinPath(runUuid, "logs"),
-		internal.WithAccept(c.meshObject.MeshObjectMimeType()),
+		http.WithAccept(c.meshObject.MeshObjectMimeType()),
 	)
 }

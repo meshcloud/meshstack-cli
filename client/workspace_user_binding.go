@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshWorkspaceUserBinding struct {
@@ -20,7 +21,7 @@ type meshWorkspaceUserBindingClient struct {
 	meshObject internal.MeshObjectClient[MeshWorkspaceUserBinding]
 }
 
-func newWorkspaceUserBindingClient(ctx context.Context, httpClient internal.HttpClient) MeshWorkspaceUserBindingClient {
+func newWorkspaceUserBindingClient(ctx context.Context, httpClient http.Client) MeshWorkspaceUserBindingClient {
 	return meshWorkspaceUserBindingClient{internal.NewMeshObjectClient[MeshWorkspaceUserBinding](ctx, httpClient, "v2", "meshworkspacebindings", "userbindings")}
 }
 

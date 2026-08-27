@@ -15,13 +15,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
@@ -36,20 +36,13 @@ type ClientConfig struct {
 	RevocationEndpoint    string
 }
 
-// requestTimeout bounds every exchange on top of the caller's context: an identity provider
-// that accepts the connection and then goes quiet must not hang a command forever.
+// requestTimeout bounds every exchange, as a deadline on the context rather than as a client of
+// this package's own: an identity provider that accepts the connection and then goes quiet must
+// not hang a command forever, and the shared client's two minutes are far more than any of these
+// exchanges should take.
 const requestTimeout = 30 * time.Second
 
 const userAgent = "meshstack-cli"
-
-// httpClient is shared so that discovery and the grant that follows it reuse one connection.
-// It carries no cookie jar and no redirect policy of its own, because every endpoint here
-// answers in one hop.
-var httpClient = &http.Client{Timeout: requestTimeout}
-
-// maxBodyBytes caps what an error path reads back. Nothing this package parses is large, and
-// a misrouted request can land on a page that is.
-const maxBodyBytes = 1 << 20
 
 // claimWorkspace is written by meshfed's MC_CUSTOMER.js script mapper from the c:<workspace>
 // scope on the token request. The name is c for customer, from before workspaces were called
@@ -102,30 +95,31 @@ func Expiry(accessToken string) (time.Time, bool) {
 	return time.Unix(int64(exp), 0), true
 }
 
+// client addresses one endpoint of the identity provider, or of meshStack for /mesh/info. It
+// carries no authorization: every request this package makes is either public or authenticated
+// by the grant in its own body.
+func client(target *url.URL) http.Client {
+	return http.NewClient(target, userAgent, nil)
+}
+
 // getJSON reads one JSON document. Both documents it fetches — /mesh/info and the OIDC
 // configuration — are public and unauthenticated, so no request here carries a credential.
 func getJSON[T any](ctx context.Context, target string) (T, error) {
 	var out T
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	parsed, err := url.Parse(target)
 	if err != nil {
 		return out, fmt.Errorf("cannot build a request for %s: %w", target, err)
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent)
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
+	body, err := http.DoRawRequest(ctx, client(parsed), http.MethodGet, parsed, http.WithAccept("application/json"))
+	var httpErr http.Error
+	switch {
+	case errors.As(err, &httpErr):
+		return out, fmt.Errorf("%s returned HTTP %d: %s", target, httpErr.StatusCode, excerpt(httpErr.ResponseBody))
+	case err != nil:
 		return out, fmt.Errorf("cannot reach %s: %w", target, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
-	if err != nil {
-		return out, fmt.Errorf("cannot read the response from %s: %w", target, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return out, fmt.Errorf("%s returned HTTP %d: %s", target, resp.StatusCode, excerpt(body))
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return out, fmt.Errorf("cannot parse the response from %s as JSON: %w", target, err)

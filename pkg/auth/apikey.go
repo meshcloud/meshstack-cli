@@ -1,17 +1,12 @@
 package auth
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"log/slog"
-	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 )
 
@@ -22,93 +17,41 @@ import (
 // any previous token.
 const apiLoginPath = "/api/login"
 
-// apiLoginRetries rides out a backend that is still starting. The client this exchange used
-// to live in retries GETs for about four minutes, and losing that entirely would turn a
-// restarting meshStack into an immediate failure on the first authorized request.
-const apiLoginRetries = 5
-
 func apiLogin(ctx context.Context, endpoint *url.URL, clientId, clientSecret string) (token string, lifetime time.Duration, err error) {
 	target := endpoint.JoinPath(apiLoginPath)
-	payload, err := json.Marshal(struct {
+	payload := struct {
 		ClientId     string `json:"clientId"`
 		ClientSecret string `json:"clientSecret"`
-	}{clientId, clientSecret})
-	if err != nil {
-		return "", 0, err
-	}
+	}{clientId, clientSecret}
 
-	backoff := time.Second
-	for attempt := range apiLoginRetries {
-		token, lifetime, err = postApiLogin(ctx, target, payload)
-		if err == nil {
-			return token, lifetime, nil
-		}
-		var status statusError
-		// Only a server-side failure is worth another attempt: a 401 means the secret is
-		// wrong, and retrying it four more times only delays the message.
-		if errors.As(err, &status) && status.code < http.StatusInternalServerError {
-			break
-		}
-		if attempt == apiLoginRetries-1 {
-			break
-		}
-		slog.Debug("meshStack login failed, retrying", "url", target.String(), "attempt", attempt+1, "error", err)
-		select {
-		case <-ctx.Done():
-			return "", 0, ctx.Err()
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, 30*time.Second)
-	}
-
-	var status statusError
-	if errors.As(err, &status) && status.code == http.StatusUnauthorized {
-		return "", 0, diags.Wrap(err, "meshStack refused this API key",
-			"%s answered 401 for key id %s. Check the secret, or issue a new key in meshPanel.", target, clientId)
-	}
-	return "", 0, diags.Wrap(err, "could not log in to meshStack with an API key",
-		"%s with key id %s failed: %v", target, clientId, err)
-}
-
-func postApiLogin(ctx context.Context, target *url.URL, payload []byte) (string, time.Duration, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(payload))
-	if err != nil {
-		return "", 0, err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("User-Agent", userAgent)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return "", 0, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		return "", 0, err
-	}
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return "", 0, statusError{code: response.StatusCode, body: string(body)}
-	}
-
-	var answer struct {
+	// Retryable is what rides out a backend that is still starting, and it is safe here for the
+	// same reason /api/login can destroy nothing: the exchange mints from the id and the secret
+	// and invalidates no previous token, so a replay after a gateway 503 costs one token.
+	//
+	// A wrong secret is not retried, because the transport only replays a gateway's own answers
+	// — 429, 502, 503, 504 and a connection that never came up. Which is also why a meshStack
+	// behind a Kubernetes gateway is the case this covers: the gateway answers while the
+	// application behind it restarts.
+	answer, err := http.DoRequest[struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
-	}
-	if err := json.Unmarshal(body, &answer); err != nil {
-		return "", 0, fmt.Errorf("cannot parse the login answer from %s: %w", target, err)
-	}
-	if answer.AccessToken == "" {
-		return "", 0, fmt.Errorf("%s answered without an access token", target)
-	}
-	return answer.AccessToken, time.Duration(answer.ExpiresIn) * time.Second, nil
-}
+	}](ctx, http.NewClient(endpoint, userAgent, nil), "POST", target,
+		http.Retryable(),
+		http.WithPayload(payload, "application/json"),
+	)
 
-type statusError struct {
-	code int
-	body string
-}
-
-func (e statusError) Error() string {
-	return fmt.Sprintf("http error %d, response '%s'", e.code, e.body)
+	var httpErr http.Error
+	switch {
+	case err == nil && answer.AccessToken == "":
+		return "", 0, diags.Errorf("could not log in to meshStack with an API key",
+			"%s answered without an access token.", target)
+	case err == nil:
+		return answer.AccessToken, time.Duration(answer.ExpiresIn) * time.Second, nil
+	case errors.As(err, &httpErr) && httpErr.IsUnauthorized():
+		return "", 0, diags.Wrap(err, "meshStack refused this API key",
+			"%s answered 401 for key id %s. Check the secret, or issue a new key in meshPanel.", target, clientId)
+	default:
+		return "", 0, diags.Wrap(err, "could not log in to meshStack with an API key",
+			"%s with key id %s failed: %v", target, clientId, err)
+	}
 }

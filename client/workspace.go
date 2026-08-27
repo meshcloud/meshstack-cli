@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshWorkspace struct {
@@ -46,7 +47,7 @@ type meshWorkspaceClient struct {
 	meshObject internal.MeshObjectClient[MeshWorkspace]
 }
 
-func newWorkspaceClient(ctx context.Context, httpClient internal.HttpClient) meshWorkspaceClient {
+func newWorkspaceClient(ctx context.Context, httpClient http.Client) meshWorkspaceClient {
 	return meshWorkspaceClient{internal.NewMeshObjectClient[MeshWorkspace](ctx, httpClient, "v2")}
 }
 

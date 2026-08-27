@@ -5,6 +5,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshApiKey struct {
@@ -40,7 +41,7 @@ type meshApiKeyClient struct {
 	meshObject internal.MeshObjectClient[MeshApiKey]
 }
 
-func newApiKeyClient(ctx context.Context, httpClient internal.HttpClient) MeshApiKeyClient {
+func newApiKeyClient(ctx context.Context, httpClient http.Client) MeshApiKeyClient {
 	return meshApiKeyClient{internal.NewMeshObjectClient[MeshApiKey](ctx, httpClient, "v1-preview")}
 }
 

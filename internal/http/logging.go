@@ -1,42 +1,32 @@
-package internal
+package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
-	"net/http"
+	gohttp "net/http"
 	"slices"
 	"strings"
 )
 
-var Log Logger = noopLogger{}
+// This package logs through slog's default logger, and there is no Logger seam any more. Both
+// front ends install a handler on it before anything makes a request — cmd/meshstack a
+// charmbracelet/log one, the Terraform provider a tflog bridge — so a second interface only
+// meant that one process carried two logging conventions and the provider had to fill both.
+//
+// Two rules follow from the handler being installed late, in the provider's Configure, and
+// from what that handler needs:
+//
+//   - Reach the logger through the slog package functions at the point of use, never through a
+//     package-level slog.Default() captured at init. The default is still the built-in one when
+//     this package is initialised.
+//   - Pass the request's context, so use DebugContext rather than Debug. The provider's handler
+//     reads terraform's logger out of the context, and a record that arrives without one is
+//     dropped.
 
-// Logger supports Debug, Info, and Warn log levels.
-// Note that msg is a short, descriptive statement what is logged, and args are key value pairs (values are string or implement fmt.Stringer).
-type Logger interface {
-	Debug(ctx context.Context, msg string, args ...any)
-	Info(ctx context.Context, msg string, args ...any)
-	Warn(ctx context.Context, msg string, args ...any)
-}
-
-type noopLogger struct{}
-
-func (n noopLogger) Debug(context.Context, string, ...any) {
-	// do nothing
-}
-
-func (n noopLogger) Info(context.Context, string, ...any) {
-	// do nothing
-}
-
-func (n noopLogger) Warn(context.Context, string, ...any) {
-	// do nothing
-}
-
-type loggedHeaders http.Header
+type loggedHeaders gohttp.Header
 
 var _ fmt.Stringer = loggedHeaders(nil)
 

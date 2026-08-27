@@ -9,6 +9,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 // Enums
@@ -192,7 +193,7 @@ type meshBuildingBlockDefinitionVersionClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinitionVersion]
 }
 
-func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockDefinitionVersionClient {
+func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient http.Client) MeshBuildingBlockDefinitionVersionClient {
 	return meshBuildingBlockDefinitionVersionClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinitionVersion](ctx, httpClient, "v1-preview"),
 	}
@@ -203,7 +204,7 @@ type meshBuildingBlockDefinitionVersionListQuery struct {
 }
 
 func (c meshBuildingBlockDefinitionVersionClient) List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
 		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
 	}))
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshLandingZone struct {
@@ -84,7 +85,7 @@ type meshLandingZoneClient struct {
 	meshObject internal.MeshObjectClient[MeshLandingZone]
 }
 
-func newLandingZoneClient(ctx context.Context, httpClient internal.HttpClient) MeshLandingZoneClient {
+func newLandingZoneClient(ctx context.Context, httpClient http.Client) MeshLandingZoneClient {
 	return meshLandingZoneClient{internal.NewMeshObjectClient[MeshLandingZone](ctx, httpClient, "v1")}
 }
 
@@ -93,7 +94,7 @@ func (c meshLandingZoneClient) Read(ctx context.Context, name string) (*MeshLand
 }
 
 func (c meshLandingZoneClient) List(ctx context.Context, query MeshLandingZoneListQuery) ([]MeshLandingZone, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshLandingZoneClient) Create(ctx context.Context, landingZone *MeshLandingZoneCreate) (*MeshLandingZone, error) {

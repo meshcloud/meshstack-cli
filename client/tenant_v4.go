@@ -6,6 +6,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type TenantLifecycleState string
@@ -123,7 +124,7 @@ type meshTenantClient struct {
 	meshObject internal.MeshObjectClient[MeshTenant]
 }
 
-func newTenantClient(ctx context.Context, httpClient internal.HttpClient) MeshTenantClient {
+func newTenantClient(ctx context.Context, httpClient http.Client) MeshTenantClient {
 	return meshTenantClient{internal.NewMeshObjectClient[MeshTenant](ctx, httpClient, "v4")}
 }
 
@@ -142,7 +143,7 @@ func (c meshTenantClient) Create(ctx context.Context, tenant *MeshTenantCreate) 
 }
 
 func (c meshTenantClient) List(ctx context.Context, query MeshTenantQuery) ([]MeshTenant, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshTenantClient) Delete(ctx context.Context, uuid string) error {

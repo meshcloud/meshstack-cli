@@ -25,6 +25,7 @@ linters:
     - durationcheck
     - errcheck
     - copyloopvar
+    - forbidigo
     - forcetypeassert
     - godot
     - ineffassign
@@ -40,7 +41,47 @@ linters:
     - govet
     - testifylint
     - thelper
+
+  exclusions:
+    rules:
+      # A test that stands up an httptest.Server and points a client at it makes no request
+      # the shipped binary makes, so the rule below has nothing to say about it.
+      - path: _test\.go
+        linters:
+          - forbidigo
+
+      # The one package that may build a client, which is the whole point of the rule.
+      - path: internal/http/
+        linters:
+          - forbidigo
+
   settings:
+    # One HTTP client for the process, built in internal/http, and nothing else may make an
+    # outbound request of its own. There used to be three: pkg/auth posted to /api/login
+    # through http.DefaultClient, which has no timeout at all; pkg/oidc kept one with a
+    # 30-second one; and the API client built a third with five minutes. Only the last of them
+    # retried, so which policy a request got depended on which package happened to make it.
+    #
+    # It sits at the module root rather than under client/ because Go's internal rule would
+    # otherwise close it to pkg/oidc and pkg/auth, and outside the module's internal tree
+    # because the Terraform provider must not be able to configure it.
+    #
+    # This is forbidigo rather than a depguard deny because depguard bans an import path and
+    # net/http is one package for three unrelated things. Denying it would also deny
+    # http.StatusOK and http.MethodPost, which every caller reading a response needs, and the
+    # http.Server that pkg/oidc/browser runs for the loopback redirect — a server, not a
+    # second client. Naming the identifiers keeps all of that legal.
+    forbidigo:
+      # Match on the type rather than on the written name. It is what makes `pkg` below work,
+      # and it is what this rule needs, because internal/http's own type is also called Client
+      # and is imported under the name http. Without it, every legitimate use would be a
+      # finding and every net/http one behind an alias would not.
+      analyze-types: true
+      forbid:
+        - pattern: \.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
+          pkg: ^net/http$
+          msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
+
     # These rules are the dependency policy, not an enforcement of one written down
     # elsewhere, so widening one is a decision rather than a lint fix. The lists below
     # are exhaustive by intent: two external dependencies, cobra and charmbracelet/log,
@@ -64,6 +105,10 @@ linters:
           allow:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
+            # The HTTP machinery client/ is built on. It moved out of client/internal so that
+            # pkg/oidc and pkg/auth could reach it too; client/internal/http.go re-exports the
+            # names the meshObject clients use, which is why only that file imports it.
+            - github.com/meshcloud/meshstack-cli/internal/http
 
         pkg:
           files:
@@ -83,6 +128,9 @@ linters:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
             - github.com/meshcloud/meshstack-cli/pkg
+            # The process's one HTTP client. pkg/auth and pkg/oidc each address a different
+            # host — meshStack and the identity provider — and both go through it.
+            - github.com/meshcloud/meshstack-cli/internal/http
 
         # The only package that reads and writes the configuration files, and therefore
         # the only one that needs a YAML library — a third external dependency where this
@@ -116,6 +164,18 @@ linters:
             - github.com/meshcloud/meshstack-cli/client
             - github.com/meshcloud/meshstack-cli/pkg
             - go.yaml.in/yaml/v3
+
+        # internal/http is the process's one HTTP client, and it needs nothing but the standard
+        # library to be one. It sits outside client/ because Go's internal rule would otherwise
+        # close it to pkg/, and inside the module's internal tree because the Terraform provider
+        # must not be able to configure it.
+        internal-http:
+          files:
+            - "**/internal/http/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
 
         # internal/cli implements the CLI's half of auth.Input: flags, stdin, a terminal
         # prompt and the browser login. Go's internal rule already keeps it out of the

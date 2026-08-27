@@ -5,6 +5,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshServiceInstance struct {
@@ -44,7 +45,7 @@ type MeshServiceInstanceFilter struct {
 	PlanIdentifier        *string `json:"planIdentifier"`
 }
 
-func newServiceInstanceClient(ctx context.Context, httpClient internal.HttpClient) MeshServiceInstanceClient {
+func newServiceInstanceClient(ctx context.Context, httpClient http.Client) MeshServiceInstanceClient {
 	return meshServiceInstanceClient{internal.NewMeshObjectClient[MeshServiceInstance](ctx, httpClient, "v2")}
 }
 
@@ -53,5 +54,5 @@ func (c meshServiceInstanceClient) Read(ctx context.Context, instanceId string) 
 }
 
 func (c meshServiceInstanceClient) List(ctx context.Context, filter MeshServiceInstanceFilter) ([]MeshServiceInstance, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(filter))
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }

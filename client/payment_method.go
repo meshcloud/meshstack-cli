@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshPaymentMethod struct {
@@ -46,7 +47,7 @@ type meshPaymentMethodClient struct {
 	meshObject internal.MeshObjectClient[MeshPaymentMethod]
 }
 
-func newPaymentMethodClient(ctx context.Context, httpClient internal.HttpClient) MeshPaymentMethodClient {
+func newPaymentMethodClient(ctx context.Context, httpClient http.Client) MeshPaymentMethodClient {
 	return meshPaymentMethodClient{internal.NewMeshObjectClient[MeshPaymentMethod](ctx, httpClient, "v2")}
 }
 

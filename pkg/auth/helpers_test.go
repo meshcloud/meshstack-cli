@@ -171,6 +171,7 @@ type fakeMeshStack struct {
 	refreshes       int
 	refreshForms    []url.Values
 	apiLoginExpires int
+	apiLoginStatus  int
 	refresh         func(form url.Values) (int, map[string]any)
 }
 
@@ -212,8 +213,12 @@ func newMeshStack(t *testing.T) *fakeMeshStack {
 	mux.HandleFunc("/api/login", func(w http.ResponseWriter, _ *http.Request) {
 		stack.mu.Lock()
 		stack.apiLogins++
-		count, expires := stack.apiLogins, stack.apiLoginExpires
+		count, expires, status := stack.apiLogins, stack.apiLoginExpires, stack.apiLoginStatus
 		stack.mu.Unlock()
+		if status != 0 {
+			writeJSON(w, status, map[string]any{"message": "no"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"access_token": fmt.Sprintf("api-key-token-%d", count),
 			"expires_in":   expires,
@@ -286,6 +291,13 @@ func (m *fakeMeshStack) setApiLoginExpiry(seconds int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.apiLoginExpires = seconds
+}
+
+// answerApiLoginWith makes /api/login answer with the given status instead of a token.
+func (m *fakeMeshStack) answerApiLoginWith(status int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.apiLoginStatus = status
 }
 
 func (m *fakeMeshStack) answerRefreshWith(answer func(url.Values) (int, map[string]any)) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 // FeatureFlagFourEyesRoleApproval is the only feature flag /mesh/info can currently report in
@@ -38,16 +38,16 @@ type MeshInfoClient interface {
 }
 
 type meshInfoClient struct {
-	httpClient internal.HttpClient
+	httpClient http.Client
 }
 
-func newMeshInfoClient(httpClient internal.HttpClient) MeshInfoClient {
+func newMeshInfoClient(httpClient http.Client) MeshInfoClient {
 	return meshInfoClient{httpClient: httpClient}
 }
 
 func (c meshInfoClient) Read(ctx context.Context) (*MeshInfo, error) {
 	meshInfoEndpoint := c.httpClient.RootUrl.JoinPath("/mesh/info")
-	info, err := internal.DoRequest[MeshInfo](ctx, c.httpClient, "GET", meshInfoEndpoint)
+	info, err := http.DoRequest[MeshInfo](ctx, c.httpClient, "GET", meshInfoEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve meshStack instance information from %s endpoint: %w", meshInfoEndpoint, err)
 	}

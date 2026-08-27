@@ -1,6 +1,7 @@
 package oidc_test
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -138,7 +139,14 @@ func TestDiscoverAgainstAnUnreachableEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	server.Close()
 
-	_, err = oidc.Discover(t.Context(), endpoint)
+	// Discovery is a GET, so the shared client replays it until a deadline runs out — the same
+	// treatment a meshStack API call gets, and what rides out a restarting backend. The caller's
+	// deadline is what bounds it, and this test supplies a short one rather than waiting for the
+	// 30 seconds pkg/oidc allows itself.
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err = oidc.Discover(ctx, endpoint)
 	require.ErrorContains(t, err, "cannot read the meshStack instance information")
 }
 

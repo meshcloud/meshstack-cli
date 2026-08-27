@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshPlatformType struct {
@@ -55,7 +56,7 @@ type meshPlatformTypeClient struct {
 	meshObject internal.MeshObjectClient[MeshPlatformType]
 }
 
-func newPlatformTypeClient(ctx context.Context, httpClient internal.HttpClient) MeshPlatformTypeClient {
+func newPlatformTypeClient(ctx context.Context, httpClient http.Client) MeshPlatformTypeClient {
 	return meshPlatformTypeClient{internal.NewMeshObjectClient[MeshPlatformType](ctx, httpClient, "v1")}
 }
 
@@ -81,7 +82,7 @@ type meshPlatformTypeListQuery struct {
 }
 
 func (c meshPlatformTypeClient) List(ctx context.Context, category *string, lifecycleStatus *string) ([]MeshPlatformType, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshPlatformTypeListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshPlatformTypeListQuery{
 		Category:        category,
 		LifecycleStatus: lifecycleStatus,
 	}))

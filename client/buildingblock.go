@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 const (
@@ -79,7 +80,7 @@ type meshBuildingBlockClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlock]
 }
 
-func newBuildingBlockClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockClient {
+func newBuildingBlockClient(ctx context.Context, httpClient http.Client) MeshBuildingBlockClient {
 	return meshBuildingBlockClient{internal.NewMeshObjectClient[MeshBuildingBlock](ctx, httpClient, "v1")}
 }
 

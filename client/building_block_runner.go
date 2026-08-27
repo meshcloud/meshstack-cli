@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockRunnerImplementationType string
@@ -72,7 +73,7 @@ type meshBuildingBlockRunnerClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockRunner]
 }
 
-func newBuildingBlockRunnerClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockRunnerClient {
+func newBuildingBlockRunnerClient(ctx context.Context, httpClient http.Client) MeshBuildingBlockRunnerClient {
 	return meshBuildingBlockRunnerClient{internal.NewMeshObjectClient[MeshBuildingBlockRunner](ctx, httpClient, "v1-preview")}
 }
 

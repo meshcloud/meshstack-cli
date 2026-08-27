@@ -192,6 +192,44 @@ func TestRefreshBearerTokenForcesExactlyOneRemint(t *testing.T) {
 	require.Equal(t, 2, stack.apiLoginCount())
 }
 
+// TestTheApiKeyExchangeSeparatesARefusalFromAnOutage holds the two answers /api/login can give
+// that are not a token. A 401 means the secret is wrong and says so; anything else is reported
+// as a failed login. The 401 must also not be replayed, which is the transport's rule and the
+// reason the exchange may ask to be retried at all.
+func TestTheApiKeyExchangeSeparatesARefusalFromAnOutage(t *testing.T) {
+	t.Run("a 401 names the key and meshPanel", func(t *testing.T) {
+		stack := newMeshStack(t)
+		stack.answerApiLoginWith(http.StatusUnauthorized)
+		isolate(t)
+		t.Setenv(envEndpoint, stack.URL.String())
+		t.Setenv(envApiKey, "key-42")
+		t.Setenv(envApiSecret, testSecret)
+
+		session := resolved(t, &fakeInput{secret: testSecret})
+		_, err := session.BearerToken(t.Context())
+		p := problemOf(t, err)
+		require.Equal(t, "meshStack refused this API key", p.Summary())
+		assert.Contains(t, p.Detail(), "key-42")
+		assert.Contains(t, p.Detail(), "meshPanel")
+		require.Equal(t, 1, stack.apiLoginCount(), "a wrong secret must not be retried")
+	})
+
+	t.Run("any other refusal is reported as a failed login", func(t *testing.T) {
+		stack := newMeshStack(t)
+		stack.answerApiLoginWith(http.StatusForbidden)
+		isolate(t)
+		t.Setenv(envEndpoint, stack.URL.String())
+		t.Setenv(envApiKey, "key-42")
+		t.Setenv(envApiSecret, testSecret)
+
+		session := resolved(t, &fakeInput{secret: testSecret})
+		_, err := session.BearerToken(t.Context())
+		p := problemOf(t, err)
+		require.Equal(t, "could not log in to meshStack with an API key", p.Summary())
+		assert.Contains(t, p.Detail(), "key-42")
+	})
+}
+
 // TestADeadMethodNamesTheWayOut holds the failure table: renewal never switches method, so
 // when the current one cannot mint, the command fails and says what to do about it.
 func TestADeadMethodNamesTheWayOut(t *testing.T) {

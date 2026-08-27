@@ -1,10 +1,12 @@
-package internal
+package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	gohttp "net/http"
+	"net/url"
 	"reflect"
 )
 
@@ -16,13 +18,38 @@ type (
 		urlQueryParams   map[string]string
 		extraPathElems   []string
 		requestPayload   any
+		rawPayload       []byte
+		retryable        bool
 		requestModifiers []requestModifier
 		// optionErr holds the first error produced while applying options (e.g. an unmarshalable
 		// query); doRequest surfaces it instead of building a request from partial options.
 		optionErr error
 	}
-	requestModifier func(req *http.Request)
+	requestModifier func(req *gohttp.Request)
 )
+
+// retryableKey marks a request its caller declared safe to replay. It travels in the request
+// context rather than in a list the client holds, because gohttp.Client passes the context on to
+// the request it issues for a redirect, and because one client now serves every caller.
+type retryableKey struct{}
+
+// Retryable declares that replaying this request cannot do harm, which is the only way a method
+// other than GET, PUT or DELETE is ever retried.
+//
+// meshStack's /api/login is the case it exists for: it mints a token from an id and a secret and
+// invalidates nothing, so a replay after a gateway 503 costs one token. Do not put it on a POST
+// that creates something, and never on an OIDC refresh grant — that one rotates the refresh
+// token, and keycloak ends the whole session when a rotated token is used twice.
+func Retryable() RequestOption {
+	return func(opts *requestOptions) {
+		opts.retryable = true
+	}
+}
+
+func isRetryable(ctx context.Context) bool {
+	retryable, _ := ctx.Value(retryableKey{}).(bool)
+	return retryable
+}
 
 // WithUrlQuery adds URL query parameters from a query value.
 //
@@ -81,15 +108,29 @@ func WithAccept(accept string) RequestOption {
 }
 
 func withHeader(key, value string) RequestOption {
-	return appendRequestModifier(func(req *http.Request) {
+	return appendRequestModifier(func(req *gohttp.Request) {
 		req.Header.Set(key, value)
 	})
 }
 
-func withPayload(payload any, contentType string) RequestOption {
+// WithPayload sends a value as a JSON body, and both sends and asks for the given content type.
+// meshStack names a meshObject's kind and version in that type, which is why it is a parameter
+// rather than always application/json.
+func WithPayload(payload any, contentType string) RequestOption {
 	return func(opts *requestOptions) {
 		WithAccept(contentType)(opts)
 		withHeader("Content-Type", contentType)(opts)
 		opts.requestPayload = payload
+	}
+}
+
+// WithFormPayload sends an already-encoded form body. The OIDC token endpoint is what needs it:
+// every grant is application/x-www-form-urlencoded, and it answers JSON, so the content type and
+// the accept header disagree here where WithPayload has them agree.
+func WithFormPayload(form url.Values) RequestOption {
+	return func(opts *requestOptions) {
+		WithAccept("application/json")(opts)
+		withHeader("Content-Type", "application/x-www-form-urlencoded")(opts)
+		opts.rawPayload = []byte(form.Encode())
 	}
 }

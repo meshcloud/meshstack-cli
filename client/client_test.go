@@ -2,27 +2,27 @@ package client
 
 import (
 	"errors"
-	"net/http"
+	gohttp "net/http"
 	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type erroringRoundTripper struct{ calls int }
 
-func (rt *erroringRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+func (rt *erroringRoundTripper) RoundTrip(*gohttp.Request) (*gohttp.Response, error) {
 	rt.calls++
 	return nil, errors.New("no server is available to handle this request")
 }
 
 func TestCheckMeshVersion_SkipsRequestWhenOptedOut(t *testing.T) {
-	newUnreachableClient := func() (internal.HttpClient, *erroringRoundTripper) {
+	newUnreachableClient := func() (http.Client, *erroringRoundTripper) {
 		transport := new(erroringRoundTripper)
-		httpClient := internal.NewHttpClient(&url.URL{Scheme: "https", Host: "meshstack.invalid"}, "test-agent", nil)
+		httpClient := http.NewClient(&url.URL{Scheme: "https", Host: "meshstack.invalid"}, "test-agent", nil)
 		httpClient.Transport = transport
 		return httpClient, transport
 	}

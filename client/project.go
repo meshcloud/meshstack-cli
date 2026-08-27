@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshProject struct {
@@ -47,7 +48,7 @@ type meshProjectClient struct {
 	meshObject internal.MeshObjectClient[MeshProject]
 }
 
-func newProjectClient(ctx context.Context, httpClient internal.HttpClient) MeshProjectClient {
+func newProjectClient(ctx context.Context, httpClient http.Client) MeshProjectClient {
 	return meshProjectClient{internal.NewMeshObjectClient[MeshProject](ctx, httpClient, "v2")}
 }
 
@@ -65,7 +66,7 @@ type meshProjectListQuery struct {
 }
 
 func (c meshProjectClient) List(ctx context.Context, workspaceIdentifier string, paymentMethodIdentifier *string) ([]MeshProject, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshProjectListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshProjectListQuery{
 		WorkspaceIdentifier: workspaceIdentifier,
 		PaymentIdentifier:   paymentMethodIdentifier,
 	}))

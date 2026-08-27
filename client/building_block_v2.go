@@ -10,6 +10,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type BuildingBlockLifecycleState string
@@ -292,7 +293,7 @@ type meshBuildingBlockV2Client struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockV2]
 }
 
-func newBuildingBlockV2Client(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockV2Client {
+func newBuildingBlockV2Client(ctx context.Context, httpClient http.Client) MeshBuildingBlockV2Client {
 	return meshBuildingBlockV2Client{internal.NewMeshObjectClient[MeshBuildingBlockV2](ctx, httpClient, "v2-preview")}
 }
 
@@ -307,7 +308,7 @@ func (c meshBuildingBlockV2Client) ReadFunc(uuid string) func(ctx context.Contex
 }
 
 func (c meshBuildingBlockV2Client) List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(filter))
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
@@ -322,9 +323,9 @@ func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingB
 }
 
 func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purge bool) error {
-	var options []internal.RequestOption
+	var options []http.RequestOption
 	if purge {
-		options = append(options, internal.WithPathElems("purge"))
+		options = append(options, http.WithPathElems("purge"))
 	}
 	return c.meshObject.Delete(ctx, uuid, options...)
 }
@@ -395,12 +396,12 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) error {
 	// trigger-run returns an empty 2xx body; use DoAuthorizedRequest[any] to signal no body expected.
 	// No body is sent, so the backend triggers a normal (non-dry) apply run.
-	_, err := internal.DoAuthorizedRequest[any](
+	_, err := http.DoAuthorizedRequest[any](
 		ctx,
-		c.meshObject.HttpClient,
+		c.meshObject.Client,
 		"POST",
 		c.meshObject.ApiUrl.JoinPath(bbUuid, "trigger-run"),
-		internal.WithAccept(c.meshObject.MeshObjectMimeType()),
+		http.WithAccept(c.meshObject.MeshObjectMimeType()),
 	)
 	return err
 }
