@@ -33,6 +33,9 @@ type MeshWorkspaceCreateMetadata struct {
 }
 
 type MeshWorkspaceClient interface {
+	// List returns every workspace the credential can see. An unscoped user token reaches
+	// this and almost nothing else, which is what `meshstack auth login` prompts from.
+	List(ctx context.Context) ([]MeshWorkspace, error)
 	Read(ctx context.Context, name string) (*MeshWorkspace, error)
 	Create(ctx context.Context, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)
 	Update(ctx context.Context, name string, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)
@@ -45,6 +48,10 @@ type meshWorkspaceClient struct {
 
 func newWorkspaceClient(ctx context.Context, httpClient internal.HttpClient) meshWorkspaceClient {
 	return meshWorkspaceClient{internal.NewMeshObjectClient[MeshWorkspace](ctx, httpClient, "v2")}
+}
+
+func (c meshWorkspaceClient) List(ctx context.Context) ([]MeshWorkspace, error) {
+	return c.meshObject.List(ctx)
 }
 
 func (c meshWorkspaceClient) Read(ctx context.Context, name string) (*MeshWorkspace, error) {
