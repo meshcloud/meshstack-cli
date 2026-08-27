@@ -409,3 +409,39 @@ func TestProfileSuppliesTheEndpointForAnEnvironmentCredential(t *testing.T) {
 	entries, err := os.ReadDir(at.credentials)
 	require.True(t, err != nil || len(entries) == 0, "a credential from the environment must leave no file behind")
 }
+
+// TestANamedProfileBeatsAnEnvironmentCredential pins which layer a --profile flag sits in. It is
+// the top one, alongside a provider block attribute, so naming a profile decides the credential
+// even where the environment holds a complete one. MESHSTACK_PROFILE does not: it sits in the
+// environment layer next to MESHSTACK_API_KEY, so neither outranks the other.
+func TestANamedProfileBeatsAnEnvironmentCredential(t *testing.T) {
+	setup := func(t *testing.T) {
+		t.Helper()
+		isolate(t)
+		writeConfig(t, "", map[string]profile.Profile{
+			"dev": {Endpoint: "https://api.dev.example.com", DefaultWorkspace: "from-the-profile"},
+		})
+		t.Setenv(envEndpoint, "https://api.env.example.com")
+		t.Setenv(envApiKey, "an-id")
+		t.Setenv(envApiSecret, "a-secret")
+	}
+
+	t.Run("the flag wins", func(t *testing.T) {
+		setup(t)
+		session, err := Resolve(t.Context(), &fakeInput{values: Values{Profile: "dev"}})
+		require.NoError(t, err)
+		assert.Equal(t, "dev", session.Profile)
+		assert.Equal(t, "https://api.env.example.com", session.Endpoint.String(),
+			"the endpoint is its own axis, and the environment still outranks the profile there")
+		assert.Equal(t, sourceProfile.describe("'dev'"), session.sources["credential"])
+	})
+
+	t.Run("the environment variable does not", func(t *testing.T) {
+		setup(t)
+		t.Setenv(envProfile, "dev")
+		session, err := Resolve(t.Context(), &fakeInput{})
+		require.NoError(t, err)
+		assert.Empty(t, session.Profile, "an environment credential and MESHSTACK_PROFILE are the same layer")
+		assert.Equal(t, method.ApiKey, session.Method())
+	})
+}

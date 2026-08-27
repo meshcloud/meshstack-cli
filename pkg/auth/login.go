@@ -62,11 +62,12 @@ func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult,
 	}
 	if credentials.CurrentMethod != "" && credentials.CurrentMethod != demanded {
 		result.SwitchedFrom = credentials.CurrentMethod
-		s.input.Warn(diags.Warnf("switching authentication method",
-			"profile %q was using its %s; switching to the %s and discarding cached tokens. `meshstack login` switches back.",
-			s.Profile, credentials.CurrentMethod.Description(), demanded.Description()))
-		options.Force = true
 	}
+	// Switching method deliberately does not force a fresh login. Switching back to a browser
+	// login should cost one refresh rather than a new browser session — that is what makes a
+	// shared profile usable, where CI logs in with an API key and a developer holds a login in
+	// the same profile. `--api-key` and `--api-token` set Force themselves, because for them
+	// forcing only means "do the exchange again".
 
 	switch demanded {
 	case method.Manual:
@@ -78,6 +79,15 @@ func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult,
 	}
 	if err != nil {
 		return result, err
+	}
+
+	// Warned only once the switch has actually happened. A login that failed changed nothing,
+	// and a warning saying otherwise would send the user looking for tokens that are still
+	// there.
+	if result.SwitchedFrom != "" {
+		s.input.Warn(diags.Warnf("switching authentication method",
+			"profile %q was using its %s; switched to the %s and discarded the cached tokens. `meshstack login` switches back.",
+			s.Profile, result.SwitchedFrom.Description(), demanded.Description()))
 	}
 
 	s.mu.Lock()

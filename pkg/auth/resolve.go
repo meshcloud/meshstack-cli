@@ -94,9 +94,16 @@ func resolve(in Input, forLogin bool) (*Session, error) {
 	session := &Session{input: in, sources: sources, Workspace: workspace.Name(ws)}
 
 	// A credential is resolved as a whole, never field by field: take the highest-ranked
-	// source that supplies a complete one. `auth login` skips this, because its whole job is
-	// to write whatever it was given into a profile.
-	if !forLogin {
+	// source that supplies a complete one.
+	//
+	// Two callers skip it. `auth login`, because its whole job is to write whatever it was
+	// given into a profile. And a caller that named a profile through a flag or a provider
+	// block attribute, because that is the top layer of the same precedence order — naming a
+	// profile is a statement about which credential to use, and `meshstack auth status
+	// --profile dev` reporting somebody's exported API key instead is the wart that proves it.
+	// MESHSTACK_PROFILE does not count here: it sits in the environment layer, alongside
+	// MESHSTACK_API_KEY, so neither outranks the other and the credential wins as before.
+	if !forLogin && values.Profile == "" {
 		if credential, ok := wholeCredential(values, apiKeyId); ok {
 			// The endpoint and the workspace are their own axes of the precedence order, so a
 			// profile may still supply them where the credential came from the environment.
