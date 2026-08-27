@@ -43,28 +43,15 @@ type Client struct {
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 }
 
-// Authorization produces the Authorization request header for each request. pkg/auth holds
-// the implementation that mints, caches and persists tokens; see client/internal/auth.go for
-// why that work is not in this package any more.
+// Authorization produces the bearer token for each request, and replaces one the meshStack
+// API answered with a 401. pkg/auth holds the implementation that mints, caches and persists
+// tokens; see client/internal/auth.go for why that work is not in this package any more.
 type Authorization = internal.Authorization
-
-// TokenRejector lets an Authorization learn that the header it produced came back 401.
-type TokenRejector = internal.TokenRejector
 
 // NewApiTokenAuthorization carries a token somebody else obtained. Nothing renews it, so it
 // expires during long-running work; pkg/auth is what a caller with a credential wants.
 func NewApiTokenAuthorization(apiToken string) Authorization {
 	return internal.BearerTokenAuthorization{Token: apiToken}
-}
-
-// WorkspaceScoper is implemented by an Authorization whose token is bound to a single
-// workspace. Nothing implements it yet: pkg/auth settles the workspace before the client
-// exists, so switching workspace means building another client. This is the seam for a later
-// command that iterates workspaces without needing a second refresh token.
-type WorkspaceScoper interface {
-	// ForWorkspace returns an Authorization whose tokens carry the given workspace. The
-	// receiver is unchanged.
-	ForWorkspace(workspace string) Authorization
 }
 
 func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authorization) (Client, error) {

@@ -48,9 +48,9 @@ func loginProfile(t *testing.T, endpoint string, ws workspace.Name, methods prof
 	})
 }
 
-// TestHeaderMintsFromTheApiKeyOncePerTokenLife holds the two-cache rule: the header is
+// TestBearerTokenMintsFromTheApiKeyOncePerTokenLife holds the two-cache rule: the token is
 // produced before every request, and it does no I/O while the in-process token is good.
-func TestHeaderMintsFromTheApiKeyOncePerTokenLife(t *testing.T) {
+func TestBearerTokenMintsFromTheApiKeyOncePerTokenLife(t *testing.T) {
 	stack := newMeshStack(t)
 	at := isolate(t)
 	t.Setenv(envEndpoint, stack.URL.String())
@@ -59,12 +59,12 @@ func TestHeaderMintsFromTheApiKeyOncePerTokenLife(t *testing.T) {
 
 	session := resolved(t, &fakeInput{secret: testSecret})
 
-	first, err := session.Header(t.Context())
+	first, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "Bearer api-key-token-1", first)
+	require.Equal(t, "api-key-token-1", first)
 	require.Equal(t, 1, stack.apiLoginCount())
 
-	second, err := session.Header(t.Context())
+	second, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, first, second)
 	require.Equal(t, 1, stack.apiLoginCount(), "a second call inside the token's life must make no request")
@@ -83,9 +83,9 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 		})
 
 		session := resolved(t, &fakeInput{})
-		header, err := session.Header(t.Context())
+		token, err := session.BearerToken(t.Context())
 		require.NoError(t, err)
-		require.Equal(t, "Bearer api-key-token-1", header)
+		require.Equal(t, "api-key-token-1", token)
 		require.Equal(t, 1, stack.apiLoginCount())
 	})
 
@@ -97,9 +97,9 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 		})
 
 		session := resolved(t, &fakeInput{})
-		header, err := session.Header(t.Context())
+		token, err := session.BearerToken(t.Context())
 		require.NoError(t, err)
-		require.Equal(t, "Bearer still-good", header)
+		require.Equal(t, "still-good", token)
 		require.Equal(t, 0, stack.apiLoginCount(), "another process's valid token must be used, not replaced")
 	})
 }
@@ -118,7 +118,7 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 	require.Equal(t, workspace.Name("demo"), session.Workspace)
 	require.Equal(t, workspace.Scope("w:demo"), session.Scope())
 
-	header, err := session.Header(t.Context())
+	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 1, stack.refreshCount())
 
@@ -131,7 +131,7 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 	stored := readCredentials(t)
 	require.NotNil(t, stored.Methods.Login)
 	require.Equal(t, "refresh-1", stored.Methods.Login.RefreshToken, "the rotated refresh token must replace the used one")
-	require.Equal(t, header, "Bearer "+stored.AccessTokens[workspace.Scope("w:demo")].Token,
+	require.Equal(t, token, stored.AccessTokens[workspace.Scope("w:demo")].Token,
 		"the access token and the refresh token it came with are one write")
 }
 
@@ -153,16 +153,16 @@ func TestARefreshForAnotherWorkspaceFailsNamingTheWorkspace(t *testing.T) {
 	})
 
 	session := resolved(t, &fakeInput{})
-	_, err := session.Header(t.Context())
+	_, err := session.BearerToken(t.Context())
 	p := problemOf(t, err)
 	require.Equal(t, "this login cannot act in that workspace", p.Summary())
 	assert.Contains(t, p.Detail(), "demo")
 	assert.Contains(t, p.Detail(), "meshstack workspace list")
 }
 
-// TestRejectedForcesExactlyOneRemint holds the answer to a badly wrong clock: a 401 on a
-// token this process believed valid re-mints once, and only once.
-func TestRejectedForcesExactlyOneRemint(t *testing.T) {
+// TestRefreshBearerTokenForcesExactlyOneRemint holds the answer to a badly wrong clock: a 401
+// on a token this process believed valid re-mints once, and only once.
+func TestRefreshBearerTokenForcesExactlyOneRemint(t *testing.T) {
 	stack := newMeshStack(t)
 	isolate(t)
 	t.Setenv(envEndpoint, stack.URL.String())
@@ -170,24 +170,24 @@ func TestRejectedForcesExactlyOneRemint(t *testing.T) {
 	t.Setenv(envApiSecret, testSecret)
 
 	session := resolved(t, &fakeInput{secret: testSecret})
-	first, err := session.Header(t.Context())
+	first, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 1, stack.apiLoginCount())
 
-	// A report about a header this session no longer holds is not a reason to re-mint.
-	session.Rejected("Bearer a-token-from-another-session")
-	_, err = session.Header(t.Context())
+	// A 401 on a token this session no longer holds belongs to a request that was in flight
+	// while another one replaced it. The replacement is handed back, and nothing is minted.
+	replacement, err := session.RefreshBearerToken(t.Context(), "a-token-from-another-session")
 	require.NoError(t, err)
+	require.Equal(t, first, replacement)
 	require.Equal(t, 1, stack.apiLoginCount())
 
-	session.Rejected(first)
-	second, err := session.Header(t.Context())
+	second, err := session.RefreshBearerToken(t.Context(), first)
 	require.NoError(t, err)
 	require.NotEqual(t, first, second)
 	require.Equal(t, 2, stack.apiLoginCount())
 
 	// One re-mint, not a re-mint per request: the cached token is trusted again.
-	_, err = session.Header(t.Context())
+	_, err = session.BearerToken(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 2, stack.apiLoginCount())
 }
@@ -206,7 +206,7 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 		})
 
 		session := resolved(t, &fakeInput{token: "unused"})
-		_, err := session.Header(t.Context())
+		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "this API token has expired", p.Summary())
 		assert.Contains(t, p.Detail(), envApiToken)
@@ -222,7 +222,7 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 		apiKeyProfile(t, stack, nil)
 
 		session := resolved(t, &fakeInput{})
-		_, err := session.Header(t.Context())
+		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "this API key no longer works", p.Summary())
 		assert.Contains(t, p.Detail(), "meshstack auth login --api-key=key-42")
@@ -236,7 +236,7 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 		loginProfile(t, stack.URL.String(), "demo", profile.Methods{})
 
 		session := resolved(t, &fakeInput{})
-		_, err := session.Header(t.Context())
+		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "this login has expired or was revoked", p.Summary())
 		assert.Contains(t, p.Detail(), "meshstack login")
@@ -264,7 +264,7 @@ func TestRenewalNeverSwitchesMethod(t *testing.T) {
 	session := resolved(t, &fakeInput{secret: testSecret})
 	require.Equal(t, method.Login, session.Method())
 
-	_, err := session.Header(t.Context())
+	_, err := session.BearerToken(t.Context())
 	require.Error(t, err)
 	require.ErrorIs(t, err, oidc.ErrRefreshRejected)
 	require.Equal(t, 0, stack.apiLoginCount(), "the API key in the same profile must not have been used")
@@ -291,9 +291,9 @@ func TestARejectedRefreshIsRetriedOnceWhenTheTokenWasAlreadyUsed(t *testing.T) {
 	})
 
 	session := resolved(t, &fakeInput{})
-	header, err := session.Header(t.Context())
+	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
-	require.NotEmpty(t, header)
+	require.NotEmpty(t, token)
 	require.Equal(t, 2, stack.refreshCount())
 }
 
@@ -307,7 +307,7 @@ func TestTheStoredIssuerIsCheckedBeforeTheRefreshGrant(t *testing.T) {
 	})
 
 	session := resolved(t, &fakeInput{})
-	_, err := session.Header(t.Context())
+	_, err := session.BearerToken(t.Context())
 	p := problemOf(t, err)
 	require.Equal(t, "this login belongs to a different identity provider", p.Summary())
 	assert.Contains(t, p.Detail(), "https://sso.somewhere-else.example.com")
@@ -388,27 +388,27 @@ func TestOnlyTheLoginMethodIsScopedToAWorkspace(t *testing.T) {
 	})
 }
 
-// TestConcurrentHeaderCallsMintOnce holds the rule a Terraform provider depends on: many
+// TestConcurrentBearerTokenCallsMintOnce holds the rule a Terraform provider depends on: many
 // requests in flight at once cost one token, not one each.
-func TestConcurrentHeaderCallsMintOnce(t *testing.T) {
+func TestConcurrentBearerTokenCallsMintOnce(t *testing.T) {
 	run := func(t *testing.T, callers int, stack *fakeMeshStack, session *Session) {
 		t.Helper()
-		headers := make([]string, callers)
+		tokens := make([]string, callers)
 		var wg sync.WaitGroup
 		for i := range callers {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				header, err := session.Header(t.Context())
+				token, err := session.BearerToken(t.Context())
 				assert.NoError(t, err)
-				headers[i] = header
+				tokens[i] = token
 			}()
 		}
 		wg.Wait()
 
 		require.Equal(t, 1, stack.apiLoginCount(), "every goroutine but one must have used the token the first minted")
-		for _, header := range headers {
-			require.Equal(t, "Bearer api-key-token-1", header)
+		for _, token := range tokens {
+			require.Equal(t, "api-key-token-1", token)
 		}
 	}
 
@@ -424,6 +424,56 @@ func TestConcurrentHeaderCallsMintOnce(t *testing.T) {
 
 	// The lock is the riskier half: the waiters have to re-read under it and find the
 	// winner's token rather than mint one each.
+	t.Run("a file store under its lock", func(t *testing.T) {
+		stack := newMeshStack(t)
+		isolate(t)
+		apiKeyProfile(t, stack, nil)
+
+		run(t, 8, stack, resolved(t, &fakeInput{}))
+	})
+}
+
+// TestConcurrentRefreshCallsMintOnce is the same rule for the 401 path, and it is the one that
+// needs the rejected token: every request in flight is refused the same token at the same
+// moment, and only the token they name is ruled out. A waiter that re-read under the lock and
+// distrusted the whole store would mint one token each — for a browser login, one refresh grant
+// each, on a refresh token keycloak lets be reused once.
+func TestConcurrentRefreshCallsMintOnce(t *testing.T) {
+	run := func(t *testing.T, callers int, stack *fakeMeshStack, session *Session) {
+		t.Helper()
+		rejected, err := session.BearerToken(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, 1, stack.apiLoginCount())
+
+		tokens := make([]string, callers)
+		var wg sync.WaitGroup
+		for i := range callers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				token, err := session.RefreshBearerToken(t.Context(), rejected)
+				assert.NoError(t, err)
+				tokens[i] = token
+			}()
+		}
+		wg.Wait()
+
+		require.Equal(t, 2, stack.apiLoginCount(), "one 401 on a shared token costs one token, not one each")
+		for _, token := range tokens {
+			require.Equal(t, "api-key-token-2", token)
+		}
+	}
+
+	t.Run("a memory store", func(t *testing.T) {
+		stack := newMeshStack(t)
+		isolate(t)
+		t.Setenv(envEndpoint, stack.URL.String())
+		t.Setenv(envApiKey, "key-42")
+		t.Setenv(envApiSecret, testSecret)
+
+		run(t, 32, stack, resolved(t, &fakeInput{secret: testSecret}))
+	})
+
 	t.Run("a file store under its lock", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)

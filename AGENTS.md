@@ -115,8 +115,8 @@ git log -- client/client.go client.go   # a path-limited log from client/ alone 
 git blame client/client.go              # traverses the merge on its own
 ```
 
-**`client/` no longer knows how to log in.** `client.Authorization` is a bare
-`Header(ctx) (string, error)`, and everything behind it — resolving a credential, minting a token,
+**`client/` no longer knows how to log in.** `client.Authorization` produces a bearer token and
+replaces one that came back 401, and everything behind it — resolving a credential, minting a token,
 caching it in a profile, refreshing before expiry — is `pkg/auth`. Both front ends build their client
 through `auth.Session.Client`, so the endpoint and the authorization always agree with what was
 resolved. Do **not** add a login exchange here or anywhere else: a second one gets a static token and

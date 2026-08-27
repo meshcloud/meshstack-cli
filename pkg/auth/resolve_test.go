@@ -140,9 +140,9 @@ func TestAnApiTokenInTheEnvironmentResolvesToManualInMemoryAndWritesNothing(t *t
 	assert.Contains(t, session.sources["credential"], envApiToken)
 
 	// Using the token has to leave the directory empty too, not just resolving it.
-	header, err := session.Header(t.Context())
+	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "Bearer pasted-token", header)
+	require.Equal(t, "pasted-token", token)
 
 	requireNothingStored(t, at)
 }
@@ -164,9 +164,9 @@ func TestAnApiKeyAndSecretInTheEnvironmentResolveToApiKeyInMemoryAndWriteNothing
 	assert.Contains(t, session.sources["credential"], envApiKey)
 	assert.Contains(t, session.sources["credential"], envApiSecret)
 
-	header, err := session.Header(t.Context())
+	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "Bearer api-key-token-1", header)
+	require.Equal(t, "api-key-token-1", token)
 
 	requireNothingStored(t, at)
 }
@@ -194,7 +194,7 @@ func TestAWholeCredentialNeverOverwritesAProfile(t *testing.T) {
 
 	session := resolved(t, &fakeInput{secret: testSecret})
 	require.Equal(t, method.ApiKey, session.Method())
-	_, err = session.Header(t.Context())
+	_, err = session.BearerToken(t.Context())
 	require.NoError(t, err)
 
 	after, err := os.ReadFile(path)

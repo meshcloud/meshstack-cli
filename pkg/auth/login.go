@@ -91,7 +91,7 @@ func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult,
 	}
 
 	s.mu.Lock()
-	s.current, s.cached, s.remint = demanded, profile.IssuedToken{}, false
+	s.current, s.cached = demanded, profile.IssuedToken{}
 	s.mu.Unlock()
 	return result, nil
 }

@@ -31,29 +31,36 @@ func DoAuthorizedRequest[R any](ctx context.Context, c HttpClient, method string
 	if c.Authorization == nil {
 		return result, fmt.Errorf("cannot do authorized request with unconfigured authorization")
 	}
-	authHeader, err := c.Authorization.Header(ctx)
+	token, err := c.Authorization.BearerToken(ctx)
 	if err != nil {
 		return result, err
 	}
-	result, err = DoRequest[R](ctx, c, method, url, append(options, withHeader("Authorization", authHeader))...)
+	withAuthBearerToken := func(token string) []RequestOption {
+		return append(options, withHeader("Authorization", "Bearer "+token))
+	}
+	result, err = DoRequest[R](ctx, c, method, url, withAuthBearerToken(token)...)
 
-	// A 401 on a token the authorization believed valid forces exactly one re-mint. See
-	// TokenRejector for why bounded retry is the right answer to a wrong clock. Re-running
-	// DoRequest is safe because buildRequest encodes the payload afresh on every call.
-	var httpErr HttpError
-	rejector, canRetry := c.Authorization.(TokenRejector)
-	if !canRetry || !errors.As(err, &httpErr) || !httpErr.IsUnauthorized() {
+	// A 401 on a token the authorization believed valid forces exactly one refresh. The
+	// renewal grace window covers a request issued just before expiry and modest clock skew,
+	// but not a clock that is minutes wrong — which containers with a frozen clock really are.
+	// One bounded retry turns that from a confusing failure into a hiccup. Re-running DoRequest
+	// is safe because buildRequest encodes the payload afresh on every call.
+	httpErr, isHttpErr := errors.AsType[HttpError](err)
+	if !isHttpErr || !httpErr.IsUnauthorized() {
 		return result, err
 	}
-	rejector.Rejected(authHeader)
-	retryHeader, mintErr := c.Authorization.Header(ctx)
-	if mintErr != nil || retryHeader == authHeader {
-		// Report the 401, not the failure to renew: the caller asked for the request, and a
-		// renewal that produced the same header has nothing new to try.
+	refreshed, refreshErr := c.Authorization.RefreshBearerToken(ctx, token)
+	switch {
+	case refreshErr != nil:
+		// Both errors travel: the 401 is what the caller's request ran into, and the renewal
+		// failure is what says why nothing better could be tried.
+		return result, errors.Join(err, fmt.Errorf("cannot renew the rejected token: %w", refreshErr))
+	case refreshed == token:
+		// A refresh that produced the same token has nothing new to try, so the 401 stands.
 		return result, err
 	}
 	Log.Debug(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
-	return DoRequest[R](ctx, c, method, url, append(options, withHeader("Authorization", retryHeader))...)
+	return DoRequest[R](ctx, c, method, url, withAuthBearerToken(refreshed)...)
 }
 
 func DoRequest[R any](ctx context.Context, c HttpClient, method string, url *url.URL, options ...RequestOption) (result R, err error) {

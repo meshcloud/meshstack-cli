@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -173,7 +174,7 @@ func TestHttpClient(t *testing.T) {
 
 	t.Run("DoAuthorizedRequest re-mints once on 401", func(t *testing.T) {
 		t.Run("retries with the freshly minted token", func(t *testing.T) {
-			auth := &rejectableAuthorization{header: "Bearer stale"}
+			auth := &refreshableAuthorization{token: "stale"}
 			seen := []string{}
 			client := newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
 				seen = append(seen, req.Header.Get("Authorization"))
@@ -187,11 +188,11 @@ func TestHttpClient(t *testing.T) {
 			_, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
 			require.NoError(t, err)
 			assert.Equal(t, []string{"Bearer stale", "Bearer fresh"}, seen)
-			assert.Equal(t, 1, auth.rejected)
+			assert.Equal(t, []string{"stale"}, auth.rejected, "the token that was refused is what the refresh is told about")
 		})
 
 		t.Run("reports the 401 when the re-mint changes nothing", func(t *testing.T) {
-			auth := &rejectableAuthorization{header: "Bearer stale", keepHeader: true}
+			auth := &refreshableAuthorization{token: "stale", keepToken: true}
 			attempts := 0
 			client := newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
 				attempts++
@@ -202,7 +203,23 @@ func TestHttpClient(t *testing.T) {
 			var httpErr HttpError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusUnauthorized, httpErr.StatusCode)
-			assert.Equal(t, 1, attempts, "a re-mint that produced the same header has nothing new to try")
+			assert.Equal(t, 1, attempts, "a re-mint that produced the same token has nothing new to try")
+		})
+
+		t.Run("reports both errors when the re-mint fails", func(t *testing.T) {
+			auth := &refreshableAuthorization{token: "stale", refreshErr: errors.New("the login expired")}
+			attempts := 0
+			client := newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
+				attempts++
+				resp.WriteHeader(http.StatusUnauthorized)
+			})
+			client.Authorization = auth
+			_, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
+			var httpErr HttpError
+			require.ErrorAs(t, err, &httpErr, "the 401 the request ran into must stay reachable")
+			assert.Equal(t, http.StatusUnauthorized, httpErr.StatusCode)
+			require.ErrorIs(t, err, auth.refreshErr, "and so must the reason nothing better could be tried")
+			assert.Equal(t, 1, attempts)
 		})
 
 		t.Run("leaves an authorization that cannot re-mint alone", func(t *testing.T) {
@@ -213,26 +230,36 @@ func TestHttpClient(t *testing.T) {
 			})
 			client.Authorization = BearerTokenAuthorization{Token: "static"}
 			_, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
-			require.Error(t, err)
+			var httpErr HttpError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusUnauthorized, httpErr.StatusCode)
 			assert.Equal(t, 1, attempts)
 		})
 	})
 }
 
-// rejectableAuthorization mints "Bearer fresh" once it has been told its header was refused.
-type rejectableAuthorization struct {
-	header     string
-	keepHeader bool
-	rejected   int
+// refreshableAuthorization mints "fresh" once it has been told its token was refused, and
+// records every token it was told about.
+type refreshableAuthorization struct {
+	token      string
+	keepToken  bool
+	refreshErr error
+	rejected   []string
 }
 
-func (a *rejectableAuthorization) Header(context.Context) (string, error) { return a.header, nil }
+func (a *refreshableAuthorization) BearerToken(context.Context) (string, error) {
+	return a.token, nil
+}
 
-func (a *rejectableAuthorization) Rejected(string) {
-	a.rejected++
-	if !a.keepHeader {
-		a.header = "Bearer fresh"
+func (a *refreshableAuthorization) RefreshBearerToken(_ context.Context, rejected string) (string, error) {
+	a.rejected = append(a.rejected, rejected)
+	if a.refreshErr != nil {
+		return "", a.refreshErr
 	}
+	if !a.keepToken {
+		a.token = "fresh"
+	}
+	return a.token, nil
 }
 
 func TestUrlQueryOptions(t *testing.T) {

@@ -17,32 +17,63 @@ import (
 
 // graceWindow is how much life a token must have left to count as valid. It covers a request
 // issued just moments before expiry as well as modest clock skew against the identity
-// provider. It deliberately does not cover a badly wrong clock — see client.TokenRejector for
-// what does.
+// provider. It deliberately does not cover a badly wrong clock — see
+// client.Authorization.RefreshBearerToken for what does.
 const graceWindow = 30 * time.Second
 
-// Header produces the Authorization header, renewing the token when neither cache holds a
-// valid one. It runs before every HTTP request, so it does no I/O while the in-process token
-// is still good.
-func (s *Session) Header(ctx context.Context) (string, error) {
-	token, err := s.token(ctx)
-	if err != nil {
-		return "", err
-	}
-	return "Bearer " + token.Token, nil
+// BearerToken produces the token for the Authorization header, renewing it when neither cache
+// holds a valid one. It runs before every HTTP request, so it does no I/O while the in-process
+// token is still good. Ruling nothing out is what makes it the common path.
+func (s *Session) BearerToken(ctx context.Context) (string, error) {
+	return s.RefreshBearerToken(ctx, "")
 }
 
-// Rejected implements client.TokenRejector: the header this session produced came back 401,
-// so the next Header call re-mints instead of trusting either cache.
-func (s *Session) Rejected(header string) {
+// RefreshBearerToken implements client.Authorization, and is the whole of BearerToken as well:
+// it answers with a valid token for this session's scope that is not the rejected one, so a 401
+// on a token both caches still believe in mints a new one exactly once.
+//
+// Ruling out that one token is all the two methods differ by, and it is what a session would
+// otherwise have to remember. A request refused a token another goroutine has already replaced
+// needs no mint at all: the replacement is in the cache, it is not the ruled out one, and it
+// comes back without any I/O. That matters most for a browser login, where every mint spends a
+// refresh grant that rotates the refresh token.
+func (s *Session) RefreshBearerToken(ctx context.Context, rejected string) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.cached.Token == "" || header != "Bearer "+s.cached.Token {
-		return
+	cached, current := s.cached, s.current
+	s.mu.Unlock()
+	if valid(cached) && cached.Token != rejected {
+		return cached.Token, nil
 	}
-	slog.Debug("the meshStack API rejected a token this process believed valid, re-minting once")
-	s.cached = profile.IssuedToken{}
-	s.remint = true
+	if valid(cached) {
+		slog.Debug("the meshStack API rejected a token this process believed valid, re-minting once")
+	}
+
+	scope := s.Scope()
+	// Keycloak tolerates one reuse of a refresh token and then ends the whole session, so a
+	// "already used" answer almost always means another process rotated it a moment ago.
+	// Dropping the lock, re-reading and retrying once finds that process's token.
+	for attempt := range 2 {
+		minted, err := s.renew(ctx, scope, current, rejected)
+		switch {
+		case err == nil:
+			s.mu.Lock()
+			s.cached = minted
+			s.mu.Unlock()
+			return minted.Token, nil
+		case errors.Is(err, oidc.ErrRefreshTokenReused) && attempt == 0:
+			slog.Debug("the refresh token was already used, re-reading the store and retrying once")
+			continue
+		case errors.Is(err, profile.ErrNotWritable) && attempt == 0:
+			if err := s.degradeToMemory(err); err != nil {
+				return "", err
+			}
+			continue
+		default:
+			return "", err
+		}
+	}
+	return "", diags.Errorf("could not renew the meshStack access token",
+		"the refresh token kept coming back as already used. Run `meshstack login` to start a new session.")
 }
 
 // Scope is the key this session's tokens are cached under. Only a browser login is scoped to
@@ -75,43 +106,6 @@ func (s *Session) RequireWorkspace() error {
 		return diags.Errorf("no workspace", "%s", workspace.ErrMissing)
 	}
 	return nil
-}
-
-func (s *Session) token(ctx context.Context) (profile.IssuedToken, error) {
-	s.mu.Lock()
-	cached, remint, current := s.cached, s.remint, s.current
-	s.mu.Unlock()
-	if !remint && valid(cached) {
-		return cached, nil
-	}
-
-	scope := s.Scope()
-	// Keycloak tolerates one reuse of a refresh token and then ends the whole session, so a
-	// "already used" answer almost always means another process rotated it a moment ago.
-	// Dropping the lock, re-reading and retrying once finds that process's token.
-	for attempt := range 2 {
-		minted, err := s.renew(ctx, scope, current, remint)
-		switch {
-		case err == nil:
-			s.mu.Lock()
-			s.cached, s.remint = minted, false
-			s.mu.Unlock()
-			return minted, nil
-		case errors.Is(err, oidc.ErrRefreshTokenReused) && attempt == 0:
-			slog.Debug("the refresh token was already used, re-reading the store and retrying once")
-			remint = false
-			continue
-		case errors.Is(err, profile.ErrNotWritable) && attempt == 0:
-			if err := s.degradeToMemory(err); err != nil {
-				return profile.IssuedToken{}, err
-			}
-			continue
-		default:
-			return profile.IssuedToken{}, err
-		}
-	}
-	return profile.IssuedToken{}, diags.Errorf("could not renew the meshStack access token",
-		"the refresh token kept coming back as already used. Run `meshstack login` to start a new session.")
 }
 
 // degradeToMemory keeps a machine with no writable home directory usable: the token lives for
@@ -163,17 +157,17 @@ func (s *Session) currentStore() profile.Store {
 	return s.store
 }
 
-func (s *Session) renew(ctx context.Context, scope workspace.Scope, current method.Method, remint bool) (profile.IssuedToken, error) {
+func (s *Session) renew(ctx context.Context, scope workspace.Scope, current method.Method, rejected string) (profile.IssuedToken, error) {
 	var minted profile.IssuedToken
 	var mintErr error
 	_, err := s.currentStore().Update(ctx, func(credentials profile.Credentials) (profile.Credentials, error) {
-		// Re-read under the lock: another process may have renewed while this one waited, in
-		// which case its token is used and nothing else happens.
-		if !remint {
-			if stored, ok := credentials.AccessTokens[scope]; ok && valid(stored) {
-				minted = stored
-				return credentials, nil
-			}
+		// Re-read under the lock: another process, or another goroutine that was already
+		// waiting on it, may have renewed meanwhile, in which case its token is used and
+		// nothing else happens. Only the rejected token itself is refused here — a 401 says
+		// nothing about a token that was minted after it.
+		if stored, ok := credentials.AccessTokens[scope]; ok && valid(stored) && stored.Token != rejected {
+			minted = stored
+			return credentials, nil
 		}
 		var updated profile.Credentials
 		updated, minted, mintErr = s.mint(ctx, credentials, current, scope)

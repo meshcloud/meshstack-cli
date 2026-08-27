@@ -16,11 +16,11 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
-// Session is one process's answer to "who am I, against what, in which workspace". It is
-// the client.Authorization both front ends hand to client.New, and it also implements
-// client.TokenRejector so that a 401 on a token it believed valid forces one re-mint.
+// Session is one process's answer to "who am I, against what, in which workspace". It is the
+// client.Authorization both front ends hand to client.New, so a 401 on a token it believed
+// valid forces one re-mint.
 //
-// A session is safe for concurrent use: Header is called before every request, and a
+// A session is safe for concurrent use: BearerToken is called before every request, and a
 // Terraform provider makes many at once.
 type Session struct {
 	// Endpoint, Workspace and Profile are the resolved configuration. Profile is empty when
@@ -46,11 +46,12 @@ type Session struct {
 	// Login rewrites it.
 	current method.Method
 	// cached is the in-process cache: the token last obtained for this session's scope.
-	// Checking it costs no I/O, which is what keeps Header off the filesystem.
+	// Checking it costs no I/O, which is what keeps BearerToken off the filesystem.
+	//
+	// A rejected token is not recorded beside it. RefreshBearerToken is told which token came
+	// back 401 as an argument, so "do not hand this one out again" lasts exactly as long as the
+	// call that needs it.
 	cached profile.IssuedToken
-	// remint is set by Rejected and makes the next renewal skip the store's "another
-	// process already has a valid token" shortcut exactly once.
-	remint bool
 	// oidcConfig is discovered at most once per process, and only by the login method.
 	oidcConfig *oidc.ClientConfig
 }
@@ -60,7 +61,7 @@ type Session struct {
 //
 // It ignores its context because resolution reads the two configuration files and nothing
 // else. Every request it leads to — discovery, a refresh grant, the API key exchange — is
-// made later, from Header, and carries the context of the command that made it.
+// made later, from BearerToken, and carries the context of the command that made it.
 func Resolve(_ context.Context, in Input) (*Session, error) {
 	return resolve(in, false)
 }
