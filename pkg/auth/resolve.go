@@ -98,6 +98,19 @@ func resolve(in Input, forLogin bool) (*Session, error) {
 	// to write whatever it was given into a profile.
 	if !forLogin {
 		if credential, ok := wholeCredential(values, apiKeyId); ok {
+			// The endpoint and the workspace are their own axes of the precedence order, so a
+			// profile may still supply them where the credential came from the environment.
+			// Only a profile named explicitly, or the default one, is consulted: matching by
+			// endpoint is impossible without an endpoint, and picking a profile because of its
+			// credential would contradict the credential this command was given.
+			if entry, name, found := plainProfile(config, values.Profile); found {
+				if endpointRaw == "" {
+					endpointRaw, endpointFrom, endpointDetail = entry.Endpoint, sourceProfile, "'"+name+"'"
+				}
+				if ws == "" && entry.DefaultWorkspace != "" {
+					session.Workspace, wsFrom, wsDetail = entry.DefaultWorkspace, sourceProfile, "'"+name+"' default"
+				}
+			}
 			if endpointRaw == "" {
 				return nil, diags.Errorf("meshStack endpoint is not configured",
 					"a credential was supplied but no endpoint. Set it with --endpoint, %s, or a profile.", envEndpoint)
@@ -181,6 +194,23 @@ func resolve(in Input, forLogin bool) (*Session, error) {
 	slog.Debug("resolved a credential from a profile",
 		"profile", name, "method", current, "endpoint", session.Endpoint.String(), "workspace", session.Workspace)
 	return session, nil
+}
+
+// plainProfile finds the profile a caller named, or the default one, without matching on the
+// endpoint and without failing on a name that does not exist.
+func plainProfile(config profile.Config, explicit string) (profile.Profile, string, bool) {
+	name := explicit
+	if name == "" {
+		name = env(envProfile)
+	}
+	if name == "" {
+		name = config.CurrentProfile
+	}
+	if name == "" {
+		name = DefaultProfile
+	}
+	entry, ok := config.Profiles[name]
+	return entry, name, ok
 }
 
 // wholeCredential reports a credential supplied entirely above the profile layer. Persisting
