@@ -119,9 +119,19 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 	}
 
 	browser := s.input.Browser()
-	if browser == nil || !tty.IsInteractive() {
-		return diags.Errorf("cannot open a browser here",
-			"this process has no way to run an interactive login. Use `meshstack auth login --api-key=<id>` instead.")
+	if browser == nil {
+		// The Terraform provider is the front end this is for: it can refresh a login somebody
+		// else created, and it must never open a browser during a plan.
+		return diags.Errorf("this front end cannot create a login",
+			"the stored login is gone and nothing here can start a new one. Run `meshstack login`, or use an API key.")
+	}
+	// A terminal is deliberately not required. The login prints its URL to stderr and waits on a
+	// loopback listener, and stderr reaches a person from a pipe as well as from a terminal — so
+	// a login driven through a pipe works, and refusing it would buy nothing. What does refuse
+	// is somebody saying nobody is watching.
+	if !tty.MayInvolveAPerson() {
+		return diags.Errorf("cannot wait for a browser login",
+			"%s says nobody is here to visit the login URL. Use `meshstack auth login --api-key=<id>` instead.", tty.NoInputHint())
 	}
 
 	refreshToken, accessToken, lifetime, err := browser.Login(ctx, config)

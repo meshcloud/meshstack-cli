@@ -203,6 +203,10 @@ func page(w http.ResponseWriter, status int, title, message string) {
 func openBrowser(authURL string) {
 	fmt.Fprintln(os.Stderr, "Opening your browser to log in to meshStack. If it does not open, visit:")
 	fmt.Fprintln(os.Stderr, "\n  "+authURL+"\n")
+	// Said out loud because this is where an unattended run stops for ten minutes. The URL above
+	// is the whole of what a person needs, so the login waits whether or not a terminal is
+	// attached — --no-input is how a script says nobody is coming.
+	fmt.Fprintf(os.Stderr, "Waiting up to %s for you to finish. Pass --no-input to fail at once instead.\n", loginTimeout)
 
 	var cmd *exec.Cmd
 	switch runtime.GOOS {

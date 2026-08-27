@@ -27,10 +27,20 @@ func Disable() { disabled.Store(true) }
 // IsInteractive reports whether this process may prompt. It requires stdin to be a
 // terminal, because a prompt written to a pipe reads as a hang rather than a question.
 func IsInteractive() bool {
-	if disabled.Load() || os.Getenv(envKey) != "" {
-		return false
-	}
-	return IsTerminal(os.Stdin)
+	return MayInvolveAPerson() && IsTerminal(os.Stdin)
+}
+
+// MayInvolveAPerson reports whether this process may wait on somebody doing something
+// outside it. It is weaker than IsInteractive on purpose: the browser login needs a URL to
+// reach a person's eyes and a callback to come back, and stderr reaches eyes from a pipe just
+// as well as from a terminal. Requiring a terminal there would refuse a login that would have
+// worked — an agent driving the CLI, or a `meshstack login | tee` — for no gain.
+//
+// So the only thing that turns it off is somebody saying so: --no-input, or the environment
+// variable. That is the signal that means "nobody is watching", and a command that would
+// otherwise wait ten minutes for a callback should fail at once instead.
+func MayInvolveAPerson() bool {
+	return !disabled.Load() && os.Getenv(envKey) == ""
 }
 
 // IsTerminal reports whether f is a character device. That is the standard-library
