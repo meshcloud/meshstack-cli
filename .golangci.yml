@@ -109,6 +109,20 @@ linters:
             - github.com/meshcloud/meshstack-cli/pkg
             - go.yaml.in/yaml/v3
 
+        # internal/cli implements the CLI's half of auth.Input: flags, stdin, a terminal
+        # prompt and the browser login. Go's internal rule already keeps it out of the
+        # Terraform provider, which is what makes it the one place outside cmd/ that may
+        # reach pkg/oidc/browser. The pkg rule above cannot reach these files — its
+        # files: list names **/pkg/ — so the deny there does not apply to them.
+        internal-cli:
+          files:
+            - "**/internal/cli/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli
+
         # cmd/ builds the command tree, and is the only place cobra is used.
         cmd:
           files:

@@ -169,6 +169,28 @@ func TestUpdatePrunesExpiredTokens(t *testing.T) {
 	assert.NotContains(t, string(raw), "accessTokens")
 }
 
+// TestUpdateKeepsATokenWithNoExpiry pins the difference between "expired at the zero time" and
+// "said nothing about its own life". `meshstack auth login --api-token` stores a token that is
+// not a JWT with an unknown expiry rather than a guessed one, and pruning it here would make the
+// very next command report it as expired.
+func TestUpdateKeepsATokenWithNoExpiry(t *testing.T) {
+	store := newTestStore(t, "default")
+
+	got, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
+		c.CurrentMethod = method.Manual
+		c.AccessTokens = map[workspace.Scope]IssuedToken{
+			workspace.Unscoped: {Token: "not-a-jwt"},
+		}
+		return c, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, "not-a-jwt", got.AccessTokens[workspace.Unscoped].Token)
+
+	reread, err := store.Read()
+	require.NoError(t, err)
+	require.Equal(t, "not-a-jwt", reread.AccessTokens[workspace.Unscoped].Token)
+}
+
 func TestUpdateWritesEvenWhenMintChangesNothing(t *testing.T) {
 	store := newTestStore(t, "default")
 

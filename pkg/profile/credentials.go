@@ -57,13 +57,18 @@ type IssuedToken struct {
 // prune drops access tokens that have expired, which is what keeps the map from growing
 // by one entry per workspace ever used. An empty map is returned as nil so that
 // `omitempty` leaves the key out of the file entirely.
+//
+// A zero ExpiresAt is kept, because it means "this token said nothing about its own life"
+// rather than "expired at the zero time". An API token that is not a JWT is the case:
+// `meshstack auth login --api-token` stores one with an unknown expiry rather than a guessed
+// one, and dropping it here would make the very next command report it as expired.
 func prune(tokens map[workspace.Scope]IssuedToken, now time.Time) map[workspace.Scope]IssuedToken {
 	if len(tokens) == 0 {
 		return nil
 	}
 	kept := make(map[workspace.Scope]IssuedToken, len(tokens))
 	for scope, token := range tokens {
-		if token.ExpiresAt.After(now) {
+		if token.ExpiresAt.IsZero() || token.ExpiresAt.After(now) {
 			kept[scope] = token
 		}
 	}

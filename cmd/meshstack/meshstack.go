@@ -20,6 +20,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
+	"github.com/meshcloud/meshstack-cli/cmd/profile"
+	"github.com/meshcloud/meshstack-cli/cmd/workspace"
+	"github.com/meshcloud/meshstack-cli/internal/cli"
+	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
 // Version identifies this build. A release overrides it with
@@ -35,7 +40,12 @@ func main() {
 }
 
 func newRootCommand() *cobra.Command {
-	var debug bool
+	var debug, noInput bool
+
+	// One Input serves the whole tree, because the persistent flags below are what it
+	// carries. `auth login` adds the two flags only it owns.
+	cli.UserAgent = "meshstack-cli/" + Version
+	in := cli.New()
 
 	cmd := &cobra.Command{
 		Use:   "meshstack",
@@ -53,20 +63,47 @@ func newRootCommand() *cobra.Command {
 		SilenceUsage: true,
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			setupLogging(debug)
+			if noInput {
+				tty.Disable()
+			}
 		},
 	}
 
-	cmd.PersistentFlags().BoolVar(&debug, "debug", false, "log at debug level")
+	flags := cmd.PersistentFlags()
+	flags.BoolVar(&debug, "debug", false, "log at debug level")
+	flags.StringVar(&in.Profile, "profile", "", "configuration profile to use")
+	flags.StringVar(&in.Endpoint, "endpoint", "", "meshStack API endpoint")
+	flags.StringVar(&in.Workspace, "workspace", "", "workspace to act in, for this invocation only")
+	flags.BoolVar(&noInput, "no-input", false, "never prompt; fail instead")
 
-	cmd.AddCommand(auth.New())
+	cmd.AddCommand(auth.New(in))
 	// `meshstack login` is a shortcut for `meshstack auth login`. Cobra matches an
 	// argument against one command's children, so Aliases never reach past siblings
 	// and cannot express this. The second call is deliberate: adding the value
 	// auth.New() already registered would overwrite its parent, and both paths would
 	// then print the same usage line.
-	cmd.AddCommand(auth.NewLogin())
+	cmd.AddCommand(auth.NewLogin(in))
+	cmd.AddCommand(profile.New(in))
+	cmd.AddCommand(workspace.New(in))
+
+	handleWarnings(cmd)
 
 	return cmd
+}
+
+// handleWarnings wraps every RunE in the finished tree, so that a Problem which is only a
+// warning prints and the command still exits 0 — the same experience as a warning during
+// `terraform apply`. Doing it here rather than in each command is what keeps a new command
+// from being the one that forgets.
+func handleWarnings(cmd *cobra.Command) {
+	for _, child := range cmd.Commands() {
+		handleWarnings(child)
+	}
+	if run := cmd.RunE; run != nil {
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			return diags.HandleErr(run(cmd, args))
+		}
+	}
 }
 
 func setupLogging(debug bool) {
