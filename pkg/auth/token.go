@@ -137,6 +137,24 @@ func (s *Session) degradeToMemory(cause error) error {
 	return nil
 }
 
+// unscoped returns a session that mints the unscoped token, sharing this one's store, input and
+// discovered configuration, so that a token it obtains is cached and locked exactly like any
+// other. It is a fresh value rather than a copy because a Session carries a mutex.
+func (s *Session) unscoped() *Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return &Session{
+		Endpoint:   s.Endpoint,
+		Profile:    s.Profile,
+		input:      s.input,
+		store:      s.store,
+		whole:      s.whole,
+		sources:    s.sources,
+		current:    s.current,
+		oidcConfig: s.oidcConfig,
+	}
+}
+
 // currentStore reads the store under the mutex, because degradeToMemory can replace it while
 // a Terraform provider has several requests in flight.
 func (s *Session) currentStore() profile.Store {
@@ -147,6 +165,7 @@ func (s *Session) currentStore() profile.Store {
 
 func (s *Session) renew(ctx context.Context, scope workspace.Scope, current method.Method, remint bool) (profile.IssuedToken, error) {
 	var minted profile.IssuedToken
+	var mintErr error
 	_, err := s.currentStore().Update(ctx, func(credentials profile.Credentials) (profile.Credentials, error) {
 		// Re-read under the lock: another process may have renewed while this one waited, in
 		// which case its token is used and nothing else happens.
@@ -156,10 +175,18 @@ func (s *Session) renew(ctx context.Context, scope workspace.Scope, current meth
 				return credentials, nil
 			}
 		}
-		updated, token, err := s.mint(ctx, credentials, current, scope)
-		minted = token
-		return updated, err
+		var updated profile.Credentials
+		updated, minted, mintErr = s.mint(ctx, credentials, current, scope)
+		// A failed mint still writes what it changed, and the error travels beside the
+		// credentials rather than inside them. The refresh grant is why: keycloak rotates the
+		// refresh token before anything else can go wrong, so a mint that rotates and then
+		// fails the workspace check must not leave the old token on disk — one reuse is
+		// tolerated and the next one ends the whole session.
+		return updated, nil
 	})
+	if err == nil {
+		err = mintErr
+	}
 	if err != nil {
 		return profile.IssuedToken{}, err
 	}
@@ -252,16 +279,18 @@ func (s *Session) mintLogin(ctx context.Context, credentials profile.Credentials
 	// without MC_CUSTOMER and with an empty group list, and the next API call then fails on
 	// permissions. Checking the claim here is what turns that into a message naming the
 	// workspace. It is not a security check, and the signature is not verified.
+	login.RefreshToken = refreshToken
+	credentials.Methods.Login = login
 	if s.Workspace != "" {
 		if got := oidc.ClaimWorkspace(accessToken); got != s.Workspace {
+			// The rotated refresh token goes back either way — the grant already succeeded, so
+			// keycloak has invalidated the one on disk whatever this check says.
 			return credentials, profile.IssuedToken{}, diags.Errorf("this login cannot act in that workspace",
 				"the identity provider issued a token for %q that carries no membership of it. `meshstack workspace list` shows the workspaces you can use.",
 				s.Workspace)
 		}
 	}
 
-	login.RefreshToken = refreshToken
-	credentials.Methods.Login = login
 	issued := profile.IssuedToken{Token: accessToken, ExpiresAt: time.Now().Add(lifetime)}
 	slog.Debug("minted an access token from the browser login", "scope", scope, "expiresAt", issued.ExpiresAt)
 	return withToken(credentials, scope, issued), issued, nil

@@ -14,7 +14,10 @@ import (
 // holds only the three list rights, so this call works right after a browser login and
 // before any workspace has been chosen.
 func (s *Session) Workspaces(ctx context.Context) ([]workspace.Name, error) {
-	api, err := s.Client(ctx, userAgent)
+	// Deliberately unscoped. A user has to be able to list the workspaces *before* picking one,
+	// and a scoped exchange for a workspace the user is not in fails with the very message this
+	// list is meant to answer.
+	api, err := s.unscoped().Client(ctx, userAgent)
 	if err != nil {
 		return nil, err
 	}

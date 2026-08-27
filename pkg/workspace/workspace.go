@@ -73,6 +73,8 @@ func FromEnv() Name {
 // A browser login is the case that needs one: an unscoped user token reaches almost
 // nothing, so failing here is better than surfacing meshfed's message, which names
 // neither the flag nor the profile setting.
-var ErrMissing = errors.New(`this profile has no workspace, and a browser login needs one.
-Set it with --workspace, ` + envKey + `, or ` + "`meshstack profile set workspace <name>`" + `.
+var ErrMissing = errors.New(`a browser login is bound to one workspace, and none is configured.
+Name one with ` + envKey + `, with the meshStack CLI's --workspace flag or the Terraform
+provider's workspace attribute, or make it the profile's default with
+` + "`meshstack profile set workspace <name>`" + `.
 ` + "`meshstack workspace list`" + ` shows the ones you can use`)

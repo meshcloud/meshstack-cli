@@ -79,9 +79,14 @@ func (s *Session) Status() (Status, error) {
 		}
 	}
 	if apiKey := credentials.Methods.ApiKey; apiKey != nil {
-		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.ClientId, SecretFrom: "the credentials file"}
-		if len(apiKey.ClientSecretCommand) > 0 {
+		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.ClientId}
+		switch {
+		case len(apiKey.ClientSecretCommand) > 0:
 			status.ApiKey.SecretFrom = "the command " + apiKey.ClientSecretCommand[0]
+		case apiKey.ClientSecret != "":
+			status.ApiKey.SecretFrom = "the credentials file"
+		default:
+			status.ApiKey.SecretFrom = "the environment or a prompt"
 		}
 	}
 	scope := s.Scope()
