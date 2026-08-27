@@ -69,15 +69,45 @@ linters:
           files:
             - "**/pkg/*.go"
             - "**/pkg/**/*.go"
+            # Excluding pkg/profile is what lets the next rule grant more than this one
+            # does, the same way cmd/meshstack is excluded below.
+            - "!**/pkg/profile/*.go"
             - "!$test"
           list-mode: strict
           deny:
             - pkg: github.com/spf13/cobra
               desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
+            - pkg: github.com/meshcloud/meshstack-cli/pkg/oidc/browser
+              desc: only cmd/ may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
           allow:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
             - github.com/meshcloud/meshstack-cli/pkg
+
+        # The only package that reads and writes the configuration files, and therefore
+        # the only one that needs a YAML library — a third external dependency where this
+        # policy allows two, which is why the boundary is one package wide.
+        #
+        # gopkg.in/yaml.v3 was archived in 2025, and this fork under the YAML org is the
+        # drop-in replacement the Go ecosystem moved to. The alternative that keeps the
+        # two-dependency policy intact is stdlib JSON, as Docker uses for
+        # ~/.docker/config.json; YAML won because these files are meant to be read and
+        # occasionally hand-corrected by a person, and comments survive in them.
+        pkg-profile:
+          files:
+            - "**/pkg/profile/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: github.com/spf13/cobra
+              desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
+            - pkg: github.com/meshcloud/meshstack-cli/pkg/oidc/browser
+              desc: only cmd/ may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/meshcloud/meshstack-cli/pkg
+            - go.yaml.in/yaml/v3
 
         # cmd/ builds the command tree, and is the only place cobra is used.
         cmd:
