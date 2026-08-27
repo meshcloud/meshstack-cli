@@ -20,6 +20,17 @@ type MeshInfo struct {
 	EnabledFeatureFlags      []string          `tfsdk:"enabled_feature_flags" json:"-"`
 	Metadata                 map[string]string `tfsdk:"metadata" json:"metadata"`
 	AdminWorkspaceIdentifier string            `tfsdk:"admin_workspace_identifier" json:"adminWorkspaceIdentifier"`
+	// Issuer and CliClientId describe the OpenID Connect client the meshStack CLI logs in
+	// with. They are the whole of the CLI's discovery: /mesh/info is public, so a browser
+	// login can be prepared before any credential exists.
+	//
+	// `tfsdk:"-"` is deliberate, not an oversight. The Terraform provider renders this struct
+	// as its meshstack_instance data source, and these two are the CLI's business: a Terraform
+	// run never logs a user in, so neither field has a consumer there. Give them real tfsdk
+	// tags if one ever appears — nothing here is secret, because that endpoint is public and
+	// unauthenticated.
+	Issuer      string `tfsdk:"-" json:"issuer"`
+	CliClientId string `tfsdk:"-" json:"cliClientId"`
 }
 
 type MeshInfoClient interface {

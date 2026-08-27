@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,11 +31,29 @@ func DoAuthorizedRequest[R any](ctx context.Context, c HttpClient, method string
 	if c.Authorization == nil {
 		return result, fmt.Errorf("cannot do authorized request with unconfigured authorization")
 	}
-	authHeader, err := c.Authorization.Header(ctx, c)
+	authHeader, err := c.Authorization.Header(ctx)
 	if err != nil {
 		return result, err
 	}
-	return DoRequest[R](ctx, c, method, url, append(options, withHeader("Authorization", authHeader))...)
+	result, err = DoRequest[R](ctx, c, method, url, append(options, withHeader("Authorization", authHeader))...)
+
+	// A 401 on a token the authorization believed valid forces exactly one re-mint. See
+	// TokenRejector for why bounded retry is the right answer to a wrong clock. Re-running
+	// DoRequest is safe because buildRequest encodes the payload afresh on every call.
+	var httpErr HttpError
+	rejector, canRetry := c.Authorization.(TokenRejector)
+	if !canRetry || !errors.As(err, &httpErr) || !httpErr.IsUnauthorized() {
+		return result, err
+	}
+	rejector.Rejected(authHeader)
+	retryHeader, mintErr := c.Authorization.Header(ctx)
+	if mintErr != nil || retryHeader == authHeader {
+		// Report the 401, not the failure to renew: the caller asked for the request, and a
+		// renewal that produced the same header has nothing new to try.
+		return result, err
+	}
+	Log.Debug(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
+	return DoRequest[R](ctx, c, method, url, append(options, withHeader("Authorization", retryHeader))...)
 }
 
 func DoRequest[R any](ctx context.Context, c HttpClient, method string, url *url.URL, options ...RequestOption) (result R, err error) {

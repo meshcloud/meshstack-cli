@@ -171,107 +171,68 @@ func TestHttpClient(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("DoAuthorizedRequest with clientSecretAuthorization and retries", func(t *testing.T) {
-		t.Run("succeeds after second attempt", func(t *testing.T) {
-			retryTestBackoff := retryTestBackoff{}
-			requestsSeen := map[string]int{} // key is request path
-			client := WithRetry(newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
-				defer func() {
-					requestsSeen[req.URL.Path]++
-				}()
-				if requestsSeen[req.URL.Path] == 0 {
-					resp.WriteHeader(502)
+	t.Run("DoAuthorizedRequest re-mints once on 401", func(t *testing.T) {
+		t.Run("retries with the freshly minted token", func(t *testing.T) {
+			auth := &rejectableAuthorization{header: "Bearer stale"}
+			seen := []string{}
+			client := newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
+				seen = append(seen, req.Header.Get("Authorization"))
+				if req.Header.Get("Authorization") == "Bearer stale" {
+					resp.WriteHeader(http.StatusUnauthorized)
 					return
 				}
-				switch req.URL.Path {
-				case "/login":
-					resp.WriteHeader(http.StatusOK)
-					// expires_in must be less than minimumTokenLifetime to trigger relogin on second doAuthorizedRequest call
-					_, _ = resp.Write([]byte(`{"access_token":"some-token", "expires_in": 10}`))
-				case "/edit":
-					assert.Equal(t, "Bearer some-token", req.Header.Get("Authorization"))
-					resp.WriteHeader(http.StatusAccepted)
-				default:
-					t.Fatal("unexpected request", req.URL.Path)
-				}
-			}), RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff, WhitelistedPaths: map[string][]string{http.MethodPost: {"/login"}}})
-			client.Authorization = NewClientSecretAuthorization("login", "test-client", "test-client-secret")
-			resp, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
-			require.NoError(t, err)
-			_ = resp
-			assert.Equal(t, map[string]int{
-				"/login": 2,
-				"/edit":  2,
-			}, requestsSeen)
-
-			t.Run("expired token is refreshed with relogin", func(t *testing.T) {
-				_, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
-				require.NoError(t, err)
-				assert.Equal(t, 2, retryTestBackoff.Called)
-				assert.Equal(t, map[string]int{
-					"/login": 3,
-					"/edit":  3,
-				}, requestsSeen)
+				resp.WriteHeader(http.StatusAccepted)
 			})
-
-			// two different paths with one retry each, so backoff called twice in total
-			assert.Equal(t, 2, retryTestBackoff.Called)
-		})
-
-		t.Run("succeeds after redirect and retries", func(t *testing.T) {
-			retryTestBackoff := retryTestBackoff{}
-			requestsSeen := map[string]int{}
-			client := WithRetry(newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
-				defer func() {
-					requestsSeen[req.URL.Path]++
-				}()
-				if requestsSeen[req.URL.Path] == 0 {
-					resp.WriteHeader(502)
-					return
-				}
-				switch req.URL.Path {
-				case "/login":
-					body, _ := io.ReadAll(req.Body)
-					assert.JSONEq(t, `{"clientId":"test-client","clientSecret":"test-client-secret"}`, string(body))
-					http.Redirect(resp, req, "/login-target", http.StatusTemporaryRedirect)
-				case "/login-target":
-					body, _ := io.ReadAll(req.Body)
-					assert.JSONEq(t, `{"clientId":"test-client","clientSecret":"test-client-secret"}`, string(body))
-					resp.WriteHeader(http.StatusOK)
-					_, _ = resp.Write([]byte(`{"access_token":"redirected-token", "expires_in": 3600}`))
-				case "/edit":
-					assert.Equal(t, "Bearer redirected-token", req.Header.Get("Authorization"))
-					resp.WriteHeader(http.StatusAccepted)
-				default:
-					t.Fatal("unexpected request", req.URL.Path)
-				}
-			}), RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff, WhitelistedPaths: map[string][]string{http.MethodPost: {"/login"}}})
-			client.Authorization = NewClientSecretAuthorization("login", "test-client", "test-client-secret")
+			client.Authorization = auth
 			_, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
 			require.NoError(t, err)
-			assert.Equal(t, map[string]int{
-				"/login":        2, // 1st: 502, 2nd: 307 redirect
-				"/login-target": 2, // 1st: 502, 2nd: 200
-				"/edit":         2, // 1st: 502, 2nd: 202
-			}, requestsSeen)
-			assert.Equal(t, 3, retryTestBackoff.Called) // one retry each for /login, /login-target, /edit
+			assert.Equal(t, []string{"Bearer stale", "Bearer fresh"}, seen)
+			assert.Equal(t, 1, auth.rejected)
 		})
 
-		t.Run("fails constantly at login", func(t *testing.T) {
-			retryTestBackoff := retryTestBackoff{}
-			client := WithRetry(newTestClientWithServer(t, func(resp http.ResponseWriter, r *http.Request) {
-				resp.WriteHeader(503)
-			}), RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff, WhitelistedPaths: map[string][]string{http.MethodPost: {"/login"}}})
-			client.Authorization = NewClientSecretAuthorization("login", "test-client", "test-client-secret")
+		t.Run("reports the 401 when the re-mint changes nothing", func(t *testing.T) {
+			auth := &rejectableAuthorization{header: "Bearer stale", keepHeader: true}
+			attempts := 0
+			client := newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
+				attempts++
+				resp.WriteHeader(http.StatusUnauthorized)
+			})
+			client.Authorization = auth
 			_, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
-			require.ErrorContains(t, err, fmt.Sprintf("login at %s/login with client id 'test-client' failed", client.RootUrl))
 			var httpErr HttpError
 			require.ErrorAs(t, err, &httpErr)
-			assert.Equal(t, 503, httpErr.StatusCode)
-			assert.Equal(t, 2, retryTestBackoff.Called)
+			assert.Equal(t, http.StatusUnauthorized, httpErr.StatusCode)
+			assert.Equal(t, 1, attempts, "a re-mint that produced the same header has nothing new to try")
 		})
 
+		t.Run("leaves an authorization that cannot re-mint alone", func(t *testing.T) {
+			attempts := 0
+			client := newTestClientWithServer(t, func(resp http.ResponseWriter, req *http.Request) {
+				attempts++
+				resp.WriteHeader(http.StatusUnauthorized)
+			})
+			client.Authorization = BearerTokenAuthorization{Token: "static"}
+			_, err := DoAuthorizedRequest[any](t.Context(), client, http.MethodPut, client.RootUrl.JoinPath("edit"))
+			require.Error(t, err)
+			assert.Equal(t, 1, attempts)
+		})
 	})
+}
+
+// rejectableAuthorization mints "Bearer fresh" once it has been told its header was refused.
+type rejectableAuthorization struct {
+	header     string
+	keepHeader bool
+	rejected   int
+}
+
+func (a *rejectableAuthorization) Header(context.Context) (string, error) { return a.header, nil }
+
+func (a *rejectableAuthorization) Rejected(string) {
+	a.rejected++
+	if !a.keepHeader {
+		a.header = "Bearer fresh"
+	}
 }
 
 func TestUrlQueryOptions(t *testing.T) {

@@ -3,75 +3,40 @@ package internal
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"sync"
-	"time"
 )
 
+// Authorization produces the Authorization request header for each request, renewing the
+// token it holds whenever the token is close to expiry.
+//
+// Renewal itself is deliberately not here. This file used to post to /api/login and cache
+// the resulting token in memory only, which is exactly why it could not stay: it had no way
+// to write the minted token into a profile, so every CLI invocation and every Terraform
+// provider run re-minted one. pkg/auth is now the single place that mints, caches and
+// persists, for all three authentication methods — and because the header no longer needs an
+// HttpClient to produce it, an Authorization can finally be implemented from outside client/.
 type Authorization interface {
-	Header(ctx context.Context, client HttpClient) (string, error)
+	Header(ctx context.Context) (string, error)
 }
 
-func NewClientSecretAuthorization(loginApiPath, clientId, clientSecret string) Authorization {
-	return &clientSecretAuthorization{
-		LoginApiPath: loginApiPath,
-		ClientId:     clientId,
-		ClientSecret: clientSecret,
-	}
+// TokenRejector is implemented by an Authorization that can be told the header it produced
+// came back 401, so that DoAuthorizedRequest can force exactly one re-mint before the error
+// surfaces.
+//
+// The renewal grace window covers a request issued just before expiry and modest clock skew,
+// but not a clock that is minutes wrong — which containers with a frozen clock really are. One
+// bounded retry turns that from a confusing failure into a hiccup. It is an optional interface
+// rather than part of Authorization because a static bearer token has nothing to re-mint.
+type TokenRejector interface {
+	// Rejected reports that header was refused. The header is passed so that an
+	// implementation can ignore a report about a token it has already replaced.
+	Rejected(header string)
 }
 
+// BearerTokenAuthorization carries a token somebody else obtained. Nothing renews it.
 type BearerTokenAuthorization struct {
 	Token string
 }
 
-func (auth BearerTokenAuthorization) Header(_ context.Context, _ HttpClient) (string, error) {
+func (auth BearerTokenAuthorization) Header(context.Context) (string, error) {
 	return fmt.Sprintf("Bearer %s", auth.Token), nil
-}
-
-type clientSecretAuthorization struct {
-	BearerTokenAuthorization
-	LoginApiPath string
-	ClientId     string
-	ClientSecret string
-	ExpiresAt    time.Time
-	mu           sync.Mutex
-}
-
-func (auth *clientSecretAuthorization) Header(ctx context.Context, client HttpClient) (string, error) {
-	auth.mu.Lock()
-	defer auth.mu.Unlock()
-	if err := auth.ensureValidToken(ctx, client); err != nil {
-		return "", err
-	}
-	return auth.BearerTokenAuthorization.Header(ctx, client)
-}
-
-func (auth *clientSecretAuthorization) ensureValidToken(ctx context.Context, client HttpClient) error {
-	const minimumTokenLifetime = 30 * time.Second
-	if auth.Token != "" && time.Until(auth.ExpiresAt) > minimumTokenLifetime {
-		return nil
-	}
-
-	loginApiUrl := client.RootUrl.JoinPath(auth.LoginApiPath)
-
-	type loginRequest struct {
-		ClientId     string `json:"clientId"`
-		ClientSecret string `json:"clientSecret"`
-	}
-
-	type loginResponse struct {
-		Token     string `json:"access_token"`
-		ExpireSec int    `json:"expires_in"`
-	}
-
-	loginResult, err := DoRequest[loginResponse](ctx, client, http.MethodPost, loginApiUrl,
-		withPayload(loginRequest{ClientId: auth.ClientId, ClientSecret: auth.ClientSecret}, "application/json"),
-	)
-	if err != nil {
-		return fmt.Errorf("login at %s with client id '%s' failed: %w", loginApiUrl, auth.ClientId, err)
-	}
-	auth.Token = loginResult.Token
-	auth.ExpiresAt = time.Now().Add(time.Duration(loginResult.ExpireSec) * time.Second)
-	Log.Debug(ctx, "login successful", "url", loginApiUrl, "clientId", auth.ClientId, "expiresAt", auth.ExpiresAt)
-	return nil
 }

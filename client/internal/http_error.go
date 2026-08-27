@@ -16,6 +16,11 @@ func (e HttpError) Error() string {
 	return fmt.Sprintf("http error %d, response '%s'", e.StatusCode, string(e.ResponseBody))
 }
 
+// IsUnauthorized returns true if the error is a 401 Unauthorized response.
+func (e HttpError) IsUnauthorized() bool {
+	return e.StatusCode == http.StatusUnauthorized
+}
+
 // IsForbidden returns true if the error is a 403 Forbidden response.
 func (e HttpError) IsForbidden() bool {
 	return e.StatusCode == http.StatusForbidden

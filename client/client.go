@@ -43,16 +43,28 @@ type Client struct {
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 }
 
+// Authorization produces the Authorization request header for each request. pkg/auth holds
+// the implementation that mints, caches and persists tokens; see client/internal/auth.go for
+// why that work is not in this package any more.
 type Authorization = internal.Authorization
 
+// TokenRejector lets an Authorization learn that the header it produced came back 401.
+type TokenRejector = internal.TokenRejector
+
+// NewApiTokenAuthorization carries a token somebody else obtained. Nothing renews it, so it
+// expires during long-running work; pkg/auth is what a caller with a credential wants.
 func NewApiTokenAuthorization(apiToken string) Authorization {
 	return internal.BearerTokenAuthorization{Token: apiToken}
 }
 
-const apiLoginPath = "/api/login"
-
-func NewApiKeyAuthorization(apiKey, apiSecret string) Authorization {
-	return internal.NewClientSecretAuthorization(apiLoginPath, apiKey, apiSecret)
+// WorkspaceScoper is implemented by an Authorization whose token is bound to a single
+// workspace. Nothing implements it yet: pkg/auth settles the workspace before the client
+// exists, so switching workspace means building another client. This is the seam for a later
+// command that iterates workspaces without needing a second refresh token.
+type WorkspaceScoper interface {
+	// ForWorkspace returns an Authorization whose tokens carry the given workspace. The
+	// receiver is unchanged.
+	ForWorkspace(workspace string) Authorization
 }
 
 func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authorization) (Client, error) {
@@ -63,9 +75,10 @@ func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authoriza
 			// Spring Boot cold start), which can leave the gateway returning 503 for ~2-3 minutes —
 			// well beyond the previous ~75s budget. This backoff sequence sums to ~4 minutes:
 			// 1+2+4+8+16+30*7 seconds.
-			MaxRetries:       12,
-			Backoff:          internal.ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
-			WhitelistedPaths: map[string][]string{"POST": {apiLoginPath}},
+			// No path is whitelisted any more: /api/login left this client with the rest of
+			// the login exchange, and pkg/auth retries its own POST there.
+			MaxRetries: 12,
+			Backoff:    internal.ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
 		},
 	)
 
