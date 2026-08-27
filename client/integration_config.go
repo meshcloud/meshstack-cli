@@ -43,7 +43,10 @@ type MeshIntegrationEntraIdConfig struct {
 	TenantId     string       `json:"tenantId" tfsdk:"tenant_id"`
 	ClientId     string       `json:"clientId" tfsdk:"client_id"`
 	ClientSecret types.Secret `json:"clientSecret" tfsdk:"client_secret"`
-	RedirectUrl  *string      `json:"redirectUrl,omitempty" tfsdk:"redirect_url"`
+	IdpAlias     *string      `json:"idpAlias,omitempty" tfsdk:"idp_alias"`
+	// meshStack derives this and returns it inside spec, which configuration writes. A computed value
+	// there is unreachable under provider mocks (issue #272), so Terraform reads it from status instead.
+	RedirectUrl *string `json:"redirectUrl,omitempty" tfsdk:"-"`
 }
 
 type MeshIntegrationConfig struct {
