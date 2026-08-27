@@ -90,9 +90,18 @@ it *is* the policy, so widening a boundary is a deliberate edit rather than a li
 used to live, and it keeps the `client` path prefix it had there. Carry changes across with
 `git subtree`, not by copying files:
 
+**A pull takes a split, not a branch.** The import was `git subtree split` followed by
+`git subtree add`, so the history this subtree descends from carries the files at the *repository
+root*. Pulling the provider's `main` directly fails with *"refusing to merge unrelated histories"*,
+because there the same files sit under `client/`. Split first, in a checkout of the provider:
+
 ```shell
-git subtree pull --prefix=client https://github.com/meshcloud/terraform-provider-meshstack.git main
-git subtree push --prefix=client https://github.com/meshcloud/terraform-provider-meshstack.git <branch>
+cd ../terraform-provider-meshstack
+git subtree split --prefix=client -b client-split main
+
+cd ../meshstack-cli
+git subtree pull --prefix=client ../terraform-provider-meshstack client-split
+git subtree push --prefix=client ../terraform-provider-meshstack <branch>
 ```
 
 A pull conflicts only where a file genuinely diverged, because the one local edit the move needed was
@@ -106,14 +115,12 @@ git log -- client/client.go client.go   # a path-limited log from client/ alone 
 git blame client/client.go              # traverses the merge on its own
 ```
 
-The login exchange lives in `client/internal/auth.go`, which posts to `/api/login`, caches the access
-token and refreshes it before expiry. Go's internal rule keeps that code inside `client/`; reach it
-through `client.NewApiKeyAuthorization`. Do **not** write a second login exchange elsewhere — a
-hand-rolled one gets a static token and starts returning 401 once it expires.
-
-`pkg/login` owns credential resolution only: it reads the environment and returns a
-`client.Authorization`. It is also the single place that constructs one, which is where token caching
-on disk will hook in later.
+**`client/` no longer knows how to log in.** `client.Authorization` is a bare
+`Header(ctx) (string, error)`, and everything behind it — resolving a credential, minting a token,
+caching it in a profile, refreshing before expiry — is `pkg/auth`. Both front ends build their client
+through `auth.Session.Client`, so the endpoint and the authorization always agree with what was
+resolved. Do **not** add a login exchange here or anywhere else: a second one gets a static token and
+starts returning 401 once it expires, and for a browser login it would end the user's session.
 </rules>
 
 ## Always-on rules
@@ -146,9 +153,14 @@ Keep them in lock-step when bumping, and keep them aligned with the Terraform pr
 ## Authentication
 
 `MESHSTACK_ENDPOINT`, `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`, with `MESHSTACK_API_TOKEN` as
-an alternative to the key and secret pair. The names are exported as consts from `pkg/login`, so the
-provider and the CLI share one definition — use those consts rather than the string literals. The
-Taskfile reads a git-ignored `.env` for local runs.
+an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE`,
+`MESHSTACK_NO_INPUT`, `MESHSTACK_CONFIG_FILE` and `MESHSTACK_CREDENTIALS_DIR`.
+
+**No `MESHSTACK_*` name is exported.** Each is a private const in the package that consults it —
+`pkg/auth`, `pkg/profile`, `pkg/workspace`, `pkg/tty` — and every message that has to mention one is
+produced there too, so neither front end assembles a sentence out of a constant it imported. A front
+end that needs the *value* of a secret variable gets it through `auth.SecretFromEnv` or
+`auth.TokenFromEnv`. The Taskfile reads a git-ignored `.env` for local runs.
 
 `MESHSTACK_SKIP_VERSION_CHECK=true` skips the minimum backend version check in `client/client.go`.
 
