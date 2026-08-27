@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -89,17 +90,10 @@ func DoAuthorizedRequest[R any](ctx context.Context, c Client, method string, ur
 	return DoRequest[R](ctx, c, method, url, withAuthBearerToken(refreshed)...)
 }
 
-// DoRawRequest answers with the response body as it arrived. A non-2xx status is an Error
-// carrying that status and the same bytes, so a caller that reads an error document — the OIDC
-// endpoints answer one, and it is the only thing that says which failure it was — gets it from
+// DoRequest sends one request and parses the answer as JSON. A non-2xx status is an Error
+// carrying that status and the response body, so a caller that reads an error document — the OIDC
+// endpoints answer one, and it is the only thing that says which refusal it was — takes it from
 // there rather than from a second request.
-//
-// DoRequest is what a meshStack API call wants. This is for a body that is not the JSON document
-// the caller asked for, or for one that may be absent.
-func DoRawRequest(ctx context.Context, c Client, method string, url *url.URL, options ...RequestOption) ([]byte, error) {
-	return c.doRequest(ctx, method, url, options)
-}
-
 func DoRequest[R any](ctx context.Context, c Client, method string, url *url.URL, options ...RequestOption) (result R, err error) {
 	var body []byte
 	body, err = c.doRequest(ctx, method, url, options)
@@ -117,8 +111,22 @@ func DoRequest[R any](ctx context.Context, c Client, method string, url *url.URL
 		err = fmt.Errorf("unexpected empty response body from %s %s", method, url)
 		return
 	}
-	err = json.Unmarshal(body, &result)
+	if err = json.Unmarshal(body, &result); err != nil {
+		// The body travels with the error. A 2xx that is not the document the caller asked for is
+		// usually something other than the API answering — a proxy, a captive portal, an SSO login
+		// page — and the body is the only thing that says so.
+		err = fmt.Errorf("cannot parse the answer of %s %s as JSON: %w: %s", method, url, err, excerpt(body))
+	}
 	return
+}
+
+// excerpt makes a response body fit in one line of an error message.
+func excerpt(body []byte) string {
+	line := strings.Join(strings.Fields(string(body)), " ")
+	if len(line) > 200 {
+		return line[:200] + "..."
+	}
+	return line
 }
 
 func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {

@@ -113,16 +113,13 @@ func getJSON[T any](ctx context.Context, target string) (T, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	body, err := http.DoRawRequest(ctx, client(parsed), http.MethodGet, parsed, http.WithAccept("application/json"))
+	out, err = http.DoRequest[T](ctx, client(parsed), http.MethodGet, parsed, http.WithAccept("application/json"))
 	var httpErr http.Error
 	switch {
 	case errors.As(err, &httpErr):
 		return out, fmt.Errorf("%s returned HTTP %d: %s", target, httpErr.StatusCode, excerpt(httpErr.ResponseBody))
 	case err != nil:
-		return out, fmt.Errorf("cannot reach %s: %w", target, err)
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return out, fmt.Errorf("cannot parse the response from %s as JSON: %w", target, err)
+		return out, fmt.Errorf("cannot read %s: %w", target, err)
 	}
 	return out, nil
 }

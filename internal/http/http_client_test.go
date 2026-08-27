@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -428,4 +430,12 @@ type retryTestBackoff struct {
 func (b *retryTestBackoff) Calculate(int) time.Duration {
 	b.Called++
 	return b.WaitTime
+}
+
+func TestExcerptFitsOnOneLine(t *testing.T) {
+	assert.Equal(t, "a b c", excerpt([]byte(" a\n\tb  c ")))
+
+	long := excerpt(bytes.Repeat([]byte("x"), 500))
+	assert.Len(t, long, 203)
+	assert.True(t, strings.HasSuffix(long, "..."))
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	gohttp "net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -53,6 +52,11 @@ func (e *protocolError) Error() string {
 	}
 	if detail == "" {
 		detail = "no error code in the response body"
+	}
+	// Status is zero for the one case where the answer was a success: a provider that reports a
+	// refusal in a 2xx body, where naming the status would say nothing.
+	if e.Status == 0 {
+		return fmt.Sprintf("the identity provider answered %s", detail)
 	}
 	return fmt.Sprintf("the identity provider answered HTTP %d, %s", e.Status, detail)
 }
@@ -148,12 +152,15 @@ func EndSession(ctx context.Context, cfg ClientConfig, refreshToken string) erro
 		return fmt.Errorf("the identity provider advertises neither an end_session_endpoint nor a revocation_endpoint, so the session can only be ended in a browser")
 	}
 
-	body, status, err := postForm(ctx, target, form)
-	if err != nil {
+	// The answer carries nothing worth reading: the endpoint reports success as 204, and a
+	// refusal as a status with a body that only this message ever shows.
+	_, err := postForm[any](ctx, target, form)
+	var httpErr http.Error
+	switch {
+	case errors.As(err, &httpErr):
+		return fmt.Errorf("cannot end the session at %s: HTTP %d: %s", target, httpErr.StatusCode, excerpt(httpErr.ResponseBody))
+	case err != nil:
 		return fmt.Errorf("cannot end the session at %s: %w", target, err)
-	}
-	if status/100 != 2 {
-		return fmt.Errorf("cannot end the session at %s: HTTP %d: %s", target, status, excerpt(body))
 	}
 	return nil
 }
@@ -165,46 +172,45 @@ func postToken(ctx context.Context, cfg ClientConfig, form url.Values) (tokenRes
 		return tokenResponse{}, fmt.Errorf("the identity provider is not discovered yet: the token endpoint or the client id is missing")
 	}
 
-	body, status, err := postForm(ctx, cfg.TokenEndpoint, form)
-	if err != nil {
-		return tokenResponse{}, err
-	}
-
-	var tok tokenResponse
-	if err := json.Unmarshal(body, &tok); err != nil {
-		return tokenResponse{}, fmt.Errorf("cannot parse the answer of %s (HTTP %d) as JSON: %s", cfg.TokenEndpoint, status, excerpt(body))
-	}
-	if tok.Error != "" || status/100 != 2 {
-		return tokenResponse{}, &protocolError{Status: status, Code: tok.Error, Description: tok.Description}
-	}
-	if tok.AccessToken == "" {
-		return tokenResponse{}, fmt.Errorf("%s answered HTTP %d without an access token: %s", cfg.TokenEndpoint, status, excerpt(body))
+	tok, err := postForm[tokenResponse](ctx, cfg.TokenEndpoint, form)
+	var httpErr http.Error
+	switch {
+	case errors.As(err, &httpErr):
+		// A refusal is data here rather than a failure: keycloak answers HTTP 400 with the OAuth
+		// error document, and that document is the only thing that distinguishes a reused refresh
+		// token from a dead session. It arrives as the error's body, so it takes no second request.
+		var refused tokenResponse
+		if err := json.Unmarshal(httpErr.ResponseBody, &refused); err != nil {
+			return tokenResponse{}, fmt.Errorf("cannot parse the answer of %s (HTTP %d) as JSON: %s",
+				cfg.TokenEndpoint, httpErr.StatusCode, excerpt(httpErr.ResponseBody))
+		}
+		return tokenResponse{}, &protocolError{Status: httpErr.StatusCode, Code: refused.Error, Description: refused.Description}
+	case err != nil:
+		return tokenResponse{}, fmt.Errorf("the grant at %s failed: %w", cfg.TokenEndpoint, err)
+	case tok.Error != "":
+		// RFC 6749 puts a refusal in a 400 and keycloak obeys, so this covers a provider that
+		// reports one in a 2xx body instead.
+		return tokenResponse{}, &protocolError{Code: tok.Error, Description: tok.Description}
+	case tok.AccessToken == "":
+		return tokenResponse{}, fmt.Errorf("%s answered successfully but without an access token", cfg.TokenEndpoint)
 	}
 	return tok, nil
 }
 
-// postForm runs one grant and hands back what the provider said, status and all. A refusal is
-// data here rather than a failure: the OAuth error document is the only thing that distinguishes
-// a reused refresh token from a dead session, so the caller reads it and decides.
+// postForm runs one grant and parses what the provider answered. R is tokenResponse for a grant
+// and any where the answer carries nothing, as at the end session endpoint.
 //
 // No request here is marked Retryable, which is deliberate and the reason marking is opt-in: a
 // refresh grant rotates the refresh token, and keycloak ends the whole session when a rotated
 // token is used twice. Replaying one after a gateway hiccup would log the user out.
-func postForm(ctx context.Context, target string, form url.Values) (body []byte, status int, err error) {
+func postForm[R any](ctx context.Context, target string, form url.Values) (R, error) {
+	var result R
 	parsed, err := url.Parse(target)
 	if err != nil {
-		return nil, 0, fmt.Errorf("cannot build a request for %s: %w", target, err)
+		return result, fmt.Errorf("cannot build a request for %s: %w", target, err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	body, err = http.DoRawRequest(ctx, client(parsed), http.MethodPost, parsed, http.WithFormPayload(form))
-	var httpErr http.Error
-	switch {
-	case errors.As(err, &httpErr):
-		return httpErr.ResponseBody, httpErr.StatusCode, nil
-	case err != nil:
-		return nil, 0, fmt.Errorf("cannot reach %s: %w", target, err)
-	}
-	return body, gohttp.StatusOK, nil
+	return http.DoRequest[R](ctx, client(parsed), http.MethodPost, parsed, http.WithFormPayload(form))
 }
