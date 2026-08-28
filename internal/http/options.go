@@ -60,7 +60,14 @@ func WithUrlQuery(query any) RequestOption {
 		if err != nil {
 			return fmt.Errorf("cannot convert url query: %w", err)
 		}
-		req.URL.RawQuery = urlValues.Encode()
+		// Merged rather than assigned: MeshObjectClient.List adds its own page parameter to
+		// whatever filter the caller passed, and one overwriting the other drops a required
+		// parameter — buildingBlockDefinitionUuid is the case the backend rejects outright.
+		merged := req.URL.Query()
+		for key, values := range urlValues {
+			merged[key] = values
+		}
+		req.URL.RawQuery = merged.Encode()
 		return nil
 	})
 }

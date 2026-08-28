@@ -329,6 +329,25 @@ func TestUrlQueryOptions(t *testing.T) {
 		assert.Equal(t, "SUCCEEDED", got.Get("status"))
 	})
 
+	// MeshObjectClient.List is two of these on one request: the caller's filter, then the page
+	// it is fetching. Replacing rather than merging drops the filter, and a backend that needs
+	// it answers 400.
+	t.Run("a second query adds to the first", func(t *testing.T) {
+		var gotQuery url.Values
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			gotQuery = req.URL.Query()
+			resp.WriteHeader(gohttp.StatusOK)
+			_, _ = resp.Write([]byte(`"ok"`))
+		})
+		_, err := client.DoRequest[string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("list"),
+			http.WithUrlQuery(map[string]string{"buildingBlockDefinitionUuid": "abc"}),
+			http.WithUrlQuery(map[string]any{"page": 2}),
+		)
+		require.NoError(t, err)
+		assert.Equal(t, "abc", gotQuery.Get("buildingBlockDefinitionUuid"))
+		assert.Equal(t, "2", gotQuery.Get("page"))
+	})
+
 	t.Run("map values are kept even when zero", func(t *testing.T) {
 		got := queryFrom(t, map[string]any{"page": 0})
 		assert.Equal(t, "0", got.Get("page"))
