@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -46,7 +47,7 @@ type ApiKeyStatus struct {
 }
 
 type TokenStatus struct {
-	Scope     workspace.Scope
+	Scope     scope.Scope
 	ExpiresAt time.Time
 	// ExpiresIn is negative for a token that has already expired, and zero when the token
 	// carries no expiry at all.
@@ -73,7 +74,7 @@ func (s *Session) Status() (Status, error) {
 		status.ConfigPath = path
 	}
 	if login := credentials.Methods.Login; login != nil {
-		status.Login = &LoginStatus{Issuer: login.Issuer, ObtainedAt: login.ObtainedAt}
+		status.Login = &LoginStatus{Issuer: endpointString(login.Issuer), ObtainedAt: login.ObtainedAt}
 		if !login.ObtainedAt.IsZero() {
 			status.Login.Age = time.Since(login.ObtainedAt)
 		}

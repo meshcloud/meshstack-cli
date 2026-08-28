@@ -35,6 +35,11 @@ const (
 	lockStaleAfter = 60 * time.Second
 )
 
+// ErrLockBusy reports that another process held the lock until ctx ran out. It is not a
+// write failure: the holder is running a refresh grant, so minting without the lock would
+// be the replay keycloak ends the session over.
+var ErrLockBusy = errors.New("another meshStack process holds this profile's credentials lock")
+
 // acquireLock takes the exclusive lock for a credentials file, waiting until it can or
 // until ctx is done. The returned function releases it.
 func acquireLock(ctx context.Context, path string) (func(), error) {
@@ -67,8 +72,8 @@ func acquireLock(ctx context.Context, path string) (func(), error) {
 
 		select {
 		case <-ctx.Done():
-			return nil, diags.Wrap(ctx.Err(), "Timed out waiting for the credentials lock",
-				"Another meshStack process is holding %s. If none is running, remove the file.", path)
+			return nil, errors.Join(diags.Wrap(ctx.Err(), "Timed out waiting for the credentials lock",
+				"Another meshStack process is holding %s. If none is running, remove the file.", path), ErrLockBusy)
 		case <-time.After(backoff):
 		}
 		if backoff *= 2; backoff > lockRetryMax {

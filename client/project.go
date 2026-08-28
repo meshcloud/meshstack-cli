@@ -48,7 +48,7 @@ type meshProjectClient struct {
 	meshObject internal.MeshObjectClient[MeshProject]
 }
 
-func newProjectClient(ctx context.Context, httpClient http.Client) MeshProjectClient {
+func newProjectClient(ctx context.Context, httpClient internal.HttpClient) MeshProjectClient {
 	return meshProjectClient{internal.NewMeshObjectClient[MeshProject](ctx, httpClient, "v2")}
 }
 

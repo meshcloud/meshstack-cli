@@ -3,8 +3,10 @@ package profile
 import (
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 )
 
 // Credentials is `credentials/<profile>.yaml`: how one profile authenticates, and the
@@ -15,11 +17,13 @@ import (
 // skipped exactly when the CLI is about to send a stored bearer token to whatever
 // endpoint the profile now names.
 type Credentials struct {
-	Version       int                             `yaml:"version"`
-	Endpoint      string                          `yaml:"endpoint"`
-	CurrentMethod method.Method                   `yaml:"currentMethod,omitempty"`
-	Methods       Methods                         `yaml:"methods,omitempty"`
-	AccessTokens  map[workspace.Scope]IssuedToken `yaml:"accessTokens,omitempty"`
+	Version int `yaml:"version"`
+	// A pointer, because the file of a profile nothing has logged in to yet carries no
+	// endpoint, and an xurl.URL that is present has been parsed.
+	Endpoint      *xurl.URL                   `yaml:"endpoint,omitempty"`
+	CurrentMethod method.Method               `yaml:"currentMethod,omitempty"`
+	Methods       Methods                     `yaml:"methods,omitempty"`
+	AccessTokens  map[scope.Scope]IssuedToken `yaml:"accessTokens,omitempty"`
 }
 
 // Methods is a mapping keyed by method name rather than a list with a discriminator, so
@@ -35,7 +39,7 @@ type Methods struct {
 // deadline: the session's ceiling is a server-side constant, so a number copied into
 // the CLI would be wrong wherever a realm configures another one.
 type LoginMethod struct {
-	Issuer       string    `yaml:"issuer"`
+	Issuer       *xurl.URL `yaml:"issuer,omitempty"`
 	RefreshToken string    `yaml:"refreshToken"`
 	ObtainedAt   time.Time `yaml:"obtainedAt"`
 }
@@ -50,7 +54,7 @@ type ApiKeyMethod struct {
 
 // IssuedToken is one cached access token, keyed by the workspace scope it carries.
 type IssuedToken struct {
-	Token     string    `yaml:"token"`
+	Token     jwt.JWT   `yaml:"token"`
 	ExpiresAt time.Time `yaml:"expiresAt"`
 }
 
@@ -62,14 +66,14 @@ type IssuedToken struct {
 // rather than "expired at the zero time". An API token that is not a JWT is the case:
 // `meshstack auth login --api-token` stores one with an unknown expiry rather than a guessed
 // one, and dropping it here would make the very next command report it as expired.
-func prune(tokens map[workspace.Scope]IssuedToken, now time.Time) map[workspace.Scope]IssuedToken {
+func prune(tokens map[scope.Scope]IssuedToken, now time.Time) map[scope.Scope]IssuedToken {
 	if len(tokens) == 0 {
 		return nil
 	}
-	kept := make(map[workspace.Scope]IssuedToken, len(tokens))
-	for scope, token := range tokens {
+	kept := make(map[scope.Scope]IssuedToken, len(tokens))
+	for key, token := range tokens {
 		if token.ExpiresAt.IsZero() || token.ExpiresAt.After(now) {
-			kept[scope] = token
+			kept[key] = token
 		}
 	}
 	if len(kept) == 0 {

@@ -3,11 +3,11 @@ package auth
 import (
 	"context"
 	"errors"
-	"net/url"
-	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 )
 
 // apiLoginPath is where meshStack exchanges an API key for an access token. The answer
@@ -17,7 +17,7 @@ import (
 // any previous token.
 const apiLoginPath = "/api/login"
 
-func apiLogin(ctx context.Context, endpoint *url.URL, clientId, clientSecret string) (token string, lifetime time.Duration, err error) {
+func apiLogin(ctx context.Context, endpoint xurl.URL, clientId, clientSecret string) (jwt.JWT, error) {
 	target := endpoint.JoinPath(apiLoginPath)
 	payload := struct {
 		ClientId     string `json:"clientId"`
@@ -32,26 +32,27 @@ func apiLogin(ctx context.Context, endpoint *url.URL, clientId, clientSecret str
 	// — 429, 502, 503, 504 and a connection that never came up. Which is also why a meshStack
 	// behind a Kubernetes gateway is the case this covers: the gateway answers while the
 	// application behind it restarts.
-	answer, err := http.DoRequest[struct {
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int    `json:"expires_in"`
-	}](ctx, http.NewClient(endpoint, userAgent, nil), "POST", target,
+	answer, err := http.NewClient(userAgent, nil).DoRequest[struct {
+		// The deadline comes with the token, in its exp claim, rather than from the
+		// expires_in the answer also carries.
+		AccessToken jwt.JWT `json:"access_token"`
+	}](ctx, http.MethodPost, target,
 		http.Retryable(),
-		http.WithPayload(payload, "application/json"),
+		http.WithJsonPayload(payload, "application/json"),
 	)
 
 	var httpErr http.Error
 	switch {
-	case err == nil && answer.AccessToken == "":
-		return "", 0, diags.Errorf("could not log in to meshStack with an API key",
+	case err == nil && answer.AccessToken.String == "":
+		return jwt.JWT{}, diags.Errorf("could not log in to meshStack with an API key",
 			"%s answered without an access token.", target)
 	case err == nil:
-		return answer.AccessToken, time.Duration(answer.ExpiresIn) * time.Second, nil
+		return answer.AccessToken, nil
 	case errors.As(err, &httpErr) && httpErr.IsUnauthorized():
-		return "", 0, diags.Wrap(err, "meshStack refused this API key",
+		return jwt.JWT{}, diags.Wrap(err, "meshStack refused this API key",
 			"%s answered 401 for key id %s. Check the secret, or issue a new key in meshPanel.", target, clientId)
 	default:
-		return "", 0, diags.Wrap(err, "could not log in to meshStack with an API key",
+		return jwt.JWT{}, diags.Wrap(err, "could not log in to meshStack with an API key",
 			"%s with key id %s failed: %v", target, clientId, err)
 	}
 }

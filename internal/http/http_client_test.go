@@ -1,8 +1,10 @@
-package http
+// Package http_test drives the client from the outside, which is what lets it use the types the
+// callers of this package parse their answers into — internal/http may not import any of them.
+package http_test
 
 import (
-	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -10,12 +12,15 @@ import (
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 )
 
 func TestHttpClient(t *testing.T) {
@@ -28,11 +33,11 @@ func TestHttpClient(t *testing.T) {
 			assert.Equal(t, gohttp.MethodGet, req.Method)
 			assert.Equal(t, "test-agent", req.Header.Get("User-Agent"))
 		})
-		resp, err := DoRequest[string](t.Context(), client, gohttp.MethodGet, client.RootUrl.JoinPath("get"))
+		resp, err := client.DoRequest[string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 		require.NoError(t, err)
 		assert.Equal(t, "some-answer", resp)
 		assert.Equal(t, []string{
-			fmt.Sprintf("request [url %s/get method GET headers User-Agent=test-agent body <empty>]", client.RootUrl),
+			fmt.Sprintf("request [url %s/get method GET headers User-Agent=test-agent body <empty>]", client.ServerUrl),
 			`response [status 200 body "some-answer"]`,
 		}, testLogger.Debugs)
 		assert.Empty(t, testLogger.Warns)
@@ -42,7 +47,7 @@ func TestHttpClient(t *testing.T) {
 		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusOK)
 		})
-		_, err := DoRequest[*string](t.Context(), client, gohttp.MethodGet, client.RootUrl.JoinPath("get"))
+		_, err := client.DoRequest[*string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "unexpected empty response body")
 	})
@@ -51,22 +56,23 @@ func TestHttpClient(t *testing.T) {
 		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusAccepted) // empty body by design (trigger-run/delete)
 		})
-		_, err := DoRequest[any](t.Context(), client, gohttp.MethodPost, client.RootUrl.JoinPath("trigger-run"))
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("trigger-run"))
 		require.NoError(t, err)
 	})
 
 	t.Run("DoRequest with successful retry", func(t *testing.T) {
 		for _, retryableStatusCode := range []int{429, 502, 503, 504} {
 			t.Run(fmt.Sprintf("after code %d", retryableStatusCode), func(t *testing.T) {
-				nowUTC := mockTimeNowAsUTC(t)
-
 				testLogger := installTestLogger(t)
 				retryTestBackoff := retryTestBackoff{WaitTime: 1 * time.Second}
 				retried := false
 				client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 					if !retried {
 						if retryableStatusCode == 429 {
-							resp.Header().Set("Retry-After", nowUTC.Add(1*time.Second).Format(gohttp.TimeFormat))
+							// In delay-seconds form. Its HTTP-date form is read against a mocked
+							// clock, which only a test inside the package can install, so that
+							// case lives in retry_test.go.
+							resp.Header().Set("Retry-After", "1")
 						}
 						resp.WriteHeader(retryableStatusCode)
 						retried = true
@@ -74,9 +80,9 @@ func TestHttpClient(t *testing.T) {
 					}
 					resp.WriteHeader(gohttp.StatusOK)
 					_, _ = resp.Write([]byte(`{}`))
-				}), retryOptions{MaxRetries: 3, Backoff: &retryTestBackoff})
+				}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff})
 
-				_, err := DoRequest[any](t.Context(), client, gohttp.MethodGet, client.RootUrl.JoinPath("get"))
+				_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 				require.NoError(t, err)
 				if retryableStatusCode == 429 {
 					assert.Equal(t, 0, retryTestBackoff.Called)
@@ -95,9 +101,9 @@ func TestHttpClient(t *testing.T) {
 		retryTestBackoff := retryTestBackoff{}
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			resp.WriteHeader(502)
-		}), retryOptions{MaxRetries: 2, Backoff: &retryTestBackoff})
-		_, err := DoRequest[any](t.Context(), client, gohttp.MethodGet, client.RootUrl.JoinPath("get"))
-		var httpErr Error
+		}), http.RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff})
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
+		var httpErr http.Error
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, 502, httpErr.StatusCode)
 		assert.Equal(t, 2, retryTestBackoff.Called)
@@ -106,7 +112,7 @@ func TestHttpClient(t *testing.T) {
 			"retrying request [status 502 method GET path /get attempt 2/2 waitTime 0s]",
 		}, testLogger.Warns)
 		assert.Equal(t, []string{
-			fmt.Sprintf("request [url %s/get method GET headers User-Agent=test-agent body <empty>]", client.RootUrl),
+			fmt.Sprintf("request [url %s/get method GET headers User-Agent=test-agent body <empty>]", client.ServerUrl),
 			"response [status 502 body <empty>]",
 		}, testLogger.Debugs)
 
@@ -117,8 +123,8 @@ func TestHttpClient(t *testing.T) {
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			resp.WriteHeader(502)
 			cancel() // cancel context so the backoff wait is interrupted
-		}), retryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
-		_, err := DoRequest[any](ctx, client, gohttp.MethodGet, client.RootUrl.JoinPath("get"))
+		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
+		_, err := client.DoRequest[any](ctx, gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 		require.ErrorIs(t, err, context.Canceled)
 	})
 
@@ -127,8 +133,8 @@ func TestHttpClient(t *testing.T) {
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			attempts++
 			resp.WriteHeader(502)
-		}), retryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
-		_, err := DoRequest[any](t.Context(), client, gohttp.MethodPatch, client.RootUrl)
+		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPatch, client.ServerUrl)
 		require.Error(t, err)
 		assert.Equal(t, 1, attempts, "PATCH must not be retried")
 	})
@@ -142,8 +148,8 @@ func TestHttpClient(t *testing.T) {
 			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 				attempts++
 				resp.WriteHeader(503)
-			}), retryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
-			_, err := DoRequest[any](t.Context(), client, gohttp.MethodPost, client.RootUrl.JoinPath("grant"))
+			}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
+			_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("grant"))
 			require.Error(t, err)
 			assert.Equal(t, 1, attempts, "a POST may create something, so replaying it needs the caller's word")
 		})
@@ -158,14 +164,16 @@ func TestHttpClient(t *testing.T) {
 				}
 				resp.WriteHeader(gohttp.StatusOK)
 				_, _ = resp.Write([]byte(`{}`))
-			}), retryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
-			_, err := DoRequest[any](t.Context(), client, gohttp.MethodPost, client.RootUrl.JoinPath("login"), Retryable())
+			}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
+			_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("login"), http.Retryable())
 			require.NoError(t, err)
 			assert.Equal(t, 2, attempts)
 		})
 	})
 
-	t.Run("DoRequest with DELETE (retried, idempotent)", func(t *testing.T) {
+	// PUT and DELETE are idempotent, but they are not retried on their own any more: GET is the
+	// only method the client replays unasked. MeshObjectClient marks both with Retryable.
+	t.Run("DoRequest with DELETE marked Retryable", func(t *testing.T) {
 		attempts := 0
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			attempts++
@@ -174,8 +182,8 @@ func TestHttpClient(t *testing.T) {
 				return
 			}
 			resp.WriteHeader(gohttp.StatusNoContent)
-		}), retryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
-		_, err := DoRequest[any](t.Context(), client, gohttp.MethodDelete, client.RootUrl.JoinPath("delete"))
+		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodDelete, client.ServerUrl.JoinPath("delete"), http.Retryable())
 		require.NoError(t, err)
 		assert.Equal(t, 2, attempts, "DELETE must be retried after a 503")
 	})
@@ -191,8 +199,9 @@ func TestHttpClient(t *testing.T) {
 				return
 			}
 			resp.WriteHeader(200)
-		}), retryOptions{MaxRetries: 2, Backoff: &retryTestBackoff{}})
-		_, err := DoRequest[any](t.Context(), client, gohttp.MethodPut, client.RootUrl, WithPayload(map[string]string{"key": "value"}, "application/json"))
+		}), http.RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff{}})
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl,
+			http.WithJsonPayload(map[string]string{"key": "value"}, "application/json"), http.Retryable())
 		require.NoError(t, err)
 		assert.Equal(t, 2, attempt)
 	})
@@ -202,8 +211,9 @@ func TestHttpClient(t *testing.T) {
 			assert.Equal(t, "Bearer my-static-token", req.Header.Get("Authorization"))
 			resp.WriteHeader(gohttp.StatusAccepted)
 		})
-		client.Authorization = BearerTokenAuthorization{Token: "my-static-token"}
-		_, err := DoAuthorizedRequest[any](t.Context(), client, gohttp.MethodPost, client.RootUrl.JoinPath("create"), WithPayload("content", "text/plain"))
+		client.Authorization = http.BearerTokenAuthorization{Token: "my-static-token"}
+		_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("create"),
+			http.WithJsonPayload("content", "text/plain"))
 		require.NoError(t, err)
 	})
 
@@ -220,7 +230,7 @@ func TestHttpClient(t *testing.T) {
 				resp.WriteHeader(gohttp.StatusAccepted)
 			})
 			client.Authorization = auth
-			_, err := DoAuthorizedRequest[any](t.Context(), client, gohttp.MethodPut, client.RootUrl.JoinPath("edit"))
+			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
 			require.NoError(t, err)
 			assert.Equal(t, []string{"Bearer stale", "Bearer fresh"}, seen)
 			assert.Equal(t, []string{"stale"}, auth.rejected, "the token that was refused is what the refresh is told about")
@@ -234,8 +244,8 @@ func TestHttpClient(t *testing.T) {
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
 			client.Authorization = auth
-			_, err := DoAuthorizedRequest[any](t.Context(), client, gohttp.MethodPut, client.RootUrl.JoinPath("edit"))
-			var httpErr Error
+			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+			var httpErr http.Error
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
 			assert.Equal(t, 1, attempts, "a re-mint that produced the same token has nothing new to try")
@@ -249,8 +259,8 @@ func TestHttpClient(t *testing.T) {
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
 			client.Authorization = auth
-			_, err := DoAuthorizedRequest[any](t.Context(), client, gohttp.MethodPut, client.RootUrl.JoinPath("edit"))
-			var httpErr Error
+			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+			var httpErr http.Error
 			require.ErrorAs(t, err, &httpErr, "the 401 the request ran into must stay reachable")
 			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
 			require.ErrorIs(t, err, auth.refreshErr, "and so must the reason nothing better could be tried")
@@ -263,9 +273,9 @@ func TestHttpClient(t *testing.T) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
-			client.Authorization = BearerTokenAuthorization{Token: "static"}
-			_, err := DoAuthorizedRequest[any](t.Context(), client, gohttp.MethodPut, client.RootUrl.JoinPath("edit"))
-			var httpErr Error
+			client.Authorization = http.BearerTokenAuthorization{Token: "static"}
+			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+			var httpErr http.Error
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
 			assert.Equal(t, 1, attempts)
@@ -306,8 +316,8 @@ func TestUrlQueryOptions(t *testing.T) {
 			resp.WriteHeader(gohttp.StatusOK)
 			_, _ = resp.Write([]byte(`"ok"`))
 		})
-		_, err := DoRequest[string](t.Context(), client, gohttp.MethodGet, client.RootUrl.JoinPath("list"),
-			WithUrlQuery(query),
+		_, err := client.DoRequest[string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("list"),
+			http.WithUrlQuery(query),
 		)
 		require.NoError(t, err)
 		return gotQuery
@@ -345,35 +355,150 @@ func TestUrlQueryOptions(t *testing.T) {
 	})
 }
 
-func mockTimeNowAsUTC(t *testing.T) time.Time {
-	t.Helper()
-	now := time.Now().UTC().Truncate(time.Second)
-	timeNow = func() time.Time { return now }
-	t.Cleanup(func() {
-		timeNow = time.Now
+// TestFormPayloadOption covers what the OIDC grants send: a struct declared where the grant is
+// built, turned into an url-encoded body. The two content types disagree here where
+// WithJsonPayload has them agree — a grant is a form, and the token endpoint answers JSON.
+func TestFormPayloadOption(t *testing.T) {
+	postForm := func(t *testing.T, payload any) (gohttp.Header, url.Values) {
+		t.Helper()
+		var gotHeader gohttp.Header
+		var gotForm url.Values
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			assert.NoError(t, req.ParseForm())
+			gotHeader, gotForm = req.Header, req.PostForm
+			resp.WriteHeader(gohttp.StatusOK)
+			_, _ = resp.Write([]byte(`"ok"`))
+		})
+		_, err := client.DoRequest[string](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"),
+			http.WithFormPayload(payload),
+		)
+		require.NoError(t, err)
+		return gotHeader, gotForm
+	}
+
+	t.Run("a struct becomes a form named by its json tags", func(t *testing.T) {
+		type refreshGrant struct {
+			GrantType    string `json:"grant_type"`
+			RefreshToken string `json:"refresh_token"`
+			ClientId     string `json:"client_id"`
+			CodeVerifier string `json:"code_verifier"`
+		}
+		header, got := postForm(t, refreshGrant{
+			GrantType:    "refresh_token",
+			RefreshToken: "the-rotating-one",
+			ClientId:     "meshstack-cli",
+		})
+		assert.Equal(t, "application/x-www-form-urlencoded", header.Get("Content-Type"))
+		assert.Equal(t, "application/json", header.Get("Accept"))
+		assert.Equal(t, "refresh_token", got.Get("grant_type"))
+		assert.Equal(t, "the-rotating-one", got.Get("refresh_token"))
+		assert.Equal(t, "meshstack-cli", got.Get("client_id"))
+		assert.False(t, got.Has("code_verifier"), "a field the grant does not use must not be sent empty")
 	})
-	return now
+
+	t.Run("a map is sent verbatim", func(t *testing.T) {
+		_, got := postForm(t, map[string]string{"grant_type": "authorization_code", "code": ""})
+		assert.Equal(t, "authorization_code", got.Get("grant_type"))
+		assert.True(t, got.Has("code"), "a map entry is sent even when empty")
+	})
+
+	t.Run("no payload sends no body", func(t *testing.T) {
+		header, got := postForm(t, nil)
+		assert.Empty(t, got)
+		assert.Empty(t, header.Get("Content-Type"))
+	})
+
+	t.Run("a form sends those types as the text they came from", func(t *testing.T) {
+		type logoutRequest struct {
+			RedirectUri xurl.URL  `json:"post_logout_redirect_uri"`
+			IdToken     jwt.JWT   `json:"id_token_hint"`
+			ClientId    string    `json:"client_id"`
+			Unset       *xurl.URL `json:"unset_uri"`
+		}
+		redirectUri, err := url.Parse("http://127.0.0.1:31234/callback")
+		require.NoError(t, err)
+		var idToken jwt.JWT
+		claims := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"someone"}`))
+		require.NoError(t, idToken.UnmarshalText([]byte("e30."+claims+".not-a-signature")))
+
+		_, got := postForm(t, logoutRequest{
+			RedirectUri: xurl.URL{URL: redirectUri},
+			IdToken:     idToken,
+			ClientId:    "meshstack-cli",
+		})
+		assert.Equal(t, "http://127.0.0.1:31234/callback", got.Get("post_logout_redirect_uri"))
+		assert.Equal(t, idToken.String, got.Get("id_token_hint"))
+		assert.False(t, got.Has("unset_uri"), "a URL nobody set is dropped like any other zero value")
+	})
+
+	// The answer of a grant is where xurl.URL and jwt.JWT earn their keep. Both parse from a JSON
+	// string through UnmarshalText, so a caller declares the field it wants and reads a *url.URL
+	// or the token's claims, rather than a string every reader has to parse again.
+	t.Run("the answer parses into the types the caller declared", func(t *testing.T) {
+		type tokenResponse struct {
+			Issuer      xurl.URL `json:"issuer"`
+			AccessToken jwt.JWT  `json:"access_token"`
+		}
+		// Only the middle part is ever read, so the header is {} and the signature is not one.
+		claims := base64.RawURLEncoding.EncodeToString([]byte(`{"MC_CUSTOMER":"my-workspace"}`))
+		accessToken := "e30." + claims + ".not-a-signature"
+
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			assert.NoError(t, req.ParseForm())
+			assert.Equal(t, "refresh_token", req.PostForm.Get("grant_type"))
+			resp.WriteHeader(gohttp.StatusOK)
+			_, _ = resp.Write(fmt.Appendf(nil,
+				`{"issuer":"https://sso.example.com/realms/meshfed","access_token":%q}`, accessToken))
+		})
+		got, err := client.DoRequest[tokenResponse](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"),
+			http.WithFormPayload(map[string]string{"grant_type": "refresh_token"}),
+		)
+		require.NoError(t, err)
+
+		assert.Equal(t, "https://sso.example.com/realms/meshfed", got.Issuer.String())
+		assert.Equal(t, "sso.example.com", got.Issuer.Host, "the field is a parsed URL, not the text it came from")
+		assert.Equal(t, accessToken, got.AccessToken.String)
+		assert.Equal(t, "my-workspace", string(jwt.WorkspaceClaim.GetFrom(got.AccessToken)),
+			"the claims come with the token, so nothing has to decode it a second time")
+	})
+
+	// One case is enough here: that a declared type refusing the answer fails the whole call.
+	// Which texts jwt.JWT refuses is pinned in the jwt package, against its own testdata.
+	t.Run("an answer that is not what those types accept fails the call", func(t *testing.T) {
+		type tokenResponse struct {
+			AccessToken jwt.JWT `json:"access_token"`
+		}
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+			resp.WriteHeader(gohttp.StatusOK)
+			_, _ = resp.Write([]byte(`{"access_token":"an-opaque-token"}`))
+		})
+		_, err := client.DoRequest[tokenResponse](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"),
+			http.WithFormPayload(map[string]string{"grant_type": "refresh_token"}),
+		)
+		assert.ErrorContains(t, err, "not a JWT")
+	})
 }
 
-func newTestClientWithServer(t *testing.T, handlerFunc gohttp.HandlerFunc) Client {
+type TestClient struct {
+	http.Client
+	ServerUrl *url.URL
+}
+
+func newTestClientWithServer(t *testing.T, handlerFunc gohttp.HandlerFunc) TestClient {
 	t.Helper()
 	server := httptest.NewServer(handlerFunc)
 	t.Cleanup(server.Close)
-	rootUrl, err := url.Parse(server.URL)
+	serverUrl, err := url.Parse(server.URL)
 	require.NoError(t, err)
 	client := server.Client()
-	return Client{
-		Client:    client,
-		RootUrl:   rootUrl,
-		UserAgent: "test-agent",
-	}
+	return TestClient{http.Client{Client: client, UserAgent: "test-agent"}, serverUrl}
 }
 
 // withTestRetry gives one test client its own retry policy. Production code has exactly one
 // retrying client and no way to configure it, which is the point; a test needs a backoff it can
 // count and drive, so it builds its own.
-func withTestRetry(c Client, options retryOptions) Client {
-	c.Client = withRetry(c.Client, options)
+func withTestRetry(c TestClient, options http.RetryOptions) TestClient {
+	options.ApplyTo(c.Client.Client)
 	return c
 }
 
@@ -430,12 +555,4 @@ type retryTestBackoff struct {
 func (b *retryTestBackoff) Calculate(int) time.Duration {
 	b.Called++
 	return b.WaitTime
-}
-
-func TestExcerptFitsOnOneLine(t *testing.T) {
-	assert.Equal(t, "a b c", excerpt([]byte(" a\n\tb  c ")))
-
-	long := excerpt(bytes.Repeat([]byte("x"), 500))
-	assert.Len(t, long, 203)
-	assert.True(t, strings.HasSuffix(long, "..."))
 }

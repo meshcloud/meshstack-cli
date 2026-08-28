@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshLocation struct {
@@ -49,7 +48,7 @@ type meshLocationClient struct {
 	meshObject internal.MeshObjectClient[MeshLocation]
 }
 
-func newLocationClient(ctx context.Context, httpClient http.Client) MeshLocationClient {
+func newLocationClient(ctx context.Context, httpClient internal.HttpClient) MeshLocationClient {
 	return meshLocationClient{internal.NewMeshObjectClient[MeshLocation](ctx, httpClient, "v1")}
 }
 

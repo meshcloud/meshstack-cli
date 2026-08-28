@@ -130,7 +130,7 @@ func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
 	// only caller: resolution deliberately creates nothing, so that a mistyped --profile on
 	// an ordinary command reports an unknown profile instead of leaving one behind.
 	if session.Profile != "" {
-		if err := auth.EnsureProfile(session.Profile, session.Endpoint.String()); err != nil {
+		if err := auth.EnsureProfile(session.Profile, &session.Endpoint); err != nil {
 			return err
 		}
 	}
@@ -275,7 +275,7 @@ func printLogin(out io.Writer, result auth.LoginResult) {
 		row(out, "Profile", result.Profile, "")
 	}
 	row(out, "Method", result.Method.Description(), "")
-	if result.Workspace != "" {
+	if !result.Workspace.Empty() {
 		row(out, "Workspace", result.Workspace.String(), "")
 	}
 	if result.Method != method.Manual {

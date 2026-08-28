@@ -10,18 +10,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/oidc"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // apiKeyProfile is a profile whose current method is an API key, with the secret on disk so
 // that nothing has to prompt.
-func apiKeyProfile(t *testing.T, stack *fakeMeshStack, tokens map[workspace.Scope]profile.IssuedToken) {
+func apiKeyProfile(t *testing.T, stack *fakeMeshStack, tokens map[scope.Scope]profile.IssuedToken) {
 	t.Helper()
-	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: stack.URL.String()}})
+	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl(stack.URL.String())}})
 	writeCredentials(t, profile.Credentials{
-		Endpoint:      stack.URL.String(),
+		Endpoint:      mustUrl(stack.URL.String()),
 		CurrentMethod: method.ApiKey,
 		Methods:       profile.Methods{ApiKey: &profile.ApiKeyMethod{ClientId: "key-42", ClientSecret: testSecret}},
 		AccessTokens:  tokens,
@@ -39,10 +39,10 @@ func storedLogin() profile.Methods {
 func loginProfile(t *testing.T, endpoint string, ws workspace.Name, methods profile.Methods) {
 	t.Helper()
 	writeConfig(t, "default", map[string]profile.Profile{
-		"default": {Endpoint: endpoint, DefaultWorkspace: ws},
+		"default": {Endpoint: mustUrl(endpoint), DefaultWorkspace: ws},
 	})
 	writeCredentials(t, profile.Credentials{
-		Endpoint:      endpoint,
+		Endpoint:      mustUrl(endpoint),
 		CurrentMethod: method.Login,
 		Methods:       methods,
 	})
@@ -61,7 +61,7 @@ func TestBearerTokenMintsFromTheApiKeyOncePerTokenLife(t *testing.T) {
 
 	first, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "api-key-token-1", first)
+	require.Equal(t, "api-key-token-1", tokenId(first))
 	require.Equal(t, 1, stack.apiLoginCount())
 
 	second, err := session.BearerToken(t.Context())
@@ -78,28 +78,28 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 	t.Run("inside the window", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		apiKeyProfile(t, stack, map[workspace.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: "nearly-expired", ExpiresAt: insideGrace()},
+		apiKeyProfile(t, stack, map[scope.Scope]profile.IssuedToken{
+			workspace.Unscoped: {Token: mustJwt(fakeToken("nearly-expired")), ExpiresAt: insideGrace()},
 		})
 
 		session := resolved(t, &fakeInput{})
 		token, err := session.BearerToken(t.Context())
 		require.NoError(t, err)
-		require.Equal(t, "api-key-token-1", token)
+		require.Equal(t, "api-key-token-1", tokenId(token))
 		require.Equal(t, 1, stack.apiLoginCount())
 	})
 
 	t.Run("outside the window", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		apiKeyProfile(t, stack, map[workspace.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: "still-good", ExpiresAt: futureExpiry()},
+		apiKeyProfile(t, stack, map[scope.Scope]profile.IssuedToken{
+			workspace.Unscoped: {Token: mustJwt(fakeToken("still-good")), ExpiresAt: futureExpiry()},
 		})
 
 		session := resolved(t, &fakeInput{})
 		token, err := session.BearerToken(t.Context())
 		require.NoError(t, err)
-		require.Equal(t, "still-good", token)
+		require.Equal(t, fakeToken("still-good"), token)
 		require.Equal(t, 0, stack.apiLoginCount(), "another process's valid token must be used, not replaced")
 	})
 }
@@ -111,12 +111,12 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 	stack := newMeshStack(t)
 	isolate(t)
 	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: stack.URL.String(), RefreshToken: "refresh-old"},
+		Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
 	})
 
 	session := resolved(t, &fakeInput{})
 	require.Equal(t, workspace.Name("demo"), session.Workspace)
-	require.Equal(t, workspace.Scope("w:demo"), session.Scope())
+	require.Equal(t, workspace.Name("demo").Scope(), session.Scope())
 
 	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 	stored := readCredentials(t)
 	require.NotNil(t, stored.Methods.Login)
 	require.Equal(t, "refresh-1", stored.Methods.Login.RefreshToken, "the rotated refresh token must replace the used one")
-	require.Equal(t, token, stored.AccessTokens[workspace.Scope("w:demo")].Token,
+	require.Equal(t, token, stored.AccessTokens[workspace.Name("demo").Scope()].Token.String,
 		"the access token and the refresh token it came with are one write")
 }
 
@@ -142,14 +142,14 @@ func TestARefreshForAnotherWorkspaceFailsNamingTheWorkspace(t *testing.T) {
 	stack := newMeshStack(t)
 	stack.answerRefreshWith(func(url.Values) (int, map[string]any) {
 		return http.StatusOK, map[string]any{
-			"access_token":  jwt(map[string]any{"MC_CUSTOMER": "somewhere-else"}),
+			"access_token":  fakeJwt(map[string]any{"MC_CUSTOMER": "somewhere-else"}),
 			"refresh_token": "refresh-next",
 			"expires_in":    300,
 		}
 	})
 	isolate(t)
 	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: stack.URL.String(), RefreshToken: "refresh-old"},
+		Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
 	})
 
 	session := resolved(t, &fakeInput{})
@@ -236,14 +236,14 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 	t.Run("manual names MESHSTACK_API_TOKEN", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: stack.URL.String()}})
+		writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl(stack.URL.String())}})
 		// A stored API token that has expired: nothing is left to mint from.
 		writeCredentials(t, profile.Credentials{
-			Endpoint:      stack.URL.String(),
+			Endpoint:      mustUrl(stack.URL.String()),
 			CurrentMethod: method.Manual,
 		})
 
-		session := resolved(t, &fakeInput{token: "unused"})
+		session := resolved(t, &fakeInput{token: fakeToken("unused")})
 		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "this API token has expired", p.Summary())
@@ -295,7 +295,7 @@ func TestRenewalNeverSwitchesMethod(t *testing.T) {
 	})
 	isolate(t)
 	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login:  &profile.LoginMethod{Issuer: stack.URL.String(), RefreshToken: "refresh-old"},
+		Login:  &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
 		ApiKey: &profile.ApiKeyMethod{ClientId: "key-42", ClientSecret: testSecret},
 	})
 
@@ -304,35 +304,9 @@ func TestRenewalNeverSwitchesMethod(t *testing.T) {
 
 	_, err := session.BearerToken(t.Context())
 	require.Error(t, err)
-	require.ErrorIs(t, err, oidc.ErrRefreshRejected)
+	require.ErrorContains(t, err, "invalid_grant")
 	require.Equal(t, 0, stack.apiLoginCount(), "the API key in the same profile must not have been used")
 	require.Equal(t, method.Login, session.Method())
-}
-
-// TestARejectedRefreshIsRetriedOnceWhenTheTokenWasAlreadyUsed holds the race-safety rule:
-// "already used" almost always means another process rotated the token a moment ago, so the
-// store is re-read and the grant retried once before the session is reported as ended.
-func TestARejectedRefreshIsRetriedOnceWhenTheTokenWasAlreadyUsed(t *testing.T) {
-	stack := newMeshStack(t)
-	stack.answerRefreshWith(func(form url.Values) (int, map[string]any) {
-		if stack.refreshCount() == 1 {
-			return http.StatusBadRequest, map[string]any{
-				"error":             "invalid_grant",
-				"error_description": "Maximum allowed refresh token reuse exceeded",
-			}
-		}
-		return refreshFromScope(form)
-	})
-	isolate(t)
-	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: stack.URL.String(), RefreshToken: "refresh-old"},
-	})
-
-	session := resolved(t, &fakeInput{})
-	token, err := session.BearerToken(t.Context())
-	require.NoError(t, err)
-	require.NotEmpty(t, token)
-	require.Equal(t, 2, stack.refreshCount())
 }
 
 // TestTheStoredIssuerIsCheckedBeforeTheRefreshGrant holds the stricter of the two endpoint
@@ -341,7 +315,7 @@ func TestTheStoredIssuerIsCheckedBeforeTheRefreshGrant(t *testing.T) {
 	stack := newMeshStack(t)
 	isolate(t)
 	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: "https://sso.somewhere-else.example.com", RefreshToken: "refresh-old"},
+		Login: &profile.LoginMethod{Issuer: mustUrl("https://sso.somewhere-else.example.com"), RefreshToken: "refresh-old"},
 	})
 
 	session := resolved(t, &fakeInput{})
@@ -390,7 +364,7 @@ func TestRequireWorkspace(t *testing.T) {
 		t.Setenv(envEndpoint, "https://api.example.com")
 		t.Setenv(envApiToken, "pasted-token")
 
-		require.NoError(t, resolved(t, &fakeInput{token: "pasted-token"}).RequireWorkspace())
+		require.NoError(t, resolved(t, &fakeInput{token: fakeToken("pasted-token")}).RequireWorkspace())
 	})
 }
 
@@ -401,7 +375,7 @@ func TestOnlyTheLoginMethodIsScopedToAWorkspace(t *testing.T) {
 		isolate(t)
 		loginProfile(t, "https://api.example.com", "demo", storedLogin())
 
-		require.Equal(t, workspace.Scope("w:demo"), resolved(t, &fakeInput{}).Scope())
+		require.Equal(t, workspace.Name("demo").Scope(), resolved(t, &fakeInput{}).Scope())
 	})
 
 	t.Run("apiKey", func(t *testing.T) {
@@ -422,7 +396,7 @@ func TestOnlyTheLoginMethodIsScopedToAWorkspace(t *testing.T) {
 		t.Setenv(envApiToken, "pasted-token")
 		t.Setenv("MESHSTACK_WORKSPACE", "demo")
 
-		require.Equal(t, workspace.Unscoped, resolved(t, &fakeInput{token: "pasted-token"}).Scope())
+		require.Equal(t, workspace.Unscoped, resolved(t, &fakeInput{token: fakeToken("pasted-token")}).Scope())
 	})
 }
 
@@ -446,7 +420,7 @@ func TestConcurrentBearerTokenCallsMintOnce(t *testing.T) {
 
 		require.Equal(t, 1, stack.apiLoginCount(), "every goroutine but one must have used the token the first minted")
 		for _, token := range tokens {
-			require.Equal(t, "api-key-token-1", token)
+			require.Equal(t, "api-key-token-1", tokenId(token))
 		}
 	}
 
@@ -498,7 +472,7 @@ func TestConcurrentRefreshCallsMintOnce(t *testing.T) {
 
 		require.Equal(t, 2, stack.apiLoginCount(), "one 401 on a shared token costs one token, not one each")
 		for _, token := range tokens {
-			require.Equal(t, "api-key-token-2", token)
+			require.Equal(t, "api-key-token-2", tokenId(token))
 		}
 	}
 

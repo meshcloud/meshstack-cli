@@ -3,60 +3,71 @@ package client
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/client/version"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
-// FeatureFlagFourEyesRoleApproval is the only feature flag /mesh/info can currently report in
-// MeshInfo.EnabledFeatureFlags: whether the four-eyes principle (role approval) is enabled.
-const FeatureFlagFourEyesRoleApproval = "four_eyes_role_approval"
+// MeshFeatureFlag names an optional meshStack capability. /mesh/info reports each one as a
+// boolean of its own, so a consumer that wants a list rather than a set of booleans — the
+// Terraform provider's meshstack_instance data source does — maps them onto these names itself.
+type MeshFeatureFlag string
 
-// MeshInfo describes the meshStack instance the provider is configured against: the endpoint from
-// the provider configuration, plus metadata from the public, unauthenticated /mesh/info endpoint.
+var (
+	MeshFeatureFlags                    = enum.Enum[MeshFeatureFlag]{}
+	MeshFeatureFlagFourEyesRoleApproval = MeshFeatureFlags.Entry("four_eyes_role_approval")
+)
+
+// MeshInfo is the public, unauthenticated /mesh/info document, as the endpoint returns it. It
+// describes the meshStack instance the client is configured against.
 type MeshInfo struct {
-	Endpoint                 string            `tfsdk:"endpoint" json:"-"`
-	Version                  string            `tfsdk:"version" json:"version"`
-	IsFourEyesEnabled        bool              `tfsdk:"-" json:"is4EPEnabled"`
-	EnabledFeatureFlags      []string          `tfsdk:"enabled_feature_flags" json:"-"`
-	Metadata                 map[string]string `tfsdk:"metadata" json:"metadata"`
-	AdminWorkspaceIdentifier string            `tfsdk:"admin_workspace_identifier" json:"adminWorkspaceIdentifier"`
-	// Issuer and CliClientId describe the OpenID Connect client the meshStack CLI logs in
-	// with. They are the whole of the CLI's discovery: /mesh/info is public, so a browser
-	// login can be prepared before any credential exists.
-	//
-	// `tfsdk:"-"` is deliberate, not an oversight. The Terraform provider renders this struct
-	// as its meshstack_instance data source, and these two are the CLI's business: a Terraform
-	// run never logs a user in, so neither field has a consumer there. Give them real tfsdk
-	// tags if one ever appears — nothing here is secret, because that endpoint is public and
-	// unauthenticated.
-	Issuer      string `tfsdk:"-" json:"issuer"`
-	CliClientId string `tfsdk:"-" json:"cliClientId"`
+	Version string `json:"version" tfsdk:"version"`
+	// Is4EPEnabled means "Is four-eyes principle enabled"
+	Is4EPEnabled             bool              `json:"is4EPEnabled" tfsdk:"-"`
+	Metadata                 map[string]string `json:"metadata" tfsdk:"metadata"`
+	AdminWorkspaceIdentifier string            `json:"adminWorkspaceIdentifier" tfsdk:"admin_workspace_identifier"`
+	Issuer                   xurl.URL          `json:"issuer" tfsdk:"-"`
+	CliClientId              string            `json:"cliClientId" tfsdk:"-"`
 }
 
 type MeshInfoClient interface {
-	Read(ctx context.Context) (*MeshInfo, error)
+	Read(ctx context.Context) (MeshInfo, error)
 }
 
 type meshInfoClient struct {
-	httpClient http.Client
+	httpClient internal.HttpClient
 }
 
-func newMeshInfoClient(httpClient http.Client) MeshInfoClient {
+func newMeshInfoClient(httpClient internal.HttpClient) meshInfoClient {
 	return meshInfoClient{httpClient: httpClient}
 }
 
-func (c meshInfoClient) Read(ctx context.Context) (*MeshInfo, error) {
-	meshInfoEndpoint := c.httpClient.RootUrl.JoinPath("/mesh/info")
-	info, err := http.DoRequest[MeshInfo](ctx, c.httpClient, "GET", meshInfoEndpoint)
+func (c meshInfoClient) Read(ctx context.Context) (MeshInfo, error) {
+	return c.httpClient.DoRequest[MeshInfo](ctx, "GET", c.httpClient.RootUrl.JoinPath("/mesh/info"), http.WithAccept("application/json"))
+}
+
+func (c meshInfoClient) checkMeshVersion(ctx context.Context) error {
+	// Skip before the request, not just before the comparison: /mesh/info is a GET on the retrying
+	// client, so an unavailable backend blocks provider configuration for the whole retry budget
+	// (~4 minutes) and then fails it. Opting out of the check has to opt out of that too.
+	if os.Getenv("MESHSTACK_SKIP_VERSION_CHECK") == "true" {
+		return nil
+	}
+
+	info, err := c.Read(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve meshStack instance information from %s endpoint: %w", meshInfoEndpoint, err)
+		return err
 	}
-
-	info.Endpoint = c.httpClient.RootUrl.String()
-	info.EnabledFeatureFlags = []string{}
-	if info.IsFourEyesEnabled {
-		info.EnabledFeatureFlags = append(info.EnabledFeatureFlags, FeatureFlagFourEyesRoleApproval)
+	meshVersion, err := version.Parse(info.Version)
+	if err != nil {
+		return fmt.Errorf("failed to parse meshStack version %q: %w", info.Version, err)
 	}
-
-	return &info, nil
+	if meshVersion.Less(MinMeshStackVersion) {
+		return fmt.Errorf("unsupported meshStack version: meshStack is running version %s, but this client requires version %s or higher", meshVersion, MinMeshStackVersion)
+	}
+	return nil
 }

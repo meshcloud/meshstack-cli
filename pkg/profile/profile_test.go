@@ -138,8 +138,8 @@ func TestConfigRoundTrip(t *testing.T) {
 	want := Config{
 		CurrentProfile: "default",
 		Profiles: map[string]Profile{
-			"default":   {Endpoint: "https://api.dev.meshcloud.io", DefaultWorkspace: workspace.Name("my-workspace")},
-			"likvid-cf": {Endpoint: "https://federation.demo.meshcloud.io"},
+			"default":   {Endpoint: mustUrl("https://api.dev.meshcloud.io"), DefaultWorkspace: workspace.Name("my-workspace")},
+			"likvid-cf": {Endpoint: mustUrl("https://federation.demo.meshcloud.io")},
 		},
 	}
 	require.NoError(t, SaveConfig(want))

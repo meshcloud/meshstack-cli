@@ -37,5 +37,5 @@ func (s *Session) Workspaces(ctx context.Context) ([]workspace.Name, error) {
 // resolved. The user agent stays a parameter, because it is the one thing that genuinely
 // differs: the Terraform provider identifies itself by its own name and version.
 func (s *Session) Client(ctx context.Context, userAgent string) (client.Client, error) {
-	return client.New(ctx, s.Endpoint, userAgent, s)
+	return client.New(ctx, s.Endpoint.URL, userAgent, s)
 }

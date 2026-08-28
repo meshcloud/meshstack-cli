@@ -2,6 +2,8 @@ package profile
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,7 +16,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
@@ -56,11 +61,11 @@ func TestCredentialsRoundTrip(t *testing.T) {
 	expires := time.Now().UTC().Add(5 * time.Minute).Truncate(time.Second)
 	want := Credentials{
 		Version:       Version,
-		Endpoint:      "https://api.dev.meshcloud.io",
+		Endpoint:      mustUrl("https://api.dev.meshcloud.io"),
 		CurrentMethod: method.Login,
 		Methods: Methods{
 			Login: &LoginMethod{
-				Issuer:       "https://sso.dev.meshcloud.io/auth/realms/meshfed",
+				Issuer:       mustUrl("https://sso.dev.meshcloud.io/auth/realms/meshfed"),
 				RefreshToken: "refresh-1",
 				ObtainedAt:   obtained,
 			},
@@ -69,9 +74,9 @@ func TestCredentialsRoundTrip(t *testing.T) {
 				ClientSecretCommand: []string{"vault", "kv", "get", "-field=secret", "concourse/meshstack-dev"},
 			},
 		},
-		AccessTokens: map[workspace.Scope]IssuedToken{
-			workspace.Unscoped:                     {Token: "token-unscoped", ExpiresAt: expires},
-			workspace.Name("my-workspace").Scope(): {Token: "token-scoped", ExpiresAt: expires},
+		AccessTokens: map[scope.Scope]IssuedToken{
+			workspace.Unscoped:                     {Token: fakeJwt("token-unscoped"), ExpiresAt: expires},
+			workspace.Name("my-workspace").Scope(): {Token: fakeJwt("token-scoped"), ExpiresAt: expires},
 		},
 	}
 
@@ -86,7 +91,7 @@ func TestCredentialsRoundTrip(t *testing.T) {
 	assert.Contains(t, text, "currentMethod: login")
 	assert.Contains(t, text, "refreshToken: refresh-1")
 	assert.Contains(t, text, "clientSecretCommand:")
-	assert.Contains(t, text, "w:my-workspace:")
+	assert.Contains(t, text, "c:my-workspace:")
 	assert.Contains(t, text, "unscoped:")
 	// clientSecret is omitted entirely when a command supplies it.
 	assert.NotContains(t, text, "clientSecret:")
@@ -105,7 +110,7 @@ func TestCredentialsFileModes(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.Endpoint = "https://api.dev.meshcloud.io"
+		c.Endpoint = mustUrl("https://api.dev.meshcloud.io")
 		return c, nil
 	})
 	require.NoError(t, err)
@@ -139,11 +144,11 @@ func TestUpdatePrunesExpiredTokens(t *testing.T) {
 	store, err := NewFileStore("default")
 	require.NoError(t, err)
 
-	fresh := IssuedToken{Token: "fresh", ExpiresAt: time.Now().Add(5 * time.Minute).UTC()}
-	stale := IssuedToken{Token: "stale", ExpiresAt: time.Now().Add(-time.Second).UTC()}
+	fresh := IssuedToken{Token: fakeJwt("fresh"), ExpiresAt: time.Now().Add(5 * time.Minute).UTC()}
+	stale := IssuedToken{Token: fakeJwt("stale"), ExpiresAt: time.Now().Add(-time.Second).UTC()}
 
 	got, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.AccessTokens = map[workspace.Scope]IssuedToken{
+		c.AccessTokens = map[scope.Scope]IssuedToken{
 			workspace.Unscoped:                  fresh,
 			workspace.Name("gone").Scope():      stale,
 			workspace.Name("also-gone").Scope(): stale,
@@ -151,7 +156,7 @@ func TestUpdatePrunesExpiredTokens(t *testing.T) {
 		return c, nil
 	})
 	require.NoError(t, err)
-	require.Equal(t, map[workspace.Scope]IssuedToken{workspace.Unscoped: fresh}, got.AccessTokens)
+	require.Equal(t, map[scope.Scope]IssuedToken{workspace.Unscoped: fresh}, got.AccessTokens)
 
 	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
 	require.NoError(t, err)
@@ -178,26 +183,26 @@ func TestUpdateKeepsATokenWithNoExpiry(t *testing.T) {
 
 	got, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
 		c.CurrentMethod = method.Manual
-		c.AccessTokens = map[workspace.Scope]IssuedToken{
-			workspace.Unscoped: {Token: "not-a-jwt"},
+		c.AccessTokens = map[scope.Scope]IssuedToken{
+			workspace.Unscoped: {Token: fakeJwt("no-expiry")},
 		}
 		return c, nil
 	})
 	require.NoError(t, err)
-	require.Equal(t, "not-a-jwt", got.AccessTokens[workspace.Unscoped].Token)
+	require.Equal(t, fakeJwt("no-expiry"), got.AccessTokens[workspace.Unscoped].Token)
 
 	reread, err := store.Read()
 	require.NoError(t, err)
-	require.Equal(t, "not-a-jwt", reread.AccessTokens[workspace.Unscoped].Token)
+	require.Equal(t, fakeJwt("no-expiry"), reread.AccessTokens[workspace.Unscoped].Token)
 }
 
 func TestUpdateWritesEvenWhenMintChangesNothing(t *testing.T) {
 	store := newTestStore(t, "default")
 
 	_, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.Endpoint = "https://api.dev.meshcloud.io"
-		c.AccessTokens = map[workspace.Scope]IssuedToken{
-			workspace.Unscoped: {Token: "expired", ExpiresAt: time.Now().Add(-time.Minute)},
+		c.Endpoint = mustUrl("https://api.dev.meshcloud.io")
+		c.AccessTokens = map[scope.Scope]IssuedToken{
+			workspace.Unscoped: {Token: fakeJwt("expired"), ExpiresAt: time.Now().Add(-time.Minute)},
 		}
 		return c, nil
 	})
@@ -211,7 +216,7 @@ func TestUpdateWritesEvenWhenMintChangesNothing(t *testing.T) {
 
 	reread, err := store.Read()
 	require.NoError(t, err)
-	require.Equal(t, "https://api.dev.meshcloud.io", reread.Endpoint)
+	require.Equal(t, "https://api.dev.meshcloud.io", reread.Endpoint.String())
 	require.Nil(t, reread.AccessTokens)
 }
 
@@ -241,7 +246,7 @@ func TestUpdateSeesAnotherProcessWrite(t *testing.T) {
 	release()
 
 	require.NoError(t, <-done)
-	require.Equal(t, "https://written-by-the-winner", seen.Endpoint)
+	require.Equal(t, "https://written-by-the-winner", seen.Endpoint.String())
 	require.Equal(t, method.ApiKey, seen.CurrentMethod)
 }
 
@@ -255,10 +260,14 @@ func TestConcurrentUpdatesSerialise(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-				// A read-modify-write that loses an update shows up as a missing count.
-				n, _ := strconv.Atoi(c.Endpoint)
+				// A read-modify-write that loses an update shows up as a missing count. The
+				// key id is the counter because it is the one plain string in the file.
+				n := 0
+				if c.Methods.ApiKey != nil {
+					n, _ = strconv.Atoi(c.Methods.ApiKey.ClientId)
+				}
 				time.Sleep(time.Millisecond) // widen the window a lost update would need
-				c.Endpoint = strconv.Itoa(n + 1)
+				c.Methods.ApiKey = &ApiKeyMethod{ClientId: strconv.Itoa(n + 1)}
 				return c, nil
 			})
 			assert.NoError(t, err)
@@ -268,7 +277,7 @@ func TestConcurrentUpdatesSerialise(t *testing.T) {
 
 	got, err := store.Read()
 	require.NoError(t, err)
-	require.Equal(t, strconv.Itoa(writers), got.Endpoint)
+	require.Equal(t, strconv.Itoa(writers), got.Methods.ApiKey.ClientId)
 }
 
 func TestUpdateHonoursContext(t *testing.T) {
@@ -317,7 +326,7 @@ func TestForget(t *testing.T) {
 	require.NoError(t, store.Forget())
 
 	_, err = store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.Endpoint = "https://api.dev.meshcloud.io"
+		c.Endpoint = mustUrl("https://api.dev.meshcloud.io")
 		return c, nil
 	})
 	require.NoError(t, err)
@@ -334,7 +343,7 @@ func TestForget(t *testing.T) {
 
 func TestMemoryStore(t *testing.T) {
 	store := NewMemoryStore(Credentials{
-		Endpoint:      "https://api.dev.meshcloud.io",
+		Endpoint:      mustUrl("https://api.dev.meshcloud.io"),
 		CurrentMethod: method.Manual,
 	})
 
@@ -349,9 +358,9 @@ func TestMemoryStore(t *testing.T) {
 	require.Equal(t, method.Manual, creds.CurrentMethod)
 
 	got, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.AccessTokens = map[workspace.Scope]IssuedToken{
-			workspace.Unscoped:             {Token: "fresh", ExpiresAt: time.Now().Add(time.Minute)},
-			workspace.Name("gone").Scope(): {Token: "stale", ExpiresAt: time.Now().Add(-time.Minute)},
+		c.AccessTokens = map[scope.Scope]IssuedToken{
+			workspace.Unscoped:             {Token: fakeJwt("fresh"), ExpiresAt: time.Now().Add(time.Minute)},
+			workspace.Name("gone").Scope(): {Token: fakeJwt("stale"), ExpiresAt: time.Now().Add(-time.Minute)},
 		}
 		return c, nil
 	})
@@ -397,4 +406,26 @@ func TestUpdatePropagatesMintErrorAndWritesNothing(t *testing.T) {
 	for _, e := range entries {
 		assert.False(t, strings.HasSuffix(e.Name(), lockSuffix), "lock %s was left behind", e.Name())
 	}
+}
+
+// mustUrl parses a URL a test wrote, and panics on one it wrote wrong, which is a test bug
+// rather than a case worth handling.
+func mustUrl(raw string) *xurl.URL {
+	parsed := &xurl.URL{}
+	if err := parsed.UnmarshalText([]byte(raw)); err != nil {
+		panic(err)
+	}
+	return parsed
+}
+
+// fakeJwt is an access token identified by a name a test can assert on. Every access token is
+// a JWT, so a test cannot use a bare string for one. Nothing verifies a signature, so only the
+// payload is real.
+func fakeJwt(id string) jwt.JWT {
+	payload := base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, `{"jti":%q}`, id))
+	parsed, err := jwt.Parse("bogus." + payload + ".bogus")
+	if err != nil {
+		panic(err)
+	}
+	return parsed
 }

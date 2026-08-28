@@ -1,6 +1,6 @@
 # Runs on the build platform and cross-compiles for TARGETOS/TARGETARCH, so a
 # multi-platform build needs no emulation. buildx sets those two args itself.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 
 WORKDIR /src
 

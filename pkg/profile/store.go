@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"go.yaml.in/yaml/v3"
+	"github.com/goccy/go-yaml"
 
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 )
@@ -99,6 +99,9 @@ func (s *fileStore) Read() (Credentials, error) {
 
 func (s *fileStore) Update(ctx context.Context, mint func(Credentials) (Credentials, error)) (Credentials, error) {
 	release, err := acquireLock(ctx, s.lockPath)
+	if errors.Is(err, ErrLockBusy) {
+		return Credentials{}, err
+	}
 	if err != nil {
 		return Credentials{}, errors.Join(err, ErrNotWritable)
 	}

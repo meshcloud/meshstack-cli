@@ -7,9 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
@@ -134,29 +137,29 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 			"%s says nobody is here to visit the login URL. Use `meshstack auth login --api-key=<id>` instead.", tty.NoInputHint())
 	}
 
-	refreshToken, accessToken, lifetime, err := browser.Login(ctx, config)
+	token, err := browser.Login(ctx, config)
 	if err != nil {
 		return err
 	}
-	result.Username = claimString(accessToken, "preferred_username")
+	result.Username = jwt.UsernameClaim.GetFrom(token.AccessToken)
 
 	// The unscoped access token goes into the store alongside the refresh token in one write,
 	// because keycloak rotates on every refresh and separating the two ends the session.
 	if _, err := s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
 		c.Version = profile.Version
-		c.Endpoint = s.Endpoint.String()
+		c.Endpoint = &s.Endpoint
 		c.CurrentMethod = method.Login
 		c.Methods.Login = &profile.LoginMethod{
-			Issuer:       config.Issuer,
-			RefreshToken: refreshToken,
+			Issuer:       &config.Issuer,
+			RefreshToken: token.RefreshToken,
 			// Nothing in the token says when the login dies — a refresh token carries no exp
 			// and refresh_expires_in is 0 — while the server caps the session at 24 hours. So
 			// record when it happened and report its age, rather than predicting a deadline
 			// from a constant that lives in another repository.
 			ObtainedAt: time.Now().UTC(),
 		}
-		c.AccessTokens = map[workspace.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: accessToken, ExpiresAt: time.Now().Add(lifetime)},
+		c.AccessTokens = map[scope.Scope]profile.IssuedToken{
+			workspace.Unscoped: issuedToken(token.AccessToken),
 		}
 		return c, nil
 	}); err != nil {
@@ -165,22 +168,22 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 	return s.chooseWorkspace(ctx, options, result)
 }
 
-func (s *Session) probeLogin(ctx context.Context, config oidc.ClientConfig, result *LoginResult) error {
-	var probed string
+func (s *Session) probeLogin(ctx context.Context, config oidc.Client, result *LoginResult) error {
+	var probed jwt.JWT
 	_, err := s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
-		refreshToken, accessToken, lifetime, err := oidc.Refresh(ctx, config, c.Methods.Login.RefreshToken, "")
+		token, err := config.Refresh(ctx, c.Methods.Login.RefreshToken, "")
 		if err != nil {
 			return c, err
 		}
-		probed = accessToken
-		c.Methods.Login.RefreshToken = refreshToken
+		probed = token.AccessToken
+		c.Methods.Login.RefreshToken = token.RefreshToken
 		c.CurrentMethod = method.Login
-		return withToken(c, workspace.Unscoped, profile.IssuedToken{Token: accessToken, ExpiresAt: time.Now().Add(lifetime)}), nil
+		return withToken(c, workspace.Unscoped, issuedToken(token.AccessToken)), nil
 	})
 	if err != nil {
 		return err
 	}
-	result.Username = claimString(probed, "preferred_username")
+	result.Username = jwt.UsernameClaim.GetFrom(probed)
 	return nil
 }
 
@@ -188,7 +191,7 @@ func (s *Session) probeLogin(ctx context.Context, config oidc.ClientConfig, resu
 // workspaces with the unscoped token it just obtained, which is the only thing an unscoped
 // user token is good for.
 func (s *Session) chooseWorkspace(ctx context.Context, options LoginOptions, result *LoginResult) error {
-	if s.Workspace != "" {
+	if !s.Workspace.Empty() {
 		return s.rememberWorkspace(s.Workspace, result)
 	}
 	if options.ChooseWorkspace == nil {
@@ -245,14 +248,14 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 	if err != nil {
 		return err
 	}
-	token, lifetime, err := apiLogin(ctx, s.Endpoint, clientId, secret)
+	token, err := apiLogin(ctx, s.Endpoint, clientId, secret)
 	if err != nil {
 		return err
 	}
 
 	_, err = s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
 		c.Version = profile.Version
-		c.Endpoint = s.Endpoint.String()
+		c.Endpoint = &s.Endpoint
 		c.CurrentMethod = method.ApiKey
 		if offered.ClientSecret != "" || len(offered.ClientSecretCommand) > 0 {
 			c.Methods.ApiKey = offered
@@ -261,8 +264,8 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 		}
 		// Switching method discards every cached access token, because they carry the old
 		// identity. The methods themselves survive, so switching back costs one refresh.
-		c.AccessTokens = map[workspace.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: token, ExpiresAt: time.Now().Add(lifetime)},
+		c.AccessTokens = map[scope.Scope]profile.IssuedToken{
+			workspace.Unscoped: issuedToken(token),
 		}
 		return c, nil
 	})
@@ -282,18 +285,22 @@ func (s *Session) loginWithApiToken(ctx context.Context, result *LoginResult) er
 		return diags.Errorf("no API token",
 			"supply it through %s or on stdin. A token is never a flag value, because a flag value lands in shell history, in ps output and in CI logs.", envApiToken)
 	}
-	issued := profile.IssuedToken{Token: strings.TrimSpace(token)}
-	if expiry, ok := oidc.Expiry(issued.Token); ok {
-		issued.ExpiresAt = expiry
-		result.ExpiresAt, result.ExpiryKnown = expiry, true
+	parsed, err := jwt.Parse(strings.TrimSpace(token))
+	if err != nil {
+		return diags.Wrap(err, "this is not a meshStack API token",
+			"what %s supplied could not be read as an access token: %v", envApiToken, err)
 	}
-	result.Username = claimString(issued.Token, "preferred_username")
+	issued := issuedToken(parsed)
+	if expiry := jwt.Expiry.GetFrom(parsed); expiry != nil {
+		result.ExpiresAt, result.ExpiryKnown = *expiry, true
+	}
+	result.Username = jwt.UsernameClaim.GetFrom(parsed)
 
 	_, err = s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
 		c.Version = profile.Version
-		c.Endpoint = s.Endpoint.String()
+		c.Endpoint = &s.Endpoint
 		c.CurrentMethod = method.Manual
-		c.AccessTokens = map[workspace.Scope]profile.IssuedToken{workspace.Unscoped: issued}
+		c.AccessTokens = map[scope.Scope]profile.IssuedToken{workspace.Unscoped: issued}
 		return c, nil
 	})
 	return err
@@ -316,13 +323,14 @@ func (s *Session) Logout(ctx context.Context, revoke bool) error {
 			if err != nil {
 				return err
 			}
-			if err := oidc.EndSession(ctx, config, credentials.Methods.Login.RefreshToken); err != nil {
-				// A session that is already gone is the outcome the user asked for, so the
-				// local file still goes.
-				if !errors.Is(err, oidc.ErrRefreshRejected) {
+			if err := config.EndSession(ctx, credentials.Methods.Login.RefreshToken); err != nil {
+				// A refusal means the session is already gone, which is the outcome the user
+				// asked for, so the local file still goes. Anything else — the provider was not
+				// reachable — leaves the session alive, and a silent logout would hide that.
+				if _, refused := errors.AsType[client.HttpError](err); !refused {
 					return err
 				}
-				slog.Debug("the identity provider reports the session was already gone", "error", err)
+				slog.DebugContext(ctx, "the identity provider reports the session was already gone", "error", err)
 			}
 		}
 	}
@@ -330,13 +338,4 @@ func (s *Session) Logout(ctx context.Context, revoke bool) error {
 	s.cached, s.current = profile.IssuedToken{}, ""
 	s.mu.Unlock()
 	return s.currentStore().Forget()
-}
-
-func claimString(token, name string) string {
-	claims, err := oidc.Claims(token)
-	if err != nil {
-		return ""
-	}
-	value, _ := claims[name].(string)
-	return value
 }

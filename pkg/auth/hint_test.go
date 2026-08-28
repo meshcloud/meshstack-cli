@@ -8,13 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 )
 
-// TestHintErrExplainsTheTwoFailuresWhoseCauseIsNotInTheErrorText holds the hint table: a 403
-// is explained by the scope the token carried, and a rejected refresh grant by the command
-// that starts a new session. The error itself is returned untouched in every case.
-func TestHintErrExplainsTheTwoFailuresWhoseCauseIsNotInTheErrorText(t *testing.T) {
+// TestHintErrExplainsTheFailureWhoseCauseIsNotInTheErrorText holds the hint table: a 403 is
+// explained by the scope the token carried. The error itself is returned untouched in every case.
+func TestHintErrExplainsTheFailureWhoseCauseIsNotInTheErrorText(t *testing.T) {
 	forbidden := client.HttpError{StatusCode: 403, ResponseBody: []byte("Access denied")}
 
 	t.Run("a 403 with a workspace-scoped login names the workspace", func(t *testing.T) {
@@ -59,18 +57,6 @@ func TestHintErrExplainsTheTwoFailuresWhoseCauseIsNotInTheErrorText(t *testing.T
 		warnings := logs.warnings()
 		require.Len(t, warnings, 1)
 		assert.Contains(t, warnings[0], "does not reach that object")
-	})
-
-	t.Run("a rejected refresh grant names meshstack login", func(t *testing.T) {
-		isolate(t)
-		logs := captureLogs(t)
-
-		err := fmt.Errorf("renewing: %w", oidc.ErrRefreshRejected)
-		require.ErrorIs(t, HintErr(err, nil), oidc.ErrRefreshRejected)
-
-		warnings := logs.warnings()
-		require.Len(t, warnings, 1)
-		assert.Contains(t, warnings[0], "meshstack login")
 	})
 
 	t.Run("anything else is passed through in silence", func(t *testing.T) {

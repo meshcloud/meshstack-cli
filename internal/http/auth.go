@@ -11,8 +11,8 @@ import (
 // resulting token in memory only, which is exactly why it could not stay: it had no way to
 // write the minted token into a profile, so every CLI invocation and every Terraform provider
 // run re-minted one. pkg/auth is now the single place that mints, caches and persists, for all
-// three authentication methods — and because a token no longer needs an Client to produce
-// it, an Authorization can finally be implemented from outside client/.
+// three authentication methods — and because a token no longer needs a Client to produce it,
+// an Authorization can finally be implemented from outside client/.
 type Authorization interface {
 	// BearerToken returns the token to send, without the "Bearer " prefix.
 	BearerToken(ctx context.Context) (string, error)

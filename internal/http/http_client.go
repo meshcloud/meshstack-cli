@@ -12,89 +12,74 @@ import (
 	"net/url"
 	"reflect"
 	"slices"
-	"strings"
 	"time"
 )
 
-// requestTimeout bounds one request, retries included, on top of whatever deadline the caller's
-// context carries. It exists for the case a server accepts the connection and then goes quiet,
-// which no context deadline covers unless the caller set one. A caller that needs a tighter
-// bound — the OIDC exchanges do — sets a context deadline instead of asking for another client.
-const requestTimeout = 2 * time.Minute
+// sharedClient is the only place where instance of &gohttp.Client is created, allowing for connection pooling a
+// and consistent management of retry config / timeouts.
+var sharedClient = func() (client *gohttp.Client) {
+	client = &gohttp.Client{
+		// Timeout covers the whole request (from connect to receiving response body) and is an upper limit.
+		Timeout: 1 * time.Minute,
+	}
+	RetryOptions{
+		// Sized to ride out a full meshStack backend restart, which can leave the gateway
+		// returning 503 for two to three minutes. This backoff sequence sums to about four
+		// minutes: 1+2+4+8+16+30*7 seconds.
+		MaxRetries: 12,
+		Backoff:    ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
+	}.ApplyTo(client)
+	return
+}()
 
-// sharedClient is the one HTTP client in the process. Nothing else builds one; .golangci.yml
-// holds that rule and says why.
-//
-// It carries the retry transport for everyone, which is safe because retrying is decided per
-// request rather than per client: GET, PUT and DELETE are replayed, and every other method only
-// if the caller asked with Retryable. So the OIDC refresh grant reaches this client and is never
-// replayed, which matters — a refresh grant rotates the refresh token, and keycloak ends the
-// whole session when one is reused.
-var sharedClient = withRetry(&gohttp.Client{Timeout: requestTimeout}, retryOptions{
-	// Sized to ride out a full meshStack backend restart, which can leave the gateway
-	// returning 503 for two to three minutes. This backoff sequence sums to about four
-	// minutes: 1+2+4+8+16+30*7 seconds.
-	MaxRetries: 12,
-	Backoff:    ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
-})
-
-// NewClient addresses one API with one identity. The client underneath is shared with every
-// other target, so what this adds is the root URL, the user agent and the authorization — the
-// three things that differ per API, and the reason this is not one value for the whole process.
-func NewClient(rootUrl *url.URL, userAgent string, auth Authorization) Client {
-	return Client{sharedClient, rootUrl, userAgent, auth}
+func NewClient(userAgent string, auth Authorization) Client {
+	return Client{sharedClient, userAgent, auth}
 }
 
-// Client addresses one API over the process's shared [gohttp.Client], adding the root URL,
-// the user agent and the authorization, and request handling through RequestOption.
 type Client struct {
 	*gohttp.Client
-	RootUrl       *url.URL
 	UserAgent     string
 	Authorization Authorization
 }
 
-func DoAuthorizedRequest[R any](ctx context.Context, c Client, method string, url *url.URL, options ...RequestOption) (result R, err error) {
+func (c Client) DoAuthorizedRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (result R, err error) {
 	if c.Authorization == nil {
 		return result, fmt.Errorf("cannot do authorized request with unconfigured authorization")
-	}
-	token, err := c.Authorization.BearerToken(ctx)
-	if err != nil {
-		return result, err
 	}
 	withAuthBearerToken := func(token string) []RequestOption {
 		return append(options, withHeader("Authorization", "Bearer "+token))
 	}
-	result, err = DoRequest[R](ctx, c, method, url, withAuthBearerToken(token)...)
+
+	cachedToken, tokenErr := c.Authorization.BearerToken(ctx)
+	if tokenErr != nil {
+		return result, tokenErr
+	}
+	result, err = c.DoRequest[R](ctx, method, url, withAuthBearerToken(cachedToken)...)
 
 	// A 401 on a token the authorization believed valid forces exactly one refresh. The
 	// renewal grace window covers a request issued just before expiry and modest clock skew,
 	// but not a clock that is minutes wrong — which containers with a frozen clock really are.
 	// One bounded retry turns that from a confusing failure into a hiccup. Re-running DoRequest
 	// is safe because buildRequest encodes the payload afresh on every call.
-	httpErr, isHttpErr := errors.AsType[Error](err)
-	if !isHttpErr || !httpErr.IsUnauthorized() {
-		return result, err
+	if httpErr, ok := errors.AsType[Error](err); ok && httpErr.IsUnauthorized() {
+		refreshedToken, refreshErr := c.Authorization.RefreshBearerToken(ctx, cachedToken)
+		switch {
+		case refreshErr != nil:
+			return result, errors.Join(err, fmt.Errorf("cannot renew the rejected token: %w", refreshErr))
+		case refreshedToken == cachedToken:
+			return result, err
+		}
+		slog.DebugContext(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
+		return c.DoRequest[R](ctx, method, url, withAuthBearerToken(refreshedToken)...)
 	}
-	refreshed, refreshErr := c.Authorization.RefreshBearerToken(ctx, token)
-	switch {
-	case refreshErr != nil:
-		// Both errors travel: the 401 is what the caller's request ran into, and the renewal
-		// failure is what says why nothing better could be tried.
-		return result, errors.Join(err, fmt.Errorf("cannot renew the rejected token: %w", refreshErr))
-	case refreshed == token:
-		// A refresh that produced the same token has nothing new to try, so the 401 stands.
-		return result, err
-	}
-	slog.DebugContext(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
-	return DoRequest[R](ctx, c, method, url, withAuthBearerToken(refreshed)...)
+	return result, err
 }
 
 // DoRequest sends one request and parses the answer as JSON. A non-2xx status is an Error
 // carrying that status and the response body, so a caller that reads an error document — the OIDC
 // endpoints answer one, and it is the only thing that says which refusal it was — takes it from
 // there rather than from a second request.
-func DoRequest[R any](ctx context.Context, c Client, method string, url *url.URL, options ...RequestOption) (result R, err error) {
+func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (result R, err error) {
 	var body []byte
 	body, err = c.doRequest(ctx, method, url, options)
 	if err != nil {
@@ -112,21 +97,9 @@ func DoRequest[R any](ctx context.Context, c Client, method string, url *url.URL
 		return
 	}
 	if err = json.Unmarshal(body, &result); err != nil {
-		// The body travels with the error. A 2xx that is not the document the caller asked for is
-		// usually something other than the API answering — a proxy, a captive portal, an SSO login
-		// page — and the body is the only thing that says so.
-		err = fmt.Errorf("cannot parse the answer of %s %s as JSON: %w: %s", method, url, err, excerpt(body))
+		err = fmt.Errorf("parsing response body as JSON failed: %w", err)
 	}
 	return
-}
-
-// excerpt makes a response body fit in one line of an error message.
-func excerpt(body []byte) string {
-	line := strings.Join(strings.Fields(string(body)), " ")
-	if len(line) > 200 {
-		return line[:200] + "..."
-	}
-	return line
 }
 
 func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {
@@ -137,10 +110,7 @@ func (c Client) doRequest(ctx context.Context, method string, url *url.URL, opti
 	for _, option := range options {
 		option(&opts)
 	}
-	if opts.optionErr != nil {
-		return nil, opts.optionErr
-	}
-	req, err := c.buildRequest(ctx, method, *url, opts)
+	req, err := c.buildRequest(ctx, method, url, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -171,39 +141,28 @@ func (c Client) readBodyAndCheckSuccess(ctx context.Context, res *gohttp.Respons
 	}
 }
 
-func (c Client) buildRequest(ctx context.Context, method string, url url.URL, opts requestOptions) (*gohttp.Request, error) {
-	if len(opts.extraPathElems) > 0 {
-		url = *url.JoinPath(opts.extraPathElems...)
-	}
-
-	if len(opts.urlQueryParams) > 0 {
-		query := url.Query()
-		for k, v := range opts.urlQueryParams {
-			query.Set(k, v)
-		}
-		url.RawQuery = query.Encode()
-	}
-
+func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, opts requestOptions) (*gohttp.Request, error) {
 	var requestBody io.ReadWriter
-	switch {
-	case opts.requestPayload != nil:
-		requestBody = new(bytes.Buffer)
-		if err := json.NewEncoder(requestBody).Encode(opts.requestPayload); err != nil {
-			return nil, fmt.Errorf("failed to encode request body payload: %w", err)
+	if opts.requestPayload != nil {
+		requestBodyData, err := opts.requestPayload()
+		if err != nil {
+			return nil, fmt.Errorf("cannot build request body data: %w", err)
 		}
-	case opts.rawPayload != nil:
-		requestBody = bytes.NewBuffer(opts.rawPayload)
+		requestBody = bytes.NewBuffer(requestBodyData)
 	}
 
 	if opts.retryable {
 		ctx = context.WithValue(ctx, retryableKey{}, true)
 	}
+
 	req, err := gohttp.NewRequestWithContext(ctx, method, url.String(), requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	for _, requestModifier := range opts.requestModifiers {
-		requestModifier(req)
+	for _, modifier := range opts.requestModifiers {
+		if err := modifier(req); err != nil {
+			return nil, err
+		}
 	}
 	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header), "body", loggedBody{requestBody})
 	return req, err

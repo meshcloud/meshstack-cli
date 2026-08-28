@@ -24,7 +24,6 @@ package auth
 
 import (
 	"context"
-	"time"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
@@ -63,7 +62,7 @@ type Input interface {
 // during a plan. A depguard rule keeps pkg/oidc/browser out of everything under pkg/, which
 // makes that a compile-time guarantee rather than a promise.
 type Browser interface {
-	Login(ctx context.Context, cfg oidc.ClientConfig) (refreshToken, accessToken string, expiresIn time.Duration, err error)
+	Login(ctx context.Context, cfg oidc.Client) (oidc.Token, error)
 }
 
 // Values are the configuration items a front end may supply directly. They sit at the top

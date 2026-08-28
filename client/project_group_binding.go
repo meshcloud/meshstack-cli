@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshProjectGroupBinding struct {
@@ -21,7 +20,7 @@ type meshProjectGroupBindingClient struct {
 	meshObject internal.MeshObjectClient[MeshProjectGroupBinding]
 }
 
-func newProjectGroupBindingClient(ctx context.Context, httpClient http.Client) MeshProjectGroupBindingClient {
+func newProjectGroupBindingClient(ctx context.Context, httpClient internal.HttpClient) MeshProjectGroupBindingClient {
 	return meshProjectGroupBindingClient{internal.NewMeshObjectClient[MeshProjectGroupBinding](ctx, httpClient, "v3", "meshprojectbindings", "groupbindings")}
 }
 

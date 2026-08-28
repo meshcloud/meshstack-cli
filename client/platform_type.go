@@ -56,7 +56,7 @@ type meshPlatformTypeClient struct {
 	meshObject internal.MeshObjectClient[MeshPlatformType]
 }
 
-func newPlatformTypeClient(ctx context.Context, httpClient http.Client) MeshPlatformTypeClient {
+func newPlatformTypeClient(ctx context.Context, httpClient internal.HttpClient) MeshPlatformTypeClient {
 	return meshPlatformTypeClient{internal.NewMeshObjectClient[MeshPlatformType](ctx, httpClient, "v1")}
 }
 

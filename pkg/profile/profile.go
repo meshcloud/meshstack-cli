@@ -22,8 +22,9 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"go.yaml.in/yaml/v3"
+	"github.com/goccy/go-yaml"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -60,7 +61,7 @@ type Config struct {
 // credentials live in their own file, which is what keeps a renewal from locking this
 // one.
 type Profile struct {
-	Endpoint         string         `yaml:"endpoint"`
+	Endpoint         *xurl.URL      `yaml:"endpoint,omitempty"`
 	DefaultWorkspace workspace.Name `yaml:"defaultWorkspace,omitempty"`
 }
 

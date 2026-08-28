@@ -57,11 +57,16 @@ jobs:
           # from the toolchain on PATH. The published binaries are built with whatever Go
           # was current at release time, which made 'version: latest' with install-mode
           # 'binary' enforce a different gofmt than the pinned Go: 1.27 widens end-of-line
-          # comment alignment groups, and 1.26 rejects the result, so the two disagree with
-          # no formatting that satisfies both. Building the linter here with go.mod's Go
-          # ties formatting to the version the code is written against.
+          # comment alignment groups, and 1.26 rejected the result, so the two disagreed
+          # with no formatting that satisfies both. Building the linter here with go.mod's
+          # Go ties formatting to the version the code is written against.
+          #
+          # The version tracks what nixpkgs-unstable packages, because that is the binary a
+          # developer gets from flake.nix, and it must be one that supports the pinned Go:
+          # v2.13.0 is where golangci-lint added Go 1.27, and nixpkgs builds v2.13.1 with
+          # Go 1.27 too.
           install-mode: goinstall
-          version: v2.13.0
+          version: v2.13.1
           # Deliberately no only-new-issues: this repository starts clean and CI keeps it
           # that way, so filtering to changed code cannot help and can only hide a finding.
           # It hid this one, and still hides it in the provider's identical job.

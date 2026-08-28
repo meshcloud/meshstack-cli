@@ -1,9 +1,10 @@
 package auth
 
 import (
-	"net/url"
 	"os"
 	"strings"
+
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 )
 
 // The environment layer of the precedence order. The names are private, because no
@@ -19,13 +20,16 @@ const (
 	envApiKey    = "MESHSTACK_API_KEY"
 	envApiSecret = "MESHSTACK_API_SECRET"
 	envApiToken  = "MESHSTACK_API_TOKEN"
-	envProfile   = "MESHSTACK_PROFILE"
+	// TODO move that to profile package.
+	envProfile = "MESHSTACK_PROFILE"
 )
 
 // DefaultProfile is the built-in default at the bottom of the precedence order, and the
 // profile every front end lands in when nothing else names one.
+// TODO move that to profile package?
 const DefaultProfile = "default"
 
+// TODO user agent should be defined from cmd package when building client.
 // userAgent identifies this package on the two requests it makes without the API client: the
 // API key exchange and the OIDC grants.
 const userAgent = "meshstack-cli"
@@ -64,14 +68,15 @@ func pick(explicit, envKey string) (value string, from source, detail string) {
 // sameEndpoint compares two endpoints by scheme, host and port, with a case-folded host and
 // any trailing slash removed. Everything that selects or checks a profile by endpoint goes
 // through it, so "https://api.example.com/" and "https://API.example.com" are one endpoint.
-func sameEndpoint(a, b string) bool {
+func sameEndpoint(a, b xurl.URL) bool {
 	return canonicalEndpoint(a) == canonicalEndpoint(b) && canonicalEndpoint(a) != ""
 }
 
-func canonicalEndpoint(raw string) string {
-	parsed, err := url.Parse(strings.TrimSuffix(strings.TrimSpace(raw), "/"))
-	if err != nil || parsed.Host == "" {
+// canonicalEndpoint compares scheme and host only, and case-insensitively, so that a path or
+// a capitalised host does not make one meshStack look like two.
+func canonicalEndpoint(u xurl.URL) string {
+	if u.Host == "" {
 		return ""
 	}
-	return strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
+	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host)
 }

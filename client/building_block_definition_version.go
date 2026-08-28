@@ -193,7 +193,7 @@ type meshBuildingBlockDefinitionVersionClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinitionVersion]
 }
 
-func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient http.Client) MeshBuildingBlockDefinitionVersionClient {
+func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockDefinitionVersionClient {
 	return meshBuildingBlockDefinitionVersionClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinitionVersion](ctx, httpClient, "v1-preview"),
 	}

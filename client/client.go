@@ -2,10 +2,9 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"net/url"
-	"os"
 
+	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/version"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
@@ -17,6 +16,11 @@ var MinMeshStackVersion = version.MustParse("2026.35.0")
 type HttpError = http.Error
 
 type Client struct {
+	// Endpoint is the meshStack this client was built against. It is the one thing here that is
+	// not a sub-client, and it is here because nothing else keeps it: pkg/auth resolves it from a
+	// block, the environment or a profile, and the sub-clients below only carry the API URLs they
+	// derived from it. The Terraform provider renders it as meshstack_instance.endpoint.
+	Endpoint                       string
 	ApiKey                         MeshApiKeyClient
 	BuildingBlock                  MeshBuildingBlockClient
 	BuildingBlockV2                MeshBuildingBlockV2Client
@@ -42,29 +46,30 @@ type Client struct {
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 }
 
-// Authorization produces the bearer token for each request, and replaces one the meshStack
-// API answered with a 401. pkg/auth holds the implementation that mints, caches and persists
-// tokens; see client/internal/auth.go for why that work is not in this package any more.
+// NewMeshInfoClient is a little adapter for pkg/oidc to build the oidc.Client after discovering OIDC config from meshstack instance.
+func NewMeshInfoClient(ctx context.Context, rootUrl *url.URL, httpClient http.Client) MeshInfoClient {
+	return newMeshInfoClient(internal.HttpClient{RootUrl: rootUrl, Client: httpClient})
+}
+
+// Authorization produces the (cached) bearer token for each request (and keeps it refreshed transparently).
 type Authorization = http.Authorization
 
-// NewApiTokenAuthorization carries a token somebody else obtained. Nothing renews it, so it
-// expires during long-running work; pkg/auth is what a caller with a credential wants.
+// NewApiTokenAuthorization carries a token somebody else obtained. Nothing refreshes it, so it
+// might expire during long-running work.
 func NewApiTokenAuthorization(apiToken string) Authorization {
 	return http.BearerTokenAuthorization{Token: apiToken}
 }
 
 func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authorization) (Client, error) {
-	// Retries are not configured here any more. The process has one HTTP client, it carries the
-	// retry policy for every caller, and which requests may be replayed is decided per request
-	// rather than per client — see internal/http.
-	httpClient := http.NewClient(rootUrl, userAgent, auth)
+	httpClient := internal.HttpClient{RootUrl: rootUrl, Client: http.NewClient(userAgent, auth)}
 
-	meshInfoClient := newMeshInfoClient(httpClient)
-	if err := checkMeshVersion(ctx, meshInfoClient); err != nil {
+	infoClient := newMeshInfoClient(httpClient)
+	if err := infoClient.checkMeshVersion(ctx); err != nil {
 		return Client{}, err
 	}
 
 	return Client{
+		Endpoint:                       rootUrl.String(),
 		ApiKey:                         newApiKeyClient(ctx, httpClient),
 		BuildingBlock:                  newBuildingBlockClient(ctx, httpClient),
 		BuildingBlockV2:                newBuildingBlockV2Client(ctx, httpClient),
@@ -75,7 +80,7 @@ func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authoriza
 		Integration:                    newIntegrationClient(ctx, httpClient),
 		LandingZone:                    newLandingZoneClient(ctx, httpClient),
 		Location:                       newLocationClient(ctx, httpClient),
-		MeshInfo:                       meshInfoClient,
+		MeshInfo:                       infoClient,
 		PaymentMethod:                  newPaymentMethodClient(ctx, httpClient),
 		Platform:                       newPlatformClient(ctx, httpClient),
 		PlatformType:                   newPlatformTypeClient(ctx, httpClient),
@@ -89,26 +94,4 @@ func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authoriza
 		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, httpClient),
 		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, httpClient),
 	}, nil
-}
-
-func checkMeshVersion(ctx context.Context, meshInfoClient MeshInfoClient) error {
-	// Skip before the request, not just before the comparison: /mesh/info is a GET on the retrying
-	// client, so an unavailable backend blocks provider configuration for the whole retry budget
-	// (~4 minutes) and then fails it. Opting out of the check has to opt out of that too.
-	if os.Getenv("MESHSTACK_SKIP_VERSION_CHECK") == "true" {
-		return nil
-	}
-
-	info, err := meshInfoClient.Read(ctx)
-	if err != nil {
-		return err
-	}
-	meshVersion, err := version.Parse(info.Version)
-	if err != nil {
-		return fmt.Errorf("failed to parse meshStack version %q: %w", info.Version, err)
-	}
-	if meshVersion.Less(MinMeshStackVersion) {
-		return fmt.Errorf("unsupported meshStack version: meshStack is running version %s, but this client requires version %s or higher", meshVersion, MinMeshStackVersion)
-	}
-	return nil
 }

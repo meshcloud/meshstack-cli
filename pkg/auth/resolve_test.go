@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -32,7 +33,7 @@ func TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				isolate(t)
 				writeConfig(t, "default", map[string]profile.Profile{
-					"default": {Endpoint: "https://profile.example.com"},
+					"default": {Endpoint: mustUrl("https://profile.example.com")},
 				})
 				t.Setenv(envEndpoint, test.env)
 
@@ -71,7 +72,7 @@ func TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				isolate(t)
 				writeConfig(t, "default", map[string]profile.Profile{
-					"default": {Endpoint: "https://api.example.com", DefaultWorkspace: "from-profile"},
+					"default": {Endpoint: mustUrl("https://api.example.com"), DefaultWorkspace: "from-profile"},
 				})
 				t.Setenv("MESHSTACK_WORKSPACE", test.env)
 
@@ -83,7 +84,7 @@ func TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault(t *testing.T) {
 		t.Run("there is no built-in default workspace", func(t *testing.T) {
 			isolate(t)
 			writeConfig(t, "default", map[string]profile.Profile{
-				"default": {Endpoint: "https://api.example.com"},
+				"default": {Endpoint: mustUrl("https://api.example.com")},
 			})
 
 			session := resolved(t, &fakeInput{})
@@ -108,10 +109,10 @@ func TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				isolate(t)
 				writeConfig(t, test.current, map[string]profile.Profile{
-					"named":    {Endpoint: "https://named.example.com"},
-					"from-env": {Endpoint: "https://from-env.example.com"},
-					"current":  {Endpoint: "https://current.example.com"},
-					"default":  {Endpoint: "https://default.example.com"},
+					"named":    {Endpoint: mustUrl("https://named.example.com")},
+					"from-env": {Endpoint: mustUrl("https://from-env.example.com")},
+					"current":  {Endpoint: mustUrl("https://current.example.com")},
+					"default":  {Endpoint: mustUrl("https://default.example.com")},
 				})
 				t.Setenv(envProfile, test.env)
 
@@ -130,7 +131,7 @@ func TestAnApiTokenInTheEnvironmentResolvesToManualInMemoryAndWritesNothing(t *t
 	t.Setenv(envEndpoint, "https://api.example.com")
 	t.Setenv(envApiToken, "pasted-token")
 
-	in := &fakeInput{token: "pasted-token"}
+	in := &fakeInput{token: fakeToken("pasted-token")}
 	session := resolved(t, in)
 
 	require.Equal(t, method.Manual, session.Method())
@@ -142,7 +143,7 @@ func TestAnApiTokenInTheEnvironmentResolvesToManualInMemoryAndWritesNothing(t *t
 	// Using the token has to leave the directory empty too, not just resolving it.
 	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "pasted-token", token)
+	require.Equal(t, fakeToken("pasted-token"), token)
 
 	requireNothingStored(t, at)
 }
@@ -166,7 +167,7 @@ func TestAnApiKeyAndSecretInTheEnvironmentResolveToApiKeyInMemoryAndWriteNothing
 
 	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
-	require.Equal(t, "api-key-token-1", token)
+	require.Equal(t, "api-key-token-1", tokenId(token))
 
 	requireNothingStored(t, at)
 }
@@ -177,11 +178,11 @@ func TestAnApiKeyAndSecretInTheEnvironmentResolveToApiKeyInMemoryAndWriteNothing
 func TestAWholeCredentialNeverOverwritesAProfile(t *testing.T) {
 	stack := newMeshStack(t)
 	isolate(t)
-	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: stack.URL.String()}})
+	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl(stack.URL.String())}})
 	writeCredentials(t, profile.Credentials{
-		Endpoint:      stack.URL.String(),
+		Endpoint:      mustUrl(stack.URL.String()),
 		CurrentMethod: method.Login,
-		Methods:       profile.Methods{Login: &profile.LoginMethod{Issuer: stack.URL.String(), RefreshToken: "somebody-elses-login"}},
+		Methods:       profile.Methods{Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "somebody-elses-login"}},
 	})
 	path, err := profile.CredentialsPath("default")
 	require.NoError(t, err)
@@ -225,11 +226,11 @@ func TestWithoutAWholeCredentialResolutionFallsToTheProfile(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			isolate(t)
 			writeConfig(t, test.current, map[string]profile.Profile{
-				"named":    {Endpoint: "https://named.example.com"},
-				"from-env": {Endpoint: "https://from-env.example.com"},
-				"matched":  {Endpoint: "https://matched.example.com"},
-				"current":  {Endpoint: "https://current.example.com"},
-				"default":  {Endpoint: "https://default.example.com"},
+				"named":    {Endpoint: mustUrl("https://named.example.com")},
+				"from-env": {Endpoint: mustUrl("https://from-env.example.com")},
+				"matched":  {Endpoint: mustUrl("https://matched.example.com")},
+				"current":  {Endpoint: mustUrl("https://current.example.com")},
+				"default":  {Endpoint: mustUrl("https://default.example.com")},
 			})
 			t.Setenv(envProfile, test.envName)
 			t.Setenv(envEndpoint, test.envHost)
@@ -248,8 +249,8 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 	t.Run("exactly one match is used and warns once", func(t *testing.T) {
 		isolate(t)
 		writeConfig(t, "", map[string]profile.Profile{
-			"live":  {Endpoint: "https://api.live.example.com"},
-			"other": {Endpoint: "https://api.other.example.com"},
+			"live":  {Endpoint: mustUrl("https://api.live.example.com")},
+			"other": {Endpoint: mustUrl("https://api.other.example.com")},
 		})
 		// The comparison is by scheme, host and port, so case and a trailing slash do not
 		// stop a profile from matching.
@@ -270,9 +271,9 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 	t.Run("several matches stop and name --profile", func(t *testing.T) {
 		isolate(t)
 		writeConfig(t, "", map[string]profile.Profile{
-			"alpha": {Endpoint: "https://api.live.example.com"},
-			"beta":  {Endpoint: "https://api.live.example.com/"},
-			"other": {Endpoint: "https://api.other.example.com"},
+			"alpha": {Endpoint: mustUrl("https://api.live.example.com")},
+			"beta":  {Endpoint: mustUrl("https://api.live.example.com/")},
+			"other": {Endpoint: mustUrl("https://api.other.example.com")},
 		})
 		t.Setenv(envEndpoint, "https://api.live.example.com")
 
@@ -289,7 +290,7 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 
 	t.Run("no match and no whole credential names the endpoint", func(t *testing.T) {
 		isolate(t)
-		writeConfig(t, "", map[string]profile.Profile{"other": {Endpoint: "https://api.other.example.com"}})
+		writeConfig(t, "", map[string]profile.Profile{"other": {Endpoint: mustUrl("https://api.other.example.com")}})
 		t.Setenv(envEndpoint, "https://api.nowhere.example.com")
 
 		_, err := Resolve(t.Context(), &fakeInput{})
@@ -301,7 +302,7 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 
 	t.Run("no match with a whole credential keeps CI working", func(t *testing.T) {
 		at := isolate(t)
-		writeConfig(t, "", map[string]profile.Profile{"other": {Endpoint: "https://api.other.example.com"}})
+		writeConfig(t, "", map[string]profile.Profile{"other": {Endpoint: mustUrl("https://api.other.example.com")}})
 		t.Setenv(envEndpoint, "https://api.nowhere.example.com")
 		t.Setenv(envApiKey, "key-42")
 		t.Setenv(envApiSecret, testSecret)
@@ -323,7 +324,7 @@ func TestAnUnknownProfileFailsExceptWhenLoggingIn(t *testing.T) {
 
 	t.Run("an ordinary command refuses to create one", func(t *testing.T) {
 		at := isolate(t)
-		writeConfig(t, "", map[string]profile.Profile{"live": {Endpoint: "https://api.example.com"}})
+		writeConfig(t, "", map[string]profile.Profile{"live": {Endpoint: mustUrl("https://api.example.com")}})
 
 		_, err := Resolve(t.Context(), newInput())
 		p := problemOf(t, err)
@@ -335,7 +336,7 @@ func TestAnUnknownProfileFailsExceptWhenLoggingIn(t *testing.T) {
 
 	t.Run("auth login accepts a name that does not exist yet", func(t *testing.T) {
 		isolate(t)
-		writeConfig(t, "", map[string]profile.Profile{"live": {Endpoint: "https://api.example.com"}})
+		writeConfig(t, "", map[string]profile.Profile{"live": {Endpoint: mustUrl("https://api.example.com")}})
 
 		session, err := ResolveForLogin(t.Context(), newInput())
 		require.NoError(t, err)
@@ -349,12 +350,12 @@ func TestAnUnknownProfileFailsExceptWhenLoggingIn(t *testing.T) {
 // stored bearer token from reaching a different meshStack after a profile is repointed.
 func TestACredentialForAnotherEndpointIsRefusedBeforeItIsUsed(t *testing.T) {
 	isolate(t)
-	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: "https://api.new.example.com"}})
+	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl("https://api.new.example.com")}})
 	writeCredentials(t, profile.Credentials{
-		Endpoint:      "https://api.old.example.com",
+		Endpoint:      mustUrl("https://api.old.example.com"),
 		CurrentMethod: method.Manual,
-		AccessTokens: map[workspace.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: "a-token-for-the-old-instance", ExpiresAt: futureExpiry()},
+		AccessTokens: map[scope.Scope]profile.IssuedToken{
+			workspace.Unscoped: {Token: mustJwt(fakeToken("a-token-for-the-old-instance")), ExpiresAt: futureExpiry()},
 		},
 	})
 
@@ -372,15 +373,15 @@ func TestACredentialForAnotherEndpointIsRefusedBeforeItIsUsed(t *testing.T) {
 // disk when it puts it there, and never otherwise.
 func TestResolveForLoginUsesTheProfileStoreEvenWithAWholeCredential(t *testing.T) {
 	isolate(t)
-	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: "https://api.example.com"}})
+	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl("https://api.example.com")}})
 	t.Setenv(envEndpoint, "https://api.example.com")
 	t.Setenv(envApiToken, "pasted-token")
 
-	ordinary := resolved(t, &fakeInput{token: "pasted-token"})
+	ordinary := resolved(t, &fakeInput{token: fakeToken("pasted-token")})
 	require.False(t, ordinary.store.Writable(), "an ordinary command keeps a whole credential in memory")
 	require.Empty(t, ordinary.Profile)
 
-	forLogin, err := ResolveForLogin(t.Context(), &fakeInput{token: "pasted-token"})
+	forLogin, err := ResolveForLogin(t.Context(), &fakeInput{token: fakeToken("pasted-token")})
 	require.NoError(t, err)
 	require.Equal(t, "default", forLogin.Profile)
 	require.True(t, forLogin.store.Writable())
@@ -396,7 +397,7 @@ func TestResolveForLoginUsesTheProfileStoreEvenWithAWholeCredential(t *testing.T
 func TestProfileSuppliesTheEndpointForAnEnvironmentCredential(t *testing.T) {
 	at := isolate(t)
 	writeConfig(t, "dev", map[string]profile.Profile{
-		"dev": {Endpoint: "https://api.dev.example.com", DefaultWorkspace: "from-the-profile"},
+		"dev": {Endpoint: mustUrl("https://api.dev.example.com"), DefaultWorkspace: "from-the-profile"},
 	})
 	t.Setenv(envApiToken, "a-token")
 
@@ -419,7 +420,7 @@ func TestANamedProfileBeatsAnEnvironmentCredential(t *testing.T) {
 		t.Helper()
 		isolate(t)
 		writeConfig(t, "", map[string]profile.Profile{
-			"dev": {Endpoint: "https://api.dev.example.com", DefaultWorkspace: "from-the-profile"},
+			"dev": {Endpoint: mustUrl("https://api.dev.example.com"), DefaultWorkspace: "from-the-profile"},
 		})
 		t.Setenv(envEndpoint, "https://api.env.example.com")
 		t.Setenv(envApiKey, "an-id")

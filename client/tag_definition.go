@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 const API_VERSION_TAG_DEFINITION = "v1"
@@ -80,7 +79,7 @@ type meshTagDefinitionClient struct {
 	meshObject internal.MeshObjectClient[MeshTagDefinition]
 }
 
-func newTagDefinitionClient(ctx context.Context, httpClient http.Client) MeshTagDefinitionClient {
+func newTagDefinitionClient(ctx context.Context, httpClient internal.HttpClient) MeshTagDefinitionClient {
 	return meshTagDefinitionClient{internal.NewMeshObjectClient[MeshTagDefinition](ctx, httpClient, "v1")}
 }
 

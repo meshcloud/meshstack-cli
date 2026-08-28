@@ -293,7 +293,7 @@ type meshBuildingBlockV2Client struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockV2]
 }
 
-func newBuildingBlockV2Client(ctx context.Context, httpClient http.Client) MeshBuildingBlockV2Client {
+func newBuildingBlockV2Client(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockV2Client {
 	return meshBuildingBlockV2Client{internal.NewMeshObjectClient[MeshBuildingBlockV2](ctx, httpClient, "v2-preview")}
 }
 
@@ -323,11 +323,10 @@ func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingB
 }
 
 func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purge bool) error {
-	var options []http.RequestOption
 	if purge {
-		options = append(options, http.WithPathElems("purge"))
+		return c.meshObject.DeleteAtPath(ctx, uuid, "purge")
 	}
-	return c.meshObject.Delete(ctx, uuid, options...)
+	return c.meshObject.Delete(ctx, uuid)
 }
 
 // IsWaitingForInput reports whether the building block run is paused awaiting
@@ -393,15 +392,7 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 	return
 }
 
-func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) error {
-	// trigger-run returns an empty 2xx body; use DoAuthorizedRequest[any] to signal no body expected.
-	// No body is sent, so the backend triggers a normal (non-dry) apply run.
-	_, err := http.DoAuthorizedRequest[any](
-		ctx,
-		c.meshObject.Client,
-		"POST",
-		c.meshObject.ApiUrl.JoinPath(bbUuid, "trigger-run"),
-		http.WithAccept(c.meshObject.MeshObjectMimeType()),
-	)
-	return err
+func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (err error) {
+	_, err = c.meshObject.PostAtPath[any](ctx, nil, bbUuid, "trigger-run")
+	return
 }

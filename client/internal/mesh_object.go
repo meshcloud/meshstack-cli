@@ -16,6 +16,13 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
+type HttpClient struct {
+	http.Client
+	// RootUrl allows convenient passing of the endpoint URL to the typed meshObject clients shared by all Public API calls.
+	// See NewMeshObjectClient.
+	RootUrl *url.URL
+}
+
 // MeshObjectClient provides typed CRUD operations for meshStack API objects.
 // It embeds [http.Client] and adds meshObject-specific functionality including automatic
 // MIME type handling and pagination.
@@ -29,10 +36,11 @@ type MeshObjectClient[M any] struct {
 }
 
 // NewMeshObjectClient creates a new [MeshObjectClient] for a specific meshObject type with automatic URL path inference.
-// The meshObject kind is inferred from type M. T
+// The meshObject kind is inferred from type M.
 // The API URL is constructed from explicitApiPathElems if provided,
-// otherwise the pluralized and lowercased kind is used as a single element.
-func NewMeshObjectClient[M any](ctx context.Context, httpClient http.Client, apiVersion string, explicitApiPathElems ...string) MeshObjectClient[M] {
+// otherwise the pluralized and lowercased kind is used as a single element,
+// which follows conventions only broken by workspace/project user/group bindings API.
+func NewMeshObjectClient[M any](ctx context.Context, httpClient HttpClient, apiVersion string, explicitApiPathElems ...string) MeshObjectClient[M] {
 	kind := InferKind[M]()
 
 	if len(explicitApiPathElems) == 0 {
@@ -41,7 +49,7 @@ func NewMeshObjectClient[M any](ctx context.Context, httpClient http.Client, api
 	explicitApiPathElems = slices.Insert(explicitApiPathElems, 0, "/api/meshobjects")
 	apiUrl := httpClient.RootUrl.JoinPath(explicitApiPathElems...)
 	slog.InfoContext(ctx, fmt.Sprintf("initialized %s client", reflect.TypeFor[M]().Name()), "url", apiUrl.String(), "kind", kind, "version", apiVersion)
-	return MeshObjectClient[M]{httpClient, kind, apiVersion, apiUrl}
+	return MeshObjectClient[M]{httpClient.Client, kind, apiVersion, apiUrl}
 }
 
 var versionSuffixRe = regexp.MustCompile(`V\d+$`)
@@ -77,32 +85,40 @@ func (c MeshObjectClient[M]) MeshObjectMimeType() string {
 
 // Get retrieves a meshObject by ID. Returns nil if not found.
 func (c MeshObjectClient[M]) Get(ctx context.Context, id string) (resp *M, err error) {
-	resp, err = http.DoAuthorizedRequest[*M](ctx, c.Client, http.MethodGet, c.ApiUrl.JoinPath(id), http.WithAccept(c.MeshObjectMimeType()))
+	resp, err = c.GetAtPath[*M](ctx, id)
 	if httpErr, ok := errors.AsType[http.Error](err); ok && httpErr.IsNotFound() {
 		return nil, nil
 	}
 	return
 }
 
+func (c MeshObjectClient[M]) GetAtPath[R any](ctx context.Context, id string, extraPath ...string) (R, error) {
+	return c.DoAuthorizedRequest[R](ctx, http.MethodGet, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.WithAccept(c.MeshObjectMimeType()))
+}
+
 // Post creates a new meshObject with the given payload.
 // Automatically injects apiVersion and kind into the JSON payload.
-func (c MeshObjectClient[M]) Post(ctx context.Context, payload any, options ...http.RequestOption) (*M, error) {
-	return http.DoAuthorizedRequest[*M](
-		ctx,
-		c.Client,
-		http.MethodPost,
-		c.ApiUrl,
-		append(options, c.withMeshObjectPayload(payload))...,
-	)
+func (c MeshObjectClient[M]) Post(ctx context.Context, payload any) (*M, error) {
+	return c.PostAtPath[*M](ctx, payload)
+}
+
+// PostAtPath posts to a sub-path of the meshObject, and sends no body at all for a nil payload:
+// trigger-run is what needs that, and a body would make the backend read it as a dry run.
+func (c MeshObjectClient[M]) PostAtPath[R any](ctx context.Context, payload any, extraPath ...string) (R, error) {
+	options := []http.RequestOption{http.WithAccept(c.MeshObjectMimeType())}
+	if payload != nil {
+		options = append(options, c.withMeshObjectPayload(payload))
+	}
+	return c.DoAuthorizedRequest[R](ctx, http.MethodPost, c.ApiUrl.JoinPath(extraPath...), options...)
 }
 
 // Put updates an existing meshObject by ID with the given payload.
 // Automatically injects apiVersion and kind into the JSON payload.
 func (c MeshObjectClient[M]) Put(ctx context.Context, id string, payload any) (*M, error) {
-	return http.DoAuthorizedRequest[*M](ctx, c.Client, http.MethodPut, c.ApiUrl.JoinPath(id), c.withMeshObjectPayload(payload))
+	return c.DoAuthorizedRequest[*M](ctx, http.MethodPut, c.ApiUrl.JoinPath(id), c.withMeshObjectPayload(payload), http.Retryable())
 }
 
-// withMeshObjectPayload returns a http.RequestOption that sets the payload with apiVersion and kind injected,
+// withMeshObjectPayload returns http.RequestOption that sets the payload with apiVersion and kind injected,
 // using the meshObject MIME type for content negotiation.
 // Panics on marshal errors which indicates a programming error (payload is always a well-typed struct).
 //
@@ -122,12 +138,16 @@ func (c MeshObjectClient[M]) withMeshObjectPayload(payload any) http.RequestOpti
 	m["apiVersion"] = c.ApiVersion
 	m["kind"] = c.Kind
 
-	return http.WithPayload(m, c.MeshObjectMimeType())
+	return http.WithJsonPayload(m, c.MeshObjectMimeType())
 }
 
 // Delete removes a meshObject by ID.
-func (c MeshObjectClient[M]) Delete(ctx context.Context, id string, options ...http.RequestOption) (err error) {
-	_, err = http.DoAuthorizedRequest[any](ctx, c.Client, http.MethodDelete, c.ApiUrl.JoinPath(id), append(options, http.WithAccept(c.MeshObjectMimeType()))...)
+func (c MeshObjectClient[M]) Delete(ctx context.Context, id string) (err error) {
+	return c.DeleteAtPath(ctx, id)
+}
+
+func (c MeshObjectClient[M]) DeleteAtPath(ctx context.Context, id string, extraPath ...string) (err error) {
+	_, err = c.DoAuthorizedRequest[any](ctx, http.MethodDelete, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.Retryable(), http.WithAccept(c.MeshObjectMimeType()))
 	return
 }
 
@@ -146,7 +166,7 @@ func (c MeshObjectClient[M]) List(ctx context.Context, options ...http.RequestOp
 				Number     int `json:"number"`
 			} `json:"page"`
 		}
-		response, err := http.DoAuthorizedRequest[paginatedResponse](ctx, c.Client, http.MethodGet, c.ApiUrl, append(options,
+		response, err := c.DoAuthorizedRequest[paginatedResponse](ctx, http.MethodGet, c.ApiUrl, append(options,
 			http.WithAccept(c.MeshObjectMimeType()),
 			http.WithUrlQuery(map[string]any{"page": pageNumber}),
 		)...)

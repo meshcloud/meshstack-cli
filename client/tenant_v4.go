@@ -124,7 +124,7 @@ type meshTenantClient struct {
 	meshObject internal.MeshObjectClient[MeshTenant]
 }
 
-func newTenantClient(ctx context.Context, httpClient http.Client) MeshTenantClient {
+func newTenantClient(ctx context.Context, httpClient internal.HttpClient) MeshTenantClient {
 	return meshTenantClient{internal.NewMeshObjectClient[MeshTenant](ctx, httpClient, "v4")}
 }
 

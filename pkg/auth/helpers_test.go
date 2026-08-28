@@ -20,7 +20,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 )
 
@@ -153,9 +155,30 @@ func problemOf(t *testing.T, err error) diags.Problem {
 	return p
 }
 
+// tokenId reads back the name fakeToken or the fake /api/login gave a token, so an assertion
+// can name it without depending on the exp claim minted beside it.
+func tokenId(raw string) string {
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return raw
+	}
+	payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
+	var claims struct {
+		Jti string `json:"jti"`
+	}
+	_ = json.Unmarshal(payload, &claims)
+	return claims.Jti
+}
+
+// fakeToken is an access token identified by a name a test can assert on. Every access token
+// is a JWT, including a pasted one, so a test cannot use a bare string for one.
+func fakeToken(id string) string {
+	return fakeJwt(map[string]any{"jti": id})
+}
+
 // jwt builds a token whose payload holds the given claims. Nothing verifies a signature, so
 // "x.<payload>.y" is a token as far as anything here is concerned.
-func jwt(claims map[string]any) string {
+func fakeJwt(claims map[string]any) string {
 	payload, _ := json.Marshal(claims)
 	return "x." + base64.RawURLEncoding.EncodeToString(payload) + ".y"
 }
@@ -220,8 +243,13 @@ func newMeshStack(t *testing.T) *fakeMeshStack {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"access_token": fmt.Sprintf("api-key-token-%d", count),
-			"expires_in":   expires,
+			// The deadline is in the token, in its exp claim, which is where pkg/auth reads
+			// it from. expires_in is sent as well because meshStack sends it.
+			"access_token": fakeJwt(map[string]any{
+				"jti": fmt.Sprintf("api-key-token-%d", count),
+				"exp": time.Now().Add(time.Duration(expires) * time.Second).Unix(),
+			}),
+			"expires_in": expires,
 		})
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +283,7 @@ func refreshFromScope(form url.Values) (int, map[string]any) {
 		}
 	}
 	return http.StatusOK, map[string]any{
-		"access_token": jwt(map[string]any{
+		"access_token": fakeJwt(map[string]any{
 			"MC_CUSTOMER":        name,
 			"preferred_username": "someone@example.com",
 			"exp":                float64(time.Now().Add(5 * time.Minute).Unix()),
@@ -345,4 +373,22 @@ func (r *logRecorder) warnings() []string {
 		}
 	}
 	return messages
+}
+
+// mustUrl and mustJwt build the two parsing types the stored files hold. Both panic on input
+// a test wrote wrong, which is a test bug rather than a case worth handling.
+func mustUrl(raw string) *xurl.URL {
+	parsed := &xurl.URL{}
+	if err := parsed.UnmarshalText([]byte(raw)); err != nil {
+		panic(err)
+	}
+	return parsed
+}
+
+func mustJwt(raw string) jwt.JWT {
+	parsed, err := jwt.Parse(raw)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
 }

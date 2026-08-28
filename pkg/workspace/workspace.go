@@ -25,6 +25,8 @@ import (
 	"errors"
 	"os"
 	"strings"
+
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 )
 
 // Name identifies a workspace. meshStack calls it the workspace identifier.
@@ -32,39 +34,33 @@ type Name string
 
 func (n Name) String() string { return string(n) }
 
-// Scope keys one cached access token in a profile's credentials file. It is either
-// Unscoped or "w:<workspace>"; the prefix is what keeps a workspace whose identifier
-// happens to be "unscoped" from colliding with the unscoped entry.
-//
-// The wire scope stays c:<workspace> because that is what meshfed's MC_CUSTOMER script
-// mapper reads — c for customer, from before workspaces were called workspaces.
-type Scope string
+func (n Name) Empty() bool { return strings.TrimSpace(string(n)) == "" }
 
-const Unscoped Scope = "unscoped"
+const (
+	// Unscoped keys the token of a session that acts in no workspace. It is not a scope any
+	// grant asks for: a request that names no workspace sends no c: scope at all.
+	Unscoped scope.Scope = "unscoped"
+	// ClaimKey for workspace reads unexpected, but in the early meshstack days, we had multiple customers instead of workspaces.
+	ClaimKey = "MC_CUSTOMER"
 
-// Scope returns the cache key for a token carrying this workspace. The empty name is
+	envKey = "MESHSTACK_WORKSPACE"
+	// scopePrefix also refers to (obsolete) ClaimKey value, 'c' meaning customer.
+	scopePrefix = "c:"
+)
+
+// Scope returns the cache key for a token carrying this workspace. An empty name is
 // the unscoped token.
-func (n Name) Scope() Scope {
-	if n == "" {
+func (n Name) Scope() scope.Scope {
+	if n.Empty() {
 		return Unscoped
 	}
-	return Scope("w:" + n)
-}
-
-// WireScope returns the value of the OAuth scope parameter that mints a token for this
-// workspace. The empty name asks for an unscoped token.
-func (n Name) WireScope() string {
-	if n == "" {
-		return "openid"
-	}
-	return "openid c:" + string(n)
+	return scope.Scope(scopePrefix + string(n))
 }
 
 // envKey is private, so that no front end assembles a sentence out of a constant it
 // imported. Every message that has to name the variable is produced here.
-const envKey = "MESHSTACK_WORKSPACE"
 
-// FromEnv reads the workspace from the environment, or returns the empty name.
+// FromEnv reads the workspace from the environment, or returns an empty name.
 func FromEnv() Name {
 	return Name(strings.TrimSpace(os.Getenv(envKey)))
 }

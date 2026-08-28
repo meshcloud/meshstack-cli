@@ -15,26 +15,15 @@ type (
 	RequestOption func(opts *requestOptions)
 
 	requestOptions struct {
-		urlQueryParams   map[string]string
-		extraPathElems   []string
-		requestPayload   any
-		rawPayload       []byte
 		retryable        bool
+		requestPayload   func() ([]byte, error)
 		requestModifiers []requestModifier
-		// optionErr holds the first error produced while applying options (e.g. an unmarshalable
-		// query); doRequest surfaces it instead of building a request from partial options.
-		optionErr error
 	}
-	requestModifier func(req *gohttp.Request)
+	requestModifier func(req *gohttp.Request) error
 )
 
-// retryableKey marks a request its caller declared safe to replay. It travels in the request
-// context rather than in a list the client holds, because gohttp.Client passes the context on to
-// the request it issues for a redirect, and because one client now serves every caller.
-type retryableKey struct{}
-
 // Retryable declares that replaying this request cannot do harm, which is the only way a method
-// other than GET, PUT or DELETE is ever retried.
+// other than GET is ever retried.
 //
 // meshStack's /api/login is the case it exists for: it mints a token from an id and a secret and
 // invalidates nothing, so a replay after a gateway 503 costs one token. Do not put it on a POST
@@ -46,6 +35,11 @@ func Retryable() RequestOption {
 	}
 }
 
+// retryableKey marks a request its caller declared safe to replay. It travels in the request
+// context rather than in a list the client holds, because gohttp.Client passes the context on to
+// the request it issues for a redirect, and because one client now serves every caller.
+type retryableKey struct{}
+
 func isRetryable(ctx context.Context) bool {
 	retryable, _ := ctx.Value(retryableKey{}).(bool)
 	return retryable
@@ -53,7 +47,7 @@ func isRetryable(ctx context.Context) bool {
 
 // WithUrlQuery adds URL query parameters from a query value.
 //
-// The value is JSON-marshalled and decoded into a flat map, so each field becomes a query param
+// The given value is JSON-marshalled and decoded into a flat map, so each field becomes a query param
 // named by its `json` tag. A struct passed by value is the common case: its zero-value fields are
 // dropped (an implicit `omitempty`), so an unset filter needs neither a pointer nor an `omitempty`
 // tag and a zero-value struct adds no params at all. A map[string]string / map[string]any is taken
@@ -61,40 +55,39 @@ func isRetryable(ctx context.Context) bool {
 //
 // Values are stringified with fmt.Sprintf("%v", ...); nested objects or arrays are not supported.
 func WithUrlQuery(query any) RequestOption {
-	return func(opts *requestOptions) {
-		data, err := json.Marshal(query)
+	return appendRequestModifier(func(req *gohttp.Request) error {
+		urlValues, err := convertStructOrMapToUrlValues(query)
 		if err != nil {
-			opts.optionErr = fmt.Errorf("cannot marshal url query of type %T: %w", query, err)
-			return
+			return fmt.Errorf("cannot convert url query: %w", err)
 		}
-		// UseNumber keeps integers (e.g. page) from becoming float64 and gaining a ".0" or exponent.
-		decoder := json.NewDecoder(bytes.NewReader(data))
-		decoder.UseNumber()
-		var params map[string]any
-		if err := decoder.Decode(&params); err != nil {
-			opts.optionErr = fmt.Errorf("cannot decode url query of type %T into a flat map: %w", query, err)
-			return
-		}
-		// Drop zero-value fields only for a struct (passed by value, not by pointer); a map is
-		// passed through as given.
-		skipZero := reflect.ValueOf(query).Kind() == reflect.Struct
-		for key, value := range params {
-			if value == nil || (skipZero && reflect.ValueOf(value).IsZero()) {
-				continue
-			}
-			if opts.urlQueryParams == nil {
-				opts.urlQueryParams = map[string]string{}
-			}
-			opts.urlQueryParams[key] = fmt.Sprintf("%v", value)
-		}
-	}
+		req.URL.RawQuery = urlValues.Encode()
+		return nil
+	})
 }
 
-// WithPathElems appends path elements to the request URL path.
-func WithPathElems(pathElems ...string) RequestOption {
-	return func(opts *requestOptions) {
-		opts.extraPathElems = append(opts.extraPathElems, pathElems...)
+func convertStructOrMapToUrlValues(structOrMap any) (url.Values, error) {
+	data, err := json.Marshal(structOrMap)
+	if err != nil {
+		return nil, fmt.Errorf("cannot marshal type %T: %w", structOrMap, err)
 	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	// UseNumber keeps integers (e.g. page) from becoming float64 and gaining a ".0" or exponent.
+	decoder.UseNumber()
+	var converted map[string]any
+	if err := decoder.Decode(&converted); err != nil {
+		return nil, fmt.Errorf("cannot decode type %T into a flat map: %w", structOrMap, err)
+	}
+	// Drop zero-value fields only for a struct (passed by value, not by pointer); a map is
+	// passed through as given.
+	skipZero := reflect.ValueOf(structOrMap).Kind() == reflect.Struct
+	result := url.Values{}
+	for key, value := range converted {
+		if value == nil || (skipZero && reflect.ValueOf(value).IsZero()) {
+			continue
+		}
+		result[key] = append(result[key], fmt.Sprintf("%v", value))
+	}
+	return result, nil
 }
 
 func appendRequestModifier(modifier requestModifier) RequestOption {
@@ -108,29 +101,43 @@ func WithAccept(accept string) RequestOption {
 }
 
 func withHeader(key, value string) RequestOption {
-	return appendRequestModifier(func(req *gohttp.Request) {
+	return appendRequestModifier(func(req *gohttp.Request) error {
 		req.Header.Set(key, value)
+		return nil
 	})
 }
 
-// WithPayload sends a value as a JSON body, and both sends and asks for the given content type.
+// WithJsonPayload sends a value as a JSON body, and both sends and asks for the given content type.
 // meshStack names a meshObject's kind and version in that type, which is why it is a parameter
 // rather than always application/json.
-func WithPayload(payload any, contentType string) RequestOption {
+func WithJsonPayload(payload any, contentType string) RequestOption {
 	return func(opts *requestOptions) {
+		if payload == nil {
+			return
+		}
 		WithAccept(contentType)(opts)
 		withHeader("Content-Type", contentType)(opts)
-		opts.requestPayload = payload
+		opts.requestPayload = func() ([]byte, error) {
+			return json.Marshal(payload)
+		}
 	}
 }
 
-// WithFormPayload sends an already-encoded form body. The OIDC token endpoint is what needs it:
-// every grant is application/x-www-form-urlencoded, and it answers JSON, so the content type and
-// the accept header disagree here where WithPayload has them agree.
-func WithFormPayload(form url.Values) RequestOption {
+// WithFormPayload sends the values as an url-encoded form body (converted from struct or map, see
+// WithUrlQuery), and asks for JSON in return, which is what every OIDC grant needs.
+func WithFormPayload(payload any) RequestOption {
 	return func(opts *requestOptions) {
+		if payload == nil {
+			return
+		}
 		WithAccept("application/json")(opts)
 		withHeader("Content-Type", "application/x-www-form-urlencoded")(opts)
-		opts.rawPayload = []byte(form.Encode())
+		opts.requestPayload = func() ([]byte, error) {
+			values, err := convertStructOrMapToUrlValues(payload)
+			if err != nil {
+				return nil, fmt.Errorf("cannot convert form payload: %w", err)
+			}
+			return []byte(values.Encode()), nil
+		}
 	}
 }

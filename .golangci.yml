@@ -88,7 +88,7 @@ linters:
     # each confined to a smaller area than the module.
     #
     # The reason to keep it that tight is outside this repository. The meshStack
-    # Terraform provider imports client/ and pkg/login, so every dependency reachable
+    # Terraform provider imports client/ and pkg/auth, so every dependency reachable
     # from those packages lands in the provider's dependency tree, and from there in
     # the public checksum database.
     depguard:
@@ -106,8 +106,8 @@ linters:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
             # The HTTP machinery client/ is built on. It moved out of client/internal so that
-            # pkg/oidc and pkg/auth could reach it too; client/internal/http.go re-exports the
-            # names the meshObject clients use, which is why only that file imports it.
+            # pkg/oidc and pkg/auth could reach it too, which is why the meshObject clients
+            # import it from the module root now.
             - github.com/meshcloud/meshstack-cli/internal/http
 
         pkg:
@@ -136,15 +136,11 @@ linters:
         # the only one that needs a YAML library — a third external dependency where this
         # policy allows two, which is why the boundary is one package wide.
         #
-        # The library is go.yaml.in/yaml/v3, which is the import path of
-        # https://github.com/yaml/go-yaml — the YAML organization's fork, and the one the Go
-        # ecosystem moved to after gopkg.in/yaml.v3 was labelled unmaintained in April 2025.
-        # Do not swap it for another go-yaml.
-        #
-        # Its README calls v1 through v3 frozen legacy, taking security fixes only, and says
-        # all ongoing work is in v4. Move when v4 leaves release candidate: v4.0.0-rc.6 builds
-        # and passes this repository's tests unchanged, so the move is a one-line edit here and
-        # in the two files under pkg/profile that import it.
+        # The library is github.com/goccy/go-yaml. It replaced go.yaml.in/yaml/v3 because it
+        # honours encoding.TextMarshaler and encoding.TextUnmarshaler, which is what lets the
+        # stored files hold an xurl.URL and a jwt.JWT rather than strings every reader parses
+        # again. go.yaml.in/yaml/v3 supports neither, and its own README calls v1 through v3
+        # frozen legacy.
         #
         # The alternative that keeps the two-dependency policy intact is stdlib JSON, as Docker
         # uses for ~/.docker/config.json; YAML won because these files are meant to be read and
@@ -163,7 +159,7 @@ linters:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
             - github.com/meshcloud/meshstack-cli/pkg
-            - go.yaml.in/yaml/v3
+            - github.com/goccy/go-yaml
 
         # internal/http is the process's one HTTP client, and it needs nothing but the standard
         # library to be one. It sits outside client/ because Go's internal rule would otherwise

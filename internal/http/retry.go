@@ -13,15 +13,18 @@ import (
 	"time"
 )
 
-// withRetry sets up the given client to retry certain requests. The idempotent methods GET, PUT
-// and DELETE are retried by default; any other method only where the caller marked the request
-// with Retryable.
-//
-// It is private, and applied once to the client every caller shares, because which requests are
-// safe to replay is a property of the request rather than of the client making it. It used to
-// take a list of whitelisted paths per client, joined onto that client's root URL — a shape
-// that cannot survive one shared client, and that nothing used.
-func withRetry(c *gohttp.Client, options retryOptions) *gohttp.Client {
+// RetryOptions configure withRetry.
+type RetryOptions struct {
+	// MaxRetries limits the attempts to retries. If zero, retries will never be attempted.
+	MaxRetries int
+	// Backoff to use when retrying. If nil, retries will never be attempted.
+	Backoff RetryBackoff
+}
+
+// ApplyTo modifies the given client to retry certain requests. The idempotent method GET is
+// retried by default (if response suggest retrying is worthwhile).
+// Any other method only where the caller marked the request with Retryable RequestOption.
+func (options RetryOptions) ApplyTo(c *gohttp.Client) {
 	next := gohttp.DefaultTransport
 	if c.Transport != nil {
 		next = c.Transport
@@ -34,14 +37,7 @@ func withRetry(c *gohttp.Client, options retryOptions) *gohttp.Client {
 			if options.Backoff == nil {
 				return false
 			}
-			switch req.Method {
-			case gohttp.MethodGet, gohttp.MethodPut, gohttp.MethodDelete:
-				// Idempotent methods are safe to retry: replaying them cannot create duplicate
-				// side effects. A DELETE that actually succeeded server-side before a proxy 503
-				// simply yields a 404 on replay, which delete handlers already treat as done.
-				return true
-			}
-			return isRetryable(req.Context())
+			return req.Method == MethodGet || isRetryable(req.Context())
 		},
 		// ShouldRetryResponse returns the backoff policy if the response/error indicates a retryable condition,
 		// otherwise nil is returned to indicate no retry.
@@ -55,23 +51,10 @@ func withRetry(c *gohttp.Client, options retryOptions) *gohttp.Client {
 			case gohttp.StatusBadGateway, gohttp.StatusGatewayTimeout:
 				return options.Backoff
 			default:
-				// A redirect needed a case of its own while retryability was a list of URLs,
-				// so that the URL a redirect pointed at joined the list. Marking the request
-				// covers it for free: gohttp.Client carries the context into the request it
-				// issues for the Location, so the mark travels with it.
 				return nil
 			}
 		},
 	}
-	return c // for fluent API
-}
-
-// retryOptions configure withRetry.
-type retryOptions struct {
-	// MaxRetries limits the attempts to retries. If zero, retries will never be attempted.
-	MaxRetries int
-	// Backoff to use when retrying. If nil, retries will never be attempted.
-	Backoff RetryBackoff
 }
 
 // RetryBackoff calculates the duration to wait before the next retry attempt.

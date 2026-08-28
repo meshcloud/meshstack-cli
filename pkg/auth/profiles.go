@@ -3,6 +3,7 @@ package auth
 import (
 	"slices"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
@@ -27,7 +28,7 @@ func KnownProfiles() ([]KnownProfile, error) {
 	for name, entry := range config.Profiles {
 		known = append(known, KnownProfile{
 			Name:             name,
-			Endpoint:         entry.Endpoint,
+			Endpoint:         endpointString(entry.Endpoint),
 			DefaultWorkspace: entry.DefaultWorkspace,
 			IsCurrent:        name == config.CurrentProfile,
 		})
@@ -48,7 +49,7 @@ func KnownProfiles() ([]KnownProfile, error) {
 // of quietly creating one with no endpoint, which is why `meshstack auth login` is the single
 // caller: a command whose purpose is to configure is the one place where creating something
 // is expected.
-func EnsureProfile(name, endpoint string) error {
+func EnsureProfile(name string, endpoint *xurl.URL) error {
 	config, err := profile.LoadConfig()
 	if err != nil {
 		return err
@@ -57,10 +58,10 @@ func EnsureProfile(name, endpoint string) error {
 		config.Profiles = map[string]profile.Profile{}
 	}
 	entry, exists := config.Profiles[name]
-	if exists && (endpoint == "" || sameEndpoint(entry.Endpoint, endpoint)) {
+	if exists && (endpoint == nil || (entry.Endpoint != nil && sameEndpoint(*entry.Endpoint, *endpoint))) {
 		return nil
 	}
-	if endpoint == "" {
+	if endpoint == nil {
 		return diags.Errorf("no endpoint for a new profile",
 			"profile %q does not exist. Name its endpoint with --endpoint or %s.", name, envEndpoint)
 	}
@@ -81,7 +82,7 @@ func SetProfileEndpoint(name, endpoint string) error {
 		if err != nil {
 			return err
 		}
-		entry.Endpoint = parsed.String()
+		entry.Endpoint = &parsed
 		return nil
 	})
 }
@@ -109,4 +110,13 @@ func updateProfile(name string, change func(*profile.Profile) error) error {
 	config.Version = profile.Version
 	config.Profiles[name] = entry
 	return profile.SaveConfig(config)
+}
+
+// endpointString renders an optional URL for a status view, where an absent one reads as
+// the empty string rather than as a missing field.
+func endpointString(u *xurl.URL) string {
+	if u == nil {
+		return ""
+	}
+	return u.String()
 }

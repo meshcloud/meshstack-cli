@@ -6,11 +6,10 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 )
 
-// HintErr logs a warning for the two failures whose cause is not in the error text, and
-// returns err untouched. It takes the Authorization because a hint names the scope the token
+// HintErr logs a warning for the one failure whose cause is not in the error text, and
+// returns err untouched. It takes the Authorization because the hint names the scope the token
 // carried.
 //
 // It never retries and never re-scopes: a command acts in the workspace it was told to act
@@ -23,12 +22,8 @@ func HintErr(err error, authz client.Authorization) error {
 	}
 	session, _ := authz.(*Session)
 
-	var httpErr client.HttpError
-	switch {
-	case errors.As(err, &httpErr) && httpErr.IsForbidden():
+	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.IsForbidden() {
 		slog.Warn(forbiddenHint(session))
-	case errors.Is(err, oidc.ErrRefreshRejected):
-		slog.Warn("this login has expired or was revoked. Run `meshstack login`.")
 	}
 	return err
 }
@@ -40,7 +35,7 @@ func forbiddenHint(session *Session) string {
 	// A token that carries no workspace scope at all — an API key or a pasted token — gets the
 	// same note without a workspace name, because the credential's own workspace is what
 	// decides what it reaches.
-	if session.Method() != method.Login || session.Workspace == "" {
+	if session.Method() != method.Login || session.Workspace.Empty() {
 		return "this credential's own workspace is what decides what it reaches; a --workspace on the command line cannot widen it."
 	}
 	return "this token is scoped to workspace " + session.Workspace.String() +

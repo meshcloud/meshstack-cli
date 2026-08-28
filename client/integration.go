@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshIntegration struct {
@@ -57,7 +56,7 @@ type meshIntegrationClientImpl struct {
 	meshObject internal.MeshObjectClient[MeshIntegration]
 }
 
-func newIntegrationClient(ctx context.Context, httpClient http.Client) MeshIntegrationClient {
+func newIntegrationClient(ctx context.Context, httpClient internal.HttpClient) MeshIntegrationClient {
 	return meshIntegrationClientImpl{internal.NewMeshObjectClient[MeshIntegration](ctx, httpClient, "v1")}
 }
 

@@ -54,35 +54,32 @@ func New() Browser { return Browser{} }
 
 // Login runs the OAuth 2.0 authorization code flow with PKCE and a loopback redirect
 // (RFC 8252).
-func (Browser) Login(ctx context.Context, cfg oidc.ClientConfig) (refreshToken, accessToken string, expiresIn time.Duration, err error) {
-	if cfg.AuthorizationEndpoint == "" || cfg.ClientId == "" {
-		return "", "", 0, fmt.Errorf("cannot start a browser login: the identity provider is not discovered yet")
-	}
-
+func (Browser) Login(ctx context.Context, cfg oidc.Client) (oidc.Token, error) {
 	verifier, err := randomString()
 	if err != nil {
-		return "", "", 0, err
+		return oidc.Token{}, err
 	}
 	state, err := randomString()
 	if err != nil {
-		return "", "", 0, err
+		return oidc.Token{}, err
 	}
 	challenge := sha256.Sum256([]byte(verifier))
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return "", "", 0, fmt.Errorf("cannot listen on a loopback port for the login redirect: %w", err)
+		return oidc.Token{}, fmt.Errorf("cannot listen on a loopback port for the login redirect: %w", err)
 	}
 	addr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		_ = listener.Close()
-		return "", "", 0, fmt.Errorf("cannot determine the port of the loopback listener, got %s", listener.Addr())
+		return oidc.Token{}, fmt.Errorf("cannot determine the port of the loopback listener, got %s", listener.Addr())
 	}
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d%s", addr.Port, callbackPath)
 
-	authURL := cfg.AuthorizationEndpoint + "?" + url.Values{
+	authURL := *cfg.AuthorizationEndpoint.URL
+	authURL.RawQuery = url.Values{
 		"response_type":         {"code"},
-		"client_id":             {cfg.ClientId},
+		"client_id":             {cfg.CliClientId},
 		"redirect_uri":          {redirectURI},
 		"scope":                 {scopes},
 		"state":                 {state},
@@ -90,11 +87,11 @@ func (Browser) Login(ctx context.Context, cfg oidc.ClientConfig) (refreshToken, 
 		"code_challenge_method": {"S256"},
 	}.Encode()
 
-	code, err := await(ctx, listener, state, authURL)
+	code, err := await(ctx, listener, state, authURL.String())
 	if err != nil {
-		return "", "", 0, err
+		return oidc.Token{}, err
 	}
-	return oidc.Exchange(ctx, cfg, code, redirectURI, verifier)
+	return cfg.Exchange(ctx, code, redirectURI, verifier)
 }
 
 // callback is what the redirect carried: one of the two fields is always empty.

@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockRunnerImplementationType string
 
+// TODO Turn this into enum!
 const (
 	MeshBuildingBlockRunnerImplementationTypeTerraform           MeshBuildingBlockRunnerImplementationType = "TERRAFORM"
 	MeshBuildingBlockRunnerImplementationTypeGithubWorkflow      MeshBuildingBlockRunnerImplementationType = "GITHUB_WORKFLOW"
@@ -73,7 +73,7 @@ type meshBuildingBlockRunnerClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockRunner]
 }
 
-func newBuildingBlockRunnerClient(ctx context.Context, httpClient http.Client) MeshBuildingBlockRunnerClient {
+func newBuildingBlockRunnerClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockRunnerClient {
 	return meshBuildingBlockRunnerClient{internal.NewMeshObjectClient[MeshBuildingBlockRunner](ctx, httpClient, "v1-preview")}
 }
 

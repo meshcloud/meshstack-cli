@@ -45,7 +45,7 @@ type MeshServiceInstanceFilter struct {
 	PlanIdentifier        *string `json:"planIdentifier"`
 }
 
-func newServiceInstanceClient(ctx context.Context, httpClient http.Client) MeshServiceInstanceClient {
+func newServiceInstanceClient(ctx context.Context, httpClient internal.HttpClient) MeshServiceInstanceClient {
 	return meshServiceInstanceClient{internal.NewMeshObjectClient[MeshServiceInstance](ctx, httpClient, "v2")}
 }
 

@@ -67,7 +67,7 @@ func printStatus(out io.Writer, status auth.Status) {
 		row(out, "Profile", "none", status.Sources["credential"])
 	}
 	row(out, "Endpoint", status.Endpoint, "")
-	if status.Workspace != "" {
+	if !status.Workspace.Empty() {
 		row(out, "Workspace", status.Workspace.String(), status.Sources["workspace"])
 	} else {
 		row(out, "Workspace", "none", "")
