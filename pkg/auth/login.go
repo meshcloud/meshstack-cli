@@ -57,6 +57,28 @@ type LoginResult struct {
 // token, because those tokens carry the old identity.
 func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult, error) {
 	demanded := s.Method()
+	return s.login(demanded, func(result *LoginResult) error {
+		switch demanded {
+		case method.Manual:
+			return s.loginWithApiToken(ctx, result)
+		case method.ApiKey:
+			return s.loginWithApiKey(ctx, result)
+		default:
+			return s.loginWithBrowser(ctx, options, result)
+		}
+	})
+}
+
+// login is the bookkeeping every login shares, around the one exchange that differs: it
+// records which method the profile was using, and makes the demanded one current once the
+// exchange succeeded.
+//
+// Switching method deliberately does not force a fresh login. Switching back to a browser
+// login should cost one refresh rather than a new browser session — that is what makes a
+// shared profile usable, where CI logs in with an API key and a developer holds a login in
+// the same profile. `--api-key` and `--api-token` set Force themselves, because for them
+// forcing only means "do the exchange again".
+func (s *Session) login(demanded method.Method, exchange func(*LoginResult) error) (LoginResult, error) {
 	result := LoginResult{Method: demanded, Endpoint: s.Endpoint.String(), Profile: s.Profile, Workspace: s.Workspace}
 
 	credentials, err := s.currentStore().Read()
@@ -66,21 +88,8 @@ func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult,
 	if credentials.CurrentMethod != "" && credentials.CurrentMethod != demanded {
 		result.SwitchedFrom = credentials.CurrentMethod
 	}
-	// Switching method deliberately does not force a fresh login. Switching back to a browser
-	// login should cost one refresh rather than a new browser session — that is what makes a
-	// shared profile usable, where CI logs in with an API key and a developer holds a login in
-	// the same profile. `--api-key` and `--api-token` set Force themselves, because for them
-	// forcing only means "do the exchange again".
 
-	switch demanded {
-	case method.Manual:
-		err = s.loginWithApiToken(ctx, &result)
-	case method.ApiKey:
-		err = s.loginWithApiKey(ctx, &result)
-	default:
-		err = s.loginWithBrowser(ctx, options, &result)
-	}
-	if err != nil {
+	if err := exchange(&result); err != nil {
 		return result, err
 	}
 
@@ -253,15 +262,28 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 		return err
 	}
 
-	_, err = s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
+	// A key whose secret this profile already knows how to produce keeps saying so; anything
+	// else is stored with the secret that just worked.
+	keeping := offered
+	if offered.ClientSecret == "" && len(offered.ClientSecretCommand) == 0 {
+		keeping = &profile.ApiKeyMethod{ClientId: clientId, ClientSecret: secret}
+	}
+	if err := s.storeApiKey(ctx, keeping, token); err != nil {
+		return err
+	}
+	result.Username = clientId
+	return nil
+}
+
+// storeApiKey writes the API key method and the token it just minted in one update. Every
+// login that ends up with an API key goes through it, so there is one place that decides
+// what an API key credential looks like on disk.
+func (s *Session) storeApiKey(ctx context.Context, apiKey *profile.ApiKeyMethod, token jwt.JWT) error {
+	_, err := s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
 		c.Version = profile.Version
 		c.Endpoint = &s.Endpoint
 		c.CurrentMethod = method.ApiKey
-		if offered.ClientSecret != "" || len(offered.ClientSecretCommand) > 0 {
-			c.Methods.ApiKey = offered
-		} else {
-			c.Methods.ApiKey = &profile.ApiKeyMethod{ClientId: clientId, ClientSecret: secret}
-		}
+		c.Methods.ApiKey = apiKey
 		// Switching method discards every cached access token, because they carry the old
 		// identity. The methods themselves survive, so switching back costs one refresh.
 		c.AccessTokens = map[scope.Scope]profile.IssuedToken{
@@ -269,11 +291,7 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 		}
 		return c, nil
 	})
-	if err != nil {
-		return err
-	}
-	result.Username = clientId
-	return nil
+	return err
 }
 
 func (s *Session) loginWithApiToken(ctx context.Context, result *LoginResult) error {

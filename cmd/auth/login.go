@@ -44,6 +44,7 @@ func NewLogin(in *cli.Input) *cobra.Command {
 	var (
 		apiKey   apiKeyId
 		apiToken bool
+		devLocal bool
 		force    bool
 	)
 
@@ -55,6 +56,10 @@ func NewLogin(in *cli.Input) *cobra.Command {
 Without a flag this opens a browser, and re-running it costs nothing: the stored login is
 probed first and reported rather than replaced. --api-key and --api-token select the other
 two methods, and each implies --force, because changing method is explicit by nature.
+
+--dev-local configures a profile for a local dev stack out of what that stack publishes at
+/mesh/info, so running against one needs no credentials of your own. It defaults to the
+endpoint http://localhost:8080 and to the profile dev-local.
 
 No secret and no token is ever a flag value. Both arrive through MESHSTACK_API_SECRET or
 MESHSTACK_API_TOKEN, through stdin, or through a prompt that does not echo.`,
@@ -75,6 +80,11 @@ MESHSTACK_API_TOKEN, through stdin, or through a prompt that does not echo.`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			switch {
+			case devLocal:
+				// The method is named for the same reason every other form names one: it is
+				// what switches a profile that already holds something else.
+				in.Method = method.ApiKey
+				return runDevLocalLogin(cmd, in)
 			case cmd.Flags().Changed("api-key"):
 				if apiKey == "" {
 					return diags.Errorf("the API key id is empty",
@@ -102,10 +112,34 @@ MESHSTACK_API_TOKEN, through stdin, or through a prompt that does not echo.`,
 	flags.Var(&apiKey, "api-key", "switch to the apiKey method, with the stored id or a new one")
 	flags.Lookup("api-key").NoOptDefVal = bareApiKey
 	flags.BoolVar(&apiToken, "api-token", false, "store an API token that nothing can refresh")
+	flags.BoolVar(&devLocal, "dev-local", false, "configure a profile from a local dev stack's own published credentials")
 	flags.BoolVar(&force, "force", false, "log in again even if the stored login still works")
-	cmd.MarkFlagsMutuallyExclusive("api-key", "api-token")
+	cmd.MarkFlagsMutuallyExclusive("api-key", "api-token", "dev-local")
 
 	return cmd
+}
+
+// runDevLocalLogin parses nothing and decides nothing: the two defaults --dev-local brings and
+// the bootstrap itself are pkg/auth's, so that the Terraform provider's acceptance tests can
+// reach the same behaviour without a CLI process.
+func runDevLocalLogin(cmd *cobra.Command, in *cli.Input) error {
+	ctx := cmd.Context()
+
+	session, err := auth.ResolveForDevLocalLogin(ctx, in)
+	if err != nil {
+		return err
+	}
+	if session.Profile != "" {
+		if err := auth.EnsureProfile(session.Profile, &session.Endpoint); err != nil {
+			return err
+		}
+	}
+	result, err := session.LoginDevLocal(ctx)
+	if err != nil {
+		return err
+	}
+	printLogin(cmd.OutOrStdout(), result)
+	return nil
 }
 
 func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
