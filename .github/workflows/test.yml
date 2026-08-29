@@ -75,6 +75,16 @@ jobs:
         run: |
           echo "::error::Linting or formatting issues detected. Run 'task lint -- --fix' locally to automatically fix these issues, then commit the changes."
 
+  shellcheck:
+    name: Shell Lint (CI scripts)
+    # No `needs`: it shares nothing with the Go build, and the acceptance workflow that runs these
+    # scripts is skipped on forks — so this job is the only gate a fork's PR gets on them.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # shellcheck ships in the ubuntu-latest image, so no install step is needed.
+      - run: shellcheck .github/scripts/*.sh
+
   test:
     needs: [ build ]
     name: Go Test
