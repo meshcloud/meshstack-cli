@@ -13,8 +13,8 @@ COPY . .
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
-# .goreleaser.yml sets the same -X main.Version ldflag, and the two have to agree.
-# Nothing fails when one is missing: that binary reports `dev`.
+# .goreleaser.yml and flake.nix set the same -X main.Version ldflag, and all three have
+# to agree. Nothing fails when one is missing: that binary reports `dev`.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
       -trimpath \
       -ldflags "-s -w -X main.Version=${VERSION}" \

@@ -20,8 +20,8 @@ builds:
     mod_timestamp: '{{ .CommitTimestamp }}'
     flags:
       - -trimpath
-    # The Dockerfile sets the same ldflag from its VERSION build arg, and the two have
-    # to agree. Nothing fails when one is missing: that binary reports `dev`.
+    # The Dockerfile (from its VERSION build arg) and flake.nix set the same ldflag, and
+    # all three have to agree. Nothing fails when one is missing: that binary reports `dev`.
     ldflags:
       - '-s -w -X main.Version={{ .Version }}'
     goos:
