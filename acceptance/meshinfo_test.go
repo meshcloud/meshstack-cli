@@ -6,13 +6,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestAccMeshInfo is the cheap one, and it is here to fail first: everything else in this
-// package needs a backend that is up and answering, and a suite that discovers that from a
-// login timing out reads as a bug in the login.
+// TestAccMeshInfo is the shared precheck's own test: the precheck needs /mesh/info only to
+// answer, and a backend that answers it without naming a version is broken in a way worth
+// failing on by name.
 func TestAccMeshInfo(t *testing.T) {
-	endpoint := requireLocalStack(t)
-
-	info := meshInfo(t, endpoint)
+	endpoint, info := requireLocalStack(t)
 
 	assert.NotEmptyf(t, info.Version, "%s/mesh/info reported no version", endpoint)
 }

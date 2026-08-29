@@ -21,8 +21,8 @@ import (
 // nothing is configured, and the endpoint alone is enough to leave the machine able to talk to
 // meshStack.
 func TestAccDevLocalLogin(t *testing.T) {
-	endpoint := requireLocalStack(t)
-	dev := requireDevLocalCredentials(t, endpoint, meshInfo(t, endpoint))
+	endpoint, info := requireLocalStack(t)
+	dev := requireDevLocalCredentials(t, endpoint, info)
 
 	cli := newCLI(t)
 	cli.mustRun("login", "--dev-local", "--endpoint", endpoint)
@@ -50,8 +50,7 @@ func TestAccDevLocalLogin(t *testing.T) {
 // ../terraform-provider-meshstack/scratch/headless-login.sh is the shell reference this
 // replicates.
 func TestAccBrowserLoginHeadless(t *testing.T) {
-	endpoint := requireLocalStack(t)
-	info := meshInfo(t, endpoint)
+	endpoint, info := requireLocalStack(t)
 	dev := requireDevLocalCredentials(t, endpoint, info)
 	require.NotEmpty(t, dev.Users, "the local dev stack published no seeded logins to log in as")
 	// The list is ordered and the first entry is the one meant to be used: it is the one whose

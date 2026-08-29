@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -54,6 +55,10 @@ const (
 	acceptanceEnabled    = "1"
 	skipVersionCheckHint = "true"
 )
+
+// reachabilityTimeout bounds the precheck's one request: generous for a loopback GET of a public
+// document, short enough that a stack which is down is reported rather than waited on.
+const reachabilityTimeout = 10 * time.Second
 
 // meshstack is the binary under test, built once by TestMain.
 var meshstack string
@@ -86,9 +91,11 @@ func TestMain(m *testing.M) {
 	}())
 }
 
-// requireLocalStack is this suite's precheck, and every test starts with it. It answers both
-// gating questions at once and returns the endpoint, so no test reads the environment itself.
-func requireLocalStack(t *testing.T) string {
+// requireLocalStack is this suite's precheck, and every test starts with it. It answers all
+// three gating questions at once — is the suite on, is the endpoint loopback, is the backend
+// there — and returns the endpoint with what /mesh/info said, so no test reads the environment
+// itself and none has to run before another to establish that the stack is up.
+func requireLocalStack(t *testing.T) (string, client.MeshInfo) {
 	t.Helper()
 	if os.Getenv(envAcc) != acceptanceEnabled {
 		t.Skipf("acceptance tests are off. Bring up a local dev stack and run `%s=%s %s=%s:8080 go test ./acceptance/... -run TestAcc`",
@@ -99,7 +106,7 @@ func requireLocalStack(t *testing.T) string {
 		strings.HasPrefix(endpoint, loopbackHost) || strings.HasPrefix(endpoint, loopbackAddressHost),
 		"%s=%q does not name a loopback address. These tests log in and write objects, so they run against a local dev stack and nothing else.",
 		envEndpoint, os.Getenv(envEndpoint))
-	return endpoint
+	return endpoint, meshInfo(t, endpoint)
 }
 
 // meshstackCLI is one test's own installation: its own configuration file and its own
@@ -166,14 +173,20 @@ func (c *meshstackCLI) mustRun(args ...string) string {
 }
 
 // meshInfo reads the endpoint's public document into the very struct the CLI decodes it into,
-// so this suite fails when client.MeshInfo and the backend disagree about it.
+// so this suite fails when client.MeshInfo and the backend disagree about it. It is also how the
+// precheck learns the backend is up, which is worth a request of its own: a login discovers that
+// only after the minute internal/http spends retrying, and reports it as a timeout rather than
+// as a stack that is down.
 func meshInfo(t *testing.T, endpoint string) client.MeshInfo {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, endpoint+"/mesh/info", nil)
 	require.NoError(t, err)
 
-	resp, err := http.DefaultClient.Do(req)
-	require.NoErrorf(t, err, "%s is not answering; bring the local dev stack up first", endpoint)
+	// Its own client, because the timeout belongs to this request alone: an address that accepts
+	// and never answers has to fail here in seconds, while the browser login waits minutes by
+	// design and http.DefaultClient is shared with whatever else ends up using it.
+	resp, err := (&http.Client{Timeout: reachabilityTimeout}).Do(req)
+	require.NoErrorf(t, err, "the backend at %s is not reachable, so nothing in this package can run. Bring the local dev stack up first.", endpoint)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equalf(t, http.StatusOK, resp.StatusCode, "%s/mesh/info answered %s", endpoint, resp.Status)
 
