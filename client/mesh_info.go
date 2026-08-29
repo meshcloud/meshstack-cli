@@ -32,6 +32,35 @@ type MeshInfo struct {
 	AdminWorkspaceIdentifier string            `json:"adminWorkspaceIdentifier" tfsdk:"admin_workspace_identifier"`
 	Issuer                   xurl.URL          `json:"issuer" tfsdk:"-"`
 	CliClientId              string            `json:"cliClientId" tfsdk:"-"`
+	// DevLocalCredentials is nil against every meshStack a user could reach. meshfed serves it
+	// only under the `default` spring profile and only when the endpoints it is configured with
+	// are loopback addresses, so it is present exactly on a developer's own stack — where the
+	// values it carries are the seed data in meshfed's repository rather than secrets.
+	//
+	// It exists so that a tool can bootstrap itself against that stack from the endpoint alone:
+	// `meshstack login --dev-local` reads it instead of an .env file somebody has to maintain.
+	DevLocalCredentials *DevLocalCredentials `json:"devLocalCredentials,omitempty" tfsdk:"-"`
+}
+
+// DevLocalCredentials is the local dev stack's own credentials: one global API key holding
+// ADM_ rights, and the keycloak logins seeded into its realm.
+type DevLocalCredentials struct {
+	ApiKeyClientId     string         `json:"apiKeyClientId"`
+	ApiKeyClientSecret string         `json:"apiKeyClientSecret"`
+	Users              []DevLocalUser `json:"users"`
+}
+
+// DevLocalUser is one seeded login. The list is ordered and a consumer takes the first: a user
+// whose keycloak account carries no workspace attribute cannot act after a browser login, and
+// reports an empty Workspace rather than a name that would fail.
+//
+// Workspace is a plain string because client/ may not import pkg/workspace — .golangci.yml's
+// depguard rule for this package allows the standard library, client/ itself and internal/http,
+// and nothing else.
+type DevLocalUser struct {
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Workspace string `json:"workspace,omitempty"`
 }
 
 type MeshInfoClient interface {
