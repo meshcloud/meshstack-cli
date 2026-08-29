@@ -225,6 +225,25 @@ linters:
             - github.com/spf13/cobra
             - github.com/charmbracelet/log
 
+        # acceptance/ drives the built binary against a live local meshStack, as a
+        # subprocess. It is deny-by-default like everything else, and it needs less than
+        # most: os/exec and net/http out of the standard library, testify, and client/ for
+        # the one struct it shares with the code under test — it decodes /mesh/info into
+        # client.MeshInfo, so the suite fails when that type and the backend disagree.
+        #
+        # It deliberately may not reach pkg/ or internal/. A test that called the CLI's own
+        # resolution to work out where its profile went would pass whenever that resolution
+        # was consistently wrong; asserting on the files and the exit status is the whole
+        # point of running the binary rather than a cobra command in-process.
+        acceptance:
+          files:
+            - "**/acceptance/*.go"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/stretchr/testify
+
         # Tests may additionally use testify, which is what the client's moved tests
         # are written against.
         tests:
