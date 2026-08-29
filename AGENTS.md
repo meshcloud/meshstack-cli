@@ -168,6 +168,10 @@ Everything runs through the Taskfile, inside `nix develop`. **`task --list` is t
 The Go version is pinned in **two** places, `go.mod` and `flake.nix`, which both say so at the pin.
 Keep them in lock-step when bumping, and keep them aligned with the Terraform provider.
 
+`flake.nix` also builds the binary — `nix build .#meshstack` — and exports it as
+`packages.<system>.meshstack` and as `overlays.default`, so another flake can put it in a dev shell.
+The comment above that `packages` output shows the two lines a consumer needs.
+
 ## Authentication
 
 `MESHSTACK_ENDPOINT`, `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`, with `MESHSTACK_API_TOKEN` as
@@ -191,9 +195,9 @@ container image for the same tag. The image goes to GHCR only, as
 push to `main` refreshes `:main`, so an image exists before the first release does.
 
 <rules id="release-version">
-The version reaches the binary through an ldflag on `main.Version`, set in **two places that must
-agree**: `.goreleaser.yml` and the `Dockerfile`, both of which say so at the ldflag. A build without
-it reports `dev` — check with `meshstack --version` after `task release:snapshot`.
+The version reaches the binary through an ldflag on `main.Version`, set in **three places that must
+agree**: `.goreleaser.yml`, the `Dockerfile` and `flake.nix`, all of which say so at the ldflag. A
+build without it reports `dev` — check with `meshstack --version` after `task release:snapshot`.
 </rules>
 
 Pin every GitHub Action by commit SHA with the version in a trailing comment, as the existing

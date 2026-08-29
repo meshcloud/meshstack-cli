@@ -7,6 +7,10 @@
 # Go environment created by the Nix dev shell (flake.nix shellHook)
 /.nix-go/
 
+# Store symlink left behind by 'nix build'
+/result
+/result-*
+
 # Local meshStack credentials, read by the Taskfile's dotenv
 .env
 
