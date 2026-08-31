@@ -81,8 +81,9 @@ func (c meshInfoClient) Read(ctx context.Context) (MeshInfo, error) {
 
 func (c meshInfoClient) checkMeshVersion(ctx context.Context) error {
 	// Skip before the request, not just before the comparison: /mesh/info is a GET on the retrying
-	// client, so an unavailable backend blocks provider configuration for the whole retry budget
-	// (~4 minutes) and then fails it. Opting out of the check has to opt out of that too.
+	// client, so an unavailable backend blocks provider configuration for the whole minute
+	// internal/http spends retrying, and then fails it. Opting out of the check has to opt out of
+	// that too.
 	if os.Getenv("MESHSTACK_SKIP_VERSION_CHECK") == "true" {
 		return nil
 	}
