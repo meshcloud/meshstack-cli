@@ -196,6 +196,7 @@ type fakeMeshStack struct {
 	apiLoginExpires int
 	apiLoginStatus  int
 	refresh         func(form url.Values) (int, map[string]any)
+	observe         func(*http.Request)
 }
 
 func newMeshStack(t *testing.T) *fakeMeshStack {
@@ -203,7 +204,7 @@ func newMeshStack(t *testing.T) *fakeMeshStack {
 
 	stack := &fakeMeshStack{apiLoginExpires: 300, refresh: refreshFromScope}
 	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
+	server := httptest.NewServer(stack.observing(mux))
 	t.Cleanup(server.Close)
 
 	parsed, err := url.Parse(server.URL)
@@ -326,6 +327,26 @@ func (m *fakeMeshStack) answerApiLoginWith(status int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.apiLoginStatus = status
+}
+
+// onEachRequest lets a test look at the world at the moment a request arrives, which is how a
+// rule about what is held while one is in flight is asserted.
+func (m *fakeMeshStack) onEachRequest(observe func(*http.Request)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.observe = observe
+}
+
+func (m *fakeMeshStack) observing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m.mu.Lock()
+		observe := m.observe
+		m.mu.Unlock()
+		if observe != nil {
+			observe(r)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (m *fakeMeshStack) answerRefreshWith(answer func(url.Values) (int, map[string]any)) {

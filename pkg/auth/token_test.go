@@ -1,8 +1,12 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -442,6 +446,112 @@ func TestConcurrentBearerTokenCallsMintOnce(t *testing.T) {
 		apiKeyProfile(t, stack, nil)
 
 		run(t, 8, stack, resolved(t, &fakeInput{}))
+	})
+}
+
+// TestOnlyTheGrantRunsUnderTheCredentialsLock is what keeps a slow identity provider from
+// costing a user their login. The lock is broken as stale after profile's lockStaleAfter, so
+// anything under it that can take longer than one token request lets a second process in, and
+// two refresh grants on one refresh token end the whole keycloak session. Discovery is two GETs
+// on a client that allows a minute each, so it belongs above the lock.
+func TestOnlyTheGrantRunsUnderTheCredentialsLock(t *testing.T) {
+	stack := newMeshStack(t)
+	at := isolate(t)
+
+	lockPath := filepath.Join(at.credentials, testProfile+".yaml.lock")
+	var mu sync.Mutex
+	held := map[string]bool{}
+	stack.onEachRequest(func(r *http.Request) {
+		_, err := os.Stat(lockPath)
+		mu.Lock()
+		defer mu.Unlock()
+		held[r.URL.Path] = err == nil
+	})
+
+	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
+		Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
+	})
+
+	session := resolved(t, &fakeInput{})
+	_, err := session.BearerToken(t.Context())
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.False(t, held["/mesh/info"], "discovery must run before the credentials lock is taken")
+	assert.False(t, held["/.well-known/openid-configuration"], "discovery must run before the credentials lock is taken")
+	assert.True(t, held["/token"], "the grant is what the lock exists for")
+}
+
+// notWritableStore is a read-only credentials directory as pkg/auth meets one. The interesting
+// half is that the mint runs first and only the write fails, because by then a browser login
+// has already spent a refresh grant keycloak rotated the refresh token for.
+type notWritableStore struct {
+	profile.Store
+	// beforeMint fails the way a lock that cannot be created does: nothing is minted at all.
+	beforeMint bool
+	updates    int
+}
+
+func (s *notWritableStore) Update(ctx context.Context, mint func(profile.Credentials) (profile.Credentials, error)) (profile.Credentials, error) {
+	s.updates++
+	if !s.beforeMint {
+		credentials, err := s.Read()
+		if err != nil {
+			return profile.Credentials{}, err
+		}
+		if _, err := mint(credentials); err != nil {
+			return profile.Credentials{}, err
+		}
+	}
+	return profile.Credentials{}, errors.Join(errors.New("the credentials directory is read-only"), profile.ErrNotWritable)
+}
+
+// TestAStoreThatCannotBeWrittenKeepsWhatItMinted holds the other half of the same session: the
+// store mints and then writes, so a failed write has a token in hand already, and granting
+// again would replay the refresh token that grant rotated — one process ending its own login,
+// with no second process involved.
+func TestAStoreThatCannotBeWrittenKeepsWhatItMinted(t *testing.T) {
+	withLogin := func(t *testing.T, stack *fakeMeshStack) *Session {
+		t.Helper()
+		isolate(t)
+		loginProfile(t, stack.URL.String(), "demo", profile.Methods{
+			Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
+		})
+		return resolved(t, &fakeInput{})
+	}
+
+	t.Run("a write that failed after the grant does not grant again", func(t *testing.T) {
+		stack := newMeshStack(t)
+		session := withLogin(t, stack)
+		store := &notWritableStore{Store: session.store}
+		session.store = store
+
+		token, err := session.BearerToken(t.Context())
+		require.NoError(t, err, "the token was minted; only persisting it failed")
+		require.Equal(t, 1, stack.refreshCount(), "a second grant would replay the refresh token the first one rotated")
+		require.Equal(t, 1, store.updates)
+
+		// The rotated refresh token has to reach the memory store, because the file still holds
+		// the one keycloak retired and renewing from that is the replay.
+		degraded := session.currentStore()
+		require.False(t, degraded.Writable())
+		credentials, err := degraded.Read()
+		require.NoError(t, err)
+		require.Equal(t, "refresh-1", credentials.Methods.Login.RefreshToken)
+		require.Equal(t, token, credentials.AccessTokens[workspace.Name("demo").Scope()].Token.String)
+	})
+
+	t.Run("a failure before the grant still mints once after degrading", func(t *testing.T) {
+		stack := newMeshStack(t)
+		session := withLogin(t, stack)
+		store := &notWritableStore{Store: session.store, beforeMint: true}
+		session.store = store
+
+		_, err := session.BearerToken(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, 1, stack.refreshCount(), "nothing was minted under the lock, so the memory store mints once")
+		require.Equal(t, 1, store.updates, "the unwritable store is used once and then replaced")
 	})
 }
 

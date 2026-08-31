@@ -52,23 +52,31 @@ func (s *Session) RefreshBearerToken(ctx context.Context, rejected string) (stri
 	}
 
 	tokenScope := s.Scope()
-	minted, err := s.renew(ctx, tokenScope, current, rejected)
-	// A store that cannot be written degrades to memory and mints once more. A store that is
-	// merely locked by another process does not: that one holds it for a refresh grant, and
-	// minting outside the lock is the replay keycloak ends the session over.
+	renewed, err := s.renew(ctx, tokenScope, current, rejected)
+	// A store that cannot be written degrades to memory. A store that is merely locked by
+	// another process does not: that one holds it for a refresh grant, and minting outside the
+	// lock is the replay keycloak ends the session over.
 	if errors.Is(err, profile.ErrNotWritable) {
-		if err := s.degradeToMemory(err); err != nil {
+		if err := s.degradeToMemory(err, renewed); err != nil {
 			return "", err
 		}
-		minted, err = s.renew(ctx, tokenScope, current, rejected)
+		// The store mints before it writes, so the token is usually already in hand when the
+		// write fails. Minting again would spend a second refresh grant on a token the first
+		// one rotated — one process ending its own session, with no second process involved.
+		// Only a failure that came before the grant has nothing to lose by repeating it.
+		if valid(renewed.token) {
+			err = nil
+		} else {
+			renewed, err = s.renew(ctx, tokenScope, current, rejected)
+		}
 	}
 	if err != nil {
 		return "", err
 	}
 	s.mu.Lock()
-	s.cached = minted
+	s.cached = renewed.token
 	s.mu.Unlock()
-	return minted.Token.String, nil
+	return renewed.token.Token.String, nil
 }
 
 // Scope is the key this session's tokens are cached under. Only a browser login is scoped to
@@ -106,22 +114,32 @@ func (s *Session) RequireWorkspace() error {
 // degradeToMemory keeps a machine with no writable home directory usable: the token lives for
 // this process and is re-minted by the next one, which is what a container gets anyway.
 //
+// It takes over the credentials the failed write was carrying, rather than re-reading the
+// file, because a refresh grant rotates before the write happens: the file's copy of the
+// refresh token is the one keycloak has already retired, and renewing from it later is the
+// replay that ends the session.
+//
 // It fails instead when this process can interact with a person, because a `meshstack auth
 // login` that cannot save has done pointless work and stopping early is a kindness. A CI job
 // cannot act on a warning, so it gets a debug record and carries on.
-func (s *Session) degradeToMemory(cause error) error {
+func (s *Session) degradeToMemory(cause error, renewed renewal) error {
 	if tty.IsInteractive() {
 		return diags.Wrap(cause, "cannot write this profile's credentials",
 			"%s could not be written: %v. Fix the permissions, or supply a credential through %s and %s instead.",
 			s.currentStore().Describe(), cause, envApiKey, envApiSecret)
 	}
 	slog.Debug("keeping tokens in memory only", "store", s.currentStore().Describe(), "cause", cause)
-	credentials, err := s.currentStore().Read()
-	if err != nil {
-		return err
+	credentials := renewed.credentials
+	if credentials == nil {
+		// The lock was never taken, so nothing was minted and the file is still the truth.
+		read, err := s.currentStore().Read()
+		if err != nil {
+			return err
+		}
+		credentials = &read
 	}
 	s.mu.Lock()
-	s.store = profile.NewMemoryStore(credentials)
+	s.store = profile.NewMemoryStore(*credentials)
 	s.mu.Unlock()
 	return nil
 }
@@ -152,8 +170,31 @@ func (s *Session) currentStore() profile.Store {
 	return s.store
 }
 
-func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current method.Method, rejected string) (profile.IssuedToken, error) {
-	var minted profile.IssuedToken
+// renewal is what one pass through renew produced. Its credentials are nil only when the mint
+// never ran — the lock could not be taken — and otherwise hold what the store was asked to
+// write, whether or not the write succeeded: a refresh grant rotates before the write, so what
+// the mint returned is the only copy the identity provider still honours.
+type renewal struct {
+	token       profile.IssuedToken
+	credentials *profile.Credentials
+}
+
+func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current method.Method, rejected string) (renewal, error) {
+	// Discovery is two GETs on a client that allows a minute per request, and it happens above
+	// Update so that the credentials lock covers the token grant and nothing else. A hold that
+	// outlasts profile's lockStaleAfter is broken by the next process, and the two then run a
+	// refresh grant each on one refresh token. Only the login method refreshes, so an API key
+	// still pays for no discovery at all.
+	var config oidc.Client
+	if current == method.Login {
+		discovered, err := s.discover(ctx)
+		if err != nil {
+			return renewal{}, err
+		}
+		config = discovered
+	}
+
+	var out renewal
 	var mintErr error
 	_, err := s.currentStore().Update(ctx, func(credentials profile.Credentials) (profile.Credentials, error) {
 		// Re-read under the lock: another process, or another goroutine that was already
@@ -161,11 +202,12 @@ func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current met
 		// nothing else happens. Only the rejected token itself is refused here — a 401 says
 		// nothing about a token that was minted after it.
 		if stored, ok := credentials.AccessTokens[tokenScope]; ok && valid(stored) && stored.Token.String != rejected {
-			minted = stored
+			out = renewal{token: stored, credentials: &credentials}
 			return credentials, nil
 		}
 		var updated profile.Credentials
-		updated, minted, mintErr = s.mint(ctx, credentials, current, tokenScope)
+		updated, out.token, mintErr = s.mint(ctx, config, credentials, current, tokenScope)
+		out.credentials = &updated
 		// A failed mint still writes what it changed, and the error travels beside the
 		// credentials rather than inside them. The refresh grant is why: keycloak rotates the
 		// refresh token before anything else can go wrong, so a mint that rotates and then
@@ -177,23 +219,27 @@ func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current met
 		err = mintErr
 	}
 	if err != nil {
-		return profile.IssuedToken{}, err
+		// What was minted travels with the error, because a write that failed has already spent
+		// the grant that produced it.
+		return out, err
 	}
-	if !valid(minted) {
-		return profile.IssuedToken{}, s.deadMethodError(current)
+	if !valid(out.token) {
+		return out, s.deadMethodError(current)
 	}
-	return minted, nil
+	return out, nil
 }
 
-// mint obtains a fresh access token from the current method, and never from another one.
-func (s *Session) mint(ctx context.Context, credentials profile.Credentials, current method.Method, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
+// mint obtains a fresh access token from the current method, and never from another one. It
+// runs under the credentials lock, so the one request it may make is the grant itself: config
+// is discovered above, and is the zero value for the methods that need none.
+func (s *Session) mint(ctx context.Context, config oidc.Client, credentials profile.Credentials, current method.Method, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
 	switch current {
 	case method.Manual:
 		return s.mintManual(ctx, credentials, tokenScope)
 	case method.ApiKey:
 		return s.mintApiKey(ctx, credentials, tokenScope)
 	case method.Login:
-		return s.mintLogin(ctx, credentials, tokenScope)
+		return s.mintLogin(ctx, config, credentials, tokenScope)
 	default:
 		return credentials, profile.IssuedToken{}, diags.Errorf("unknown authentication method",
 			"the profile records %q, which this version of the meshStack CLI does not know.", current)
@@ -244,14 +290,10 @@ func (s *Session) mintApiKey(ctx context.Context, credentials profile.Credential
 	return withToken(credentials, tokenScope, issued), issued, nil
 }
 
-func (s *Session) mintLogin(ctx context.Context, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
+func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
 	login := credentials.Methods.Login
 	if login == nil || login.RefreshToken == "" {
 		return credentials, profile.IssuedToken{}, s.deadMethodError(method.Login)
-	}
-	config, err := s.discover(ctx)
-	if err != nil {
-		return credentials, profile.IssuedToken{}, err
 	}
 	// Stricter than the endpoint check on the file, and it catches a repointed keycloak
 	// behind an unchanged endpoint — but it exists only where a login method does, which is

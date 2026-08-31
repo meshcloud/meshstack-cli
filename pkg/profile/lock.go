@@ -29,10 +29,17 @@ const (
 	lockRetryInitial = 20 * time.Millisecond
 	lockRetryMax     = 250 * time.Millisecond
 
-	// A lock older than this is treated as abandoned. It is comfortably longer than a
-	// token round trip, and short enough that a process killed mid-renewal does not lock
-	// a user out until they find the file themselves.
-	lockStaleAfter = 60 * time.Second
+	// A lock older than this is treated as abandoned. The hold it has to cover is a single
+	// token request — pkg/auth discovers the identity provider before it takes the lock,
+	// precisely so that nothing slower than one grant runs under it — and internal/http
+	// allows a minute per request, so five times that is comfortably clear of an identity
+	// provider having a bad day. Erring long is deliberate: breaking a live lock puts two
+	// refresh grants on one refresh token, which keycloak rotates and then ends the whole
+	// session over, while waiting too long only delays a user whose process was killed
+	// mid-renewal. An API key exchange can hold longer still, because it retries through a
+	// backend restart, but breaking that lock costs one duplicate token and nothing else:
+	// /api/login mints without invalidating anything.
+	lockStaleAfter = 5 * time.Minute
 )
 
 // ErrLockBusy reports that another process held the lock until ctx ran out. It is not a
