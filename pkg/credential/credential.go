@@ -1,5 +1,4 @@
-// Package credential says how a caller authenticates against the meshStack API: the three
-// methods, the shape each one has, and the access tokens each has minted.
+// Package credential says how a caller authenticates against the meshStack API.
 //
 // It is top level rather than a subpackage of either package that uses it. A credential from
 // the environment or a Terraform provider block touches no file, so pkg/profile does not own
@@ -19,14 +18,13 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 )
 
-// Method names how a caller authenticates. The constants carry the Method prefix because the
-// plain names are taken by the shapes below.
+// Method's constants carry the prefix because the plain names are taken by the shapes below.
 type Method string
 
 const (
-	MethodLogin  Method = "login"  // an OIDC refresh token from the browser flow
-	MethodApiKey Method = "apiKey" // an API key id and secret
-	MethodManual Method = "manual" // a token somebody pasted in; nothing can renew it
+	MethodLogin  Method = "login"
+	MethodApiKey Method = "apiKey"
+	MethodManual Method = "manual"
 )
 
 // Description names the method the way a message to a user should, because "apiKey"
@@ -44,8 +42,8 @@ func (m Method) Description() string {
 	}
 }
 
-// Credential is a set of methods with one of them selected. It holds more than one at a time
-// so that `meshstack login` switches back from an API key without asking for the id again.
+// Credential holds more than one method at a time, so that `meshstack login` switches back
+// from an API key without asking for the id again.
 //
 // Presence is not selection: switch on Current, never on a nil check. A profile that mints
 // with its API key may still hold a browser login, and `if c.Login != nil` would wrongly
@@ -57,13 +55,12 @@ type Credential struct {
 	Manual  *Manual `yaml:"manual,omitempty"`
 }
 
-// Login holds the browser login. ObtainedAt is recorded instead of a predicted deadline: the
-// session's ceiling is a server-side constant, so a number copied into the CLI would be wrong
-// wherever a realm configures another one.
+// Login records ObtainedAt instead of a predicted deadline: the session's ceiling is a
+// server-side constant, so a number copied into the CLI would be wrong wherever a realm
+// configures another one.
 //
-// It is the one method whose tokens are a map, because a browser login mints a user access
-// token bound to one workspace: one token per `c:` scope, plus the unscoped one that lists the
-// workspaces.
+// It is the one method whose tokens are a map, because a browser login mints a token bound to
+// one workspace: one per `c:` scope, plus the unscoped one that lists the workspaces.
 type Login struct {
 	Issuer       *xurl.URL `yaml:"issuer,omitempty"`
 	RefreshToken string    `yaml:"refreshToken"`
@@ -72,11 +69,9 @@ type Login struct {
 	AccessTokens map[scope.Scope]IssuedToken `yaml:"accessTokens,omitempty"`
 }
 
-// ApiKey holds an API key. Secret is absent when SecretCommand is set, so a long-lived secret
-// never has to sit on disk.
-//
-// AccessToken is the unscoped token: an API key carries whatever workspace its issuer put in
-// it, and nothing re-scopes one.
+// ApiKey leaves Secret absent when SecretCommand is set, so a long-lived secret never has to
+// sit on disk. AccessToken is the unscoped token: an API key carries whatever workspace its
+// issuer put in it, and nothing re-scopes one.
 type ApiKey struct {
 	Id            string   `yaml:"clientId"`
 	Secret        string   `yaml:"clientSecret,omitempty"`
@@ -96,19 +91,19 @@ type IssuedToken struct {
 	ExpiresAt time.Time `yaml:"expiresAt"`
 }
 
-// FromLogin, FromApiKey and FromManual each set Current and its pointer together, so that no
-// caller has to remember to do both.
+// FromLogin, FromApiKey and FromManual set Current and its pointer together, so that no caller
+// has to remember both halves of "presence is not selection".
 func FromLogin(l Login) Credential { return Credential{Current: MethodLogin, Login: &l} }
 
 func FromApiKey(k ApiKey) Credential { return Credential{Current: MethodApiKey, ApiKey: &k} }
 
 func FromManual(m Manual) Credential { return Credential{Current: MethodManual, Manual: &m} }
 
-// Validate rejects a credential that names a method it does not hold. The constructors cannot
-// produce one, so this is for a file somebody edited by hand: without it, `current: apiKey`
-// with no `apiKey:` block resolves to a credential nobody selected and fails much later.
+// Validate is for a file somebody edited by hand — the constructors cannot produce a credential
+// that names a method it does not hold. Without it, `current: apiKey` with no `apiKey:` block
+// resolves to a credential nobody selected and fails much later.
 //
-// The zero value is valid. It is the profile nothing has logged in to yet.
+// The zero value is valid: it is the profile nothing has logged in to yet.
 func (c Credential) Validate() error {
 	if c.Current == "" {
 		var held []string
