@@ -37,7 +37,6 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // Input is what a front end knows that pkg/auth cannot discover for itself. The meshStack
@@ -76,7 +75,7 @@ type Browser func(ctx context.Context, client oidc.Client) (oidc.Token, error)
 type Values struct {
 	Profile   string
 	Endpoint  string
-	Workspace workspace.Name
+	Workspace string
 	ApiKey    string // the API key id; a secret is never carried here
 
 	// Method is the method the caller demands, empty when it does not care. `--api-key`

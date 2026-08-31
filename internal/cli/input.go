@@ -17,7 +17,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/browser"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // UserAgent identifies this CLI to the meshStack API. cmd/meshstack replaces it with the
@@ -55,7 +54,7 @@ func (i *Input) Explicit() auth.Values {
 	return auth.Values{
 		Profile:   i.Profile,
 		Endpoint:  i.Endpoint,
-		Workspace: workspace.Name(i.Workspace),
+		Workspace: i.Workspace,
 		ApiKey:    i.ApiKey,
 		Method:    i.Method,
 	}

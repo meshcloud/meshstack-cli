@@ -1,5 +1,5 @@
 // Package scope names an OAuth scope value. It is a package of its own because three
-// unrelated packages need the type and none of them may depend on the others: pkg/workspace
+// unrelated packages need the type and none of them may depend on the others: pkg/meshstack
 // derives the scope a workspace asks for, pkg/profile keys its cached access tokens by it,
 // and pkg/oidc sends a list of them in a grant.
 package scope

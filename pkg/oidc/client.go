@@ -11,9 +11,9 @@ import (
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 type Client struct {
@@ -72,10 +72,10 @@ type Token struct {
 	Scope        string  `json:"scope"`
 }
 
-func (c Client) Refresh(ctx context.Context, refreshToken string, workspace workspace.Name) (resp Token, err error) {
+func (c Client) Refresh(ctx context.Context, refreshToken, workspace string) (resp Token, err error) {
 	scopes := scope.Scopes{scope.OpenId}
-	if !workspace.Empty() {
-		scopes = append(scopes, workspace.Scope())
+	if asked := meshstack.WorkspaceScope(workspace); asked != meshstack.Unscoped {
+		scopes = append(scopes, asked)
 	}
 	resp, err = c.doPost[Token](ctx, c.TokenEndpoint.URL, map[string]any{
 		"grant_type":    "refresh_token",

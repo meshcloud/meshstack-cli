@@ -477,7 +477,7 @@ func TestFormPayloadOption(t *testing.T) {
 		assert.Equal(t, "https://sso.example.com/realms/meshfed", got.Issuer.String())
 		assert.Equal(t, "sso.example.com", got.Issuer.Host, "the field is a parsed URL, not the text it came from")
 		assert.Equal(t, accessToken, got.AccessToken.String)
-		assert.Equal(t, "my-workspace", string(jwt.WorkspaceClaim.GetFrom(got.AccessToken)),
+		assert.Equal(t, "my-workspace", jwt.WorkspaceClaim.GetFrom(got.AccessToken),
 			"the claims come with the token, so nothing has to decode it a second time")
 	})
 

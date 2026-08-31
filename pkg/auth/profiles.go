@@ -5,8 +5,8 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // KnownProfile is one entry of config.yaml, for the prompt that asks which endpoint a new
@@ -14,7 +14,7 @@ import (
 type KnownProfile struct {
 	Name             string
 	Endpoint         string
-	DefaultWorkspace workspace.Name
+	DefaultWorkspace string
 	IsCurrent        bool
 }
 
@@ -58,7 +58,7 @@ func EnsureProfile(name string, endpoint *xurl.URL) error {
 		config.Profiles = map[string]profile.Profile{}
 	}
 	entry, exists := config.Profiles[name]
-	if exists && (endpoint == nil || (entry.Endpoint != nil && sameEndpoint(*entry.Endpoint, *endpoint))) {
+	if exists && (endpoint == nil || (entry.Endpoint != nil && meshstack.SameEndpoint(*entry.Endpoint, *endpoint))) {
 		return nil
 	}
 	if endpoint == nil {
@@ -78,7 +78,7 @@ func EnsureProfile(name string, endpoint *xurl.URL) error {
 // unknown name for the same reason EnsureProfile is the only creator.
 func SetProfileEndpoint(name, endpoint string) error {
 	return updateProfile(name, func(entry *profile.Profile) error {
-		parsed, err := parseEndpoint(endpoint)
+		parsed, err := meshstack.ParseEndpoint(endpoint)
 		if err != nil {
 			return err
 		}
@@ -87,7 +87,7 @@ func SetProfileEndpoint(name, endpoint string) error {
 	})
 }
 
-func SetProfileWorkspace(name string, ws workspace.Name) error {
+func SetProfileWorkspace(name, ws string) error {
 	return updateProfile(name, func(entry *profile.Profile) error {
 		entry.DefaultWorkspace = ws
 		return nil

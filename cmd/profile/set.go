@@ -10,7 +10,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/cli"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // settings are the keys `profile set` accepts, in the order the error lists them.
@@ -44,7 +43,7 @@ func newSet(in *cli.Input) *cobra.Command {
 			case "endpoint":
 				err = auth.SetProfileEndpoint(session.Profile, value)
 			case "workspace":
-				err = auth.SetProfileWorkspace(session.Profile, workspace.Name(value))
+				err = auth.SetProfileWorkspace(session.Profile, value)
 			}
 			if err != nil {
 				return err

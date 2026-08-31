@@ -9,8 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // isolate points the package at a temporary directory, the way a user's XDG_CONFIG_HOME
@@ -138,7 +136,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	want := Config{
 		CurrentProfile: "default",
 		Profiles: map[string]Profile{
-			"default":   {Endpoint: mustUrl("https://api.dev.meshcloud.io"), DefaultWorkspace: workspace.Name("my-workspace")},
+			"default":   {Endpoint: mustUrl("https://api.dev.meshcloud.io"), DefaultWorkspace: "my-workspace"},
 			"likvid-cf": {Endpoint: mustUrl("https://federation.demo.meshcloud.io")},
 		},
 	}

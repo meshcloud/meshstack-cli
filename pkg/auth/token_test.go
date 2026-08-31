@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // apiKeyProfile is a profile whose current method is an API key, with the secret on disk so
@@ -39,7 +39,7 @@ func storedLogin() credential.Credential {
 
 // loginProfile is a profile whose current method is the browser login. The endpoint is a
 // parameter because the rules that need no request need no server either.
-func loginProfile(t *testing.T, endpoint string, ws workspace.Name, held credential.Credential) {
+func loginProfile(t *testing.T, endpoint string, ws string, held credential.Credential) {
 	t.Helper()
 	held.Current = credential.MethodLogin
 	writeConfig(t, "default", map[string]profile.Profile{
@@ -111,8 +111,8 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 	}))
 
 	session := resolved(t, &fakeInput{})
-	require.Equal(t, workspace.Name("demo"), session.Workspace)
-	require.Equal(t, workspace.Name("demo").Scope(), session.Scope())
+	require.Equal(t, "demo", session.Workspace)
+	require.Equal(t, meshstack.WorkspaceScope("demo"), session.Scope())
 
 	token, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 	stored := readCredentials(t)
 	require.NotNil(t, stored.Login)
 	require.Equal(t, "refresh-1", stored.Login.RefreshToken, "the rotated refresh token must replace the used one")
-	require.Equal(t, token, stored.Login.AccessTokens[workspace.Name("demo").Scope()].Token.String,
+	require.Equal(t, token, stored.Login.AccessTokens[meshstack.WorkspaceScope("demo")].Token.String,
 		"the access token and the refresh token it came with are one write")
 }
 
@@ -370,7 +370,7 @@ func TestOnlyTheLoginMethodIsScopedToAWorkspace(t *testing.T) {
 		isolate(t)
 		loginProfile(t, "https://api.example.com", "demo", storedLogin())
 
-		require.Equal(t, workspace.Name("demo").Scope(), resolved(t, &fakeInput{}).Scope())
+		require.Equal(t, meshstack.WorkspaceScope("demo"), resolved(t, &fakeInput{}).Scope())
 	})
 
 	t.Run("apiKey", func(t *testing.T) {
@@ -381,8 +381,8 @@ func TestOnlyTheLoginMethodIsScopedToAWorkspace(t *testing.T) {
 		t.Setenv("MESHSTACK_WORKSPACE", "demo")
 
 		session := resolved(t, &fakeInput{secret: testSecret})
-		require.Equal(t, workspace.Name("demo"), session.Workspace, "the workspace still resolves; it is a request parameter too")
-		require.Equal(t, workspace.Unscoped, session.Scope())
+		require.Equal(t, "demo", session.Workspace, "the workspace still resolves; it is a request parameter too")
+		require.Equal(t, meshstack.Unscoped, session.Scope())
 	})
 
 	t.Run("manual", func(t *testing.T) {
@@ -391,7 +391,7 @@ func TestOnlyTheLoginMethodIsScopedToAWorkspace(t *testing.T) {
 		t.Setenv(envApiToken, "pasted-token")
 		t.Setenv("MESHSTACK_WORKSPACE", "demo")
 
-		require.Equal(t, workspace.Unscoped, resolved(t, &fakeInput{token: fakeToken("pasted-token")}).Scope())
+		require.Equal(t, meshstack.Unscoped, resolved(t, &fakeInput{token: fakeToken("pasted-token")}).Scope())
 	})
 }
 
@@ -530,7 +530,7 @@ func TestAStoreThatCannotBeWrittenKeepsWhatItMinted(t *testing.T) {
 		credentials, err := degraded.Read()
 		require.NoError(t, err)
 		require.Equal(t, "refresh-1", credentials.Login.RefreshToken)
-		require.Equal(t, token, credentials.Login.AccessTokens[workspace.Name("demo").Scope()].Token.String)
+		require.Equal(t, token, credentials.Login.AccessTokens[meshstack.WorkspaceScope("demo")].Token.String)
 	})
 
 	t.Run("a failure before the grant still mints once after degrading", func(t *testing.T) {

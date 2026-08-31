@@ -2,13 +2,13 @@ package auth
 
 import (
 	"context"
+	"strings"
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // devLocalEndpoint is where a local dev stack's meshfed-api listens. It is the only default
@@ -73,10 +73,10 @@ func (s *Session) loginDevLocal(ctx context.Context, result *LoginResult) error 
 	// The dev stack's key holds ADM_ rights and is therefore not workspace-bound, so nothing
 	// here needs a workspace. The profile does: a workspace-scoped command run later fails
 	// without one, and on a dev stack the admin workspace is the answer a developer would give.
-	if s.Workspace.Empty() {
-		s.Workspace = workspace.Name(info.AdminWorkspaceIdentifier)
+	if strings.TrimSpace(s.Workspace) == "" {
+		s.Workspace = info.AdminWorkspaceIdentifier
 	}
-	if s.Workspace.Empty() {
+	if strings.TrimSpace(s.Workspace) == "" {
 		return nil
 	}
 	return s.rememberWorkspace(s.Workspace, result)

@@ -3,7 +3,7 @@ package jwt
 import (
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 )
 
 type Claim[V any] struct {
@@ -12,13 +12,7 @@ type Claim[V any] struct {
 }
 
 var (
-	WorkspaceClaim = Claim[workspace.Name]{
-		key: workspace.ClaimKey,
-		converter: func(v any) workspace.Name {
-			name, _ := v.(string)
-			return workspace.Name(name)
-		},
-	}
+	WorkspaceClaim = Claim[string]{key: meshstack.ClaimKey}
 	// A token that says nothing about its own life reads as nil, not as 1970: nothing can
 	// renew one, so the server is what decides when it stops working.
 	Expiry = Claim[*time.Time]{

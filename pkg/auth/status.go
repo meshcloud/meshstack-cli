@@ -6,7 +6,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // Status is everything `meshstack auth status` reports without making a network call. That
@@ -18,7 +17,7 @@ type Status struct {
 	ConfigPath      string
 	CredentialsPath string
 	Endpoint        string
-	Workspace       workspace.Name
+	Workspace       string
 
 	// Sources says where each resolved value came from, keyed by "endpoint", "workspace",
 	// "profile" and "credential". `meshstack profile view` prints it.

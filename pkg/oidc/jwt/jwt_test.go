@@ -8,8 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // All fabricated: only the payload is ever real, because nothing here reads the header or
@@ -32,13 +30,13 @@ func TestClaims(t *testing.T) {
 
 	t.Run("a token scoped to a workspace", func(t *testing.T) {
 		token := parse(t, workspaceToken)
-		assert.Equal(t, workspace.Name("demo"), WorkspaceClaim.GetFrom(token))
+		assert.Equal(t, "demo", WorkspaceClaim.GetFrom(token))
 		assert.Equal(t, &expiry, Expiry.GetFrom(token))
 	})
 
 	t.Run("an unscoped token", func(t *testing.T) {
 		token := parse(t, unscopedToken)
-		assert.True(t, WorkspaceClaim.GetFrom(token).Empty(), "an unscoped token carries no MC_CUSTOMER")
+		assert.Empty(t, WorkspaceClaim.GetFrom(token), "an unscoped token carries no MC_CUSTOMER")
 		assert.Equal(t, &expiry, Expiry.GetFrom(token))
 	})
 }

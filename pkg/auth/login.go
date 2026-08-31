@@ -11,12 +11,12 @@ import (
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // LoginOptions are what `meshstack auth login` decides and pkg/auth does not.
@@ -29,7 +29,7 @@ type LoginOptions struct {
 	// ChooseWorkspace picks the profile's default workspace from the ones the fresh login can
 	// see. It is nil where the front end cannot ask — the Terraform provider, or a CLI with
 	// no terminal — and the login then leaves the profile's default alone.
-	ChooseWorkspace func(ctx context.Context, candidates []workspace.Name) (workspace.Name, error)
+	ChooseWorkspace func(ctx context.Context, candidates []string) (string, error)
 }
 
 // LoginResult is what the front end prints. pkg/auth returns the facts rather than a
@@ -38,7 +38,7 @@ type LoginResult struct {
 	Method    credential.Method
 	Endpoint  string
 	Profile   string
-	Workspace workspace.Name
+	Workspace string
 
 	// AlreadyLoggedIn reports that the stored login still worked, so no browser was opened.
 	AlreadyLoggedIn bool
@@ -167,7 +167,7 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 			// from a constant that lives in another repository.
 			ObtainedAt: time.Now().UTC(),
 			AccessTokens: map[scope.Scope]credential.IssuedToken{
-				workspace.Unscoped: issuedToken(token.AccessToken),
+				meshstack.Unscoped: issuedToken(token.AccessToken),
 			},
 		}))
 		return c, nil
@@ -188,7 +188,7 @@ func (s *Session) probeLogin(ctx context.Context, config oidc.Client, result *Lo
 		login := *c.Login
 		login.RefreshToken = token.RefreshToken
 		c.Credential = switchTo(c.Credential, credential.FromLogin(login))
-		return withToken(c, credential.MethodLogin, workspace.Unscoped, issuedToken(token.AccessToken)), nil
+		return withToken(c, credential.MethodLogin, meshstack.Unscoped, issuedToken(token.AccessToken)), nil
 	})
 	if err != nil {
 		return err
@@ -201,7 +201,7 @@ func (s *Session) probeLogin(ctx context.Context, config oidc.Client, result *Lo
 // workspaces with the unscoped token it just obtained, which is the only thing an unscoped
 // user token is good for.
 func (s *Session) chooseWorkspace(ctx context.Context, options LoginOptions, result *LoginResult) error {
-	if !s.Workspace.Empty() {
+	if strings.TrimSpace(s.Workspace) != "" {
 		return s.rememberWorkspace(s.Workspace, result)
 	}
 	if options.ChooseWorkspace == nil {
@@ -219,7 +219,7 @@ func (s *Session) chooseWorkspace(ctx context.Context, options LoginOptions, res
 	return s.rememberWorkspace(chosen, result)
 }
 
-func (s *Session) rememberWorkspace(name workspace.Name, result *LoginResult) error {
+func (s *Session) rememberWorkspace(name string, result *LoginResult) error {
 	result.Workspace = name
 	if s.Profile == "" {
 		return nil

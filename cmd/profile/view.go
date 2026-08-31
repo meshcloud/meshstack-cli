@@ -37,7 +37,7 @@ func newView(in *cli.Input) *cobra.Command {
 			}
 			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Profile", profileName)
 			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Endpoint", status.Endpoint)
-			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Workspace", orNone(status.Workspace.String()))
+			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Workspace", orNone(status.Workspace))
 			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Method", status.Current.Description())
 
 			_, _ = fmt.Fprintln(out, "\nSources")

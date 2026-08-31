@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -67,8 +68,8 @@ func printStatus(out io.Writer, status auth.Status) {
 		row(out, "Profile", "none", status.Sources["credential"])
 	}
 	row(out, "Endpoint", status.Endpoint, "")
-	if !status.Workspace.Empty() {
-		row(out, "Workspace", status.Workspace.String(), status.Sources["workspace"])
+	if strings.TrimSpace(status.Workspace) != "" {
+		row(out, "Workspace", status.Workspace, status.Sources["workspace"])
 	} else {
 		row(out, "Workspace", "none", "")
 	}

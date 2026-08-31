@@ -3,8 +3,6 @@ package auth
 import (
 	"os"
 	"strings"
-
-	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 )
 
 // The environment layer of the precedence order. The names are private, because no
@@ -70,20 +68,4 @@ func pick(explicit, envKey string) (value string, from source, detail string) {
 		return v, sourceEnv, envKey
 	}
 	return "", "", ""
-}
-
-// sameEndpoint compares two endpoints by scheme, host and port, with a case-folded host and
-// any trailing slash removed. Everything that selects or checks a profile by endpoint goes
-// through it, so "https://api.example.com/" and "https://API.example.com" are one endpoint.
-func sameEndpoint(a, b xurl.URL) bool {
-	return canonicalEndpoint(a) == canonicalEndpoint(b) && canonicalEndpoint(a) != ""
-}
-
-// canonicalEndpoint compares scheme and host only, and case-insensitively, so that a path or
-// a capitalised host does not make one meshStack look like two.
-func canonicalEndpoint(u xurl.URL) string {
-	if u.Host == "" {
-		return ""
-	}
-	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host)
 }

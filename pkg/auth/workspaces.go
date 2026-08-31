@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // Workspaces lists the workspaces this credential can see. `meshstack auth login` prompts
@@ -13,7 +12,7 @@ import (
 // It is the one thing an unscoped user token is good for: with no c: scope the principal
 // holds only the three list rights, so this call works right after a browser login and
 // before any workspace has been chosen.
-func (s *Session) Workspaces(ctx context.Context) ([]workspace.Name, error) {
+func (s *Session) Workspaces(ctx context.Context) ([]string, error) {
 	// Deliberately unscoped. A user has to be able to list the workspaces *before* picking one,
 	// and a scoped exchange for a workspace the user is not in fails with the very message this
 	// list is meant to answer.
@@ -25,9 +24,9 @@ func (s *Session) Workspaces(ctx context.Context) ([]workspace.Name, error) {
 	if err != nil {
 		return nil, HintErr(err, s)
 	}
-	names := make([]workspace.Name, 0, len(found))
+	names := make([]string, 0, len(found))
 	for _, w := range found {
-		names = append(names, workspace.Name(w.Metadata.Name))
+		names = append(names, w.Metadata.Name)
 	}
 	return names, nil
 }

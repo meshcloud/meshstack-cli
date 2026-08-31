@@ -179,7 +179,7 @@ an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_
 `MESHSTACK_NO_INPUT`, `MESHSTACK_CONFIG_FILE` and `MESHSTACK_CREDENTIALS_DIR`.
 
 **No `MESHSTACK_*` name is exported.** Each is a private const in the package that consults it —
-`pkg/auth`, `pkg/profile`, `pkg/workspace`, `pkg/tty` — and every message that has to mention one is
+`pkg/auth`, `pkg/profile`, `pkg/meshstack`, `pkg/tty` — and every message that has to mention one is
 produced there too, so neither front end assembles a sentence out of a constant it imported. A front
 end that needs the *value* of a secret variable gets it through `auth.SecretFromEnv` or
 `auth.TokenFromEnv`. The Taskfile reads a git-ignored `.env` for local runs.

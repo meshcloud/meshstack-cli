@@ -11,12 +11,12 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // graceWindow is how much life a token must have left to count as valid. It covers a request
@@ -87,9 +87,9 @@ func (s *Session) Scope() scope.Scope {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current != credential.MethodLogin {
-		return workspace.Unscoped
+		return meshstack.Unscoped
 	}
-	return s.Workspace.Scope()
+	return meshstack.WorkspaceScope(s.Workspace)
 }
 
 // Method reports which method mints for this session.
@@ -106,8 +106,8 @@ func (s *Session) Method() credential.Method {
 // A command calls it when it acts on meshObjects. `meshstack workspace list` and
 // `meshstack auth status` do not, because they are what a user needs in order to pick one.
 func (s *Session) RequireWorkspace() error {
-	if s.Method() == credential.MethodLogin && s.Workspace.Empty() {
-		return diags.Errorf("no workspace", "%s", workspace.ErrMissing)
+	if s.Method() == credential.MethodLogin && strings.TrimSpace(s.Workspace) == "" {
+		return diags.Errorf("no workspace", "%s", meshstack.ErrMissing)
 	}
 	return nil
 }
@@ -317,7 +317,7 @@ func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials
 	updated := *login
 	updated.RefreshToken = refreshed.RefreshToken
 	credentials.Login = &updated
-	if !s.Workspace.Empty() {
+	if strings.TrimSpace(s.Workspace) != "" {
 		if got := jwt.WorkspaceClaim.GetFrom(refreshed.AccessToken); got != s.Workspace {
 			// The rotated refresh token goes back either way — the grant already succeeded, so
 			// keycloak has invalidated the one on disk whatever this check says.
@@ -406,7 +406,7 @@ func issuedToken(token jwt.JWT) credential.IssuedToken {
 // the current method is in this package too.
 //
 // Only a browser login keys its tokens by scope. For the other two the scope is always
-// workspace.Unscoped, so tokenScope is ignored and the single field is that token.
+// meshstack.Unscoped, so tokenScope is ignored and the single field is that token.
 func cachedToken(credentials profile.Credentials, current credential.Method, tokenScope scope.Scope) (credential.IssuedToken, bool) {
 	switch current {
 	case credential.MethodLogin:

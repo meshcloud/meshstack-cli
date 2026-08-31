@@ -11,9 +11,9 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // Session is one process's answer to "who am I, against what, in which workspace". It is the
@@ -27,7 +27,7 @@ type Session struct {
 	// the credential did not come from a profile, which is the case a CI job and a building
 	// block run land in.
 	Endpoint  xurl.URL
-	Workspace workspace.Name
+	Workspace string
 	Profile   string
 
 	input Input
@@ -80,10 +80,10 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 	sources := map[string]string{}
 
 	endpointRaw, endpointFrom, endpointDetail := pick(values.Endpoint, envEndpoint)
-	ws, wsFrom, wsDetail := pick(values.Workspace.String(), "")
+	ws, wsFrom, wsDetail := pick(values.Workspace, "")
 	if ws == "" {
-		if fromEnv := workspace.FromEnv(); !fromEnv.Empty() {
-			ws, wsFrom, wsDetail = fromEnv.String(), sourceEnv, "MESHSTACK_WORKSPACE"
+		if fromEnv := meshstack.WorkspaceFromEnv(); fromEnv != "" {
+			ws, wsFrom, wsDetail = fromEnv, sourceEnv, "MESHSTACK_WORKSPACE"
 		}
 	}
 	apiKeyId, _, _ := pick(values.ApiKey, envApiKey)
@@ -93,7 +93,7 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 		return nil, err
 	}
 
-	session := &Session{input: in, sources: sources, Workspace: workspace.Name(ws)}
+	session := &Session{input: in, sources: sources, Workspace: ws}
 
 	// A credential is resolved as a whole, never field by field: take the highest-ranked
 	// source that supplies a complete one.
@@ -116,7 +116,7 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 				if endpointRaw == "" && entry.Endpoint != nil {
 					endpointRaw, endpointFrom, endpointDetail = entry.Endpoint.String(), sourceProfile, "'"+name+"'"
 				}
-				if ws == "" && !entry.DefaultWorkspace.Empty() {
+				if ws == "" && strings.TrimSpace(entry.DefaultWorkspace) != "" {
 					session.Workspace, wsFrom, wsDetail = entry.DefaultWorkspace, sourceProfile, "'"+name+"' default"
 				}
 			}
@@ -124,7 +124,7 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 				return nil, diags.Errorf("meshStack endpoint is not configured",
 					"a credential was supplied but no endpoint. Set it with --endpoint, %s, or a profile.", envEndpoint)
 			}
-			session.Endpoint, err = parseEndpoint(endpointRaw)
+			session.Endpoint, err = meshstack.ParseEndpoint(endpointRaw)
 			if err != nil {
 				return nil, err
 			}
@@ -160,12 +160,12 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 		return nil, diags.Errorf("meshStack endpoint is not configured",
 			"profile %q has no endpoint. Set it with --endpoint, %s, or `meshstack profile set endpoint <url>`.", name, envEndpoint)
 	}
-	session.Endpoint, err = parseEndpoint(endpointRaw)
+	session.Endpoint, err = meshstack.ParseEndpoint(endpointRaw)
 	if err != nil {
 		return nil, err
 	}
 
-	if ws == "" && !entry.DefaultWorkspace.Empty() {
+	if ws == "" && strings.TrimSpace(entry.DefaultWorkspace) != "" {
 		session.Workspace, wsFrom, wsDetail = entry.DefaultWorkspace, sourceProfile, "'"+name+"' default"
 	}
 
@@ -182,7 +182,7 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 	// common path uses a cached access token without consulting a method at all. Without it,
 	// repointing a profile's endpoint would send a stored bearer token to a different
 	// meshStack instance.
-	if credentials.Endpoint != nil && !sameEndpoint(*credentials.Endpoint, session.Endpoint) {
+	if credentials.Endpoint != nil && !meshstack.SameEndpoint(*credentials.Endpoint, session.Endpoint) {
 		return nil, diags.Errorf("this credential belongs to a different meshStack",
 			"profile %q was logged in to %s, but this command targets %s. Pick another profile with --profile, or log in again.",
 			name, credentials.Endpoint, session.Endpoint)
@@ -272,13 +272,13 @@ func selectProfile(ctx context.Context, config profile.Config, explicit, endpoin
 	// An endpoint given on its own is almost always meant as "the instance I have a profile
 	// for", so resolving it is friendlier than refusing.
 	if endpoint != "" {
-		wanted, err := parseEndpoint(endpoint)
+		wanted, err := meshstack.ParseEndpoint(endpoint)
 		if err != nil {
 			return "", "", err
 		}
 		var matches []string
 		for candidate, entry := range config.Profiles {
-			if entry.Endpoint != nil && sameEndpoint(*entry.Endpoint, wanted) {
+			if entry.Endpoint != nil && meshstack.SameEndpoint(*entry.Endpoint, wanted) {
 				matches = append(matches, candidate)
 			}
 		}
@@ -327,17 +327,6 @@ func currentMethod(credentials profile.Credentials, demanded credential.Method, 
 	// Nothing stored yet. Login is the method `meshstack login` creates, and the error a
 	// command gets from a profile with no credentials names it.
 	return credential.MethodLogin, nil
-}
-
-// parseEndpoint reads what a flag, an environment variable or a profile named. The parsing
-// and the absolute-URL check are xurl.URL's own; only the trailing slash and the message a
-// person reads are this package's business.
-func parseEndpoint(raw string) (endpoint xurl.URL, err error) {
-	if err = endpoint.UnmarshalText([]byte(strings.TrimSuffix(strings.TrimSpace(raw), "/"))); err != nil {
-		return endpoint, diags.Errorf("the meshStack endpoint is not a valid URL",
-			"%q: %v. It should read like https://api.example.meshcloud.io.", raw, err)
-	}
-	return endpoint, nil
 }
 
 func describeConfigPath() string {

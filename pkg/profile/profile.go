@@ -26,7 +26,6 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // Version is the format version both files carry. A CLI that reads a higher one
@@ -61,8 +60,8 @@ type Config struct {
 // credentials live in their own file, which is what keeps a renewal from locking this
 // one.
 type Profile struct {
-	Endpoint         *xurl.URL      `yaml:"endpoint,omitempty"`
-	DefaultWorkspace workspace.Name `yaml:"defaultWorkspace,omitempty"`
+	Endpoint         *xurl.URL `yaml:"endpoint,omitempty"`
+	DefaultWorkspace string    `yaml:"defaultWorkspace,omitempty"`
 }
 
 // nameRE bounds a profile name, which becomes a path segment under `credentials/`.

@@ -17,7 +17,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // bareApiKey is what --api-key means without a value: keep the id already in the profile.
@@ -171,7 +170,7 @@ func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
 
 	options := auth.LoginOptions{Force: force}
 	if tty.IsInteractive() {
-		options.ChooseWorkspace = func(_ context.Context, candidates []workspace.Name) (workspace.Name, error) {
+		options.ChooseWorkspace = func(_ context.Context, candidates []string) (string, error) {
 			return chooseWorkspace(cmd, candidates)
 		}
 	}
@@ -255,7 +254,7 @@ func knownEndpoints(known []auth.KnownProfile) []knownEndpoint {
 // chooseWorkspace asks which workspace this profile should default to. An empty answer
 // leaves the profile's default alone, which is the right outcome for a user who wants to
 // decide later with `meshstack profile set workspace`.
-func chooseWorkspace(cmd *cobra.Command, candidates []workspace.Name) (workspace.Name, error) {
+func chooseWorkspace(cmd *cobra.Command, candidates []string) (string, error) {
 	out := cmd.ErrOrStderr()
 	if len(candidates) == 0 {
 		_, _ = fmt.Fprintln(out, "This login can see no workspaces yet, so the profile keeps no default one.")
@@ -309,8 +308,8 @@ func printLogin(out io.Writer, result auth.LoginResult) {
 		row(out, "Profile", result.Profile, "")
 	}
 	row(out, "Method", result.Method.Description(), "")
-	if !result.Workspace.Empty() {
-		row(out, "Workspace", result.Workspace.String(), "")
+	if strings.TrimSpace(result.Workspace) != "" {
+		row(out, "Workspace", result.Workspace, "")
 	}
 	if result.Method != credential.MethodManual {
 		return

@@ -9,7 +9,6 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault pins the precedence order on each
@@ -59,9 +58,9 @@ func TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault(t *testing.T) {
 	t.Run("workspace", func(t *testing.T) {
 		tests := []struct {
 			name     string
-			explicit workspace.Name
+			explicit string
 			env      string
-			want     workspace.Name
+			want     string
 		}{
 			{name: "explicit wins", explicit: "from-flag", env: "from-env", want: "from-flag"},
 			{name: "the environment beats the profile", env: "from-env", want: "from-env"},
@@ -399,7 +398,7 @@ func TestProfileSuppliesTheEndpointForAnEnvironmentCredential(t *testing.T) {
 	session, err := Resolve(t.Context(), &fakeInput{})
 	require.NoError(t, err)
 	assert.Equal(t, "https://api.dev.example.com", session.Endpoint.String())
-	assert.Equal(t, workspace.Name("from-the-profile"), session.Workspace)
+	assert.Equal(t, "from-the-profile", session.Workspace)
 	assert.Equal(t, credential.MethodManual, session.Method())
 
 	entries, err := os.ReadDir(at.credentials)

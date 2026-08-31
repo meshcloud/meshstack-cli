@@ -111,6 +111,53 @@ an unset value that way and an unset flag must not silence the environment below
 that no setting can be deliberately cleared by an explicit empty value — `--workspace=""` cannot
 shed a profile's default. 3 does not discuss the case. Left as it is; nothing needs it yet.
 
+### `workspace.Name.Empty()` trimmed, so a plain `== ""` is a different check
+
+8 drops the type and every `Empty()` with it. The method was
+`strings.TrimSpace(string(n)) == ""`, so today a `--workspace "  "` counts as no workspace at
+all: `RequireWorkspace` refuses it with `ErrMissing`, and a profile's whitespace-only
+`defaultWorkspace` is ignored. Writing `== ""` at the call sites would change that, and the
+`Scope()` half of it silently — the guard would pass while the scope stayed `Unscoped`, which
+is the wrong-token failure 8 keeps `scope.Scope` to avoid.
+
+**Decided:** the call sites read `strings.TrimSpace(x) == ""`, so the lane changes no
+behaviour. It is verbose, and `resolve.go` now reads
+`if ws == "" && strings.TrimSpace(entry.DefaultWorkspace) != ""` because the untrimmed half was
+already written that way. Collapsing all of them to `== ""` is a one-line-per-site follow-up,
+but it is a behaviour change in whitespace-only input and needs to be decided as one.
+
+### `pkg/meshstack` imports three packages, not one
+
+The entry above says there is no cycle "because `pkg/meshstack` imports only `pkg/oidc/scope`".
+With `ParseEndpoint` it also imports `pkg/diags` and `client/types/xurl`. Still no cycle: all
+three of those import nothing from this module. `.golangci.yml`'s `pkg` rule allows
+`client` and `pkg` wholesale, so `pkg/oidc/jwt` importing `pkg/meshstack` needs no rule change.
+
+### Dropping the type makes `WorkspaceClaim`'s converter redundant
+
+`Claim.GetFrom` already type-asserts to `V` when `converter` is nil, so `Claim[string]` with a
+converter that asserts to `string` does the assertion twice. `WorkspaceClaim` is now
+`Claim[string]{key: meshstack.ClaimKey}`, the same shape as `UsernameClaim`.
+
+### `pkg/auth` writes `MESHSTACK_WORKSPACE` as a literal
+
+15 rests on "no `MESHSTACK_*` name is exported, and every message naming one is produced in the
+package that consults it". `resolve.go:86` breaks the second half already: it labels the
+workspace's origin for `meshstack profile view` with the literal `"MESHSTACK_WORKSPACE"`, so
+`pkg/auth` names a variable it cannot see. Nothing in phase 1 needs it fixed — the rule holds
+for every *message*, and this is a label — and 2's `Source.Describe` is what removes it. Left
+for the lane that adds the declarations.
+
+### The provider stops importing the package the rename was about
+
+`workspace.Name` was the only thing `internal/provider` took from `pkg/workspace`, so dropping
+the type leaves the provider importing nothing from `pkg/meshstack`. Its `.golangci.yml` still
+carried an `allow` entry for the old path.
+
+**Decided:** the entry is renamed rather than deleted, so the policy says the same thing it said
+before the rename — the provider may reach the domain names. Deleting it would be a narrowing,
+and phase 4 puts the schema text in the declarations that live there.
+
 ## Phase 2
 
 ### 1's list of non-settings is missing `MESHSTACK_SKIP_VERSION_CHECK`
