@@ -38,6 +38,11 @@ import (
 // carried no version would silently claim to be the current one.
 const Version = 1
 
+// writeOptions are shared by both files. Deterministic is what stops them churning: v2 writes
+// map members in Go's randomised iteration order, so without it an hourly token renewal
+// reshuffles accessTokens and the file changes when nothing in it did.
+var writeOptions = json.JoinOptions(jsontext.WithIndent("  "), json.Deterministic(true))
+
 // These keys are private for the same reason every other MESHSTACK_* name in this
 // module is: no front end assembles a sentence out of a constant it imported, so every
 // message naming one is produced in this package.
@@ -187,7 +192,7 @@ func SaveConfig(cfg Config) error {
 	// Stamped rather than trusted: this code can only write the format it implements,
 	// and reading a higher version already stopped before we got here.
 	cfg.Version = Version
-	data, err := json.Marshal(cfg, jsontext.WithIndent("  "))
+	data, err := json.Marshal(cfg, writeOptions)
 	if err != nil {
 		return diags.Wrap(err, "Cannot write the configuration", "%s could not be encoded.", path)
 	}

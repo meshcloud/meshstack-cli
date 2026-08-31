@@ -264,10 +264,10 @@ needed no edit.
 iteration order, so a profile's `accessTokens` and the `profiles` map reshuffle on every write.
 `json.Deterministic(true)` sorts them for one more option at the two `Marshal` calls.
 
-**Not decided.** Lane A wrote what 13 asked for and no more. Nothing depends on the ordering — both
-files are replaced whole under a lock — and the round-trip tests assert member presence rather than
-whole-file text wherever a map with more than one entry is involved. Worth settling before somebody
-writes a test that does compare whole-file text.
+**Decided:** both `Marshal` calls take a shared `writeOptions` that joins `WithIndent` with
+`Deterministic(true)`. Nothing in the code depends on the order, but a person does: a login renews
+hourly and rewrites the whole file, so without it the credentials file changes on every renewal
+when nothing in it did. One definition and one comment serve both call sites.
 
 ### The provider's `scratch/` reads the configuration as YAML text, not just by name
 

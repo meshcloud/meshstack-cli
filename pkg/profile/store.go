@@ -2,7 +2,6 @@ package profile
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"io/fs"
@@ -127,7 +126,7 @@ func (s *fileStore) Update(ctx context.Context, mint func(Credentials) (Credenti
 	// Written unconditionally, even when mint changed nothing. Credentials holds a map
 	// and two time.Time values, so a comparison is either uncompilable or subtly wrong
 	// about monotonic clocks and locations — and pruning has to reach the file anyway.
-	data, err := json.Marshal(next, jsontext.WithIndent("  "))
+	data, err := json.Marshal(next, writeOptions)
 	if err != nil {
 		return Credentials{}, diags.Wrap(err, "Cannot store the credentials",
 			"%s could not be encoded.", s.path)
