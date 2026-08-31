@@ -165,6 +165,23 @@ Quoting the losing id is deliberate: a client id is not a secret, and it is the 
 which stale export to remove. The CLI says the same with `--api-key` in place of the block. **Both
 belong in the docs**, next to the row 1 setup they qualify.
 
+### A token is an identity
+
+**`MESHSTACK_API_TOKEN` counts as an identity in the walk**, and so does a profile's `Manual`. A token
+names who you are as much as a key id does. It matters most for the exclusion clause: without it, a
+source holding a token would sit quietly and still be allowed to hand its secret to another source's
+`apikey`.
+
+**A token needs no secret**, so the second half of the unit rule does not run for it.
+
+**One source carrying both a token and a key id is an error**, not a precedence contest. They are two
+different methods rather than two spellings of one thing, so choosing silently hands the user an
+identity they did not pick — the failure the behaviour changes below refuse to accept. The message
+follows row 4's shape, naming both and saying to remove one.
+
+The case is narrow: the CLI has no `--api-token` flag, because a token is a secret and 3 keeps
+secrets out of flag values. Only the environment and the provider block can hold both.
+
 ### Row 3 warns. It does not rewrite the profile.
 
 Row 3 costs the rotation case: the user exports a rotated secret, the profile keeps serving the old
@@ -237,6 +254,21 @@ key without asking for the id again. `Current` is the selection; the pointers ar
 **Presence is not selection**: always switch on `Current`, never on a nil check.
 `if c.Login != nil { return ErrMissing }` would wrongly demand a workspace from a profile minting
 with its API key.
+
+**One type for the file and for the resolution, although they are different shapes.** A credential
+resolved from the environment, a flag or a provider block is exactly one method, so it carries two
+nil pointers and only `Current` means anything. A closed sum — an interface with a marker method —
+would make "presence is not selection" impossible to get wrong instead of a rule to remember, and it
+is still not worth two conversions and turning six branches into type switches.
+
+The rule is held up where holding it is cheap:
+
+- **Constructors, so that no caller assembles the struct.** `credential.FromLogin`,
+  `credential.FromApiKey` and `credential.FromManual` each set `Current` and its pointer together.
+- **One invariant check, called by the constructors and after unmarshalling:** `Current` is
+  non-empty, and the pointer it names is non-nil. A hand-edited profile file then fails with a
+  message rather than resolving to a credential nobody selected.
+- A test over all three methods that the check rejects every mismatched pair.
 
 **Minting stays in `pkg/auth`**, with one three-arm switch. `Mint` on the type would pull
 `internal/http` and `pkg/oidc` — and through it the whole API client — into `pkg/profile`, which
@@ -397,14 +429,36 @@ the CLI's `Input`, and `pkg/auth/token.go:126` holds the `Session`.
 
 ## 13. `encoding/json/v2` replaces goccy
 
-It is in the Go 1.27 standard library as a real importable package — no `GOEXPERIMENT`. Dropping
-`github.com/goccy/go-yaml` takes the module to the two external dependencies `.golangci.yml` already
-claims as the policy.
+It is in the Go 1.27 standard library as a real importable package — no `GOEXPERIMENT`, verified
+against go1.27.0, and `go.mod:5` already pins 1.27. Dropping `github.com/goccy/go-yaml` takes the
+module to the two external dependencies `.golangci.yml` already claims as the policy.
 
-- **`omitempty` does not mean what it meant.** In v2 it omits an *encoded* empty value (`""`, `{}`,
-  `[]`, `null`); `omitzero` omits the Go zero value or anything whose `IsZero()` is true. Every
-  `time.Time` and every `*xurl.URL` wants `omitzero`. A mechanical `yaml:` → `json:` rename would
-  start writing `"expiresAt": "0001-01-01T00:00:00Z"`.
+**Known and accepted: the import costs the provider's users the `nojsonv2` opt-out.** Go 1.27 keeps
+`GOEXPERIMENT=nojsonv2` for code that breaks under the new implementation, and it only builds when
+nothing in the tree imports v2 — [the request to lift that](https://go.dev/issue/79788) was closed as
+not planned. This module is a library the Terraform provider imports, so a direct v2 import removes
+the hatch for the provider and for anything importing the provider. Chosen anyway: the hatch is
+transitional and Go says it will be removed, and v2's strict parsing is worth having on a file a user
+may edit by hand — v1 accepts `{"b":"x","b":"y"}` and silently keeps `"y"`, while v2 rejects a
+duplicate object name and rejects invalid UTF-8 in a string.
+
+**Strictness is the reason for v2, and it is a reason on its own.** Plain `encoding/json` would have
+carried every mechanical need below — v1 has had `omitzero` since Go 1.24 and has always honoured
+`TextMarshaler` for values — so a config file that reports its own corruption instead of quietly
+picking a value is what the import buys. If this is ever revisited, that is the thing to defend.
+
+- **Each tag option is chosen per field. There is no mechanical `yaml:` → `json:` rename.** In v2
+  `omitempty` omits an *encoded* empty value (`""`, `{}`, `[]`, `null`), while `omitzero` omits the
+  Go zero value or anything whose `IsZero()` reports true.
+  - **`omitzero`** where the Go zero value means "not set": every `time.Time`, every `*xurl.URL`,
+    every pointer in the credential sum, and `Method`.
+  - **No option at all** where the zero value has to round-trip, starting with `Version` — a file
+    must never lose the field that says how to read it.
+  - **`omitempty`** only where an encoded empty value is the absent one. In practice that is
+    `SecretCommand []string`, and `omitzero` says the same thing more precisely there, so
+    `omitempty` may end up unused.
+  - The step-1 test pins this per shape: marshal a zero value, marshal a fully populated one, and
+    unmarshal both back.
 - `xurl.URL` needs nothing: it already implements `encoding.TextMarshaler` and `TextUnmarshaler`.
 - Write with `jsontext.WithIndent`, so the file stays readable by hand.
 
@@ -414,35 +468,79 @@ ten doc comments name `config.yaml`.
 
 ## Behaviour changes
 
-Two, both deliberate, both needing a provider CHANGELOG entry.
+Two, both deliberate. **One provider CHANGELOG entry, describing the end state.** The provider's
+CHANGELOG is not a history record yet, so rewrite it freely rather than adding a line per pull
+request — a reader wants what the provider does now, not how the branch got there.
 
-**A partial credential fixes the identity.** `MESHSTACK_API_KEY=k` alone, with a profile holding a
-browser login, is ignored today and the browser login runs — the user acts under an identity they did
-not ask for, with nothing said. It will instead fix the identity and fail, naming the variable. The
-cost lands hardest on the provider, which cannot prompt: a stale `MESHSTACK_API_KEY` fails a
-`terraform plan` that used to work. Chosen because silently ignoring a deliberately exported
-credential variable is the worse failure — invisible, and it changes who you are.
+**An exported credential variable fixes the identity.** `MESHSTACK_API_KEY=k` alone, with a profile
+holding a browser login, is ignored today and the browser login runs — the user acts under an
+identity they did not ask for, with nothing said. It will instead fix the identity and fail, naming
+the variable. `MESHSTACK_API_TOKEN` behaves the same way, per the token rule in 4, except that it
+succeeds rather than failing because a token needs no secret. The cost lands hardest on the provider,
+which cannot prompt: a stale `MESHSTACK_API_KEY` fails a `terraform plan` that used to work. Chosen
+because silently ignoring a deliberately exported credential variable is the worse failure —
+invisible, and it changes who you are.
 
 **The file format changes**, per 13. A user with an existing profile runs `meshstack login` again.
 
 ## Landing order
 
-This order exists to keep each change reviewable, and for no other reason. **The design above wins
-over these boundaries.** If implementing a step shows a decision is wrong, revisit the decision
-rather than bending the code to fit the step.
+The order is chosen so that each phase is safe to hand to somebody working on their own, and so that
+a phase's lanes can run at the same time. **Containing the user-visible break is not a goal** — there
+is no release, so it costs nothing to land it early. **The design above wins over these boundaries.**
+If implementing a step shows a decision is wrong, revisit the decision rather than bending the code
+to fit the step.
 
-Steps 1 to 4 change no behaviour, so only step 5 needs the careful test pass and the acceptance run.
+### Two rules that make parallel work safe
 
-| # | step | touches | provider | verification |
-|---|---|---|---|---|
-| 1 | json/v2 and the file format | `pkg/profile` | none | unit tests; `go.mod` drops goccy |
-| 2 | `pkg/credential` | absorbs `pkg/auth/method`, moves the three shapes out of `pkg/profile` | a renamed import | unit tests |
-| 3 | `pkg/meshstack` | renames `pkg/workspace`, drops the named types, moves `ParseEndpoint` | `auth_input.go` only | unit tests |
-| 4 | `pkg/setting` and the declarations | new package, declarations in domain packages; `Resolve` still hand-written | none | unit tests; new test asserting every `Short` is non-empty and backtick-free, and every `EnvKey` unique |
-| 5 | `Resolve` rewritten over sources | `pkg/auth` | none yet | full unit suite, CLI acceptance suite, both behaviour changes covered |
-| 6 | `blockSource` and aligned descriptions | — | `auth_input.go`, `provider.go`, `task generate` | provider unit + acceptance; CHANGELOG entry |
+- **One lane at a time may edit `../terraform-provider-meshstack`**, and the table names which. The
+  provider pins this branch, so a CLI push without the matching provider edit leaves the provider not
+  building. Every phase boundary is therefore one CLI push plus one provider pin bump, together.
+- **Every lane ends green**: `task lint`, `go build ./...`, the unit suite, and the provider still
+  builds. A lane that cannot reach that state stops and says so rather than handing on a red tree.
 
-Decisions 11 and 12 ride along with step 5: both need the resolved value to reach a `Session`.
+### Phase 1 — the moves, one lane, owns the provider
+
+Steps 2 and 3 of the old order, together, plus the empty mechanism.
+
+| does | why here |
+|---|---|
+| `pkg/credential`: absorb `pkg/auth/method`, move the three shapes out of `pkg/profile` | pure move |
+| `pkg/meshstack`: rename `pkg/workspace`, drop the named types per 8, move `ParseEndpoint`, `sameEndpoint` and `canonicalEndpoint` out of `pkg/auth/env.go` | pure rename |
+| `pkg/setting`: the package, `Value[T]`, `Source`, `setting.Resolve` — no declarations yet | tiny, and it unblocks every phase-2 lane |
+
+Both moves land in one lane because both edit the provider's `auth_input.go`, so splitting them buys
+a merge conflict and a second pin bump. Verification: everything compiles, the unit suite is
+unchanged, the provider builds.
+
+### Phase 2 — three lanes at once
+
+| lane | does | touches | provider |
+|---|---|---|---|
+| A | json/v2 and the file format, per 13 | `pkg/profile` I/O, the tags on the moved shapes | none |
+| B | the declarations | one new file per domain package: `meshstack`, `credential`, `profile`, `tty`, `browser` | none |
+| C | decision 11, the browser as an argument | `pkg/auth/login.go`, `internal/cli`, `provider.go:122` | **owns it** |
+
+A and B meet only in `pkg/credential`, and in different files — A edits struct tags, B adds a
+declarations file. C is the one lane touching the provider in this phase.
+
+Lane B's own test: every `Short` non-empty and backtick-free, and every `EnvKey` unique across all
+declarations. Lane A's: the round trip per shape from 13.
+
+### Phase 3 — `auth.ResolveSession`, one lane
+
+Step 5, and decision 12 with it — `pkg/tty` can only lose its global once a `Session` owns the
+resolved value. This is the phase that changes behaviour, so it carries the full unit suite, the CLI
+acceptance suite, and a test for each row of 4's table and each behaviour change.
+
+Not splittable: the ranked table, the credential unit rule and the origins are one function's
+invariant.
+
+### Phase 4 — the provider, one lane
+
+Step 6: `blockSource`, the aligned `Short`/`Long` text reaching the schema, `task generate`, the
+CHANGELOG rewrite, and the docs from 4 — the row 1 setup and the two messages that qualify it.
+Verification: provider unit tests and the provider acceptance suite.
 
 ## Open questions
 
