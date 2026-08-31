@@ -52,21 +52,11 @@ type Input interface {
 	// attribute; the CLI reads the environment, then stdin, then prompts.
 	ApiKeySecret(ctx context.Context) (string, error)
 	ApiToken(ctx context.Context) (string, error)
-
-	// Browser runs an interactive login, or is nil when this front end has no way to. The
-	// CLI returns an implementation from pkg/oidc/browser; the Terraform provider returns
-	// nil, and pkg/auth then fails a dead login method by naming `meshstack login`.
-	Browser() Browser
 }
 
-// Browser is the one capability that only an interactive front end has. It is injected rather
-// than called directly, so nothing the Terraform provider links can open a browser during a
-// plan. A depguard rule keeps pkg/oidc/browser out of everything under pkg/, which makes that a
-// compile-time guarantee rather than a promise.
-//
-// It takes the discovered client and returns a token, because everything in between — the
-// loopback listener, the person, the page they land on — is the front end's, and every protocol
-// detail is oidc.AuthorizationCodeFlow's. loginWithBrowser is where the two halves meet.
+// Browser runs the interactive half of a login. It is a parameter rather than a direct call into
+// pkg/oidc/browser because .golangci.yml denies that package to everything under pkg/, so the
+// Terraform provider cannot link a browser flow at all.
 type Browser func(ctx context.Context, client oidc.Client) (oidc.Token, error)
 
 // Values are the configuration items a front end may supply directly. They sit at the top

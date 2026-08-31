@@ -106,13 +106,10 @@ func readCredentials(t *testing.T) profile.Credentials {
 	return credentials
 }
 
-// fakeInput is what a front end would supply: fixed Values, canned secrets, and no browser
-// unless a test hands one over.
 type fakeInput struct {
-	values  Values
-	secret  string
-	token   string
-	browser Browser
+	values Values
+	secret string
+	token  string
 }
 
 func (f *fakeInput) Explicit() Values { return f.values }
@@ -120,8 +117,6 @@ func (f *fakeInput) Explicit() Values { return f.values }
 func (f *fakeInput) ApiKeySecret(context.Context) (string, error) { return f.secret, nil }
 
 func (f *fakeInput) ApiToken(context.Context) (string, error) { return f.token, nil }
-
-func (f *fakeInput) Browser() Browser { return f.browser }
 
 func resolved(t *testing.T, in Input) *Session {
 	t.Helper()

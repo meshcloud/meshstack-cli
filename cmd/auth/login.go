@@ -168,7 +168,7 @@ func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
 		}
 	}
 
-	options := auth.LoginOptions{Force: force}
+	options := auth.LoginOptions{Force: force, Browser: in.Browser()}
 	if tty.IsInteractive() {
 		options.ChooseWorkspace = func(_ context.Context, candidates []string) (string, error) {
 			return chooseWorkspace(cmd, candidates)

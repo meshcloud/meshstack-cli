@@ -278,6 +278,18 @@ now answers. Two more places in `../terraform-provider-meshstack/scratch/` manip
 `README.md` tells the reader to delete the `accessTokens:` block from `local.yaml` to force a
 refresh. Both need rewriting for JSON. Lane A does not own the provider, so this is left for the
 lane that bumps the pin.
+### 11's `LoginWithBrowser` would give the CLI two entry points to choose between
+
+11 writes the browser argument as
+`func (s *Session) LoginWithBrowser(ctx context.Context, open Browser) (LoginResult, error)`.
+`Session.Login` is one entry point that dispatches on the demanded method to a browser login, an
+API key exchange or a pasted token, and all three share the bookkeeping in `login`. A public method
+for one arm leaves `cmd/auth/login.go` picking between two calls by the method it just demanded.
+
+**Decided:** `LoginOptions` gains a `Browser` field, which `Login` passes to `loginWithBrowser`. The
+browser stops being a capability on `auth.Input`, which is what 11 argues for, and `Login` stays the
+one entry point. A nil field produces the error a nil `Input.Browser()` produced, pinned by
+`pkg/auth/login_test.go`.
 
 ## Phase 3
 

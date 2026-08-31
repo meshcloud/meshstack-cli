@@ -30,6 +30,10 @@ type LoginOptions struct {
 	// see. It is nil where the front end cannot ask — the Terraform provider, or a CLI with
 	// no terminal — and the login then leaves the profile's default alone.
 	ChooseWorkspace func(ctx context.Context, candidates []string) (string, error)
+
+	// Browser opens the interactive login. It is nil where the front end has no way to open one,
+	// and a login that has to create a session then fails instead.
+	Browser Browser
 }
 
 // LoginResult is what the front end prints. pkg/auth returns the facts rather than a
@@ -131,10 +135,7 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 		}
 	}
 
-	browser := s.input.Browser()
-	if browser == nil {
-		// The Terraform provider is the front end this is for: it can refresh a login somebody
-		// else created, and it must never open a browser during a plan.
+	if options.Browser == nil {
 		return diags.Errorf("this front end cannot create a login",
 			"the stored login is gone and nothing here can start a new one. Run `meshstack login`, or use an API key.")
 	}
@@ -147,7 +148,7 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 			"%s says nobody is here to visit the login URL. Use `meshstack auth login --api-key=<id>` instead.", tty.NoInputHint())
 	}
 
-	token, err := browser(ctx, config)
+	token, err := options.Browser(ctx, config)
 	if err != nil {
 		return err
 	}
