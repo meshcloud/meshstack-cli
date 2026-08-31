@@ -61,8 +61,13 @@ type Input interface {
 // rather than called directly, so nothing the Terraform provider links can open a browser
 // during a plan. A depguard rule keeps pkg/oidc/browser out of everything under pkg/, which
 // makes that a compile-time guarantee rather than a promise.
+//
+// It is handed an oidc.AuthorizationCodeStarter rather than the discovered oidc.Client: a
+// browser login supplies a loopback address and a person, and pkg/oidc owns every protocol
+// detail behind that. This is where the two halves are wired together — loginWithBrowser
+// passes the client it discovered as the narrower interface.
 type Browser interface {
-	Login(ctx context.Context, cfg oidc.Client) (oidc.Token, error)
+	Login(ctx context.Context, starter oidc.AuthorizationCodeStarter) (oidc.Token, error)
 }
 
 // Values are the configuration items a front end may supply directly. They sit at the top

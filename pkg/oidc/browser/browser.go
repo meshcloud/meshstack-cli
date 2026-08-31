@@ -10,17 +10,12 @@ package browser
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -35,11 +30,6 @@ import (
 // the 127.0.0.1 below are both fixed — localhost and ::1 are rejected.
 const callbackPath = "/callback"
 
-// scopes never include c:<workspace>: a login is unscoped and the workspace arrives later,
-// through a refresh grant. offline_access is an optional client scope, so it has to be asked
-// for by name or the login lasts as long as one access token.
-const scopes = "openid profile email offline_access"
-
 // loginTimeout is how long the listener waits for a person to finish in the browser. The
 // consent screen on a first login makes a short timeout hostile.
 const loginTimeout = 10 * time.Minute
@@ -52,19 +42,12 @@ type Browser struct{}
 // Input.Browser(); the Terraform provider returns nil there.
 func New() Browser { return Browser{} }
 
-// Login runs the OAuth 2.0 authorization code flow with PKCE and a loopback redirect
-// (RFC 8252).
-func (Browser) Login(ctx context.Context, cfg oidc.Client) (oidc.Token, error) {
-	verifier, err := randomString()
-	if err != nil {
-		return oidc.Token{}, err
-	}
-	state, err := randomString()
-	if err != nil {
-		return oidc.Token{}, err
-	}
-	challenge := sha256.Sum256([]byte(verifier))
-
+// Login supplies the two things the authorization code flow needs and pkg/oidc cannot have: a
+// loopback address it can receive the redirect on, and a person in front of a browser. The
+// protocol itself belongs to the flow this asks for — see oidc.AuthorizationCodeStarter.
+func (Browser) Login(ctx context.Context, starter oidc.AuthorizationCodeStarter) (oidc.Token, error) {
+	// Bound first: the port it happens to get is part of the redirect URI, which the flow has
+	// to put in the authorization request and echo back in the token request.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return oidc.Token{}, fmt.Errorf("cannot listen on a loopback port for the login redirect: %w", err)
@@ -74,24 +57,19 @@ func (Browser) Login(ctx context.Context, cfg oidc.Client) (oidc.Token, error) {
 		_ = listener.Close()
 		return oidc.Token{}, fmt.Errorf("cannot determine the port of the loopback listener, got %s", listener.Addr())
 	}
-	redirectURI := fmt.Sprintf("http://127.0.0.1:%d%s", addr.Port, callbackPath)
 
-	authURL := *cfg.AuthorizationEndpoint.URL
-	authURL.RawQuery = url.Values{
-		"response_type":         {"code"},
-		"client_id":             {cfg.CliClientId},
-		"redirect_uri":          {redirectURI},
-		"scope":                 {scopes},
-		"state":                 {state},
-		"code_challenge":        {base64.RawURLEncoding.EncodeToString(challenge[:])},
-		"code_challenge_method": {"S256"},
-	}.Encode()
+	flow, err := starter.NewAuthorizationCode(fmt.Sprintf("http://127.0.0.1:%d%s", addr.Port, callbackPath))
+	if err != nil {
+		// await is what otherwise closes the listener, through the server it hands it to.
+		_ = listener.Close()
+		return oidc.Token{}, err
+	}
 
-	code, err := await(ctx, listener, state, authURL.String())
+	code, err := await(ctx, listener, flow)
 	if err != nil {
 		return oidc.Token{}, err
 	}
-	return cfg.Exchange(ctx, code, redirectURI, verifier)
+	return flow.Exchange(ctx, code)
 }
 
 // callback is what the redirect carried: one of the two fields is always empty.
@@ -102,11 +80,11 @@ type callback struct {
 
 // await serves the loopback listener until the redirect arrives, and always shuts it down
 // before returning so that no login leaves a port bound behind it.
-func await(ctx context.Context, listener net.Listener, state, authURL string) (string, error) {
+func await(ctx context.Context, listener net.Listener, flow oidc.AuthorizationCodeFlow) (string, error) {
 	// Buffered, so the handler never blocks on a caller that has already given up.
 	arrived := make(chan callback, 1)
 	server := &http.Server{
-		Handler:           handler(state, arrived),
+		Handler:           handler(flow, arrived),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -124,7 +102,7 @@ func await(ctx context.Context, listener net.Listener, state, authURL string) (s
 		}
 	}()
 
-	openBrowser(authURL)
+	openBrowser(flow.URL())
 
 	select {
 	case result := <-arrived:
@@ -136,7 +114,7 @@ func await(ctx context.Context, listener net.Listener, state, authURL string) (s
 	}
 }
 
-func handler(state string, arrived chan<- callback) http.Handler {
+func handler(flow oidc.AuthorizationCodeFlow, arrived chan<- callback) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != callbackPath {
 			http.NotFound(w, r)
@@ -144,26 +122,24 @@ func handler(state string, arrived chan<- callback) http.Handler {
 		}
 		query := r.URL.Query()
 
-		switch {
-		case query.Get("error") != "":
-			failed := fmt.Errorf("the identity provider refused the login: %s", describe(query.Get("error"), query.Get("error_description")))
-			page(w, http.StatusBadRequest, "Login failed", describe(query.Get("error"), query.Get("error_description")))
-			arrived <- callback{err: failed}
-
-		// Constant time is not strictly needed for a value the attacker would have to guess in
-		// one shot, and it costs nothing to not have to argue about it.
-		case subtle.ConstantTimeCompare([]byte(query.Get("state")), []byte(state)) != 1:
+		if refused := query.Get("error"); refused != "" {
+			detail := describe(refused, query.Get("error_description"))
+			page(w, http.StatusBadRequest, "Login failed", detail)
+			arrived <- callback{err: fmt.Errorf("the identity provider refused the login: %s", detail)}
+			return
+		}
+		if err := flow.CheckState(query.Get("state")); err != nil {
 			page(w, http.StatusBadRequest, "Login failed", "The redirect carried the wrong state parameter, so it did not belong to this login.")
-			arrived <- callback{err: fmt.Errorf("the login redirect carried the wrong state parameter, so it did not belong to this login")}
-
-		case query.Get("code") == "":
+			arrived <- callback{err: err}
+			return
+		}
+		if query.Get("code") == "" {
 			page(w, http.StatusBadRequest, "Login failed", "The redirect carried no authorization code.")
 			arrived <- callback{err: fmt.Errorf("the login redirect carried no authorization code")}
-
-		default:
-			page(w, http.StatusOK, "You are logged in", "The meshStack CLI has your login. You can close this tab and return to your terminal.")
-			arrived <- callback{code: query.Get("code")}
+			return
 		}
+		page(w, http.StatusOK, "You are logged in", "The meshStack CLI has your login. You can close this tab and return to your terminal.")
+		arrived <- callback{code: query.Get("code")}
 	})
 }
 
@@ -218,14 +194,4 @@ func openBrowser(authURL string) {
 		slog.Debug("cannot open a browser, waiting for a manually opened one instead",
 			"command", strings.Join(cmd.Args, " "), "error", err)
 	}
-}
-
-// randomString is the source of both the PKCE verifier and the state parameter: 32 bytes,
-// which is the top of the range RFC 7636 allows for a verifier.
-func randomString() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("cannot read random bytes for the login: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
 }

@@ -94,8 +94,10 @@ func (c Client) Refresh(ctx context.Context, refreshToken string, workspace work
 	return
 }
 
-// Exchange completes the authorization code flow. pkg/oidc/browser calls it once it has a code.
-func (c Client) Exchange(ctx context.Context, code, redirectUri, verifier string) (resp Token, err error) {
+// exchange is the token request that ends the authorization code flow. It is unexported
+// because a caller that has to remember the verifier and the redirect URI on its own would be
+// holding half the protocol: AuthorizationCodeFlow.Exchange is the way in.
+func (c Client) exchange(ctx context.Context, code, redirectUri, verifier string) (resp Token, err error) {
 	resp, err = c.doPost[Token](ctx, c.TokenEndpoint.URL, map[string]any{
 		"grant_type":    "authorization_code",
 		"code":          code,
