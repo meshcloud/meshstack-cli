@@ -246,7 +246,7 @@ func TestWithoutAWholeCredentialResolutionFallsToTheProfile(t *testing.T) {
 
 // TestSelectingAProfileByEndpoint pins the three rows of the endpoint-matching table.
 func TestSelectingAProfileByEndpoint(t *testing.T) {
-	t.Run("exactly one match is used and warns once", func(t *testing.T) {
+	t.Run("exactly one match is used", func(t *testing.T) {
 		isolate(t)
 		writeConfig(t, "", map[string]profile.Profile{
 			"live":  {Endpoint: mustUrl("https://api.live.example.com")},
@@ -256,16 +256,14 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 		// stop a profile from matching.
 		t.Setenv(envEndpoint, "https://API.live.example.com/")
 
-		in := &fakeInput{}
-		session := resolved(t, in)
+		logs := captureLogs(t)
+		session := resolved(t, &fakeInput{})
 		require.Equal(t, "live", session.Profile)
-
-		warnings := in.warned()
-		require.Len(t, warnings, 1)
-		require.True(t, warnings[0].IsWarning())
-		require.Equal(t, "picked a profile by endpoint", warnings[0].Summary())
-		assert.Contains(t, warnings[0].Detail(), "live")
-		assert.Contains(t, warnings[0].Detail(), "--profile")
+		require.Equal(t, "profile matched on the endpoint", session.sources["profile"])
+		// The log record is the whole of what a person gets told, now that a warning has no
+		// other way out of this package. A silent match would leave a `terraform apply` whose
+		// identity depends on which profiles exist on the machine saying nothing at all.
+		require.Contains(t, logs.warnings(), "picked a profile by endpoint")
 	})
 
 	t.Run("several matches stop and name --profile", func(t *testing.T) {
@@ -277,15 +275,13 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 		})
 		t.Setenv(envEndpoint, "https://api.live.example.com")
 
-		in := &fakeInput{}
-		_, err := Resolve(t.Context(), in)
+		_, err := Resolve(t.Context(), &fakeInput{})
 		p := problemOf(t, err)
 		require.Equal(t, "several profiles match this endpoint", p.Summary())
 		assert.Contains(t, p.Detail(), `"alpha"`)
 		assert.Contains(t, p.Detail(), `"beta"`)
 		assert.NotContains(t, p.Detail(), `"other"`)
 		assert.Contains(t, p.Detail(), "--profile")
-		require.Empty(t, in.warned(), "a failure is not also a warning")
 	})
 
 	t.Run("no match and no whole credential names the endpoint", func(t *testing.T) {

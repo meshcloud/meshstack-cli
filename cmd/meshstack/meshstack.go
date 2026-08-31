@@ -23,7 +23,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/profile"
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/internal/cli"
-	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
@@ -86,24 +85,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(profile.New(in))
 	cmd.AddCommand(workspace.New(in))
 
-	handleWarnings(cmd)
-
 	return cmd
-}
-
-// handleWarnings wraps every RunE in the finished tree, so that a Problem which is only a
-// warning prints and the command still exits 0 — the same experience as a warning during
-// `terraform apply`. Doing it here rather than in each command is what keeps a new command
-// from being the one that forgets.
-func handleWarnings(cmd *cobra.Command) {
-	for _, child := range cmd.Commands() {
-		handleWarnings(child)
-	}
-	if run := cmd.RunE; run != nil {
-		cmd.RunE = func(cmd *cobra.Command, args []string) error {
-			return diags.HandleErr(run(cmd, args))
-		}
-	}
 }
 
 func setupLogging(debug bool) {

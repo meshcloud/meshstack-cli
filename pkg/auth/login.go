@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -57,7 +58,7 @@ type LoginResult struct {
 // token, because those tokens carry the old identity.
 func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult, error) {
 	demanded := s.Method()
-	return s.login(demanded, func(result *LoginResult) error {
+	return s.login(ctx, demanded, func(result *LoginResult) error {
 		switch demanded {
 		case method.Manual:
 			return s.loginWithApiToken(ctx, result)
@@ -78,7 +79,7 @@ func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult,
 // shared profile usable, where CI logs in with an API key and a developer holds a login in
 // the same profile. `--api-key` and `--api-token` set Force themselves, because for them
 // forcing only means "do the exchange again".
-func (s *Session) login(demanded method.Method, exchange func(*LoginResult) error) (LoginResult, error) {
+func (s *Session) login(ctx context.Context, demanded method.Method, exchange func(*LoginResult) error) (LoginResult, error) {
 	result := LoginResult{Method: demanded, Endpoint: s.Endpoint.String(), Profile: s.Profile, Workspace: s.Workspace}
 
 	credentials, err := s.currentStore().Read()
@@ -97,9 +98,9 @@ func (s *Session) login(demanded method.Method, exchange func(*LoginResult) erro
 	// and a warning saying otherwise would send the user looking for tokens that are still
 	// there.
 	if result.SwitchedFrom != "" {
-		s.input.Warn(diags.Warnf("switching authentication method",
-			"profile %q was using its %s; switched to the %s and discarded the cached tokens. `meshstack login` switches back.",
-			s.Profile, result.SwitchedFrom.Description(), demanded.Description()))
+		slog.WarnContext(ctx, "switching authentication method",
+			"detail", fmt.Sprintf("profile %q was using its %s; switched to the %s and discarded the cached tokens. `meshstack login` switches back.",
+				s.Profile, result.SwitchedFrom.Description(), demanded.Description()))
 	}
 
 	s.mu.Lock()

@@ -38,7 +38,7 @@ func ResolveForDevLocalLogin(ctx context.Context, in Input) (*Session, error) {
 // hand. It takes no LoginOptions: there is nothing to force — the exchange happens every time
 // — and nothing to choose, because the workspace comes out of the same document.
 func (s *Session) LoginDevLocal(ctx context.Context) (LoginResult, error) {
-	return s.login(method.ApiKey, func(result *LoginResult) error {
+	return s.login(ctx, method.ApiKey, func(result *LoginResult) error {
 		return s.loginDevLocal(ctx, result)
 	})
 }

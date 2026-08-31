@@ -59,22 +59,23 @@ type Session struct {
 // Resolve produces the session an ordinary command works through. Every precedence rule
 // applies here and only here.
 //
-// It ignores its context because resolution reads the two configuration files and nothing
-// else. Every request it leads to — discovery, a refresh grant, the API key exchange — is
-// made later, from BearerToken, and carries the context of the command that made it.
-func Resolve(_ context.Context, in Input) (*Session, error) {
-	return resolve(in, false)
+// It makes no request: resolution reads the two configuration files and nothing else. Every
+// request it leads to — discovery, a refresh grant, the API key exchange — is made later,
+// from BearerToken, and carries the context of the command that made it. The context reaches
+// here only so the log records carry it.
+func Resolve(ctx context.Context, in Input) (*Session, error) {
+	return resolve(ctx, in, false)
 }
 
 // ResolveForLogin produces the session `meshstack auth login` works through. It differs in
 // one way: the store is always the profile's, whatever supplied the credential, because
 // writing a profile is that command's purpose. So MESHSTACK_API_SECRET reaches disk when
 // `auth login --api-key` puts it there, and never otherwise.
-func ResolveForLogin(_ context.Context, in Input) (*Session, error) {
-	return resolve(in, true)
+func ResolveForLogin(ctx context.Context, in Input) (*Session, error) {
+	return resolve(ctx, in, true)
 }
 
-func resolve(in Input, forLogin bool) (*Session, error) {
+func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 	values := in.Explicit()
 	sources := map[string]string{}
 
@@ -138,14 +139,14 @@ func resolve(in Input, forLogin bool) (*Session, error) {
 			sources["endpoint"] = endpointFrom.describe(endpointDetail)
 			sources["workspace"] = wsFrom.describe(wsDetail)
 			sources["credential"] = credential.from
-			slog.Debug("resolved a credential without a profile",
+			slog.DebugContext(ctx, "resolved a credential without a profile",
 				"method", session.current, "source", credential.from, "store", session.store.Describe())
 			return session, nil
 		}
 	}
 
 	// Otherwise the profile is what holds the credential.
-	name, nameFrom, err := selectProfile(in, config, values.Profile, endpointRaw, forLogin)
+	name, nameFrom, err := selectProfile(ctx, config, values.Profile, endpointRaw, forLogin)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +200,7 @@ func resolve(in Input, forLogin bool) (*Session, error) {
 	sources["endpoint"] = endpointFrom.describe(endpointDetail)
 	sources["workspace"] = wsFrom.describe(wsDetail)
 	sources["credential"] = sourceProfile.describe("'" + name + "'")
-	slog.Debug("resolved a credential from a profile",
+	slog.DebugContext(ctx, "resolved a credential from a profile",
 		"profile", name, "method", current, "endpoint", session.Endpoint.String(), "workspace", session.Workspace)
 	return session, nil
 }
@@ -255,7 +256,7 @@ func wholeCredential(values Values, apiKeyId string) (resolvedCredential, bool) 
 
 // selectProfile applies the profile layer of the precedence order: an explicit name, then
 // MESHSTACK_PROFILE, then a match on the endpoint, then the current profile, then "default".
-func selectProfile(in Input, config profile.Config, explicit, endpoint string, forLogin bool) (name, from string, err error) {
+func selectProfile(ctx context.Context, config profile.Config, explicit, endpoint string, forLogin bool) (name, from string, err error) {
 	if named, fromSource, detail := pick(explicit, envProfile); named != "" {
 		if _, ok := config.Profiles[named]; !ok && !forLogin {
 			// A mistyped --profile must report an unknown profile rather than quietly
@@ -284,9 +285,9 @@ func selectProfile(in Input, config profile.Config, explicit, endpoint string, f
 		case 1:
 			// A terraform plan whose identity depends on which profiles exist on the machine
 			// should at least announce it.
-			in.Warn(diags.Warnf("picked a profile by endpoint",
-				"profile %q is the only one configured for %s, so this command uses its credentials. Name one with --profile to be explicit.",
-				matches[0], endpoint))
+			slog.WarnContext(ctx, "picked a profile by endpoint",
+				"detail", fmt.Sprintf("profile %q is the only one configured for %s, so this command uses its credentials. Name one with --profile to be explicit.",
+					matches[0], endpoint))
 			return matches[0], sourceProfile.describe("matched on the endpoint"), nil
 		case 0:
 			if forLogin {

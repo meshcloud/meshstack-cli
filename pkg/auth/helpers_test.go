@@ -106,16 +106,13 @@ func readCredentials(t *testing.T) profile.Credentials {
 	return credentials
 }
 
-// fakeInput is what a front end would supply: fixed Values, canned secrets, a record of
-// every warning, and no browser unless a test hands one over.
+// fakeInput is what a front end would supply: fixed Values, canned secrets, and no browser
+// unless a test hands one over.
 type fakeInput struct {
 	values  Values
 	secret  string
 	token   string
 	browser Browser
-
-	mu       sync.Mutex
-	warnings []diags.Problem
 }
 
 func (f *fakeInput) Explicit() Values { return f.values }
@@ -125,18 +122,6 @@ func (f *fakeInput) ApiKeySecret(context.Context) (string, error) { return f.sec
 func (f *fakeInput) ApiToken(context.Context) (string, error) { return f.token, nil }
 
 func (f *fakeInput) Browser() Browser { return f.browser }
-
-func (f *fakeInput) Warn(p diags.Problem) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.warnings = append(f.warnings, p)
-}
-
-func (f *fakeInput) warned() []diags.Problem {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]diags.Problem(nil), f.warnings...)
-}
 
 func resolved(t *testing.T, in Input) *Session {
 	t.Helper()

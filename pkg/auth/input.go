@@ -1,6 +1,16 @@
 // Package auth answers three questions for both meshStack front ends: how a caller
 // authenticates, which workspace it acts in, and where its configuration comes from.
 //
+// It reports to a front end in exactly two ways: an error return, or an slog record.
+// There is no third channel. A non-error a person should see is an slog warning, and
+// both front ends already route slog somewhere it is read — the meshStack CLI through
+// its charmbracelet/log handler, the Terraform provider through its tflog bridge — so
+// neither has to implement anything for it to arrive. The cost is that such a warning
+// reaches a Terraform practitioner only under TF_LOG=WARN and not in plan output, which
+// is the trade this package takes. Log with the Context form, slog.WarnContext, because
+// the provider's bridge takes terraform's logger out of the context and drops a record
+// that arrives without one.
+//
 // It works in two phases with different lifetimes.
 //
 // Resolve runs once per process. It answers "who am I, against what, in which workspace"
@@ -26,7 +36,6 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -44,12 +53,6 @@ type Input interface {
 	// attribute; the CLI reads the environment, then stdin, then prompts.
 	ApiKeySecret(ctx context.Context) (string, error)
 	ApiToken(ctx context.Context) (string, error)
-
-	// Warn reports something that did not stop the work. The CLI logs it through pkg/diags
-	// at warning level; the provider appends a warning diagnostic. It exists because some
-	// outcomes succeed *and* warn — picking a profile by endpoint is the case that forced
-	// it — and an error return cannot express that.
-	Warn(p diags.Problem)
 
 	// Browser runs an interactive login, or is nil when this front end has no way to. The
 	// CLI returns an implementation from pkg/oidc/browser; the Terraform provider returns

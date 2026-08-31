@@ -12,12 +12,10 @@ package cli
 import (
 	"context"
 	"io"
-	"log/slog"
 	"os"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/browser"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -69,12 +67,6 @@ func (i *Input) ApiKeySecret(ctx context.Context) (string, error) {
 
 func (i *Input) ApiToken(ctx context.Context) (string, error) {
 	return i.readSecret(ctx, auth.TokenFromEnv, auth.TokenPrompt, auth.MissingTokenError)
-}
-
-// Warn logs rather than prints: a warning explains what the CLI did, so it belongs in the
-// same stream and the same format as everything else pkg/ reports.
-func (i *Input) Warn(p diags.Problem) {
-	slog.Warn(p.Summary(), "detail", p.Detail())
 }
 
 func (i *Input) Browser() auth.Browser {
