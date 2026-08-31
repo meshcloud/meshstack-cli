@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 )
 
 // HintErr logs a warning for the one failure whose cause is not in the error text, and
@@ -35,7 +35,7 @@ func forbiddenHint(session *Session) string {
 	// A token that carries no workspace scope at all — an API key or a pasted token — gets the
 	// same note without a workspace name, because the credential's own workspace is what
 	// decides what it reaches.
-	if session.Method() != method.Login || session.Workspace.Empty() {
+	if session.Method() != credential.MethodLogin || session.Workspace.Empty() {
 		return "this credential's own workspace is what decides what it reaches; a --workspace on the command line cannot widen it."
 	}
 	return "this token is scoped to workspace " + session.Workspace.String() +

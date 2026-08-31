@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"strings"
 	"time"
 
 	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
@@ -85,14 +86,14 @@ func (s *Session) RefreshBearerToken(ctx context.Context, rejected string) (stri
 func (s *Session) Scope() scope.Scope {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.current != method.Login {
+	if s.current != credential.MethodLogin {
 		return workspace.Unscoped
 	}
 	return s.Workspace.Scope()
 }
 
 // Method reports which method mints for this session.
-func (s *Session) Method() method.Method {
+func (s *Session) Method() credential.Method {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.current
@@ -105,7 +106,7 @@ func (s *Session) Method() method.Method {
 // A command calls it when it acts on meshObjects. `meshstack workspace list` and
 // `meshstack auth status` do not, because they are what a user needs in order to pick one.
 func (s *Session) RequireWorkspace() error {
-	if s.Method() == method.Login && s.Workspace.Empty() {
+	if s.Method() == credential.MethodLogin && s.Workspace.Empty() {
 		return diags.Errorf("no workspace", "%s", workspace.ErrMissing)
 	}
 	return nil
@@ -175,18 +176,18 @@ func (s *Session) currentStore() profile.Store {
 // write, whether or not the write succeeded: a refresh grant rotates before the write, so what
 // the mint returned is the only copy the identity provider still honours.
 type renewal struct {
-	token       profile.IssuedToken
+	token       credential.IssuedToken
 	credentials *profile.Credentials
 }
 
-func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current method.Method, rejected string) (renewal, error) {
+func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current credential.Method, rejected string) (renewal, error) {
 	// Discovery is two GETs on a client that allows a minute per request, and it happens above
 	// Update so that the credentials lock covers the token grant and nothing else. A hold that
 	// outlasts profile's lockStaleAfter is broken by the next process, and the two then run a
 	// refresh grant each on one refresh token. Only the login method refreshes, so an API key
 	// still pays for no discovery at all.
 	var config oidc.Client
-	if current == method.Login {
+	if current == credential.MethodLogin {
 		discovered, err := s.discover(ctx)
 		if err != nil {
 			return renewal{}, err
@@ -201,7 +202,7 @@ func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current met
 		// waiting on it, may have renewed meanwhile, in which case its token is used and
 		// nothing else happens. Only the rejected token itself is refused here — a 401 says
 		// nothing about a token that was minted after it.
-		if stored, ok := credentials.AccessTokens[tokenScope]; ok && valid(stored) && stored.Token.String != rejected {
+		if stored, ok := cachedToken(credentials, current, tokenScope); ok && valid(stored) && stored.Token.String != rejected {
 			out = renewal{token: stored, credentials: &credentials}
 			return credentials, nil
 		}
@@ -232,93 +233,95 @@ func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current met
 // mint obtains a fresh access token from the current method, and never from another one. It
 // runs under the credentials lock, so the one request it may make is the grant itself: config
 // is discovered above, and is the zero value for the methods that need none.
-func (s *Session) mint(ctx context.Context, config oidc.Client, credentials profile.Credentials, current method.Method, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
+func (s *Session) mint(ctx context.Context, config oidc.Client, credentials profile.Credentials, current credential.Method, tokenScope scope.Scope) (profile.Credentials, credential.IssuedToken, error) {
 	switch current {
-	case method.Manual:
+	case credential.MethodManual:
 		return s.mintManual(ctx, credentials, tokenScope)
-	case method.ApiKey:
+	case credential.MethodApiKey:
 		return s.mintApiKey(ctx, credentials, tokenScope)
-	case method.Login:
+	case credential.MethodLogin:
 		return s.mintLogin(ctx, config, credentials, tokenScope)
 	default:
-		return credentials, profile.IssuedToken{}, diags.Errorf("unknown authentication method",
+		return credentials, credential.IssuedToken{}, diags.Errorf("unknown authentication method",
 			"the profile records %q, which this version of the meshStack CLI does not know.", current)
 	}
 }
 
-func (s *Session) mintManual(ctx context.Context, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
+func (s *Session) mintManual(ctx context.Context, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, credential.IssuedToken, error) {
 	// A stored API token has nothing behind it to mint from, so the caller's dead-method
 	// message is the right outcome. Only a token that arrived whole from the environment or a
 	// provider block is fetched here, and then it is fetched afresh each time, which is what
 	// makes a memory store cost no files.
 	if !s.whole {
-		return credentials, credentials.AccessTokens[tokenScope], nil
+		stored, _ := cachedToken(credentials, credential.MethodManual, tokenScope)
+		return credentials, stored, nil
 	}
 	token, err := s.input.ApiToken(ctx)
 	if err != nil {
-		return credentials, profile.IssuedToken{}, err
+		return credentials, credential.IssuedToken{}, err
 	}
 	if strings.TrimSpace(token) == "" {
-		return credentials, profile.IssuedToken{}, diags.Errorf("no meshStack API token",
+		return credentials, credential.IssuedToken{}, diags.Errorf("no meshStack API token",
 			"%s is set but empty.", envApiToken)
 	}
 	parsed, err := jwt.Parse(token)
 	if err != nil {
-		return credentials, profile.IssuedToken{}, diags.Wrap(err, "this is not a meshStack API token",
+		return credentials, credential.IssuedToken{}, diags.Wrap(err, "this is not a meshStack API token",
 			"what %s supplied could not be read as an access token: %v", envApiToken, err)
 	}
 	issued := issuedToken(parsed)
-	return withToken(credentials, tokenScope, issued), issued, nil
+	return withToken(credentials, credential.MethodManual, tokenScope, issued), issued, nil
 }
 
-func (s *Session) mintApiKey(ctx context.Context, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
-	apiKey := credentials.Methods.ApiKey
-	if apiKey == nil || apiKey.ClientId == "" {
-		return credentials, profile.IssuedToken{}, diags.Errorf("no meshStack API key",
+func (s *Session) mintApiKey(ctx context.Context, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, credential.IssuedToken, error) {
+	apiKey := credentials.ApiKey
+	if apiKey == nil || apiKey.Id == "" {
+		return credentials, credential.IssuedToken{}, diags.Errorf("no meshStack API key",
 			"this profile's current method is an API key, but it holds no key id. Run `meshstack auth login --api-key=<id>`.")
 	}
 	secret, err := s.apiKeySecret(ctx, apiKey)
 	if err != nil {
-		return credentials, profile.IssuedToken{}, err
+		return credentials, credential.IssuedToken{}, err
 	}
-	token, err := apiLogin(ctx, s.Endpoint, apiKey.ClientId, secret)
+	token, err := apiLogin(ctx, s.Endpoint, apiKey.Id, secret)
 	if err != nil {
-		return credentials, profile.IssuedToken{}, err
+		return credentials, credential.IssuedToken{}, err
 	}
 	issued := issuedToken(token)
-	slog.Debug("minted an access token from an API key", "clientId", apiKey.ClientId, "expiresAt", issued.ExpiresAt)
-	return withToken(credentials, tokenScope, issued), issued, nil
+	slog.Debug("minted an access token from an API key", "clientId", apiKey.Id, "expiresAt", issued.ExpiresAt)
+	return withToken(credentials, credential.MethodApiKey, tokenScope, issued), issued, nil
 }
 
-func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, profile.IssuedToken, error) {
-	login := credentials.Methods.Login
+func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, credential.IssuedToken, error) {
+	login := credentials.Login
 	if login == nil || login.RefreshToken == "" {
-		return credentials, profile.IssuedToken{}, s.deadMethodError(method.Login)
+		return credentials, credential.IssuedToken{}, s.deadMethodError(credential.MethodLogin)
 	}
 	// Stricter than the endpoint check on the file, and it catches a repointed keycloak
 	// behind an unchanged endpoint — but it exists only where a login method does, which is
 	// why it cannot replace the endpoint check.
 	if login.Issuer != nil && login.Issuer.String() != config.Issuer.String() {
-		return credentials, profile.IssuedToken{}, diags.Errorf("this login belongs to a different identity provider",
+		return credentials, credential.IssuedToken{}, diags.Errorf("this login belongs to a different identity provider",
 			"the stored login came from %s, but %s now reports %s. Run `meshstack login` to log in again.",
 			login.Issuer, s.Endpoint, config.Issuer)
 	}
 
 	refreshed, err := config.Refresh(ctx, login.RefreshToken, s.Workspace)
 	if err != nil {
-		return credentials, profile.IssuedToken{}, err
+		return credentials, credential.IssuedToken{}, err
 	}
 	// A workspace the user is not in yields a token rather than an error: it comes back
 	// without MC_CUSTOMER and with an empty group list, and the next API call then fails on
 	// permissions. Checking the claim here is what turns that into a message naming the
 	// workspace. It is not a security check, and the signature is not verified.
-	login.RefreshToken = refreshed.RefreshToken
-	credentials.Methods.Login = login
+	updated := *login
+	updated.RefreshToken = refreshed.RefreshToken
+	credentials.Login = &updated
 	if !s.Workspace.Empty() {
 		if got := jwt.WorkspaceClaim.GetFrom(refreshed.AccessToken); got != s.Workspace {
 			// The rotated refresh token goes back either way — the grant already succeeded, so
 			// keycloak has invalidated the one on disk whatever this check says.
-			return credentials, profile.IssuedToken{}, diags.Errorf("this login cannot act in that workspace",
+			return credentials, credential.IssuedToken{}, diags.Errorf("this login cannot act in that workspace",
 				"the identity provider issued a token for %q that carries no membership of it. `meshstack workspace list` shows the workspaces you can use.",
 				s.Workspace)
 		}
@@ -326,26 +329,26 @@ func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials
 
 	issued := issuedToken(refreshed.AccessToken)
 	slog.Debug("minted an access token from the browser login", "scope", tokenScope, "expiresAt", issued.ExpiresAt)
-	return withToken(credentials, tokenScope, issued), issued, nil
+	return withToken(credentials, credential.MethodLogin, tokenScope, issued), issued, nil
 }
 
 // apiKeySecret answers where the secret comes from. The environment sits above the profile,
 // so a set MESHSTACK_API_SECRET reaches the front end's accessor and wins; otherwise a stored
 // secret or a secret command is used; otherwise the front end prompts.
-func (s *Session) apiKeySecret(ctx context.Context, apiKey *profile.ApiKeyMethod) (string, error) {
-	stored := apiKey.ClientSecret != "" || len(apiKey.ClientSecretCommand) > 0
+func (s *Session) apiKeySecret(ctx context.Context, apiKey *credential.ApiKey) (string, error) {
+	stored := apiKey.Secret != "" || len(apiKey.SecretCommand) > 0
 	if env(envApiSecret) != "" || !stored {
 		secret, err := s.input.ApiKeySecret(ctx)
 		if err != nil {
 			return "", err
 		}
-		return secret, profile.CheckSecret(secret)
+		return secret, credential.CheckSecret(secret)
 	}
-	secret, err := apiKey.Secret(ctx)
+	secret, err := apiKey.Resolve(ctx)
 	if err != nil {
 		return "", err
 	}
-	return secret, profile.CheckSecret(secret)
+	return secret, credential.CheckSecret(secret)
 }
 
 // discover reads /mesh/info and the identity provider's configuration, at most once per
@@ -369,15 +372,15 @@ func (s *Session) discover(ctx context.Context) (oidc.Client, error) {
 
 // deadMethodError names the way out. Renewal never switches method, so when the current one
 // cannot mint, the command fails and says what to do.
-func (s *Session) deadMethodError(current method.Method) error {
+func (s *Session) deadMethodError(current credential.Method) error {
 	switch current {
-	case method.Manual:
+	case credential.MethodManual:
 		return diags.Errorf("this API token has expired",
 			"nothing can refresh an API token. Set %s to a fresh one, or store one with `meshstack auth login --api-token`.", envApiToken)
-	case method.ApiKey:
+	case credential.MethodApiKey:
 		clientId := "<id>"
-		if credentials, err := s.currentStore().Read(); err == nil && credentials.Methods.ApiKey != nil && credentials.Methods.ApiKey.ClientId != "" {
-			clientId = credentials.Methods.ApiKey.ClientId
+		if credentials, err := s.currentStore().Read(); err == nil && credentials.ApiKey != nil && credentials.ApiKey.Id != "" {
+			clientId = credentials.ApiKey.Id
 		}
 		return diags.Errorf("this API key no longer works",
 			"the key was deleted, or its secret changed. Run `meshstack auth login --api-key=%s`.", clientId)
@@ -390,23 +393,75 @@ func (s *Session) deadMethodError(current method.Method) error {
 // issuedToken carries an access token into the store with the deadline it states itself. A
 // token that states none is stored with a zero expiry, which valid reads as "the server
 // decides", and that is the honest answer for one nothing can renew.
-func issuedToken(token jwt.JWT) profile.IssuedToken {
-	issued := profile.IssuedToken{Token: token}
+func issuedToken(token jwt.JWT) credential.IssuedToken {
+	issued := credential.IssuedToken{Token: token}
 	if expiry := jwt.Expiry.GetFrom(token); expiry != nil {
 		issued.ExpiresAt = *expiry
 	}
 	return issued
 }
 
-func withToken(credentials profile.Credentials, tokenScope scope.Scope, token profile.IssuedToken) profile.Credentials {
-	if credentials.AccessTokens == nil {
-		credentials.AccessTokens = map[scope.Scope]profile.IssuedToken{}
+// cachedToken and withToken read and write the access token one method holds. The switch over
+// the three shapes is here rather than on credential.Credential, because every other branch on
+// the current method is in this package too.
+//
+// Only a browser login keys its tokens by scope. For the other two the scope is always
+// workspace.Unscoped, so tokenScope is ignored and the single field is that token.
+func cachedToken(credentials profile.Credentials, current credential.Method, tokenScope scope.Scope) (credential.IssuedToken, bool) {
+	switch current {
+	case credential.MethodLogin:
+		if credentials.Login == nil {
+			return credential.IssuedToken{}, false
+		}
+		token, ok := credentials.Login.AccessTokens[tokenScope]
+		return token, ok
+	case credential.MethodApiKey:
+		if credentials.ApiKey == nil || credentials.ApiKey.AccessToken.Token.String == "" {
+			return credential.IssuedToken{}, false
+		}
+		return credentials.ApiKey.AccessToken, true
+	case credential.MethodManual:
+		if credentials.Manual == nil || credentials.Manual.AccessToken.Token.String == "" {
+			return credential.IssuedToken{}, false
+		}
+		return credentials.Manual.AccessToken, true
 	}
-	credentials.AccessTokens[tokenScope] = token
+	return credential.IssuedToken{}, false
+}
+
+// withToken copies the method it writes to rather than reaching through the pointer, so that
+// storing a token cannot change credentials another goroutine is holding.
+func withToken(credentials profile.Credentials, current credential.Method, tokenScope scope.Scope, token credential.IssuedToken) profile.Credentials {
+	switch current {
+	case credential.MethodLogin:
+		login := credential.Login{}
+		if credentials.Login != nil {
+			login = *credentials.Login
+		}
+		tokens := make(map[scope.Scope]credential.IssuedToken, len(login.AccessTokens)+1)
+		maps.Copy(tokens, login.AccessTokens)
+		tokens[tokenScope] = token
+		login.AccessTokens = tokens
+		credentials.Login = &login
+	case credential.MethodApiKey:
+		apiKey := credential.ApiKey{}
+		if credentials.ApiKey != nil {
+			apiKey = *credentials.ApiKey
+		}
+		apiKey.AccessToken = token
+		credentials.ApiKey = &apiKey
+	case credential.MethodManual:
+		manual := credential.Manual{}
+		if credentials.Manual != nil {
+			manual = *credentials.Manual
+		}
+		manual.AccessToken = token
+		credentials.Manual = &manual
+	}
 	return credentials
 }
 
-func valid(token profile.IssuedToken) bool {
+func valid(token credential.IssuedToken) bool {
 	if token.Token.String == "" {
 		return false
 	}

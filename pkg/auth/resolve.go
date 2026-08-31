@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
@@ -44,14 +44,14 @@ type Session struct {
 	mu sync.Mutex
 	// current is the method every cached token belongs to. It is read under mu because
 	// Login rewrites it.
-	current method.Method
+	current credential.Method
 	// cached is the in-process cache: the token last obtained for this session's scope.
 	// Checking it costs no I/O, which is what keeps BearerToken off the filesystem.
 	//
 	// A rejected token is not recorded beside it. RefreshBearerToken is told which token came
 	// back 401 as an argument, so "do not hand this one out again" lasts exactly as long as the
 	// call that needs it.
-	cached profile.IssuedToken
+	cached credential.IssuedToken
 	// oidcConfig is discovered at most once per process, and only by the login method.
 	oidcConfig *oidc.Client
 }
@@ -106,7 +106,7 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 	// MESHSTACK_PROFILE does not count here: it sits in the environment layer, alongside
 	// MESHSTACK_API_KEY, so neither outranks the other and the credential wins as before.
 	if !forLogin && values.Profile == "" {
-		if credential, ok := wholeCredential(values, apiKeyId); ok {
+		if resolved, ok := wholeCredential(values, apiKeyId); ok {
 			// The endpoint and the workspace are their own axes of the precedence order, so a
 			// profile may still supply them where the credential came from the environment.
 			// Only a profile named explicitly, or the default one, is consulted: matching by
@@ -128,19 +128,18 @@ func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
 			if err != nil {
 				return nil, err
 			}
-			session.current = credential.method
+			session.current = resolved.credential.Current
 			session.whole = true
 			session.store = profile.NewMemoryStore(profile.Credentials{
-				Version:       profile.Version,
-				Endpoint:      &session.Endpoint,
-				CurrentMethod: credential.method,
-				Methods:       credential.methods,
+				Version:    profile.Version,
+				Endpoint:   &session.Endpoint,
+				Credential: resolved.credential,
 			})
 			sources["endpoint"] = endpointFrom.describe(endpointDetail)
 			sources["workspace"] = wsFrom.describe(wsDetail)
-			sources["credential"] = credential.from
+			sources["credential"] = resolved.from
 			slog.DebugContext(ctx, "resolved a credential without a profile",
-				"method", session.current, "source", credential.from, "store", session.store.Describe())
+				"method", session.current, "source", resolved.from, "store", session.store.Describe())
 			return session, nil
 		}
 	}
@@ -227,28 +226,31 @@ func plainProfile(config profile.Config, explicit string) (profile.Profile, stri
 // that profile's own method, and mix two identities in one file — so these get a memory
 // store, and a building block run needs no files at all.
 type resolvedCredential struct {
-	method  method.Method
-	methods profile.Methods
-	from    string
+	credential credential.Credential
+	from       string
 }
 
 func wholeCredential(values Values, apiKeyId string) (resolvedCredential, bool) {
 	switch {
-	case values.Method == method.Manual:
-		return resolvedCredential{method: method.Manual, from: sourceExplicit.describe("api token")}, true
-	case values.Method == "" && env(envApiToken) != "":
-		return resolvedCredential{method: method.Manual, from: sourceEnv.describe(envApiToken)}, true
-	case values.Method == method.ApiKey && apiKeyId != "":
+	case values.Method == credential.MethodManual:
 		return resolvedCredential{
-			method:  method.ApiKey,
-			methods: profile.Methods{ApiKey: &profile.ApiKeyMethod{ClientId: apiKeyId}},
-			from:    sourceExplicit.describe("api key"),
+			credential: credential.FromManual(credential.Manual{}),
+			from:       sourceExplicit.describe("api token"),
+		}, true
+	case values.Method == "" && env(envApiToken) != "":
+		return resolvedCredential{
+			credential: credential.FromManual(credential.Manual{}),
+			from:       sourceEnv.describe(envApiToken),
+		}, true
+	case values.Method == credential.MethodApiKey && apiKeyId != "":
+		return resolvedCredential{
+			credential: credential.FromApiKey(credential.ApiKey{Id: apiKeyId}),
+			from:       sourceExplicit.describe("api key"),
 		}, true
 	case values.Method == "" && apiKeyId != "" && env(envApiSecret) != "":
 		return resolvedCredential{
-			method:  method.ApiKey,
-			methods: profile.Methods{ApiKey: &profile.ApiKeyMethod{ClientId: apiKeyId}},
-			from:    sourceEnv.describe(envApiKey + " and " + envApiSecret),
+			credential: credential.FromApiKey(credential.ApiKey{Id: apiKeyId}),
+			from:       sourceEnv.describe(envApiKey + " and " + envApiSecret),
 		}, true
 	}
 	return resolvedCredential{}, false
@@ -308,32 +310,23 @@ func selectProfile(ctx context.Context, config profile.Config, explicit, endpoin
 	return DefaultProfile, sourceDefault.describe("profile " + DefaultProfile), nil
 }
 
-// currentMethod decides which method mints for this session. A method other than the current
-// one is chosen only when the profile has no current method at all — at first use, or after
-// `meshstack auth logout`.
-func currentMethod(credentials profile.Credentials, demanded method.Method, forLogin bool) (method.Method, error) {
+// currentMethod decides which method mints for this session. A credential either names one or
+// holds nothing at all, because credential.Validate refuses the state in between.
+func currentMethod(credentials profile.Credentials, demanded credential.Method, forLogin bool) (credential.Method, error) {
 	if demanded != "" {
-		if !forLogin && credentials.CurrentMethod != "" && demanded != credentials.CurrentMethod {
+		if !forLogin && credentials.Current != "" && demanded != credentials.Current {
 			return "", diags.Errorf("this profile uses a different authentication method",
 				"the profile's current method is %s. `meshstack auth login` is the only command that switches it.",
-				credentials.CurrentMethod.Description())
+				credentials.Current.Description())
 		}
 		return demanded, nil
 	}
-	if credentials.CurrentMethod != "" {
-		return credentials.CurrentMethod, nil
-	}
-	switch {
-	case credentials.Methods.Login != nil:
-		slog.Info("this profile has no current method, using its browser login")
-		return method.Login, nil
-	case credentials.Methods.ApiKey != nil:
-		slog.Info("this profile has no current method, using its API key")
-		return method.ApiKey, nil
+	if credentials.Current != "" {
+		return credentials.Current, nil
 	}
 	// Nothing stored yet. Login is the method `meshstack login` creates, and the error a
 	// command gets from a profile with no credentials names it.
-	return method.Login, nil
+	return credential.MethodLogin, nil
 }
 
 // parseEndpoint reads what a flag, an environment variable or a profile named. The parsing

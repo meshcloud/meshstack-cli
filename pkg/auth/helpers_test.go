@@ -26,7 +26,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 )
 
-// testSecret has the shape profile.CheckSecret expects of an API key secret: 32
+// testSecret has the shape credential.CheckSecret expects of an API key secret: 32
 // alphanumerics, no whitespace, not a UUID.
 const testSecret = "abcdef0123456789abcdef0123456789"
 

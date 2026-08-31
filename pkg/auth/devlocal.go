@@ -5,7 +5,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
@@ -38,7 +38,7 @@ func ResolveForDevLocalLogin(ctx context.Context, in Input) (*Session, error) {
 // hand. It takes no LoginOptions: there is nothing to force — the exchange happens every time
 // — and nothing to choose, because the workspace comes out of the same document.
 func (s *Session) LoginDevLocal(ctx context.Context) (LoginResult, error) {
-	return s.login(ctx, method.ApiKey, func(result *LoginResult) error {
+	return s.login(ctx, credential.MethodApiKey, func(result *LoginResult) error {
 		return s.loginDevLocal(ctx, result)
 	})
 }
@@ -62,9 +62,9 @@ func (s *Session) loginDevLocal(ctx context.Context, result *LoginResult) error 
 	if err != nil {
 		return err
 	}
-	if err := s.storeApiKey(ctx, &profile.ApiKeyMethod{
-		ClientId:     dev.ApiKeyClientId,
-		ClientSecret: dev.ApiKeyClientSecret,
+	if err := s.storeApiKey(ctx, &credential.ApiKey{
+		Id:     dev.ApiKeyClientId,
+		Secret: dev.ApiKeyClientSecret,
 	}, token); err != nil {
 		return err
 	}

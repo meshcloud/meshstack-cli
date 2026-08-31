@@ -4,8 +4,7 @@ import (
 	"time"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 )
 
@@ -20,59 +19,39 @@ type Credentials struct {
 	Version int `yaml:"version"`
 	// A pointer, because the file of a profile nothing has logged in to yet carries no
 	// endpoint, and an xurl.URL that is present has been parsed.
-	Endpoint      *xurl.URL                   `yaml:"endpoint,omitempty"`
-	CurrentMethod method.Method               `yaml:"currentMethod,omitempty"`
-	Methods       Methods                     `yaml:"methods,omitempty"`
-	AccessTokens  map[scope.Scope]IssuedToken `yaml:"accessTokens,omitempty"`
+	Endpoint              *xurl.URL `yaml:"endpoint,omitempty"`
+	credential.Credential `yaml:",inline"`
 }
 
-// Methods is a mapping keyed by method name rather than a list with a discriminator, so
-// that presence is a pointer, a duplicate is unrepresentable, and no custom unmarshaler
-// is needed. There is no entry for method.Manual: a pasted token needs nothing to renew
-// it, which is why it cannot be renewed.
-type Methods struct {
-	Login  *LoginMethod  `yaml:"login,omitempty"`
-	ApiKey *ApiKeyMethod `yaml:"apiKey,omitempty"`
+// prune drops access tokens that have expired, from whichever of the three shapes the
+// credential holds. It is what keeps a login's map from growing by one entry per workspace
+// ever used.
+func prune(c credential.Credential, now time.Time) credential.Credential {
+	if c.Login != nil {
+		login := *c.Login
+		login.AccessTokens = pruneTokens(login.AccessTokens, now)
+		c.Login = &login
+	}
+	if c.ApiKey != nil && expired(c.ApiKey.AccessToken, now) {
+		apiKey := *c.ApiKey
+		apiKey.AccessToken = credential.IssuedToken{}
+		c.ApiKey = &apiKey
+	}
+	if c.Manual != nil && expired(c.Manual.AccessToken, now) {
+		manual := *c.Manual
+		manual.AccessToken = credential.IssuedToken{}
+		c.Manual = &manual
+	}
+	return c
 }
 
-// LoginMethod holds the browser login. ObtainedAt is recorded instead of a predicted
-// deadline: the session's ceiling is a server-side constant, so a number copied into
-// the CLI would be wrong wherever a realm configures another one.
-type LoginMethod struct {
-	Issuer       *xurl.URL `yaml:"issuer,omitempty"`
-	RefreshToken string    `yaml:"refreshToken"`
-	ObtainedAt   time.Time `yaml:"obtainedAt"`
-}
-
-// ApiKeyMethod holds an API key. ClientSecret is absent when ClientSecretCommand is
-// set, so a long-lived secret never has to sit on disk.
-type ApiKeyMethod struct {
-	ClientId            string   `yaml:"clientId"`
-	ClientSecret        string   `yaml:"clientSecret,omitempty"`
-	ClientSecretCommand []string `yaml:"clientSecretCommand,omitempty"`
-}
-
-// IssuedToken is one cached access token, keyed by the workspace scope it carries.
-type IssuedToken struct {
-	Token     jwt.JWT   `yaml:"token"`
-	ExpiresAt time.Time `yaml:"expiresAt"`
-}
-
-// prune drops access tokens that have expired, which is what keeps the map from growing
-// by one entry per workspace ever used. An empty map is returned as nil so that
-// `omitempty` leaves the key out of the file entirely.
-//
-// A zero ExpiresAt is kept, because it means "this token said nothing about its own life"
-// rather than "expired at the zero time". An API token that is not a JWT is the case:
-// `meshstack auth login --api-token` stores one with an unknown expiry rather than a guessed
-// one, and dropping it here would make the very next command report it as expired.
-func prune(tokens map[scope.Scope]IssuedToken, now time.Time) map[scope.Scope]IssuedToken {
+func pruneTokens(tokens map[scope.Scope]credential.IssuedToken, now time.Time) map[scope.Scope]credential.IssuedToken {
 	if len(tokens) == 0 {
 		return nil
 	}
-	kept := make(map[scope.Scope]IssuedToken, len(tokens))
+	kept := make(map[scope.Scope]credential.IssuedToken, len(tokens))
 	for key, token := range tokens {
-		if token.ExpiresAt.IsZero() || token.ExpiresAt.After(now) {
+		if !expired(token, now) {
 			kept[key] = token
 		}
 	}
@@ -80,4 +59,12 @@ func prune(tokens map[scope.Scope]IssuedToken, now time.Time) map[scope.Scope]Is
 		return nil
 	}
 	return kept
+}
+
+// expired is false for a zero ExpiresAt, which means "this token said nothing about its own
+// life" rather than "expired at the zero time". An API token that is not a JWT is the case:
+// `meshstack auth login --api-token` stores one with an unknown expiry rather than a guessed
+// one, and dropping it here would make the very next command report it as expired.
+func expired(token credential.IssuedToken, now time.Time) bool {
+	return !token.ExpiresAt.IsZero() && !token.ExpiresAt.After(now)
 }

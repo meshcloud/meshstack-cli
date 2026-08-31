@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
@@ -60,23 +60,23 @@ func TestCredentialsRoundTrip(t *testing.T) {
 	obtained := time.Date(2026, 8, 27, 9, 1, 0, 0, time.UTC)
 	expires := time.Now().UTC().Add(5 * time.Minute).Truncate(time.Second)
 	want := Credentials{
-		Version:       Version,
-		Endpoint:      mustUrl("https://api.dev.meshcloud.io"),
-		CurrentMethod: method.Login,
-		Methods: Methods{
-			Login: &LoginMethod{
+		Version:  Version,
+		Endpoint: mustUrl("https://api.dev.meshcloud.io"),
+		Credential: credential.Credential{
+			Current: credential.MethodLogin,
+			Login: &credential.Login{
 				Issuer:       mustUrl("https://sso.dev.meshcloud.io/auth/realms/meshfed"),
 				RefreshToken: "refresh-1",
 				ObtainedAt:   obtained,
+				AccessTokens: map[scope.Scope]credential.IssuedToken{
+					workspace.Unscoped:                     {Token: fakeJwt("token-unscoped"), ExpiresAt: expires},
+					workspace.Name("my-workspace").Scope(): {Token: fakeJwt("token-scoped"), ExpiresAt: expires},
+				},
 			},
-			ApiKey: &ApiKeyMethod{
-				ClientId:            "6169f530-0eaa-4f7f-91b7-c4fd4aaf2a74",
-				ClientSecretCommand: []string{"vault", "kv", "get", "-field=secret", "concourse/meshstack-dev"},
+			ApiKey: &credential.ApiKey{
+				Id:            "6169f530-0eaa-4f7f-91b7-c4fd4aaf2a74",
+				SecretCommand: []string{"vault", "kv", "get", "-field=secret", "concourse/meshstack-dev"},
 			},
-		},
-		AccessTokens: map[scope.Scope]IssuedToken{
-			workspace.Unscoped:                     {Token: fakeJwt("token-unscoped"), ExpiresAt: expires},
-			workspace.Name("my-workspace").Scope(): {Token: fakeJwt("token-scoped"), ExpiresAt: expires},
 		},
 	}
 
@@ -88,7 +88,8 @@ func TestCredentialsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	text := string(raw)
 	assert.Contains(t, text, "version: 1")
-	assert.Contains(t, text, "currentMethod: login")
+	assert.Contains(t, text, "\ncurrent: login\n")
+	assert.NotContains(t, text, "credential:")
 	assert.Contains(t, text, "refreshToken: refresh-1")
 	assert.Contains(t, text, "clientSecretCommand:")
 	assert.Contains(t, text, "c:my-workspace:")
@@ -144,19 +145,21 @@ func TestUpdatePrunesExpiredTokens(t *testing.T) {
 	store, err := NewFileStore("default")
 	require.NoError(t, err)
 
-	fresh := IssuedToken{Token: fakeJwt("fresh"), ExpiresAt: time.Now().Add(5 * time.Minute).UTC()}
-	stale := IssuedToken{Token: fakeJwt("stale"), ExpiresAt: time.Now().Add(-time.Second).UTC()}
+	fresh := credential.IssuedToken{Token: fakeJwt("fresh"), ExpiresAt: time.Now().Add(5 * time.Minute).UTC()}
+	stale := credential.IssuedToken{Token: fakeJwt("stale"), ExpiresAt: time.Now().Add(-time.Second).UTC()}
 
 	got, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.AccessTokens = map[scope.Scope]IssuedToken{
-			workspace.Unscoped:                  fresh,
-			workspace.Name("gone").Scope():      stale,
-			workspace.Name("also-gone").Scope(): stale,
-		}
+		c.Credential = credential.FromLogin(credential.Login{
+			AccessTokens: map[scope.Scope]credential.IssuedToken{
+				workspace.Unscoped:                  fresh,
+				workspace.Name("gone").Scope():      stale,
+				workspace.Name("also-gone").Scope(): stale,
+			},
+		})
 		return c, nil
 	})
 	require.NoError(t, err)
-	require.Equal(t, map[scope.Scope]IssuedToken{workspace.Unscoped: fresh}, got.AccessTokens)
+	require.Equal(t, map[scope.Scope]credential.IssuedToken{workspace.Unscoped: fresh}, got.Login.AccessTokens)
 
 	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
 	require.NoError(t, err)
@@ -164,11 +167,11 @@ func TestUpdatePrunesExpiredTokens(t *testing.T) {
 
 	// The last token expiring leaves the key out of the file rather than an empty map.
 	got, err = store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.AccessTokens[workspace.Unscoped] = stale
+		c.Login.AccessTokens[workspace.Unscoped] = stale
 		return c, nil
 	})
 	require.NoError(t, err)
-	require.Nil(t, got.AccessTokens)
+	require.Nil(t, got.Login.AccessTokens)
 	raw, err = os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "accessTokens")
@@ -182,18 +185,17 @@ func TestUpdateKeepsATokenWithNoExpiry(t *testing.T) {
 	store := newTestStore(t, "default")
 
 	got, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.CurrentMethod = method.Manual
-		c.AccessTokens = map[scope.Scope]IssuedToken{
-			workspace.Unscoped: {Token: fakeJwt("no-expiry")},
-		}
+		c.Credential = credential.FromManual(credential.Manual{
+			AccessToken: credential.IssuedToken{Token: fakeJwt("no-expiry")},
+		})
 		return c, nil
 	})
 	require.NoError(t, err)
-	require.Equal(t, fakeJwt("no-expiry"), got.AccessTokens[workspace.Unscoped].Token)
+	require.Equal(t, fakeJwt("no-expiry"), got.Manual.AccessToken.Token)
 
 	reread, err := store.Read()
 	require.NoError(t, err)
-	require.Equal(t, fakeJwt("no-expiry"), reread.AccessTokens[workspace.Unscoped].Token)
+	require.Equal(t, fakeJwt("no-expiry"), reread.Manual.AccessToken.Token)
 }
 
 func TestUpdateWritesEvenWhenMintChangesNothing(t *testing.T) {
@@ -201,9 +203,11 @@ func TestUpdateWritesEvenWhenMintChangesNothing(t *testing.T) {
 
 	_, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
 		c.Endpoint = mustUrl("https://api.dev.meshcloud.io")
-		c.AccessTokens = map[scope.Scope]IssuedToken{
-			workspace.Unscoped: {Token: fakeJwt("expired"), ExpiresAt: time.Now().Add(-time.Minute)},
-		}
+		c.Credential = credential.FromLogin(credential.Login{
+			AccessTokens: map[scope.Scope]credential.IssuedToken{
+				workspace.Unscoped: {Token: fakeJwt("expired"), ExpiresAt: time.Now().Add(-time.Minute)},
+			},
+		})
 		return c, nil
 	})
 	require.NoError(t, err)
@@ -212,12 +216,12 @@ func TestUpdateWritesEvenWhenMintChangesNothing(t *testing.T) {
 	// is what prunes the expired token.
 	got, err := store.Update(t.Context(), unchanged)
 	require.NoError(t, err)
-	require.Nil(t, got.AccessTokens)
+	require.Nil(t, got.Login.AccessTokens)
 
 	reread, err := store.Read()
 	require.NoError(t, err)
 	require.Equal(t, "https://api.dev.meshcloud.io", reread.Endpoint.String())
-	require.Nil(t, reread.AccessTokens)
+	require.Nil(t, reread.Login.AccessTokens)
 }
 
 func TestUpdateSeesAnotherProcessWrite(t *testing.T) {
@@ -242,12 +246,13 @@ func TestUpdateSeesAnotherProcessWrite(t *testing.T) {
 
 	// The winner writes while the loser waits, so the loser must re-read under the lock
 	// instead of minting from what it saw before.
-	require.NoError(t, os.WriteFile(path, []byte("version: 1\nendpoint: https://written-by-the-winner\ncurrentMethod: apiKey\n"), fileMode))
+	require.NoError(t, os.WriteFile(path, []byte("version: 1\nendpoint: https://written-by-the-winner\ncurrent: apiKey\napiKey:\n  clientId: winner\n"), fileMode))
 	release()
 
 	require.NoError(t, <-done)
 	require.Equal(t, "https://written-by-the-winner", seen.Endpoint.String())
-	require.Equal(t, method.ApiKey, seen.CurrentMethod)
+	require.Equal(t, credential.MethodApiKey, seen.Current)
+	require.Equal(t, "winner", seen.ApiKey.Id)
 }
 
 func TestConcurrentUpdatesSerialise(t *testing.T) {
@@ -263,11 +268,11 @@ func TestConcurrentUpdatesSerialise(t *testing.T) {
 				// A read-modify-write that loses an update shows up as a missing count. The
 				// key id is the counter because it is the one plain string in the file.
 				n := 0
-				if c.Methods.ApiKey != nil {
-					n, _ = strconv.Atoi(c.Methods.ApiKey.ClientId)
+				if c.ApiKey != nil {
+					n, _ = strconv.Atoi(c.ApiKey.Id)
 				}
 				time.Sleep(time.Millisecond) // widen the window a lost update would need
-				c.Methods.ApiKey = &ApiKeyMethod{ClientId: strconv.Itoa(n + 1)}
+				c.Credential = credential.FromApiKey(credential.ApiKey{Id: strconv.Itoa(n + 1)})
 				return c, nil
 			})
 			assert.NoError(t, err)
@@ -277,7 +282,7 @@ func TestConcurrentUpdatesSerialise(t *testing.T) {
 
 	got, err := store.Read()
 	require.NoError(t, err)
-	require.Equal(t, strconv.Itoa(writers), got.Methods.ApiKey.ClientId)
+	require.Equal(t, strconv.Itoa(writers), got.ApiKey.Id)
 }
 
 func TestUpdateHonoursContext(t *testing.T) {
@@ -343,8 +348,8 @@ func TestForget(t *testing.T) {
 
 func TestMemoryStore(t *testing.T) {
 	store := NewMemoryStore(Credentials{
-		Endpoint:      mustUrl("https://api.dev.meshcloud.io"),
-		CurrentMethod: method.Manual,
+		Endpoint:   mustUrl("https://api.dev.meshcloud.io"),
+		Credential: credential.FromManual(credential.Manual{}),
 	})
 
 	require.False(t, store.Writable())
@@ -355,25 +360,27 @@ func TestMemoryStore(t *testing.T) {
 	creds, err := store.Read()
 	require.NoError(t, err)
 	require.Equal(t, Version, creds.Version)
-	require.Equal(t, method.Manual, creds.CurrentMethod)
+	require.Equal(t, credential.MethodManual, creds.Current)
 
 	got, err := store.Update(t.Context(), func(c Credentials) (Credentials, error) {
-		c.AccessTokens = map[scope.Scope]IssuedToken{
-			workspace.Unscoped:             {Token: fakeJwt("fresh"), ExpiresAt: time.Now().Add(time.Minute)},
-			workspace.Name("gone").Scope(): {Token: fakeJwt("stale"), ExpiresAt: time.Now().Add(-time.Minute)},
-		}
+		c.Credential = credential.FromLogin(credential.Login{
+			AccessTokens: map[scope.Scope]credential.IssuedToken{
+				workspace.Unscoped:             {Token: fakeJwt("fresh"), ExpiresAt: time.Now().Add(time.Minute)},
+				workspace.Name("gone").Scope(): {Token: fakeJwt("stale"), ExpiresAt: time.Now().Add(-time.Minute)},
+			},
+		})
 		return c, nil
 	})
 	require.NoError(t, err)
-	require.Len(t, got.AccessTokens, 1)
+	require.Len(t, got.Login.AccessTokens, 1)
 
 	// What a caller mutates after reading must not reach into the store.
 	read, err := store.Read()
 	require.NoError(t, err)
-	delete(read.AccessTokens, workspace.Unscoped)
+	delete(read.Login.AccessTokens, workspace.Unscoped)
 	again, err := store.Read()
 	require.NoError(t, err)
-	require.Len(t, again.AccessTokens, 1)
+	require.Len(t, again.Login.AccessTokens, 1)
 
 	require.NoError(t, store.Forget())
 	creds, err = store.Read()

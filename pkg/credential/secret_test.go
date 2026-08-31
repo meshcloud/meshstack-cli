@@ -1,4 +1,4 @@
-package profile
+package credential
 
 import (
 	"context"
@@ -90,15 +90,15 @@ func helperCommand(t *testing.T, stdout, stderr string, exit int) []string {
 }
 
 func TestSecretFromStoredValue(t *testing.T) {
-	m := ApiKeyMethod{ClientId: "id", ClientSecret: "Ph1nBQ2rTz8kLm4WxYv6Cd0AeJsGuNiO"}
-	got, err := m.Secret(t.Context())
+	m := ApiKey{Id: "id", Secret: "Ph1nBQ2rTz8kLm4WxYv6Cd0AeJsGuNiO"}
+	got, err := m.Resolve(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, "Ph1nBQ2rTz8kLm4WxYv6Cd0AeJsGuNiO", got)
 }
 
 func TestSecretWithNeitherStoredValueNorCommand(t *testing.T) {
-	m := ApiKeyMethod{ClientId: "6169f530-0eaa-4f7f-91b7-c4fd4aaf2a74"}
-	_, err := m.Secret(t.Context())
+	m := ApiKey{Id: "6169f530-0eaa-4f7f-91b7-c4fd4aaf2a74"}
+	_, err := m.Resolve(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "6169f530-0eaa-4f7f-91b7-c4fd4aaf2a74")
 }
@@ -115,8 +115,8 @@ func TestSecretFromCommand(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m := ApiKeyMethod{ClientId: "id", ClientSecretCommand: helperCommand(t, tc.stdout, "", 0)}
-			got, err := m.Secret(t.Context())
+			m := ApiKey{Id: "id", SecretCommand: helperCommand(t, tc.stdout, "", 0)}
+			got, err := m.Resolve(t.Context())
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
@@ -137,8 +137,8 @@ func TestSecretFromCommandGoesThroughTheCheck(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m := ApiKeyMethod{ClientId: "id", ClientSecretCommand: helperCommand(t, tc.stdout, "", 0)}
-			_, err := m.Secret(t.Context())
+			m := ApiKey{Id: "id", SecretCommand: helperCommand(t, tc.stdout, "", 0)}
+			_, err := m.Resolve(t.Context())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
 			assert.Contains(t, err.Error(), "clientSecretCommand")
@@ -148,9 +148,9 @@ func TestSecretFromCommandGoesThroughTheCheck(t *testing.T) {
 
 func TestSecretCommandFailureNamesTheCommandAndQuotesStderr(t *testing.T) {
 	command := helperCommand(t, "", "Error: vault token expired", 3)
-	m := ApiKeyMethod{ClientId: "id", ClientSecretCommand: command}
+	m := ApiKey{Id: "id", SecretCommand: command}
 
-	_, err := m.Secret(t.Context())
+	_, err := m.Resolve(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), command[0])
 	assert.Contains(t, err.Error(), "Error: vault token expired")
@@ -159,12 +159,12 @@ func TestSecretCommandFailureNamesTheCommandAndQuotesStderr(t *testing.T) {
 
 func TestSecretCommandStderrPassesThrough(t *testing.T) {
 	command := helperCommand(t, "Ph1nBQ2rTz8kLm4WxYv6Cd0AeJsGuNiO\n", "Warning: renewing lease", 0)
-	m := ApiKeyMethod{ClientId: "id", ClientSecretCommand: command}
+	m := ApiKey{Id: "id", SecretCommand: command}
 
 	// vault's own message has to reach the user, so it is written to this process's
 	// stderr rather than being swallowed.
 	captured := captureStderr(t, func() {
-		got, err := m.Secret(t.Context())
+		got, err := m.Resolve(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, "Ph1nBQ2rTz8kLm4WxYv6Cd0AeJsGuNiO", got)
 	})
@@ -175,19 +175,19 @@ func TestSecretCommandStderrPassesThrough(t *testing.T) {
 
 func TestSecretCommandHonoursContext(t *testing.T) {
 	command := helperCommand(t, "Ph1nBQ2rTz8kLm4WxYv6Cd0AeJsGuNiO", "", 0)
-	m := ApiKeyMethod{ClientId: "id", ClientSecretCommand: command}
+	m := ApiKey{Id: "id", SecretCommand: command}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := m.Secret(ctx)
+	_, err := m.Resolve(ctx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "clientSecretCommand")
 }
 
 func TestSecretCommandThatDoesNotExist(t *testing.T) {
-	m := ApiKeyMethod{ClientId: "id", ClientSecretCommand: []string{"meshstack-no-such-secret-helper"}}
-	_, err := m.Secret(t.Context())
+	m := ApiKey{Id: "id", SecretCommand: []string{"meshstack-no-such-secret-helper"}}
+	_, err := m.Resolve(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "meshstack-no-such-secret-helper")
 }

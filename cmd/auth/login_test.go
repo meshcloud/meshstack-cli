@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/cli"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 )
 
 // --api-key takes an optional value, and pflag resolves such a flag before it looks at the
@@ -20,19 +20,19 @@ func TestApiKeyFlagForms(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       []string
-		wantMethod method.Method
+		wantMethod credential.Method
 		wantId     string
 		wantErr    string
 	}{
 		{
 			name:       "bare reuses the id already in the profile",
 			args:       []string{"--api-key"},
-			wantMethod: method.ApiKey,
+			wantMethod: credential.MethodApiKey,
 		},
 		{
 			name:       "the equals form carries a new id",
 			args:       []string{"--api-key=0000-0001"},
-			wantMethod: method.ApiKey,
+			wantMethod: credential.MethodApiKey,
 			wantId:     "0000-0001",
 		},
 		{

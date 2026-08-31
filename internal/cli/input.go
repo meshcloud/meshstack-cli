@@ -15,7 +15,7 @@ import (
 	"os"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/browser"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -37,7 +37,7 @@ type Input struct {
 	Endpoint  string
 	Workspace string
 	ApiKey    string
-	Method    method.Method
+	Method    credential.Method
 
 	// in and out are where a prompt reads and writes. They are fields only so that a test
 	// can drive one; nothing outside this package sets them. in is an *os.File because

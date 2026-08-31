@@ -8,7 +8,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/internal/cli"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 )
 
 // newStatus builds `meshstack auth status`, which makes no network call unless --verify is
@@ -100,7 +100,7 @@ func printMethods(out io.Writer, status auth.Status) {
 	}
 	// A pasted token is not a method on disk — nothing can renew it — so it is named here
 	// only when it is what this session authenticates with.
-	if status.Current == method.Manual {
+	if status.Current == credential.MethodManual {
 		row(out, label, "manual an API token", "nothing can refresh it")
 		label = ""
 	}

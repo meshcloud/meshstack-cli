@@ -35,7 +35,7 @@ package auth
 import (
 	"context"
 
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -83,5 +83,5 @@ type Values struct {
 	// sets it without setting ApiKey, which is how a bare --api-key reuses the id already
 	// in the profile. A demanded method that differs from the profile's current one
 	// switches it, which only `meshstack auth login` is allowed to do.
-	Method method.Method
+	Method credential.Method
 }

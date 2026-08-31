@@ -13,43 +13,39 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
 
 // apiKeyProfile is a profile whose current method is an API key, with the secret on disk so
 // that nothing has to prompt.
-func apiKeyProfile(t *testing.T, stack *fakeMeshStack, tokens map[scope.Scope]profile.IssuedToken) {
+func apiKeyProfile(t *testing.T, stack *fakeMeshStack, token credential.IssuedToken) {
 	t.Helper()
 	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl(stack.URL.String())}})
 	writeCredentials(t, profile.Credentials{
-		Endpoint:      mustUrl(stack.URL.String()),
-		CurrentMethod: method.ApiKey,
-		Methods:       profile.Methods{ApiKey: &profile.ApiKeyMethod{ClientId: "key-42", ClientSecret: testSecret}},
-		AccessTokens:  tokens,
+		Endpoint: mustUrl(stack.URL.String()),
+		Credential: credential.FromApiKey(credential.ApiKey{
+			Id: "key-42", Secret: testSecret, AccessToken: token,
+		}),
 	})
 }
 
 // storedLogin is a login method that never gets as far as a request, for the rules that are
 // decided before one is made.
-func storedLogin() profile.Methods {
-	return profile.Methods{Login: &profile.LoginMethod{RefreshToken: "refresh-old"}}
+func storedLogin() credential.Credential {
+	return credential.FromLogin(credential.Login{RefreshToken: "refresh-old"})
 }
 
 // loginProfile is a profile whose current method is the browser login. The endpoint is a
 // parameter because the rules that need no request need no server either.
-func loginProfile(t *testing.T, endpoint string, ws workspace.Name, methods profile.Methods) {
+func loginProfile(t *testing.T, endpoint string, ws workspace.Name, held credential.Credential) {
 	t.Helper()
+	held.Current = credential.MethodLogin
 	writeConfig(t, "default", map[string]profile.Profile{
 		"default": {Endpoint: mustUrl(endpoint), DefaultWorkspace: ws},
 	})
-	writeCredentials(t, profile.Credentials{
-		Endpoint:      mustUrl(endpoint),
-		CurrentMethod: method.Login,
-		Methods:       methods,
-	})
+	writeCredentials(t, profile.Credentials{Endpoint: mustUrl(endpoint), Credential: held})
 }
 
 // TestBearerTokenMintsFromTheApiKeyOncePerTokenLife holds the two-cache rule: the token is
@@ -82,9 +78,7 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 	t.Run("inside the window", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		apiKeyProfile(t, stack, map[scope.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: mustJwt(fakeToken("nearly-expired")), ExpiresAt: insideGrace()},
-		})
+		apiKeyProfile(t, stack, credential.IssuedToken{Token: mustJwt(fakeToken("nearly-expired")), ExpiresAt: insideGrace()})
 
 		session := resolved(t, &fakeInput{})
 		token, err := session.BearerToken(t.Context())
@@ -96,9 +90,7 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 	t.Run("outside the window", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		apiKeyProfile(t, stack, map[scope.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: mustJwt(fakeToken("still-good")), ExpiresAt: futureExpiry()},
-		})
+		apiKeyProfile(t, stack, credential.IssuedToken{Token: mustJwt(fakeToken("still-good")), ExpiresAt: futureExpiry()})
 
 		session := resolved(t, &fakeInput{})
 		token, err := session.BearerToken(t.Context())
@@ -114,9 +106,9 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testing.T) {
 	stack := newMeshStack(t)
 	isolate(t)
-	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
-	})
+	loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{
+		Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
+	}))
 
 	session := resolved(t, &fakeInput{})
 	require.Equal(t, workspace.Name("demo"), session.Workspace)
@@ -133,9 +125,9 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 	require.Equal(t, "meshstack-cli", form.Get("client_id"))
 
 	stored := readCredentials(t)
-	require.NotNil(t, stored.Methods.Login)
-	require.Equal(t, "refresh-1", stored.Methods.Login.RefreshToken, "the rotated refresh token must replace the used one")
-	require.Equal(t, token, stored.AccessTokens[workspace.Name("demo").Scope()].Token.String,
+	require.NotNil(t, stored.Login)
+	require.Equal(t, "refresh-1", stored.Login.RefreshToken, "the rotated refresh token must replace the used one")
+	require.Equal(t, token, stored.Login.AccessTokens[workspace.Name("demo").Scope()].Token.String,
 		"the access token and the refresh token it came with are one write")
 }
 
@@ -152,9 +144,9 @@ func TestARefreshForAnotherWorkspaceFailsNamingTheWorkspace(t *testing.T) {
 		}
 	})
 	isolate(t)
-	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
-	})
+	loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{
+		Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
+	}))
 
 	session := resolved(t, &fakeInput{})
 	_, err := session.BearerToken(t.Context())
@@ -243,8 +235,8 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 		writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl(stack.URL.String())}})
 		// A stored API token that has expired: nothing is left to mint from.
 		writeCredentials(t, profile.Credentials{
-			Endpoint:      mustUrl(stack.URL.String()),
-			CurrentMethod: method.Manual,
+			Endpoint:   mustUrl(stack.URL.String()),
+			Credential: credential.FromManual(credential.Manual{}),
 		})
 
 		session := resolved(t, &fakeInput{token: fakeToken("unused")})
@@ -261,7 +253,7 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 		// usable one, which is the outcome a deleted key or a changed secret ends in.
 		stack.setApiLoginExpiry(0)
 		isolate(t)
-		apiKeyProfile(t, stack, nil)
+		apiKeyProfile(t, stack, credential.IssuedToken{})
 
 		session := resolved(t, &fakeInput{})
 		_, err := session.BearerToken(t.Context())
@@ -273,9 +265,8 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 	t.Run("login names meshstack login", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		// A profile whose login method is gone: `auth logout` left the file, or the file was
-		// written by a CLI that stored no refresh token.
-		loginProfile(t, stack.URL.String(), "demo", profile.Methods{})
+		// A login entry with no refresh token: the file was written by a CLI that stored none.
+		loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{}))
 
 		session := resolved(t, &fakeInput{})
 		_, err := session.BearerToken(t.Context())
@@ -298,19 +289,19 @@ func TestRenewalNeverSwitchesMethod(t *testing.T) {
 		}
 	})
 	isolate(t)
-	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login:  &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
-		ApiKey: &profile.ApiKeyMethod{ClientId: "key-42", ClientSecret: testSecret},
+	loginProfile(t, stack.URL.String(), "demo", credential.Credential{
+		Login:  &credential.Login{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
+		ApiKey: &credential.ApiKey{Id: "key-42", Secret: testSecret},
 	})
 
 	session := resolved(t, &fakeInput{secret: testSecret})
-	require.Equal(t, method.Login, session.Method())
+	require.Equal(t, credential.MethodLogin, session.Method())
 
 	_, err := session.BearerToken(t.Context())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "invalid_grant")
 	require.Equal(t, 0, stack.apiLoginCount(), "the API key in the same profile must not have been used")
-	require.Equal(t, method.Login, session.Method())
+	require.Equal(t, credential.MethodLogin, session.Method())
 }
 
 // TestTheStoredIssuerIsCheckedBeforeTheRefreshGrant holds the stricter of the two endpoint
@@ -318,9 +309,9 @@ func TestRenewalNeverSwitchesMethod(t *testing.T) {
 func TestTheStoredIssuerIsCheckedBeforeTheRefreshGrant(t *testing.T) {
 	stack := newMeshStack(t)
 	isolate(t)
-	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: mustUrl("https://sso.somewhere-else.example.com"), RefreshToken: "refresh-old"},
-	})
+	loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{
+		Issuer: mustUrl("https://sso.somewhere-else.example.com"), RefreshToken: "refresh-old",
+	}))
 
 	session := resolved(t, &fakeInput{})
 	_, err := session.BearerToken(t.Context())
@@ -443,7 +434,7 @@ func TestConcurrentBearerTokenCallsMintOnce(t *testing.T) {
 	t.Run("a file store under its lock", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		apiKeyProfile(t, stack, nil)
+		apiKeyProfile(t, stack, credential.IssuedToken{})
 
 		run(t, 8, stack, resolved(t, &fakeInput{}))
 	})
@@ -468,9 +459,9 @@ func TestOnlyTheGrantRunsUnderTheCredentialsLock(t *testing.T) {
 		held[r.URL.Path] = err == nil
 	})
 
-	loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-		Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
-	})
+	loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{
+		Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
+	}))
 
 	session := resolved(t, &fakeInput{})
 	_, err := session.BearerToken(t.Context())
@@ -515,9 +506,9 @@ func TestAStoreThatCannotBeWrittenKeepsWhatItMinted(t *testing.T) {
 	withLogin := func(t *testing.T, stack *fakeMeshStack) *Session {
 		t.Helper()
 		isolate(t)
-		loginProfile(t, stack.URL.String(), "demo", profile.Methods{
-			Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old"},
-		})
+		loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{
+			Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
+		}))
 		return resolved(t, &fakeInput{})
 	}
 
@@ -538,8 +529,8 @@ func TestAStoreThatCannotBeWrittenKeepsWhatItMinted(t *testing.T) {
 		require.False(t, degraded.Writable())
 		credentials, err := degraded.Read()
 		require.NoError(t, err)
-		require.Equal(t, "refresh-1", credentials.Methods.Login.RefreshToken)
-		require.Equal(t, token, credentials.AccessTokens[workspace.Name("demo").Scope()].Token.String)
+		require.Equal(t, "refresh-1", credentials.Login.RefreshToken)
+		require.Equal(t, token, credentials.Login.AccessTokens[workspace.Name("demo").Scope()].Token.String)
 	})
 
 	t.Run("a failure before the grant still mints once after degrading", func(t *testing.T) {
@@ -599,7 +590,7 @@ func TestConcurrentRefreshCallsMintOnce(t *testing.T) {
 	t.Run("a file store under its lock", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		apiKeyProfile(t, stack, nil)
+		apiKeyProfile(t, stack, credential.IssuedToken{})
 
 		run(t, 8, stack, resolved(t, &fakeInput{}))
 	})

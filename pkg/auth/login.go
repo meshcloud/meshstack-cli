@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
@@ -35,7 +35,7 @@ type LoginOptions struct {
 // LoginResult is what the front end prints. pkg/auth returns the facts rather than a
 // sentence, so the CLI and the Terraform provider can word them their own way.
 type LoginResult struct {
-	Method    method.Method
+	Method    credential.Method
 	Endpoint  string
 	Profile   string
 	Workspace workspace.Name
@@ -43,7 +43,7 @@ type LoginResult struct {
 	// AlreadyLoggedIn reports that the stored login still worked, so no browser was opened.
 	AlreadyLoggedIn bool
 	// SwitchedFrom names the method this login replaced, empty when nothing changed.
-	SwitchedFrom method.Method
+	SwitchedFrom credential.Method
 	// Username is the preferred_username claim of the token that was obtained, when it has one.
 	Username string
 	// ExpiresAt is the deadline of a stored API token, the one credential with a deadline
@@ -60,9 +60,9 @@ func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult,
 	demanded := s.Method()
 	return s.login(ctx, demanded, func(result *LoginResult) error {
 		switch demanded {
-		case method.Manual:
+		case credential.MethodManual:
 			return s.loginWithApiToken(ctx, result)
-		case method.ApiKey:
+		case credential.MethodApiKey:
 			return s.loginWithApiKey(ctx, result)
 		default:
 			return s.loginWithBrowser(ctx, options, result)
@@ -79,15 +79,15 @@ func (s *Session) Login(ctx context.Context, options LoginOptions) (LoginResult,
 // shared profile usable, where CI logs in with an API key and a developer holds a login in
 // the same profile. `--api-key` and `--api-token` set Force themselves, because for them
 // forcing only means "do the exchange again".
-func (s *Session) login(ctx context.Context, demanded method.Method, exchange func(*LoginResult) error) (LoginResult, error) {
+func (s *Session) login(ctx context.Context, demanded credential.Method, exchange func(*LoginResult) error) (LoginResult, error) {
 	result := LoginResult{Method: demanded, Endpoint: s.Endpoint.String(), Profile: s.Profile, Workspace: s.Workspace}
 
 	credentials, err := s.currentStore().Read()
 	if err != nil {
 		return result, err
 	}
-	if credentials.CurrentMethod != "" && credentials.CurrentMethod != demanded {
-		result.SwitchedFrom = credentials.CurrentMethod
+	if credentials.Current != "" && credentials.Current != demanded {
+		result.SwitchedFrom = credentials.Current
 	}
 
 	if err := exchange(&result); err != nil {
@@ -104,7 +104,7 @@ func (s *Session) login(ctx context.Context, demanded method.Method, exchange fu
 	}
 
 	s.mu.Lock()
-	s.current, s.cached = demanded, profile.IssuedToken{}
+	s.current, s.cached = demanded, credential.IssuedToken{}
 	s.mu.Unlock()
 	return result, nil
 }
@@ -122,7 +122,7 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 	if err != nil {
 		return err
 	}
-	if !options.Force && credentials.Methods.Login != nil && credentials.Methods.Login.RefreshToken != "" {
+	if !options.Force && credentials.Login != nil && credentials.Login.RefreshToken != "" {
 		if err := s.probeLogin(ctx, config, result); err == nil {
 			result.AlreadyLoggedIn = true
 			return s.chooseWorkspace(ctx, options, result)
@@ -158,8 +158,7 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 	if _, err := s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
 		c.Version = profile.Version
 		c.Endpoint = &s.Endpoint
-		c.CurrentMethod = method.Login
-		c.Methods.Login = &profile.LoginMethod{
+		c.Credential = switchTo(c.Credential, credential.FromLogin(credential.Login{
 			Issuer:       &config.Issuer,
 			RefreshToken: token.RefreshToken,
 			// Nothing in the token says when the login dies — a refresh token carries no exp
@@ -167,10 +166,10 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 			// record when it happened and report its age, rather than predicting a deadline
 			// from a constant that lives in another repository.
 			ObtainedAt: time.Now().UTC(),
-		}
-		c.AccessTokens = map[scope.Scope]profile.IssuedToken{
-			workspace.Unscoped: issuedToken(token.AccessToken),
-		}
+			AccessTokens: map[scope.Scope]credential.IssuedToken{
+				workspace.Unscoped: issuedToken(token.AccessToken),
+			},
+		}))
 		return c, nil
 	}); err != nil {
 		return err
@@ -181,14 +180,15 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 func (s *Session) probeLogin(ctx context.Context, config oidc.Client, result *LoginResult) error {
 	var probed jwt.JWT
 	_, err := s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
-		token, err := config.Refresh(ctx, c.Methods.Login.RefreshToken, "")
+		token, err := config.Refresh(ctx, c.Login.RefreshToken, "")
 		if err != nil {
 			return c, err
 		}
 		probed = token.AccessToken
-		c.Methods.Login.RefreshToken = token.RefreshToken
-		c.CurrentMethod = method.Login
-		return withToken(c, workspace.Unscoped, issuedToken(token.AccessToken)), nil
+		login := *c.Login
+		login.RefreshToken = token.RefreshToken
+		c.Credential = switchTo(c.Credential, credential.FromLogin(login))
+		return withToken(c, credential.MethodLogin, workspace.Unscoped, issuedToken(token.AccessToken)), nil
 	})
 	if err != nil {
 		return err
@@ -232,7 +232,7 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 	if err != nil {
 		return err
 	}
-	stored := credentials.Methods.ApiKey
+	stored := credentials.ApiKey
 	clientId := s.input.Explicit().ApiKey
 	if clientId == "" {
 		clientId = env(envApiKey)
@@ -241,7 +241,7 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 		// A bare --api-key forces the method with the id already in the profile, which is how
 		// a developer tests that CI's key still works from a machine that also holds a
 		// browser login.
-		clientId = stored.ClientId
+		clientId = stored.Id
 	}
 	if clientId == "" {
 		return diags.Errorf("no API key id",
@@ -250,8 +250,8 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 
 	// A new id must not inherit the old id's secret, so the stored one is only offered when
 	// the id is unchanged.
-	offered := &profile.ApiKeyMethod{ClientId: clientId}
-	if stored != nil && stored.ClientId == clientId {
+	offered := &credential.ApiKey{Id: clientId}
+	if stored != nil && stored.Id == clientId {
 		offered = stored
 	}
 	secret, err := s.apiKeySecret(ctx, offered)
@@ -266,8 +266,8 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 	// A key whose secret this profile already knows how to produce keeps saying so; anything
 	// else is stored with the secret that just worked.
 	keeping := offered
-	if offered.ClientSecret == "" && len(offered.ClientSecretCommand) == 0 {
-		keeping = &profile.ApiKeyMethod{ClientId: clientId, ClientSecret: secret}
+	if offered.Secret == "" && len(offered.SecretCommand) == 0 {
+		keeping = &credential.ApiKey{Id: clientId, Secret: secret}
 	}
 	if err := s.storeApiKey(ctx, keeping, token); err != nil {
 		return err
@@ -279,17 +279,13 @@ func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) erro
 // storeApiKey writes the API key method and the token it just minted in one update. Every
 // login that ends up with an API key goes through it, so there is one place that decides
 // what an API key credential looks like on disk.
-func (s *Session) storeApiKey(ctx context.Context, apiKey *profile.ApiKeyMethod, token jwt.JWT) error {
+func (s *Session) storeApiKey(ctx context.Context, apiKey *credential.ApiKey, token jwt.JWT) error {
 	_, err := s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
 		c.Version = profile.Version
 		c.Endpoint = &s.Endpoint
-		c.CurrentMethod = method.ApiKey
-		c.Methods.ApiKey = apiKey
-		// Switching method discards every cached access token, because they carry the old
-		// identity. The methods themselves survive, so switching back costs one refresh.
-		c.AccessTokens = map[scope.Scope]profile.IssuedToken{
-			workspace.Unscoped: issuedToken(token),
-		}
+		key := *apiKey
+		key.AccessToken = issuedToken(token)
+		c.Credential = switchTo(c.Credential, credential.FromApiKey(key))
 		return c, nil
 	})
 	return err
@@ -318,11 +314,29 @@ func (s *Session) loginWithApiToken(ctx context.Context, result *LoginResult) er
 	_, err = s.currentStore().Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
 		c.Version = profile.Version
 		c.Endpoint = &s.Endpoint
-		c.CurrentMethod = method.Manual
-		c.AccessTokens = map[scope.Scope]profile.IssuedToken{workspace.Unscoped: issued}
+		c.Credential = switchTo(c.Credential, credential.FromManual(credential.Manual{AccessToken: issued}))
 		return c, nil
 	})
 	return err
+}
+
+// switchTo makes a freshly obtained credential the current one. The methods it replaces are
+// kept, so that switching back costs one refresh rather than a new browser session, but their
+// cached access tokens are dropped: a token carries the identity of the method that minted it.
+//
+// A pasted token is not kept, because the token is the whole of that method.
+func switchTo(previous, selected credential.Credential) credential.Credential {
+	if selected.Login == nil && previous.Login != nil {
+		login := *previous.Login
+		login.AccessTokens = nil
+		selected.Login = &login
+	}
+	if selected.ApiKey == nil && previous.ApiKey != nil {
+		apiKey := *previous.ApiKey
+		apiKey.AccessToken = credential.IssuedToken{}
+		selected.ApiKey = &apiKey
+	}
+	return selected
 }
 
 // Logout removes the profile's credentials file. There is no per-method logout: the file is
@@ -337,12 +351,12 @@ func (s *Session) Logout(ctx context.Context, revoke bool) error {
 		if err != nil {
 			return err
 		}
-		if credentials.Methods.Login != nil && credentials.Methods.Login.RefreshToken != "" {
+		if credentials.Login != nil && credentials.Login.RefreshToken != "" {
 			config, err := s.discover(ctx)
 			if err != nil {
 				return err
 			}
-			if err := config.EndSession(ctx, credentials.Methods.Login.RefreshToken); err != nil {
+			if err := config.EndSession(ctx, credentials.Login.RefreshToken); err != nil {
 				// A refusal means the session is already gone, which is the outcome the user
 				// asked for, so the local file still goes. Anything else — the provider was not
 				// reachable — leaves the session alive, and a silent logout would hide that.
@@ -354,7 +368,7 @@ func (s *Session) Logout(ctx context.Context, revoke bool) error {
 		}
 	}
 	s.mu.Lock()
-	s.cached, s.current = profile.IssuedToken{}, ""
+	s.cached, s.current = credential.IssuedToken{}, ""
 	s.mu.Unlock()
 	return s.currentStore().Forget()
 }

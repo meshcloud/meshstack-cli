@@ -7,7 +7,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/internal/cli"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 )
 
 // newLogout builds `meshstack auth logout`. There is no per-method logout: the credentials
@@ -39,7 +39,7 @@ func newLogout(in *cli.Input) *cobra.Command {
 				_, _ = fmt.Fprintln(out, "The session at the identity provider was ended too.")
 				return nil
 			}
-			if was == method.Login {
+			if was == credential.MethodLogin {
 				// The endpoints that list and revoke CLI logins are on meshStack's internal
 				// API, which a CLI token cannot reach, so meshPanel is the other way.
 				_, _ = fmt.Fprintln(out, "The session at the identity provider is untouched. End it with --revoke, or in meshPanel under Profile → CLI Logins.")

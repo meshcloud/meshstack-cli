@@ -1,4 +1,4 @@
-package profile
+package credential
 
 import (
 	"bytes"
@@ -24,27 +24,26 @@ const secretCommandTimeout = 30 * time.Second
 // The whole of it already went to the process's stderr, where the user can read it.
 const maxQuotedStderr = 2000
 
-// Secret returns the API key secret: the stored one, or the output of
-// clientSecretCommand. It runs under a fixed timeout so that a hanging secret store
-// fails rather than hangs, and pkg/auth calls it only at the moment a secret is
-// actually needed, so a command served from a cached token never runs it.
-func (m ApiKeyMethod) Secret(ctx context.Context) (string, error) {
-	if m.ClientSecret != "" {
-		return m.ClientSecret, nil
+// Resolve returns the API key secret: the stored one, or the output of
+// clientSecretCommand. pkg/auth calls it only at the moment a secret is actually needed,
+// so a command served from a cached token never runs the command.
+func (k ApiKey) Resolve(ctx context.Context) (string, error) {
+	if k.Secret != "" {
+		return k.Secret, nil
 	}
-	if len(m.ClientSecretCommand) == 0 {
+	if len(k.SecretCommand) == 0 {
 		return "", diags.Errorf("The API key has no secret",
-			"This profile stores neither a secret nor a clientSecretCommand for API key %s. Log in again to store one.", m.ClientId)
+			"This profile stores neither a secret nor a clientSecretCommand for API key %s. Log in again to store one.", k.Id)
 	}
 
 	// The argument list may be logged; its output never is.
-	slog.Debug("running clientSecretCommand", "command", m.ClientSecretCommand)
+	slog.Debug("running clientSecretCommand", "command", k.SecretCommand)
 
 	ctx, cancel := context.WithTimeout(ctx, secretCommandTimeout)
 	defer cancel()
 
 	// An argument list, never a shell string: no quoting rules and no shell injection.
-	cmd := exec.CommandContext(ctx, m.ClientSecretCommand[0], m.ClientSecretCommand[1:]...)
+	cmd := exec.CommandContext(ctx, k.SecretCommand[0], k.SecretCommand[1:]...)
 	// The caller's environment reaches the command, because that is where a secret store
 	// finds its own configuration: VAULT_ADDR, OP_SERVICE_ACCOUNT_TOKEN.
 	cmd.Env = os.Environ()
@@ -55,7 +54,7 @@ func (m ApiKeyMethod) Secret(ctx context.Context) (string, error) {
 	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
 
 	if err := cmd.Run(); err != nil {
-		detail := fmt.Sprintf("clientSecretCommand `%s` failed: %v.", commandLine(m.ClientSecretCommand), err)
+		detail := fmt.Sprintf("clientSecretCommand `%s` failed: %v.", commandLine(k.SecretCommand), err)
 		if quoted := strings.TrimSpace(stderr.String()); quoted != "" {
 			detail += " It wrote: " + truncate(quoted, maxQuotedStderr)
 		}
@@ -68,7 +67,7 @@ func (m ApiKeyMethod) Secret(ctx context.Context) (string, error) {
 	secret := strings.TrimSuffix(strings.TrimSuffix(stdout.String(), "\n"), "\r")
 	if err := CheckSecret(secret); err != nil {
 		return "", diags.Wrap(err, "The API key secret command produced no usable secret",
-			"clientSecretCommand `%s` must print the secret and nothing else on stdout. %v", commandLine(m.ClientSecretCommand), err)
+			"clientSecretCommand `%s` must print the secret and nothing else on stdout. %v", commandLine(k.SecretCommand), err)
 	}
 	return secret, nil
 }

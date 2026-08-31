@@ -3,7 +3,7 @@ package auth
 import (
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
@@ -24,7 +24,7 @@ type Status struct {
 	// "profile" and "credential". `meshstack profile view` prints it.
 	Sources map[string]string
 
-	Current method.Method
+	Current credential.Method
 	Login   *LoginStatus
 	ApiKey  *ApiKeyStatus
 	Token   *TokenStatus
@@ -73,25 +73,25 @@ func (s *Session) Status() (Status, error) {
 	if path, err := profile.ConfigPath(); err == nil {
 		status.ConfigPath = path
 	}
-	if login := credentials.Methods.Login; login != nil {
+	if login := credentials.Login; login != nil {
 		status.Login = &LoginStatus{Issuer: endpointString(login.Issuer), ObtainedAt: login.ObtainedAt}
 		if !login.ObtainedAt.IsZero() {
 			status.Login.Age = time.Since(login.ObtainedAt)
 		}
 	}
-	if apiKey := credentials.Methods.ApiKey; apiKey != nil {
-		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.ClientId}
+	if apiKey := credentials.ApiKey; apiKey != nil {
+		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.Id}
 		switch {
-		case len(apiKey.ClientSecretCommand) > 0:
-			status.ApiKey.SecretFrom = "the command " + apiKey.ClientSecretCommand[0]
-		case apiKey.ClientSecret != "":
+		case len(apiKey.SecretCommand) > 0:
+			status.ApiKey.SecretFrom = "the command " + apiKey.SecretCommand[0]
+		case apiKey.Secret != "":
 			status.ApiKey.SecretFrom = "the credentials file"
 		default:
 			status.ApiKey.SecretFrom = "the environment or a prompt"
 		}
 	}
 	scope := s.Scope()
-	if token, ok := credentials.AccessTokens[scope]; ok {
+	if token, ok := cachedToken(credentials, s.Method(), scope); ok {
 		status.Token = &TokenStatus{Scope: scope, ExpiresAt: token.ExpiresAt}
 		if !token.ExpiresAt.IsZero() {
 			status.Token.ExpiresIn = time.Until(token.ExpiresAt)

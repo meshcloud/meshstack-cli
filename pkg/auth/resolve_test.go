@@ -7,8 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
-	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
 )
@@ -134,7 +133,7 @@ func TestAnApiTokenInTheEnvironmentResolvesToManualInMemoryAndWritesNothing(t *t
 	in := &fakeInput{token: fakeToken("pasted-token")}
 	session := resolved(t, in)
 
-	require.Equal(t, method.Manual, session.Method())
+	require.Equal(t, credential.MethodManual, session.Method())
 	require.Empty(t, session.Profile, "a whole credential comes from above the profile layer")
 	require.False(t, session.store.Writable())
 	assert.Contains(t, session.store.Describe(), "memory")
@@ -159,7 +158,7 @@ func TestAnApiKeyAndSecretInTheEnvironmentResolveToApiKeyInMemoryAndWriteNothing
 
 	session := resolved(t, &fakeInput{secret: testSecret})
 
-	require.Equal(t, method.ApiKey, session.Method())
+	require.Equal(t, credential.MethodApiKey, session.Method())
 	require.Empty(t, session.Profile)
 	require.False(t, session.store.Writable())
 	assert.Contains(t, session.sources["credential"], envApiKey)
@@ -180,9 +179,10 @@ func TestAWholeCredentialNeverOverwritesAProfile(t *testing.T) {
 	isolate(t)
 	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl(stack.URL.String())}})
 	writeCredentials(t, profile.Credentials{
-		Endpoint:      mustUrl(stack.URL.String()),
-		CurrentMethod: method.Login,
-		Methods:       profile.Methods{Login: &profile.LoginMethod{Issuer: mustUrl(stack.URL.String()), RefreshToken: "somebody-elses-login"}},
+		Endpoint: mustUrl(stack.URL.String()),
+		Credential: credential.FromLogin(credential.Login{
+			Issuer: mustUrl(stack.URL.String()), RefreshToken: "somebody-elses-login",
+		}),
 	})
 	path, err := profile.CredentialsPath("default")
 	require.NoError(t, err)
@@ -194,7 +194,7 @@ func TestAWholeCredentialNeverOverwritesAProfile(t *testing.T) {
 	t.Setenv(envApiSecret, testSecret)
 
 	session := resolved(t, &fakeInput{secret: testSecret})
-	require.Equal(t, method.ApiKey, session.Method())
+	require.Equal(t, credential.MethodApiKey, session.Method())
 	_, err = session.BearerToken(t.Context())
 	require.NoError(t, err)
 
@@ -304,7 +304,7 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 		t.Setenv(envApiSecret, testSecret)
 
 		session := resolved(t, &fakeInput{secret: testSecret})
-		require.Equal(t, method.ApiKey, session.Method())
+		require.Equal(t, credential.MethodApiKey, session.Method())
 		require.Empty(t, session.Profile)
 		require.False(t, session.store.Writable())
 		require.NoDirExists(t, at.credentials)
@@ -348,11 +348,10 @@ func TestACredentialForAnotherEndpointIsRefusedBeforeItIsUsed(t *testing.T) {
 	isolate(t)
 	writeConfig(t, "default", map[string]profile.Profile{"default": {Endpoint: mustUrl("https://api.new.example.com")}})
 	writeCredentials(t, profile.Credentials{
-		Endpoint:      mustUrl("https://api.old.example.com"),
-		CurrentMethod: method.Manual,
-		AccessTokens: map[scope.Scope]profile.IssuedToken{
-			workspace.Unscoped: {Token: mustJwt(fakeToken("a-token-for-the-old-instance")), ExpiresAt: futureExpiry()},
-		},
+		Endpoint: mustUrl("https://api.old.example.com"),
+		Credential: credential.FromManual(credential.Manual{
+			AccessToken: credential.IssuedToken{Token: mustJwt(fakeToken("a-token-for-the-old-instance")), ExpiresAt: futureExpiry()},
+		}),
 	})
 
 	_, err := Resolve(t.Context(), &fakeInput{})
@@ -401,7 +400,7 @@ func TestProfileSuppliesTheEndpointForAnEnvironmentCredential(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https://api.dev.example.com", session.Endpoint.String())
 	assert.Equal(t, workspace.Name("from-the-profile"), session.Workspace)
-	assert.Equal(t, method.Manual, session.Method())
+	assert.Equal(t, credential.MethodManual, session.Method())
 
 	entries, err := os.ReadDir(at.credentials)
 	require.True(t, err != nil || len(entries) == 0, "a credential from the environment must leave no file behind")
@@ -439,6 +438,6 @@ func TestANamedProfileBeatsAnEnvironmentCredential(t *testing.T) {
 		session, err := Resolve(t.Context(), &fakeInput{})
 		require.NoError(t, err)
 		assert.Empty(t, session.Profile, "an environment credential and MESHSTACK_PROFILE are the same layer")
-		assert.Equal(t, method.ApiKey, session.Method())
+		assert.Equal(t, credential.MethodApiKey, session.Method())
 	})
 }

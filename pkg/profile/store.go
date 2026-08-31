@@ -94,6 +94,11 @@ func (s *fileStore) Read() (Credentials, error) {
 	if err := checkVersion(creds.Version, s.path); err != nil {
 		return Credentials{}, err
 	}
+	// Checked here rather than at the point of use, so that the message can name the file.
+	if err := creds.Validate(); err != nil {
+		return Credentials{}, diags.Wrap(err, "Cannot use the stored credentials",
+			"%s does not describe a usable credential: %v", s.path, err)
+	}
 	return creds, nil
 }
 
@@ -118,7 +123,7 @@ func (s *fileStore) Update(ctx context.Context, mint func(Credentials) (Credenti
 		return Credentials{}, err
 	}
 	next.Version = Version
-	next.AccessTokens = prune(next.AccessTokens, time.Now())
+	next.Credential = prune(next.Credential, time.Now())
 
 	// Written unconditionally, even when mint changed nothing. Credentials holds a map
 	// and two time.Time values, so a comparison is either uncompilable or subtly wrong
@@ -176,7 +181,7 @@ func (s *memoryStore) Update(_ context.Context, mint func(Credentials) (Credenti
 		return Credentials{}, err
 	}
 	next.Version = Version
-	next.AccessTokens = prune(next.AccessTokens, time.Now())
+	next.Credential = prune(next.Credential, time.Now())
 	s.creds = next
 	return next, nil
 }
@@ -188,12 +193,22 @@ func (s *memoryStore) Forget() error {
 	return nil
 }
 
-// snapshot copies the token map so that a caller mutating what it read cannot reach
-// into the store, which is the behaviour a file store has for free.
+// snapshot deep-copies as far as a caller can reach, so that mutating what it read cannot
+// change the store. A file store gets that for free.
 func (s *memoryStore) snapshot() Credentials {
 	creds := s.creds
-	if creds.AccessTokens != nil {
-		creds.AccessTokens = maps.Clone(creds.AccessTokens)
+	if creds.Login != nil {
+		login := *creds.Login
+		login.AccessTokens = maps.Clone(login.AccessTokens)
+		creds.Login = &login
+	}
+	if creds.ApiKey != nil {
+		apiKey := *creds.ApiKey
+		creds.ApiKey = &apiKey
+	}
+	if creds.Manual != nil {
+		manual := *creds.Manual
+		creds.Manual = &manual
 	}
 	return creds
 }

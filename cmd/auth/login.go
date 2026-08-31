@@ -14,7 +14,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/internal/cli"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
-	"github.com/meshcloud/meshstack-cli/pkg/auth/method"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
 	"github.com/meshcloud/meshstack-cli/pkg/workspace"
@@ -83,26 +83,26 @@ MESHSTACK_API_TOKEN, through stdin, or through a prompt that does not echo.`,
 			case devLocal:
 				// The method is named for the same reason every other form names one: it is
 				// what switches a profile that already holds something else.
-				in.Method = method.ApiKey
+				in.Method = credential.MethodApiKey
 				return runDevLocalLogin(cmd, in)
 			case cmd.Flags().Changed("api-key"):
 				if apiKey == "" {
 					return diags.Errorf("the API key id is empty",
 						"`--api-key=` was given without an id. Leave the value off entirely to reuse the id already in the profile.")
 				}
-				in.Method = method.ApiKey
+				in.Method = credential.MethodApiKey
 				if apiKey != bareApiKey {
 					in.ApiKey = string(apiKey)
 				}
 				force = true
 			case apiToken:
-				in.Method = method.Manual
+				in.Method = credential.MethodManual
 				force = true
 			default:
 				// Every form names the method it wants, and bare means the browser login.
 				// Naming it is what makes `meshstack login` switch a profile back from its
 				// API key rather than logging in again with whatever is current.
-				in.Method = method.Login
+				in.Method = credential.MethodLogin
 			}
 			return runLogin(cmd, in, force)
 		},
@@ -312,7 +312,7 @@ func printLogin(out io.Writer, result auth.LoginResult) {
 	if !result.Workspace.Empty() {
 		row(out, "Workspace", result.Workspace.String(), "")
 	}
-	if result.Method != method.Manual {
+	if result.Method != credential.MethodManual {
 		return
 	}
 

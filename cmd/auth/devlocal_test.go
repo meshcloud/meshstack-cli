@@ -64,7 +64,7 @@ func TestDevLocalLogin(t *testing.T) {
 			require.NoError(t, err)
 			assert.Contains(t, string(credentials), devApiKeyClientId)
 			assert.Contains(t, string(credentials), devApiKeyClientSecret)
-			assert.Contains(t, string(credentials), "currentMethod: apiKey")
+			assert.Contains(t, string(credentials), "current: apiKey")
 		})
 	}
 }
