@@ -31,8 +31,15 @@ Declarations live in the domain packages, **without a `Setting` suffix**:
 ```
 meshstack.Endpoint    meshstack.Workspace    profile.Name
 credential.ApiKeyId   credential.ApiSecret   credential.ApiToken
-tty.NoInput           browser.NoBrowser      profile.ConfigFile   profile.CredentialsDir
+tty.NoInput           profile.ConfigFile     profile.CredentialsDir
 ```
+
+**`MESHSTACK_NO_BROWSER` is not among them.** `pkg/oidc/browser/browser.go:36` declares it as a
+private const and reads it with `os.Getenv`; it never reaches `ResolveSession`, and 12 keeps it that
+way. It stays an environment variable and gains no flag: `acceptance/acceptance_test.go:141` sets it
+to run the suite, and `browser.go:31` records why it is not the same statement as
+`MESHSTACK_NO_INPUT` — "do not launch a browser, but still print the URL and wait, because a person
+is coming". A headless box reached over SSH is that case, and an export beats retyping a flag.
 
 **They do not move into `pkg/setting`, although one package would read better at call sites.**
 `meshstack.ErrMissing` names `MESHSTACK_WORKSPACE` in its text, so `pkg/meshstack` would import
@@ -79,9 +86,16 @@ consulted. Laziness therefore needs no mechanism of its own.
 
 **There is no interactive tier, because a prompt is not a source.** `Resolve` reports that it found
 no value, and `cmd/auth/login.go` — the one command allowed to ask — prompts and calls `Resolve`
-again with the answer as an explicit source. 6 already blesses that pattern for the endpoint, and
-only three settings can prompt at all: the endpoint, `credential.ApiKeyId` and `credential.ApiSecret`,
-all three inside `meshstack login`.
+again with the answer as an explicit source. 6 already blesses that pattern for the endpoint. Four
+settings can prompt, all four inside `meshstack login`: the endpoint, `credential.ApiKeyId`,
+`credential.ApiSecret` and `meshstack.Workspace`.
+
+**The workspace prompt is a different animal, and it is why the prompt cannot be a source.** It
+offers a list fetched from meshStack, and `pkg/auth/workspaces.go:16` already builds that list from
+an *unscoped* token: with no `c:` scope the principal holds only the list rights, which is exactly
+what a user has before picking a workspace. So the prompt needs a finished `Session` — a resolved
+endpoint, a resolved credential and a network call. It cannot run inside the resolution that produces
+that session, and it does not: `Session.Workspaces` runs after `ResolveSession` returns.
 
 This also makes "the provider never prompts" true because the provider never reaches the prompting
 code, which is a stronger guarantee than the empty slice 10 used to hand it.
@@ -93,9 +107,15 @@ dialogue.
 
 **The list differs per setting, and it is named at the resolution rather than on the setting.**
 `tty.NoInput` takes a flag and the environment but no profile — "never prompt" describes this
-invocation, not this installation. `browser.NoBrowser` takes the environment only.
-`credential.ApiSecret`'s explicit source in the CLI is stdin behind a flag, because a secret is never
-a flag *value*.
+invocation, not this installation. `credential.ApiSecret`'s explicit source in the CLI is stdin
+behind a flag, because a secret is never a flag *value*.
+
+**`tty.NoInput` earns its place, though not for the reason its name suggests.** Its main use is not
+the prompt: `tty.go:42`'s `MayInvolveAPerson()` is deliberately weaker than a terminal check, and
+`pkg/auth/login.go:145` uses it so a browser login fails at once instead of waiting ten minutes for a
+callback nobody will complete. A terminal check cannot stand in — `meshstack login | tee` and an
+agent driving the CLI both reach a person through stderr. Its second use is `token.go:126`, where a
+credentials file that cannot be written is fatal when interactive and silent when not.
 
 `auth.ResolveSession` holds one ranked `[]Source` per setting, and that table is the only place a
 ranking is visible. **The price is that those three facts are a convention inside one function, not
@@ -300,6 +320,46 @@ Two properties this leans on, both for the package doc:
 
 The **ordering** lives in `auth.ResolveSession`. `pkg/setting` never learns that profiles exist.
 
+### The order, written out
+
+Three of these passes deliberately use a shorter list than the setting's full one, so the sequence
+has to be explicit rather than left to the prose above.
+
+| # | resolve | from |
+|---|---|---|
+| 1 | `profile.ConfigFile`, `profile.CredentialsDir` | explicit → environment → default |
+| 2 | `Endpoint`, first instalment | explicit → environment |
+| 3 | `profile.Name` | explicit → environment → endpoint match on (2) → `"default"` |
+| 4 | the profile source itself | read with (1) and (3) |
+| 5 | `Endpoint`, second instalment | the profile, but only when (2) found nothing |
+| 6 | the credential, as one unit per 4 | explicit → environment → profile |
+| 7 | `Workspace` | explicit → environment → profile; no default |
+| 8 | `tty.NoInput` | explicit → environment → `false` |
+
+**A missing workspace is not always an error.** It is needed only when the credential method is
+`login`, because a meshStack user access token is bound to one workspace while an API key carries its
+own — `provider.go:60` already documents that. When it is needed and missing:
+
+- `meshstack login` mints the unscoped token, calls `Session.Workspaces`, and prompts from the list.
+  This happens after `ResolveSession` returns, per 3, and it is what the CLI does today.
+- Every other command, and the provider, error and name the command that lists the workspaces.
+
+The rename in 7 carries `workspace.Unscoped` to `meshstack.Unscoped`, and dropping `workspace.Name`
+per 8 makes `Session.Workspaces` return `[]string`.
+
+Step 1 comes first because nothing can read a profile before the paths to it exist. Step 2 drops the
+profile tier because the profile is what it is being used to pick, and step 3 skips the match source
+when step 2 found nothing.
+
+**Steps 2 and 5 are one list evaluated in two instalments, not two resolutions.** `Endpoint`'s list
+is explicit → environment → profile throughout; step 2 evaluates the prefix that is available, and
+step 5 evaluates the one remaining source only when the prefix came back empty. Re-reading explicit
+and environment in step 5 could not change the answer — they are the same sources that already said
+nothing — so the property "adding a lower-ranked source can never change an already-resolved value"
+is not a claim to check here, it is why the second instalment is a single lookup.
+
+`Endpoint` has no built-in default, so a missing endpoint after step 5 is an error.
+
 This deletes the copy of profile selection at `cmd/auth/login.go:200-206`, which `askForEndpoint`
 uses to guess which profile resolution would pick — and which is already stale: it omits
 `MESHSTACK_PROFILE` and the endpoint match, so `MESHSTACK_PROFILE=staging meshstack login` prompts
@@ -424,8 +484,10 @@ already have an owner for the resolved value: `internal/cli/secret.go` and `cmd/
 the CLI's `Input`, and `pkg/auth/token.go:126` holds the `Session`.
 
 `pkg/tty` shrinks to the `NoInput` declaration, `IsTerminal(f)` and `NoInputHint()`.
-`MayInvolveAPerson()` collapses into `!noInput`. `MESHSTACK_NO_BROWSER` is declared in
-`pkg/oidc/browser`, the only package that may read it.
+`MayInvolveAPerson()` collapses into `!noInput`. Dropping `IsInteractive()` leaves `token.go:126` to
+compose `!noInput && tty.IsTerminal(...)` itself. The concept stays — see the note in 3 on what
+`tty.NoInput` is actually for. `MESHSTACK_NO_BROWSER` is declared in `pkg/oidc/browser`, the only
+package that may read it, and is not a setting at all per 1.
 
 ## 13. `encoding/json/v2` replaces goccy
 
