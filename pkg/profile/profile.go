@@ -109,8 +109,7 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "config.yaml"), nil
 }
 
-// CredentialsDir returns the directory holding one file per profile.
-func CredentialsDir() (string, error) {
+func credentialsDir() (string, error) {
 	if override := os.Getenv(envCredentialsDir); override != "" {
 		return override, nil
 	}
@@ -127,7 +126,7 @@ func CredentialsPath(name string) (string, error) {
 	if err := ValidateName(name); err != nil {
 		return "", err
 	}
-	dir, err := CredentialsDir()
+	dir, err := credentialsDir()
 	if err != nil {
 		return "", err
 	}
