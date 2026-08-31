@@ -84,9 +84,9 @@ func TestPathsFollowTheEnvironment(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, filepath.Join(dir, "meshstack", "config.json"), configPath)
 
-		credentialsDir, err := CredentialsDir()
+		credentials, err := credentialsDir()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(dir, "meshstack", "credentials"), credentialsDir)
+		require.Equal(t, filepath.Join(dir, "meshstack", "credentials"), credentials)
 	})
 
 	t.Run("the platform directory is the fallback", func(t *testing.T) {

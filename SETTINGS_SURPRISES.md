@@ -178,6 +178,44 @@ configuration item" means one way for everything under `pkg/`.
 Generics give `setting` no way to default it, so the guard belongs in lane B's test over every
 declaration, beside "every `Short` non-empty" and "every `EnvKey` unique".
 
+### The declarations write five `MESHSTACK_*` names a second time
+
+1 asks each declaration to reference the const its package already consults. Four can:
+`meshstack.Workspace` takes `pkg/meshstack`'s `envKey`, `tty.NoInput` takes `pkg/tty`'s, and
+`profile.ConfigFile` and `profile.CredentialsDir` take `pkg/profile`'s. The remaining five are
+`pkg/auth/env.go`'s, and `pkg/auth` still reads them, so the declarations spell the strings out:
+`MESHSTACK_ENDPOINT`, `MESHSTACK_API_KEY`, `MESHSTACK_API_SECRET`, `MESHSTACK_API_TOKEN` and
+`MESHSTACK_PROFILE`. Until phase 3 deletes `pkg/auth`'s copies, renaming one of the five means
+editing two files.
+
+### `profile.CredentialsDir` is a function already
+
+1 names the declaration, and `pkg/profile` already exports
+`func CredentialsDir() (string, error)`. Go allows one `profile.CredentialsDir`.
+
+**Decided:** the function becomes `credentialsDir`. It had no caller outside its own package —
+`CredentialsPath` and `profile_test.go` — so unexporting it is right on its own, and phase 3's
+built-in default source is what replaces it. `ConfigPath` stays exported, because `pkg/auth`'s
+`status.go` and `resolve.go` both call it, and `profile.ConfigFile` does not collide with it.
+
+### `MESHSTACK_NO_INPUT` gets stricter than the variable it replaces
+
+`tty.MayInvolveAPerson` reads `os.Getenv(envKey) == ""`, so today *any* non-empty value means "no
+input", `false` and `0` among them. `tty.NoInput.Parse` is `strconv.ParseBool`, so once phase 3
+resolves through the declaration, `MESHSTACK_NO_INPUT=false` says the opposite of what it says now
+and `MESHSTACK_NO_INPUT=yes` is an error rather than a switch.
+
+**Decided:** the stricter parse, because a variable whose name is a negation has to be able to say
+"off" as well as "on". Every test in the module already sets `1`.
+
+### A parser's message must not name its own setting
+
+`setting.Resolve` wraps a parse failure with `invalid <EnvKey>` and with the source's description,
+so the variable is named twice before the parser's message is reached. `tty.NoInput`'s parser
+therefore says only what `strconv.ParseBool` cannot — which values are accepted — and
+`declarations_test.go` asserts the name on the error `setting.Resolve` returns rather than on the
+parser's own.
+
 ### 13 does not say what an existing user's `config.yaml` produces
 
 The rename is `config.yaml` → `config.json` and `Version` stays at 1, so neither the name nor the
