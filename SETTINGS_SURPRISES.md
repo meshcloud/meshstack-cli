@@ -97,8 +97,108 @@ cached tokens, which is what the shared token map used to do by being overwritte
 `github.com/meshcloud/meshstack-cli/pkg/auth` is a prefix of it. At the top level it needs its
 own `allow` entry in the provider's `.golangci.yml`. The CLI's own `pkg` rule already covers it.
 
+### `Long` falls back to `Short`, and nothing implemented the fallback
+
+1 and 9 both state the rule, but a four-field struct gives no front end anywhere to get it, so
+both would have written `if Long == "" { Long = Short }`.
+
+**Decided:** `setting.Value.Help()` returns Long, or Short where a declaration wrote only the one.
+
+### A source cannot distinguish "set to empty" from "unset"
+
+`setting.Resolve` skips a source that answers `""`, because every source in this module reports
+an unset value that way and an unset flag must not silence the environment below it. The cost is
+that no setting can be deliberately cleared by an explicit empty value — `--workspace=""` cannot
+shed a profile's default. 3 does not discuss the case. Left as it is; nothing needs it yet.
+
 ## Phase 2
 
+### 1's list of non-settings is missing `MESHSTACK_SKIP_VERSION_CHECK`
+
+1 names `MESHSTACK_NO_BROWSER` as the one `MESHSTACK_*` variable that is not a setting.
+`client/mesh_info.go:87` reads a second one, and it cannot become a `setting.Value` at all:
+`.golangci.yml`'s `client` rule allows `$gostd`, `client/` and `internal/http` and nothing else,
+so `client/` may not import `pkg/setting`. Lane B leaves it where it is; "one way to declare a
+configuration item" means one way for everything under `pkg/`.
+
+### A declaration with a nil `Parse` panics inside `Resolve`
+
+Generics give `setting` no way to default it, so the guard belongs in lane B's test over every
+declaration, beside "every `Short` non-empty" and "every `EnvKey` unique".
+
+### 13 does not say what an existing user's `config.yaml` produces
+
+The rename is `config.yaml` → `config.json` and `Version` stays at 1, so neither the name nor the
+version field tells an old file from a new one. Where nothing points at the old file the reader
+simply does not find it, which is fine. Where `MESHSTACK_CONFIG_FILE` names it explicitly — which
+the Terraform provider's `scratch/run.sh` does — the reader gets a raw JSON syntax error, and
+"Behaviour changes" promises the user a sentence telling them to run `meshstack login` again.
+
+**Decided:** no format detection. Lane A's parse-error message checks whether the file starts with
+something other than `{` and, when it does, says the format changed and to log in again.
+
 ## Phase 3
+
+These four came out of reading the Terraform provider's `scratch/` demos against the plan. None
+of them blocks an earlier phase, and all four have to be settled before `auth.ResolveSession` is
+written.
+
+### 6 step 4 opens files that 3 promises are never consulted
+
+3 says a source below the winner is never consulted, so "laziness needs no mechanism of its own".
+Step 4 builds the profile source before step 6 walks the credential, and building it means
+reading `credentials/<profile>.json` — a file a run whose credential came wholly from the
+environment never touches today. `resolve.go:183`'s "this credential belongs to a different
+meshStack" check sits behind exactly the short-circuit step 4 removes, so `scratch/run.sh env` on
+a machine whose default profile points at another meshStack would start failing.
+
+**Decided:** the profile is two sources, not one. A config source over `config.json` answers the
+endpoint match and the default workspace, and is what step 4 builds; a credentials source over
+`credentials/<profile>.json` is consulted only in step 6. Both open their file on first use.
+
+5's "a credential that arrived whole gets a memory store" is computed from `Session.whole`, which
+9 deletes. What replaces it: the credential's winning source was not the credentials source.
+
+### 4's "check both callers before deleting `ResolveForLogin`" undercounts
+
+There are four commands, not two: `cmd/auth/login.go:148` and `:158`, `cmd/auth/logout.go:27`,
+`cmd/profile/set.go:38`, plus `pkg/auth/devlocal.go:33`.
+
+`cmd/profile/set.go` is the one that breaks. Its comment says it resolves "the way a login is" so
+that "a shell that exports a credential must not make it write nothing" — and with 14 reserving
+`DemandMethod` to `cmd/auth/login.go`, an exported `MESHSTACK_API_KEY` would make
+`meshstack profile set workspace x` resolve to a memory store and silently write nothing. `logout`
+has the same shape. Both need a way to reach the profile store regardless of which source won the
+credential, and the plan has to say what it is.
+
+### 6 reads as if the missing-workspace rule lives in the resolution
+
+"Every other command, and the provider, error and name the command that lists the workspaces"
+sits inside the step 1 to 8 table. The check is `Session.RequireWorkspace()` at `token.go:107`,
+called by `provider.go:125` and deliberately **not** by `cmd/workspace/list.go` or
+`cmd/auth/status.go` — the two commands the error message itself tells the user to run. Folding it
+into `ResolveSession` makes the escape hatch the message names unreachable.
+
+**Decided:** step 7 resolves and never demands. `RequireWorkspace` survives as a post-resolution
+call.
+
+### `--api-secret-stdin` does not fit `setting.Source`
+
+2's `Lookup(key string) (string, bool)` has neither a context nor an error return, and
+`input.go:52` makes the secret deliberately lazy so that a command served from a cached token
+never prompts. A stdin source consulted during resolution reads even when no minting follows, and
+a blocked read has nowhere to report itself.
+
+**Decided:** `cmd/` reads stdin once, before `ResolveSession`, and contributes the result as a
+plain string in the CLI's own source. `Source` stays synchronous and pure, and the read happens
+where a context and an error return exist. A stored `SecretCommand` stays lazy behind
+`credential.ApiKey.Resolve(ctx)`, which 4 already requires.
+
+### 3's "no script breaks" defends the wrong risk
+
+The risk is not a script that pipes a secret on purpose. It is one that hands the CLI a
+non-terminal stdin by accident: `scratch/headless-login.sh` runs it with `</dev/null`, so today a
+`--api-key` there reads an empty secret from `/dev/null` and gets a silent 401. 3's change is
+right, and this is the reason to give for it.
 
 ## Phase 4
