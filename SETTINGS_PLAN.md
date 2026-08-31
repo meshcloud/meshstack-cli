@@ -370,7 +370,7 @@ has to be explicit rather than left to the prose above.
 | 3 | `profile.Name` | explicit → environment → endpoint match on (2) → `"default"` |
 | 4 | the profile source itself | read with (1) and (3) |
 | 5 | `Endpoint`, second instalment | the profile, but only when (2) found nothing |
-| 6 | the credential, as one unit per 4 | explicit → environment → profile |
+| 6 | the credential, as one unit per 4 | explicit → environment → profile, filtered by `DemandMethod` per 14 |
 | 7 | `Workspace` | explicit → environment → profile; no default |
 | 8 | `tty.NoInput` | explicit → environment → `false` |
 
@@ -486,7 +486,8 @@ method returning one value — which is a struct field:
 
 ```go
 type ResolveSessionOptions struct {
-    Settings setting.Source   // the CLI's flags and --api-secret-stdin, or the provider block
+    Settings     setting.Source     // the CLI's flags and --api-secret-stdin, or the provider block
+    DemandMethod credential.Method  // set only by cmd/auth/login.go — see 14
 }
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, error)
@@ -662,19 +663,63 @@ Step 6: `blockSource`, the aligned `Short`/`Long` text reaching the schema, `tas
 CHANGELOG rewrite, and the docs from 4 — the row 1 setup and the two messages that qualify it.
 Verification: provider unit tests and the provider acceptance suite.
 
+## 14. `auth.Values` dissolves, except for the demanded method
+
+Four of the five fields at `input.go:76` — `Profile`, `Endpoint`, `Workspace`, `ApiKey` — become
+`Lookup` keys on the front end's `setting.Source`, so `Values` as a bag of values goes.
+
+**`Method` survives, and it is not a setting.** `input.go:82` says what it is: "the method the caller
+demands, empty when it does not care. `--api-key` sets it without setting `ApiKey`, which is how a
+bare `--api-key` reuses the id already in the profile." It has no `MESHSTACK_*` name, it supplies no
+value, and only `meshstack auth login` may set it.
+
+**Without it, 4 breaks that feature.** A bare `--api-key` carries no identity, so the walk reaches the
+profile — and a profile whose `Current` is `login` hands back a browser login. The user asked for the
+API key and gets the browser.
+
+> **A demanded method filters what the profile source may offer.** With a method demanded, the profile
+> offers that method's credential and ignores its own `Current`. With none demanded, `Current`
+> decides, per 5.
+
+So `ResolveSessionOptions` gains `DemandMethod credential.Method`, set only by `cmd/auth/login.go`.
+
+## 15. Messages: the static half in the domain package, the specifics in `pkg/auth`
+
+This is the split the code already makes, chosen deliberately rather than inherited.
+`pkg/workspace/workspace.go:72` is a plain `errors.New`, and `token.go:109` wraps it as
+`diags.Errorf("no workspace", "%s", workspace.ErrMissing)`. The domain package owns what a workspace
+is and which variable names it. Only the resolution knows which profile was picked, why, and whether
+a prompt was possible — which is the specificity 9 asks for.
+
+**This is also what keeps 1's argument standing.** 1 justifies keeping declarations out of
+`pkg/setting` with a cycle: `pkg/setting` would need `meshstack.ParseEndpoint`, and
+`meshstack.ErrMissing` naming `MESHSTACK_WORKSPACE` makes `pkg/meshstack` import `pkg/setting` back.
+Move all five messages into `pkg/auth` and that cycle disappears, leaving 1 to argue from cohesion
+alone. Keeping the static half in the domain package avoids having to.
+
 ## Open questions
 
-1. **Does `auth.Values` survive in any form?**
-2. **Where do the five "not configured" messages live** once `pkg/auth/env.go` dissolves? Some belong
-   to `pkg/meshstack`, some to `pkg/credential`, some stay.
-
-Answered during the review: `Frontend`'s name (10 deletes it), `Session` and origins (9), whether
-`auth status` reports them (yes, 9), `--no-browser` as a flag (no, and `MESHSTACK_NO_BROWSER` stays
-an environment variable — 1 and 12), and where `AccessTokens` lives (5 — on the method, and only
-`Login` needs a map).
+None left. Answered during the review: `Frontend`'s name (10 deletes it), how `Session` carries the
+resolved settings and their origins (9), whether `auth status` reports them (yes, 9), `--no-browser`
+as a flag (no, and `MESHSTACK_NO_BROWSER` stays an environment variable — 1 and 12), where
+`AccessTokens` lives (5), whether `auth.Values` survives (14), and where the "not configured"
+messages live (15).
 
 ## Not in scope
 
+- **Splitting the per-profile credentials file into a durable part and a token cache**, in two
+  directories under `~/.config`. It is a real improvement — for the `apiKey` and `manual` methods the
+  durable file would become write-once, where today an hourly renewal rewrites the file holding a
+  client secret that never changes. It is deferred because it is orthogonal to resolving settings and
+  because it lands in phase 2 lane A, the lane that already owns the format break.
+  - It does **not** shrink the lock, which is what it looks like it should do. `lock.go:20` says the
+    lock exists because Keycloak rotates the refresh token on every refresh, and a refresh token is
+    durable — so a `login`-method renewal writes both files and needs the lock over both.
+  - It costs 5's "no second data model", and it turns `login.go:156`'s deliberate one write of the
+    refresh token and the unscoped access token together into two.
+  - When it happens, both parts stay under `~/.config`. Access tokens are secrets, so `~/.cache`
+    would spread secrets over two trees with different permission expectations; one tree at 0700 is
+    easier to audit.
 - The memory store meaning two things ("not mine to persist" and "could not be persisted").
 - Path A holding a store it does not need.
 - The one-minute HTTP timeout against a backoff sized for four (`internal/http/http_client.go:23`).
