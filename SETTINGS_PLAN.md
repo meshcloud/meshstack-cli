@@ -54,8 +54,14 @@ not `config`, which here means the config file.
 ```go
 type Source interface {
     Lookup(key string) (string, bool)
+    Name() string
 }
 ```
+
+**`Name()` is what keeps an origin from drifting from its value.** `setting.Resolve` returns the
+winning source alongside the value, and the source that answered is the one that names itself — see
+9. It also keeps 3's boundary: `pkg/setting` learns that a source has a name, not that profiles
+exist, which is why an origin cannot be a typed `Kind` enum in this package.
 
 **Text, not `T`, although the settings are generic.** The environment, argv and a Terraform
 `types.String` can carry nothing else, and the profile file hands back `entry.Endpoint.String()`
@@ -66,7 +72,7 @@ is needed.
 **Two functions, and the plan means different ones in different places.** Naming them apart now:
 
 ```go
-func setting.Resolve[T any](v Value[T], sources ...Source) (T, Origin, error)   // one setting
+func setting.Resolve[T any](v Value[T], sources ...Source) (T, Source, error)   // one setting
 func auth.ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, error)
 ```
 
@@ -261,13 +267,45 @@ type Credential struct {
 }
 
 type ApiKey struct {
-    Id            string   `json:"clientId"`
-    Secret        string   `json:"clientSecret,omitzero"`
-    SecretCommand []string `json:"clientSecretCommand,omitzero"`
+    Id            string      `json:"clientId"`
+    Secret        string      `json:"clientSecret,omitzero"`
+    SecretCommand []string    `json:"clientSecretCommand,omitzero"`
+    AccessToken   IssuedToken `json:"accessToken,omitzero"`
 }
 ```
 
 `pkg/profile` marshals this directly — no second data model.
+
+### The token cache belongs to the method that minted it
+
+`credentials.go:26` puts one `AccessTokens map[scope.Scope]IssuedToken` on the whole credential. That
+cannot survive this section's own decision: a profile holding a login **and** an API key would mix
+tokens from two methods in one key space, so switching `Current` could hand out a token the API key
+never minted. Today `resolve.go:45` guards that at runtime with `current`, "the method every cached
+token belongs to", read under a mutex — a guard that exists only because the file shape cannot say
+who a cached token belongs to.
+
+So the cache goes on the method, and **only `Login` needs a map**:
+
+```go
+type Login  struct { …; AccessTokens map[scope.Scope]IssuedToken `json:"accessTokens,omitzero"` }
+type ApiKey struct { …; AccessToken  IssuedToken                 `json:"accessToken,omitzero"`  }
+type Manual struct { …; AccessToken  IssuedToken                 `json:"accessToken,omitzero"`  }
+```
+
+`token.go:83` already states why: a browser login mints a user access token bound to one workspace,
+so it needs one token per `c:` scope plus the unscoped one that `Session.Workspaces` uses. "An API
+key or a pasted token carries whatever workspace its issuer put in it, and nothing re-scopes one", so
+`Session.Scope()` returns `workspace.Unscoped` for both. A single field says that; a one-entry map
+only implies it.
+
+The single token *is* the unscoped token — the field name carries it and no scope key is written.
+Making the file uniform instead, with `{"accessToken": {"": …}}`, would need a custom marshaller to
+render one token as a one-entry map, which is the opposite of the simplification.
+
+Mixing is now impossible rather than guarded, so **check in phase 3 whether `resolve.go:45`'s
+`current` is still needed as a cache guard.** `store.go:121` and `store.go:179` prune expired tokens
+and now walk whichever of the three shapes is present.
 
 **It holds more than one credential at a time**, so that `meshstack login` switches back from an API
 key without asking for the id again. `Current` is the selection; the pointers are the set.
@@ -391,10 +429,30 @@ other confusion here produces a wrong message a test catches; this one produces 
 
 ## 9. Origins and help, but no generated errors
 
-`Resolve` returns the value and its origin, replacing `Session.sources map[string]string` — which is
-assembled at eight call sites and is sometimes wrong: a provider block supplying `apikey` with the
-secret in the environment is reported as "environment `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`".
-`pkg/auth` then emits one debug record per resolution. **Three warnings, all `slog.WarnContext`**, and
+`pkg/auth/resolve.go:41`'s `sources map[string]string` goes. It is assembled at eight call sites and
+is sometimes wrong: a provider block supplying `apikey` with the secret in the environment is
+reported as "environment `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`". After 4 that case is
+ordinary rather than exotic — a credential's id and its secret legitimately come from different
+sources — so the origin has to be per setting and recorded by the function that resolves.
+
+```go
+type Origin struct {
+    Key    string  // the setting's EnvKey, its identity per 10
+    Source string  // "--endpoint", "MESHSTACK_ENDPOINT", "profile dev", "built-in default"
+}
+
+func (s *Session) Origins() []Origin   // in resolution order, appended by ResolveSession
+```
+
+**A slice, not a map**: one writer, and the order is the sequence in 6, which is the order a person
+reading it wants. **`Session` keeps plain value fields.** A struct of `setting.Resolved[T]` would
+make every read carry an origin — `workspaces.go:40` would become `s.Endpoint.Value.URL` — to serve
+two commands. The `Source` name comes from `Source.Name()` per 2, so it cannot drift from the value.
+
+Also leaving `Session`: `whole bool`, since 4 removes `wholeCredential`; `Workspace workspace.Name`
+becomes `string` per 8; `current method.Method` becomes `credential.Method`.
+
+`pkg/auth` emits one debug record per resolution. **Three warnings, all `slog.WarnContext`**, and
 this list is the whole set:
 
 1. a profile picked by matching the endpoint;
@@ -606,16 +664,14 @@ Verification: provider unit tests and the provider acceptance suite.
 
 ## Open questions
 
-1. **How does `Session` carry the resolved settings?** A struct of `setting.Resolved[T]`, or plain
-   fields plus a separate origin map? Decides what `auth status` and `profile view` can show.
-2. **Does `profile.Stored` keep `AccessTokens` inside the credential or beside it?** A cache is not a
-   credential, which argues for beside — at the price of a second top-level field.
-3. **Does `auth.Values` survive in any form?** (`Frontend` is answered — 10 deletes it.)
-4. **Where do the five "not configured" messages live** once `pkg/auth/env.go` dissolves? Some belong
+1. **Does `auth.Values` survive in any form?**
+2. **Where do the five "not configured" messages live** once `pkg/auth/env.go` dissolves? Some belong
    to `pkg/meshstack`, some to `pkg/credential`, some stay.
-5. **Should `--no-browser` exist as a flag?** Deliberately excluded here.
-6. **Should `auth status` report origins?** Two lines, and it would let `auth status` answer "which
-   profile, and why", which today only `meshstack profile view` does.
+
+Answered during the review: `Frontend`'s name (10 deletes it), `Session` and origins (9), whether
+`auth status` reports them (yes, 9), `--no-browser` as a flag (no, and `MESHSTACK_NO_BROWSER` stays
+an environment variable — 1 and 12), and where `AccessTokens` lives (5 — on the method, and only
+`Login` needs a map).
 
 ## Not in scope
 
