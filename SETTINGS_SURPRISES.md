@@ -126,6 +126,11 @@ behaviour. It is verbose, and `resolve.go` now reads
 already written that way. Collapsing all of them to `== ""` is a one-line-per-site follow-up,
 but it is a behaviour change in whitespace-only input and needs to be decided as one.
 
+It resolves in phase 3 rather than as its own decision: `meshstack.Workspace` is a
+`setting.Value[string]` parsed with `setting.Text`, which trims. Once every workspace reaches a
+call site through `ResolveSession`, the value is already trimmed and `== ""` is the same check
+the method was. Delete the `strings.TrimSpace` calls then, not before.
+
 ### `pkg/meshstack` imports three packages, not one
 
 The entry above says there is no cycle "because `pkg/meshstack` imports only `pkg/oidc/scope`".
