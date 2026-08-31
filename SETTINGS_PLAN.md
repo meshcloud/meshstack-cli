@@ -46,6 +46,9 @@ is coming". A headless box reached over SSH is that case, and an export beats re
 `pkg/setting`; the endpoint declaration needs `meshstack.ParseEndpoint`. That is a cycle, and the
 same shape repeats for `profile` and `credential`.
 
+This argument depends on 15 keeping `ErrMissing` in the domain package. Move every message into
+`pkg/auth` and the cycle goes away, leaving only cohesion to argue from.
+
 The package is `setting`, not `input` — meshStack's own vocabulary has building block inputs — and
 not `config`, which here means the config file.
 
@@ -54,14 +57,18 @@ not `config`, which here means the config file.
 ```go
 type Source interface {
     Lookup(key string) (string, bool)
-    Name() string
+    Describe(key string) string   // "--endpoint", "MESHSTACK_ENDPOINT", "profile dev"
 }
 ```
 
-**`Name()` is what keeps an origin from drifting from its value.** `setting.Resolve` returns the
-winning source alongside the value, and the source that answered is the one that names itself — see
-9. It also keeps 3's boundary: `pkg/setting` learns that a source has a name, not that profiles
-exist, which is why an origin cannot be a typed `Kind` enum in this package.
+**`Describe` is what keeps an origin from drifting from its value.** `setting.Resolve` returns the
+winning source alongside the value, and the source that answered is the one that says where it came
+from — see 9. It takes the key, because a flag source names the flag it matched and the environment
+source names the variable, neither of which is one string for the whole source. The name follows
+`env.go:57`, which already has a `describe` doing this job.
+
+It also keeps 3's boundary: `pkg/setting` learns that a source can describe itself, not that profiles
+exist — which is why an origin cannot be a typed `Kind` enum in this package.
 
 **Text, not `T`, although the settings are generic.** The environment, argv and a Terraform
 `types.String` can carry nothing else, and the profile file hands back `entry.Endpoint.String()`
@@ -243,14 +250,15 @@ different key, the call becomes `apiLogin(dev-key, ci-secret)` and meshStack ans
 `!stored` half of that condition is right and survives; the `env(envApiSecret) != ""` half goes.
 
 It also removes `wholeCredential` and the `forLogin` bypass in `resolve`. **`ResolveForLogin` exists
-only because "one source supplies the whole credential" was wrong for `auth login`** — construction
-by the identity's source needs no exception. Confirm against `cmd/auth/login.go` before deleting.
+only because "one source supplies the whole credential" was wrong for `auth login`** — the unit rule
+above needs no exception. What `auth login` genuinely needs instead is `DemandMethod`, per 14. Check
+both callers before deleting: `cmd/auth/login.go` and `pkg/auth/devlocal.go:33`.
 
 And it removes the reason for the comment at `auth_input.go:42` ("The fallback is not a second
 precedence rule"). The provider hands over its `apisecret` attribute and nothing else;
 `auth.SecretFromEnv` and `auth.TokenFromEnv` stop being exported.
 
-## 5. `pkg/credential`, top level, one closed sum
+## 5. `pkg/credential`, top level, a set with a selection
 
 Not under `profile` — a credential from the environment touches no file. Not under `auth` —
 `pkg/profile` must import it, and reaching into another package's subtree is the wart that forced
@@ -447,7 +455,7 @@ func (s *Session) Origins() []Origin   // in resolution order, appended by Resol
 **A slice, not a map**: one writer, and the order is the sequence in 6, which is the order a person
 reading it wants. **`Session` keeps plain value fields.** A struct of `setting.Resolved[T]` would
 make every read carry an origin — `workspaces.go:40` would become `s.Endpoint.Value.URL` — to serve
-two commands. The `Source` name comes from `Source.Name()` per 2, so it cannot drift from the value.
+two commands. `Source` comes from `Source.Describe(key)` per 2, so it cannot drift from the value.
 
 Also leaving `Session`: `whole bool`, since 4 removes `wholeCredential`; `Workspace workspace.Name`
 becomes `string` per 8; `current method.Method` becomes `credential.Method`.
@@ -509,10 +517,15 @@ func (b blockSource) Lookup(key string) (string, bool) {
     }
     return "", false
 }
+
+func (blockSource) Describe(key string) string { return "provider block " + attribute(key) }
 ```
 
 **A setting is identified by its `EnvKey`.** The rule that every setting gets a `MESHSTACK_*` name
 earns a second keep: there is no second identifier to invent or hold in step.
+
+`Describe` per 2 is what makes an origin readable, and the same `switch` serves it: the CLI's flag
+source answers `--endpoint`, this one answers `provider block endpoint`.
 
 "The provider never prompts" is no longer a promise any interface has to carry: per 3 the prompt
 lives in `cmd/auth/login.go`, which the provider does not link.
@@ -587,6 +600,40 @@ picking a value is what the import buys. If this is ever revisited, that is the 
 to `config.json` and `credentials/<profile>.json`, leave old YAML unread, keep `Version` at 1. About
 ten doc comments name `config.yaml`.
 
+## 14. `auth.Values` dissolves, except for the demanded method
+
+Four of the five fields at `input.go:76` — `Profile`, `Endpoint`, `Workspace`, `ApiKey` — become
+`Lookup` keys on the front end's `setting.Source`, so `Values` as a bag of values goes.
+
+**`Method` survives, and it is not a setting.** `input.go:82` says what it is: "the method the caller
+demands, empty when it does not care. `--api-key` sets it without setting `ApiKey`, which is how a
+bare `--api-key` reuses the id already in the profile." It has no `MESHSTACK_*` name, it supplies no
+value, and only `meshstack auth login` may set it.
+
+**Without it, 4 breaks that feature.** A bare `--api-key` carries no identity, so the walk reaches the
+profile — and a profile whose `Current` is `login` hands back a browser login. The user asked for the
+API key and gets the browser.
+
+> **A demanded method filters what the profile source may offer.** With a method demanded, the profile
+> offers that method's credential and ignores its own `Current`. With none demanded, `Current`
+> decides, per 5.
+
+So `ResolveSessionOptions` gains `DemandMethod credential.Method`, set only by `cmd/auth/login.go`.
+
+## 15. Messages: the static half in the domain package, the specifics in `pkg/auth`
+
+This is the split the code already makes, chosen deliberately rather than inherited.
+`pkg/workspace/workspace.go:72` is a plain `errors.New`, and `token.go:109` wraps it as
+`diags.Errorf("no workspace", "%s", workspace.ErrMissing)`. The domain package owns what a workspace
+is and which variable names it. Only the resolution knows which profile was picked, why, and whether
+a prompt was possible — which is the specificity 9 asks for.
+
+**This is also what keeps 1's argument standing.** 1 justifies keeping declarations out of
+`pkg/setting` with a cycle: `pkg/setting` would need `meshstack.ParseEndpoint`, and
+`meshstack.ErrMissing` naming `MESHSTACK_WORKSPACE` makes `pkg/meshstack` import `pkg/setting` back.
+Move all five messages into `pkg/auth` and that cycle disappears, leaving 1 to argue from cohesion
+alone. Keeping the static half in the domain package avoids having to.
+
 ## Behaviour changes
 
 Two, both deliberate. **One provider CHANGELOG entry, describing the end state.** The provider's
@@ -638,8 +685,8 @@ unchanged, the provider builds.
 
 | lane | does | touches | provider |
 |---|---|---|---|
-| A | json/v2 and the file format, per 13 | `pkg/profile` I/O, the tags on the moved shapes | none |
-| B | the declarations | one new file per domain package: `meshstack`, `credential`, `profile`, `tty`, `browser` | none |
+| A | json/v2 and the file format per 13, and the per-method token cache from 5 | `pkg/profile` I/O, the tags and token fields on the moved shapes | none |
+| B | the declarations | one new file per domain package: `meshstack`, `credential`, `profile`, `tty` | none |
 | C | decision 11, the browser as an argument | `pkg/auth/login.go`, `internal/cli`, `provider.go:122` | **owns it** |
 
 A and B meet only in `pkg/credential`, and in different files — A edits struct tags, B adds a
@@ -650,9 +697,17 @@ declarations. Lane A's: the round trip per shape from 13.
 
 ### Phase 3 — `auth.ResolveSession`, one lane
 
-Step 5, and decision 12 with it — `pkg/tty` can only lose its global once a `Session` owns the
-resolved value. This is the phase that changes behaviour, so it carries the full unit suite, the CLI
-acceptance suite, and a test for each row of 4's table and each behaviour change.
+Step 5, and with it everything that needs a resolved value to reach a `Session`:
+
+- the ranked table from 6 and the credential unit rule from 4;
+- `Origins()` and `auth status` reporting them, per 9;
+- `DemandMethod` and the removal of `ResolveForLogin`, per 14;
+- `--api-secret-stdin` and the source that reads it, per 3;
+- decision 12 — `pkg/tty` can only lose its global once a `Session` owns the resolved value;
+- the messages, wrapped per 15.
+
+This is the phase that changes behaviour, so it carries the full unit suite, the CLI acceptance
+suite, and a test for each row of 4's table and for each behaviour change.
 
 Not splittable: the ranked table, the credential unit rule and the origins are one function's
 invariant.
@@ -662,40 +717,6 @@ invariant.
 Step 6: `blockSource`, the aligned `Short`/`Long` text reaching the schema, `task generate`, the
 CHANGELOG rewrite, and the docs from 4 — the row 1 setup and the two messages that qualify it.
 Verification: provider unit tests and the provider acceptance suite.
-
-## 14. `auth.Values` dissolves, except for the demanded method
-
-Four of the five fields at `input.go:76` — `Profile`, `Endpoint`, `Workspace`, `ApiKey` — become
-`Lookup` keys on the front end's `setting.Source`, so `Values` as a bag of values goes.
-
-**`Method` survives, and it is not a setting.** `input.go:82` says what it is: "the method the caller
-demands, empty when it does not care. `--api-key` sets it without setting `ApiKey`, which is how a
-bare `--api-key` reuses the id already in the profile." It has no `MESHSTACK_*` name, it supplies no
-value, and only `meshstack auth login` may set it.
-
-**Without it, 4 breaks that feature.** A bare `--api-key` carries no identity, so the walk reaches the
-profile — and a profile whose `Current` is `login` hands back a browser login. The user asked for the
-API key and gets the browser.
-
-> **A demanded method filters what the profile source may offer.** With a method demanded, the profile
-> offers that method's credential and ignores its own `Current`. With none demanded, `Current`
-> decides, per 5.
-
-So `ResolveSessionOptions` gains `DemandMethod credential.Method`, set only by `cmd/auth/login.go`.
-
-## 15. Messages: the static half in the domain package, the specifics in `pkg/auth`
-
-This is the split the code already makes, chosen deliberately rather than inherited.
-`pkg/workspace/workspace.go:72` is a plain `errors.New`, and `token.go:109` wraps it as
-`diags.Errorf("no workspace", "%s", workspace.ErrMissing)`. The domain package owns what a workspace
-is and which variable names it. Only the resolution knows which profile was picked, why, and whether
-a prompt was possible — which is the specificity 9 asks for.
-
-**This is also what keeps 1's argument standing.** 1 justifies keeping declarations out of
-`pkg/setting` with a cycle: `pkg/setting` would need `meshstack.ParseEndpoint`, and
-`meshstack.ErrMissing` naming `MESHSTACK_WORKSPACE` makes `pkg/meshstack` import `pkg/setting` back.
-Move all five messages into `pkg/auth` and that cycle disappears, leaving 1 to argue from cohesion
-alone. Keeping the static half in the domain package avoids having to.
 
 ## Open questions
 
