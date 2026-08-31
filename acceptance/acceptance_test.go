@@ -45,6 +45,7 @@ const (
 	envConfigFile        = "MESHSTACK_CONFIG_FILE"
 	envCredentialsDir    = "MESHSTACK_CREDENTIALS_DIR"
 	envSkipVersionCheck  = "MESHSTACK_SKIP_VERSION_CHECK"
+	envNoBrowser         = "MESHSTACK_NO_BROWSER"
 	envProfile           = "MESHSTACK_PROFILE"
 	envWorkspace         = "MESHSTACK_WORKSPACE"
 	envApiKey            = "MESHSTACK_API_KEY"
@@ -134,6 +135,10 @@ func (c *meshstackCLI) environ() []string {
 		// The dev stack reports a version below the client's minimum, which is a statement
 		// about the backend rather than about anything under test here.
 		envSkipVersionCheck+"="+skipVersionCheckHint,
+		// This suite drives keycloak's forms over HTTP, so a browser the CLI launches would
+		// open a real window on whoever's desktop is running the tests, race the login this
+		// test is already completing, and leave a consumed authorization code on screen.
+		envNoBrowser+"=1",
 		// MESHSTACK_NO_INPUT is deliberately not set. It means "nobody is coming", and the
 		// browser login refuses outright rather than waiting when it is — which would defeat
 		// TestAccBrowserLoginHeadless. Nothing here prompts anyway: a prompt needs a terminal

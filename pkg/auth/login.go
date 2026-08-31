@@ -146,7 +146,7 @@ func (s *Session) loginWithBrowser(ctx context.Context, options LoginOptions, re
 			"%s says nobody is here to visit the login URL. Use `meshstack auth login --api-key=<id>` instead.", tty.NoInputHint())
 	}
 
-	token, err := browser.Login(ctx, config)
+	token, err := browser(ctx, config)
 	if err != nil {
 		return err
 	}

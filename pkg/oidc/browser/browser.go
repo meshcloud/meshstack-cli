@@ -1,27 +1,20 @@
 // Package browser runs the interactive half of the OIDC protocol: the authorization code
 // flow with PKCE, the loopback listener that catches the redirect, and opening a browser.
-//
-// It is a package of its own so that the guarantee is a compile-time one rather than a
-// promise. pkg/auth needs the refresh grant, which the Terraform provider uses, and must not
-// be able to reach the browser flow at all — a plan that opened a browser would hang a CI
-// run. A depguard rule in .golangci.yml lets only cmd/ import this package, so nothing the
-// provider links can even name it.
 package browser
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 )
 
@@ -34,18 +27,18 @@ const callbackPath = "/callback"
 // consent screen on a first login makes a short timeout hostile.
 const loginTimeout = 10 * time.Minute
 
-// Browser is the browser login implementation. It holds no state: everything one login needs
-// is created per call, including the listener.
-type Browser struct{}
-
-// New returns the browser login implementation. cmd/ hands it to pkg/auth through
-// Input.Browser(); the Terraform provider returns nil there.
-func New() Browser { return Browser{} }
+// envNoBrowser suppresses the launch and leaves the printed URL as the whole of the offer.
+// It is not the same statement as MESHSTACK_NO_INPUT, which says nobody is coming and makes
+// the login refuse outright: here somebody is coming, just not through a browser this process
+// started. That covers an ssh session whose $DISPLAY belongs to the wrong machine, a
+// container, and a test driving the login over HTTP — all cases where opening a window is at
+// best useless and at worst somebody else's screen.
+const envNoBrowser = "MESHSTACK_NO_BROWSER"
 
 // Login supplies the two things the authorization code flow needs and pkg/oidc cannot have: a
 // loopback address it can receive the redirect on, and a person in front of a browser. The
-// protocol itself belongs to the flow this asks for — see oidc.AuthorizationCodeStarter.
-func (Browser) Login(ctx context.Context, starter oidc.AuthorizationCodeStarter) (oidc.Token, error) {
+// protocol itself belongs to the flow — see oidc.AuthorizationCodeFlow.
+func Login(ctx context.Context, client oidc.Client) (oidc.Token, error) {
 	// Bound first: the port it happens to get is part of the redirect URI, which the flow has
 	// to put in the authorization request and echo back in the token request.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -54,16 +47,14 @@ func (Browser) Login(ctx context.Context, starter oidc.AuthorizationCodeStarter)
 	}
 	addr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
+		// await is what otherwise closes the listener, through the server it hands it to.
 		_ = listener.Close()
 		return oidc.Token{}, fmt.Errorf("cannot determine the port of the loopback listener, got %s", listener.Addr())
 	}
 
-	flow, err := starter.NewAuthorizationCode(fmt.Sprintf("http://127.0.0.1:%d%s", addr.Port, callbackPath))
-	if err != nil {
-		// await is what otherwise closes the listener, through the server it hands it to.
-		_ = listener.Close()
-		return oidc.Token{}, err
-	}
+	// callbackPath carries its own leading slash, so the format string must not add one: a
+	// redirect URI of //callback is not the one keycloak has registered.
+	flow := client.NewAuthorizationCode(xurl.MustParsef("http://%s%s", addr, callbackPath))
 
 	code, err := await(ctx, listener, flow)
 	if err != nil {
@@ -123,7 +114,10 @@ func handler(flow oidc.AuthorizationCodeFlow, arrived chan<- callback) http.Hand
 		query := r.URL.Query()
 
 		if refused := query.Get("error"); refused != "" {
-			detail := describe(refused, query.Get("error_description"))
+			detail := refused
+			if description := query.Get("error_description"); description != "" {
+				detail += ": " + description
+			}
 			page(w, http.StatusBadRequest, "Login failed", detail)
 			arrived <- callback{err: fmt.Errorf("the identity provider refused the login: %s", detail)}
 			return
@@ -143,53 +137,34 @@ func handler(flow oidc.AuthorizationCodeFlow, arrived chan<- callback) http.Hand
 	})
 }
 
-func describe(code, description string) string {
-	if description == "" {
-		return code
-	}
-	return code + ": " + description
-}
-
-// resultPage is deliberately plain: it is shown once, in a tab the user closes immediately.
-var resultPage = template.Must(template.New("callback").Parse(
-	`<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>meshStack CLI</title></head>
-<body style="font-family: system-ui, sans-serif; margin: 4rem auto; max-width: 34rem;">
-<h1 style="font-size: 1.25rem;">{{.Title}}</h1>
-<p>{{.Message}}</p>
-</body>
-</html>
-`))
-
-func page(w http.ResponseWriter, status int, title, message string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if err := resultPage.Execute(w, struct{ Title, Message string }{title, message}); err != nil {
-		slog.Debug("cannot write the login result page", "error", err)
-	}
-}
-
-// openBrowser asks the desktop to open the authorization URL, and prints it either way: a failure to
-// launch a browser is not a failure to log in, because the user can still paste the URL. A
+// openBrowser asks the desktop to open the authorization URL, and prints it either way: a failure
+// to launch a browser is not a failure to log in, because the user can still paste the URL. A
 // headless machine reaches this path every time.
-func openBrowser(authURL string) {
-	fmt.Fprintln(os.Stderr, "Opening your browser to log in to meshStack. If it does not open, visit:")
-	fmt.Fprintln(os.Stderr, "\n  "+authURL+"\n")
+//
+// The three lines go straight to stderr rather than through slog. The URL is not a record of what
+// happened, it is the thing the person has to copy, so it must survive any log level and reach the
+// terminal unprefixed and unquoted — which is also how the prompt in internal/cli writes. Only
+// what goes wrong is logged.
+func openBrowser(authURL *url.URL) {
+	suppressed := os.Getenv(envNoBrowser) != ""
+	if suppressed {
+		fmt.Fprintf(os.Stderr, "%s is set, so no browser is opened. Log in to meshStack at:\n", envNoBrowser)
+	} else {
+		fmt.Fprintln(os.Stderr, "Opening your browser to log in to meshStack. If it does not open, visit:")
+	}
+	fmt.Fprintf(os.Stderr, "\n  %s\n\n", authURL)
 	// Said out loud because this is where an unattended run stops for ten minutes. The URL above
 	// is the whole of what a person needs, so the login waits whether or not a terminal is
 	// attached — --no-input is how a script says nobody is coming.
 	fmt.Fprintf(os.Stderr, "Waiting up to %s for you to finish. Pass --no-input to fail at once instead.\n", loginTimeout)
-
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", authURL)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", authURL)
-	default:
-		cmd = exec.Command("xdg-open", authURL)
+	if suppressed {
+		return
 	}
+
+	// A platform with no execBrowserOpen fails to build rather than falling back to nothing,
+	// because .goreleaser.yml publishes linux, darwin and windows and nothing else. Adding a
+	// target means adding the file that opens a browser on it.
+	cmd := execBrowserOpen(authURL.String())
 	if err := cmd.Start(); err != nil {
 		slog.Debug("cannot open a browser, waiting for a manually opened one instead",
 			"command", strings.Join(cmd.Args, " "), "error", err)

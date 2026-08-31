@@ -73,7 +73,7 @@ type Token struct {
 }
 
 func (c Client) Refresh(ctx context.Context, refreshToken string, workspace workspace.Name) (resp Token, err error) {
-	scopes := scope.Scopes{"openid"}
+	scopes := scope.Scopes{scope.OpenId}
 	if !workspace.Empty() {
 		scopes = append(scopes, workspace.Scope())
 	}
@@ -94,10 +94,10 @@ func (c Client) Refresh(ctx context.Context, refreshToken string, workspace work
 	return
 }
 
-// exchange is the token request that ends the authorization code flow. It is unexported
-// because a caller that has to remember the verifier and the redirect URI on its own would be
-// holding half the protocol: AuthorizationCodeFlow.Exchange is the way in.
-func (c Client) exchange(ctx context.Context, code, redirectUri, verifier string) (resp Token, err error) {
+// ExchangeAuthCode is the token request that ends the authorization code flow.
+// AuthorizationCodeFlow.Exchange is what calls it, and holds the verifier and the redirect URI it
+// needs.
+func (c Client) ExchangeAuthCode(ctx context.Context, code string, redirectUri xurl.URL, verifier string) (resp Token, err error) {
 	resp, err = c.doPost[Token](ctx, c.TokenEndpoint.URL, map[string]any{
 		"grant_type":    "authorization_code",
 		"code":          code,

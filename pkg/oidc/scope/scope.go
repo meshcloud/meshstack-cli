@@ -6,6 +6,15 @@ package scope
 
 import "strings"
 
+// The scopes a login asks for. offline_access is an optional client scope, so it has to be
+// named or the login lasts as long as one access token.
+const (
+	OpenId        Scope = "openid"
+	Profile       Scope = "profile"
+	Email         Scope = "email"
+	OfflineAccess Scope = "offline_access"
+)
+
 type Scope string
 
 func (s Scope) String() string { return string(s) }

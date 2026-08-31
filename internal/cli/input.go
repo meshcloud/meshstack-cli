@@ -78,7 +78,7 @@ func (i *Input) Warn(p diags.Problem) {
 }
 
 func (i *Input) Browser() auth.Browser {
-	return browser.New()
+	return browser.Login
 }
 
 func (i *Input) stdin() *os.File {

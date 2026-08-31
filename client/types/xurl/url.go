@@ -30,3 +30,10 @@ func (u URL) MarshalText() ([]byte, error) {
 	}
 	return []byte(u.String()), nil
 }
+
+func MustParsef(format string, args ...any) (result URL) {
+	if err := result.UnmarshalText([]byte(fmt.Sprintf(format, args...))); err != nil {
+		panic(err.Error())
+	}
+	return
+}

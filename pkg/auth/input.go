@@ -57,18 +57,15 @@ type Input interface {
 	Browser() Browser
 }
 
-// Browser is the one capability that only an interactive front end has. It is injected
-// rather than called directly, so nothing the Terraform provider links can open a browser
-// during a plan. A depguard rule keeps pkg/oidc/browser out of everything under pkg/, which
-// makes that a compile-time guarantee rather than a promise.
+// Browser is the one capability that only an interactive front end has. It is injected rather
+// than called directly, so nothing the Terraform provider links can open a browser during a
+// plan. A depguard rule keeps pkg/oidc/browser out of everything under pkg/, which makes that a
+// compile-time guarantee rather than a promise.
 //
-// It is handed an oidc.AuthorizationCodeStarter rather than the discovered oidc.Client: a
-// browser login supplies a loopback address and a person, and pkg/oidc owns every protocol
-// detail behind that. This is where the two halves are wired together — loginWithBrowser
-// passes the client it discovered as the narrower interface.
-type Browser interface {
-	Login(ctx context.Context, starter oidc.AuthorizationCodeStarter) (oidc.Token, error)
-}
+// It takes the discovered client and returns a token, because everything in between — the
+// loopback listener, the person, the page they land on — is the front end's, and every protocol
+// detail is oidc.AuthorizationCodeFlow's. loginWithBrowser is where the two halves meet.
+type Browser func(ctx context.Context, client oidc.Client) (oidc.Token, error)
 
 // Values are the configuration items a front end may supply directly. They sit at the top
 // of the precedence order: a flag or a provider block attribute, then the environment, then
