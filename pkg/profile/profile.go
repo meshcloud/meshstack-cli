@@ -1,5 +1,5 @@
 // Package profile reads and writes the meshStack CLI's configuration on disk:
-// `config.yaml`, which describes every profile, and `credentials/<profile>.yaml`,
+// `config.json`, which describes every profile, and `credentials/<profile>.json`,
 // which holds one profile's credentials and its cached access tokens.
 //
 // Both front ends use it. The Terraform provider reads a profile the way the AWS
@@ -7,7 +7,7 @@
 // lock a Store takes is cross-tool rather than an internal detail.
 //
 // The two files are separate so that a renewal locks only the profile it renews:
-// `config.yaml` is never locked, so editing a profile never waits for a network round
+// `config.json` is never locked, so editing a profile never waits for a network round
 // trip, and a failed credential write can never cost a user their configuration.
 //
 // Nothing here is created until a command actually needs to store something, so a
@@ -15,14 +15,15 @@
 package profile
 
 import (
+	"bytes"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
-
-	"github.com/goccy/go-yaml"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
@@ -31,6 +32,10 @@ import (
 // Version is the format version both files carry. A CLI that reads a higher one
 // reports it and stops, because a file it does not understand may hold fields whose
 // absence changes what a write means.
+//
+// Every other field on both structs is left out when its Go zero value means "not set". This
+// one is tagged without `omitzero`, because both readers start from this constant: a file that
+// carried no version would silently claim to be the current one.
 const Version = 1
 
 // These keys are private for the same reason every other MESHSTACK_* name in this
@@ -49,19 +54,19 @@ const (
 	fileMode fs.FileMode = 0o600
 )
 
-// Config is `config.yaml`: every profile this installation knows about.
+// Config is `config.json`: every profile this installation knows about.
 type Config struct {
-	Version        int                `yaml:"version"`
-	CurrentProfile string             `yaml:"currentProfile"`
-	Profiles       map[string]Profile `yaml:"profiles"`
+	Version        int                `json:"version"`
+	CurrentProfile string             `json:"currentProfile,omitzero"`
+	Profiles       map[string]Profile `json:"profiles,omitzero"`
 }
 
 // Profile is what describes a profile rather than what authenticates it. The
 // credentials live in their own file, which is what keeps a renewal from locking this
 // one.
 type Profile struct {
-	Endpoint         *xurl.URL `yaml:"endpoint,omitempty"`
-	DefaultWorkspace string    `yaml:"defaultWorkspace,omitempty"`
+	Endpoint         *xurl.URL `json:"endpoint,omitzero"`
+	DefaultWorkspace string    `json:"defaultWorkspace,omitzero"`
 }
 
 // nameRE bounds a profile name, which becomes a path segment under `credentials/`.
@@ -82,7 +87,7 @@ func ValidateName(name string) error {
 		"A profile name becomes a file name under the credentials directory, so it must start with a letter or a digit and may then contain letters, digits, dots, dashes and underscores, up to 64 characters.")
 }
 
-// ConfigDir returns the directory holding `config.yaml` and `credentials/`. It is the
+// ConfigDir returns the directory holding `config.json` and `credentials/`. It is the
 // platform's own configuration directory, except that XDG_CONFIG_HOME wins wherever it
 // is set. The directory is not created here.
 func ConfigDir() (string, error) {
@@ -97,7 +102,7 @@ func ConfigDir() (string, error) {
 	return filepath.Join(dir, "meshstack"), nil
 }
 
-// ConfigPath returns the path of `config.yaml`.
+// ConfigPath returns the path of `config.json`.
 func ConfigPath() (string, error) {
 	if override := os.Getenv(envConfigFile); override != "" {
 		return override, nil
@@ -106,7 +111,7 @@ func ConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "config.yaml"), nil
+	return filepath.Join(dir, "config.json"), nil
 }
 
 // CredentialsDir returns the directory holding one file per profile.
@@ -131,10 +136,10 @@ func CredentialsPath(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, name+".yaml"), nil
+	return filepath.Join(dir, name+".json"), nil
 }
 
-// LoadConfig reads `config.yaml`. A missing file is an empty configuration rather than
+// LoadConfig reads `config.json`. A missing file is an empty configuration rather than
 // an error: that is the state of a fresh install.
 func LoadConfig() (Config, error) {
 	path, err := ConfigPath()
@@ -150,14 +155,13 @@ func LoadConfig() (Config, error) {
 		return Config{}, diags.Wrap(err, "Cannot read the configuration",
 			"%s could not be read.", path)
 	}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return Config{}, diags.Wrap(err, "Cannot parse the configuration",
-			"%s is not valid YAML: %v", path, err)
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, parseFailed("Cannot parse the configuration", path, data, err)
 	}
 	if err := checkVersion(cfg.Version, path); err != nil {
 		return Config{}, err
 	}
-	// Validating here rather than at CredentialsPath is what refuses a config.yaml
+	// Validating here rather than at CredentialsPath is what refuses a config.json
 	// holding a traversing name, instead of resolving it and then writing somewhere else.
 	for name := range cfg.Profiles {
 		if err := ValidateName(name); err != nil {
@@ -168,7 +172,7 @@ func LoadConfig() (Config, error) {
 	return cfg, nil
 }
 
-// SaveConfig writes `config.yaml` atomically, creating the directory if it is missing.
+// SaveConfig writes `config.json` atomically, creating the directory if it is missing.
 // It needs no lock: only commands that configure write this file, and a renewal never
 // touches it.
 func SaveConfig(cfg Config) error {
@@ -184,11 +188,23 @@ func SaveConfig(cfg Config) error {
 	// Stamped rather than trusted: this code can only write the format it implements,
 	// and reading a higher version already stopped before we got here.
 	cfg.Version = Version
-	data, err := yaml.Marshal(cfg)
+	data, err := json.Marshal(cfg, jsontext.WithIndent("  "))
 	if err != nil {
 		return diags.Wrap(err, "Cannot write the configuration", "%s could not be encoded.", path)
 	}
-	return writeFileAtomic(path, data)
+	return writeFileAtomic(path, append(data, '\n'))
+}
+
+// parseFailed checks the first byte, and needs no more format detection than that. The rename
+// to `.json` leaves a file written before the format changed unread, except where
+// MESHSTACK_CONFIG_FILE names one explicitly, and there a bare syntax error would not tell the
+// user what to do about it.
+func parseFailed(summary, path string, data []byte, cause error) error {
+	if !bytes.HasPrefix(bytes.TrimLeft(data, " \t\r\n"), []byte("{")) {
+		return diags.Wrap(cause, summary,
+			"%s is not JSON. The meshStack CLI stored its configuration as YAML in earlier builds; run `meshstack login` to write it again.", path)
+	}
+	return diags.Wrap(cause, summary, "%s is not valid JSON: %v", path, cause)
 }
 
 // checkVersion stops on a file written by a newer CLI, naming the file so the reader

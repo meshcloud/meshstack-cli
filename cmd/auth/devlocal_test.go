@@ -25,7 +25,7 @@ const (
 )
 
 // --dev-local bootstraps a profile out of a document nobody configured, so the assertions are
-// about what reached disk: the profile in config.yaml, and the credential the CLI can use next.
+// about what reached disk: the profile in config.json, and the credential the CLI can use next.
 func TestDevLocalLogin(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -52,7 +52,7 @@ func TestDevLocalLogin(t *testing.T) {
 			cmd := loginWithRootFlags(cli.New())
 			require.NoError(t, run(cmd, append([]string{"--dev-local", "--endpoint", stack}, test.args...)...))
 
-			config, err := os.ReadFile(filepath.Join(dir, "config.yaml"))
+			config, err := os.ReadFile(filepath.Join(dir, "config.json"))
 			require.NoError(t, err)
 			assert.Contains(t, string(config), test.wantProfile)
 			assert.Contains(t, string(config), stack)
@@ -60,11 +60,11 @@ func TestDevLocalLogin(t *testing.T) {
 			// workspace-scoped command later, so the admin workspace becomes the default.
 			assert.Contains(t, string(config), devAdminWorkspace)
 
-			credentials, err := os.ReadFile(filepath.Join(dir, "credentials", test.wantProfile+".yaml"))
+			credentials, err := os.ReadFile(filepath.Join(dir, "credentials", test.wantProfile+".json"))
 			require.NoError(t, err)
 			assert.Contains(t, string(credentials), devApiKeyClientId)
 			assert.Contains(t, string(credentials), devApiKeyClientSecret)
-			assert.Contains(t, string(credentials), "current: apiKey")
+			assert.Contains(t, string(credentials), `"current": "apiKey"`)
 		})
 	}
 }
@@ -108,7 +108,7 @@ func loginWithRootFlags(in *cli.Input) *cobra.Command {
 func isolateAt(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("MESHSTACK_CONFIG_FILE", filepath.Join(dir, "config.yaml"))
+	t.Setenv("MESHSTACK_CONFIG_FILE", filepath.Join(dir, "config.json"))
 	t.Setenv("MESHSTACK_CREDENTIALS_DIR", filepath.Join(dir, "credentials"))
 	for _, key := range []string{
 		"MESHSTACK_ENDPOINT", "MESHSTACK_WORKSPACE", "MESHSTACK_PROFILE",

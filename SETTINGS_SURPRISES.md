@@ -189,6 +189,58 @@ the Terraform provider's `scratch/run.sh` does — the reader gets a raw JSON sy
 **Decided:** no format detection. Lane A's parse-error message checks whether the file starts with
 something other than `{` and, when it does, says the format changed and to log in again.
 
+### 13's three tag categories collapse into two
+
+13 lists `omitzero` for "every `time.Time`, every `*xurl.URL`, every pointer in the credential sum,
+and `Method`", no option where the zero value has to round-trip, and `omitempty` where an encoded
+empty value is the absent one. Applied field by field, every remaining field falls in the first
+category too: an absent member and a zero Go value are the same thing for `clientId`,
+`refreshToken`, `currentProfile` and the rest, because unmarshalling an absent member leaves the
+zero value behind.
+
+**Decided:** one rule — a field is omitted when its Go zero value means "not set" — and `version` is
+the single exception, because both readers start from `Version` and a file that carried no version
+would silently claim to be the current one. `omitempty` is unused, as 13 predicted. The rule is
+written once, on the `Version` const; the two zero-value round-trip tests are what keep it true.
+
+### `IssuedToken.Token` needs `omitzero` for a reason of its own
+
+`jwt.JWT` marshals through `TextMarshaler`, so a zero one writes `"token": ""` — and reading that
+back fails, because `UnmarshalText` rejects a string that is not three dot-separated parts. The
+field is unreachable in that state today, and was equally broken under goccy, but `omitzero` makes
+the round trip total instead of nearly so.
+
+### `pkg-profile` was a depguard rule for one import, and goes away entirely
+
+Its `deny` and `allow` lists were the `pkg` rule's plus `github.com/goccy/go-yaml`. With the import
+gone the two rules are identical, so the rule and the `"!**/pkg/profile/*.go"` exclusion that made
+room for it are both deleted, and `pkg/profile` is governed by `pkg` like every other package under
+`pkg/`. The comment block arguing YAML over stdlib JSON goes with it; the argument that replaced it
+— strict parsing — is pinned by the duplicate-member row in `TestLoadConfigRejects` rather than
+restated in prose. `AGENTS.md`'s "two external dependencies" now holds without an exception, so it
+needed no edit.
+
+### `encoding/json/v2` does not order map members
+
+`jsontext.WithIndent` makes the files hand-readable, but v2 writes map members in Go's randomised
+iteration order, so a profile's `accessTokens` and the `profiles` map reshuffle on every write.
+`json.Deterministic(true)` sorts them for one more option at the two `Marshal` calls.
+
+**Not decided.** Lane A wrote what 13 asked for and no more. Nothing depends on the ordering — both
+files are replaced whole under a lock — and the round-trip tests assert member presence rather than
+whole-file text wherever a map with more than one entry is involved. Worth settling before somebody
+writes a test that does compare whole-file text.
+
+### The provider's `scratch/` reads the configuration as YAML text, not just by name
+
+The entry above covers `MESHSTACK_CONFIG_FILE=/tmp/meshstack-e2e/config.yaml`, which the new message
+now answers. Two more places in `../terraform-provider-meshstack/scratch/` manipulate the file's
+*syntax*: `run.sh`'s `noworkspace` mode strips the default workspace with
+`grep -v defaultWorkspace`, which leaves a trailing comma and therefore invalid JSON, and
+`README.md` tells the reader to delete the `accessTokens:` block from `local.yaml` to force a
+refresh. Both need rewriting for JSON. Lane A does not own the provider, so this is left for the
+lane that bumps the pin.
+
 ## Phase 3
 
 These four came out of reading the Terraform provider's `scratch/` demos against the plan. None

@@ -29,7 +29,7 @@ func TestAccDevLocalLogin(t *testing.T) {
 
 	require.FileExists(t, cli.config)
 	// The reserved profile name, which is what makes the flag configless on the way back out.
-	credentials := filepath.Join(cli.credentials, "dev-local.yaml")
+	credentials := filepath.Join(cli.credentials, "dev-local.json")
 	require.FileExists(t, credentials)
 	stored, err := os.ReadFile(credentials)
 	require.NoError(t, err)

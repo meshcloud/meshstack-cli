@@ -40,7 +40,7 @@ func TestNewFileStoreCreatesNothing(t *testing.T) {
 
 	store, err := NewFileStore("default")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(dir, "meshstack", "credentials", "default.yaml"), store.Describe())
+	require.Equal(t, filepath.Join(dir, "meshstack", "credentials", "default.json"), store.Describe())
 	require.True(t, store.Writable())
 
 	creds, err := store.Read()
@@ -84,22 +84,41 @@ func TestCredentialsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, want, written)
 
-	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
+	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.json"))
 	require.NoError(t, err)
 	text := string(raw)
-	assert.Contains(t, text, "version: 1")
-	assert.Contains(t, text, "\ncurrent: login\n")
-	assert.NotContains(t, text, "credential:")
-	assert.Contains(t, text, "refreshToken: refresh-1")
-	assert.Contains(t, text, "clientSecretCommand:")
-	assert.Contains(t, text, "c:my-workspace:")
-	assert.Contains(t, text, "unscoped:")
+	assert.Contains(t, text, `"version": 1`)
+	assert.Contains(t, text, `"current": "login"`)
+	// The embedded credential is inlined: its members sit beside the version rather than
+	// under a key named after the type.
+	assert.NotContains(t, text, `"Credential"`)
+	assert.Contains(t, text, `"refreshToken": "refresh-1"`)
+	assert.Contains(t, text, `"clientSecretCommand"`)
+	assert.Contains(t, text, `"c:my-workspace"`)
+	assert.Contains(t, text, `"unscoped"`)
 	// clientSecret is omitted entirely when a command supplies it.
-	assert.NotContains(t, text, "clientSecret:")
+	assert.NotContains(t, text, `"clientSecret"`)
 
 	got, err := store.Read()
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestUpdateWritesOnlyTheVersionOfAnEmptyCredential(t *testing.T) {
+	dir := isolate(t)
+	store, err := NewFileStore("default")
+	require.NoError(t, err)
+
+	_, err = store.Update(t.Context(), unchanged)
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.json"))
+	require.NoError(t, err)
+	require.Equal(t, "{\n  \"version\": 1\n}\n", string(raw))
+
+	got, err := store.Read()
+	require.NoError(t, err)
+	require.Equal(t, Credentials{Version: Version}, got)
 }
 
 func TestCredentialsFileModes(t *testing.T) {
@@ -116,7 +135,7 @@ func TestCredentialsFileModes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	info, err := os.Stat(filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
+	info, err := os.Stat(filepath.Join(dir, "meshstack", "credentials", "default.json"))
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 
@@ -130,9 +149,9 @@ func TestReadRejectsANewerVersion(t *testing.T) {
 	store, err := NewFileStore("default")
 	require.NoError(t, err)
 
-	path := filepath.Join(dir, "meshstack", "credentials", "default.yaml")
+	path := filepath.Join(dir, "meshstack", "credentials", "default.json")
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), dirMode))
-	require.NoError(t, os.WriteFile(path, []byte("version: 99\nendpoint: https://example.com\n"), fileMode))
+	require.NoError(t, os.WriteFile(path, []byte(`{"version": 99, "endpoint": "https://example.com"}`), fileMode))
 
 	_, err = store.Read()
 	require.Error(t, err)
@@ -161,7 +180,7 @@ func TestUpdatePrunesExpiredTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[scope.Scope]credential.IssuedToken{meshstack.Unscoped: fresh}, got.Login.AccessTokens)
 
-	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
+	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.json"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "stale")
 
@@ -172,7 +191,7 @@ func TestUpdatePrunesExpiredTokens(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Nil(t, got.Login.AccessTokens)
-	raw, err = os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
+	raw, err = os.ReadFile(filepath.Join(dir, "meshstack", "credentials", "default.json"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "accessTokens")
 }
@@ -228,7 +247,7 @@ func TestUpdateSeesAnotherProcessWrite(t *testing.T) {
 	dir := isolate(t)
 	store, err := NewFileStore("default")
 	require.NoError(t, err)
-	path := filepath.Join(dir, "meshstack", "credentials", "default.yaml")
+	path := filepath.Join(dir, "meshstack", "credentials", "default.json")
 
 	// Hold the lock the way another process would, so Update has to wait for it.
 	release, err := acquireLock(t.Context(), path+lockSuffix)
@@ -246,7 +265,7 @@ func TestUpdateSeesAnotherProcessWrite(t *testing.T) {
 
 	// The winner writes while the loser waits, so the loser must re-read under the lock
 	// instead of minting from what it saw before.
-	require.NoError(t, os.WriteFile(path, []byte("version: 1\nendpoint: https://written-by-the-winner\ncurrent: apiKey\napiKey:\n  clientId: winner\n"), fileMode))
+	require.NoError(t, os.WriteFile(path, []byte(`{"version": 1, "endpoint": "https://written-by-the-winner", "current": "apiKey", "apiKey": {"clientId": "winner"}}`), fileMode))
 	release()
 
 	require.NoError(t, <-done)
@@ -290,7 +309,7 @@ func TestUpdateHonoursContext(t *testing.T) {
 	store, err := NewFileStore("default")
 	require.NoError(t, err)
 
-	release, err := acquireLock(t.Context(), filepath.Join(dir, "meshstack", "credentials", "default.yaml")+lockSuffix)
+	release, err := acquireLock(t.Context(), filepath.Join(dir, "meshstack", "credentials", "default.json")+lockSuffix)
 	require.NoError(t, err)
 	defer release()
 
@@ -299,12 +318,12 @@ func TestUpdateHonoursContext(t *testing.T) {
 
 	_, err = store.Update(ctx, unchanged)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "default.yaml.lock")
+	assert.Contains(t, err.Error(), "default.json.lock")
 }
 
 func TestLockIsReleasedAndBrokenWhenStale(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "default.yaml.lock")
+	path := filepath.Join(dir, "default.json.lock")
 
 	release, err := acquireLock(t.Context(), path)
 	require.NoError(t, err)
@@ -335,7 +354,7 @@ func TestForget(t *testing.T) {
 		return c, nil
 	})
 	require.NoError(t, err)
-	path := filepath.Join(dir, "meshstack", "credentials", "default.yaml")
+	path := filepath.Join(dir, "meshstack", "credentials", "default.json")
 	require.FileExists(t, path)
 
 	require.NoError(t, store.Forget())
@@ -405,7 +424,7 @@ func TestUpdatePropagatesMintErrorAndWritesNothing(t *testing.T) {
 		return Credentials{}, assert.AnError
 	})
 	require.ErrorIs(t, err, assert.AnError)
-	require.NoFileExists(t, filepath.Join(dir, "meshstack", "credentials", "default.yaml"))
+	require.NoFileExists(t, filepath.Join(dir, "meshstack", "credentials", "default.json"))
 
 	// The lock is released even when mint fails, so the next attempt is not blocked.
 	entries, err := os.ReadDir(filepath.Join(dir, "meshstack", "credentials"))

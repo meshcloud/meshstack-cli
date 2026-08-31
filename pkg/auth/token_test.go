@@ -449,7 +449,7 @@ func TestOnlyTheGrantRunsUnderTheCredentialsLock(t *testing.T) {
 	stack := newMeshStack(t)
 	at := isolate(t)
 
-	lockPath := filepath.Join(at.credentials, testProfile+".yaml.lock")
+	lockPath := filepath.Join(at.credentials, testProfile+".json.lock")
 	var mu sync.Mutex
 	held := map[string]bool{}
 	stack.onEachRequest(func(r *http.Request) {

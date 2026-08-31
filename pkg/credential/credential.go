@@ -4,7 +4,7 @@
 // the environment or a Terraform provider block touches no file, so pkg/profile does not own
 // it; and pkg/profile imports it, so it cannot sit under pkg/auth.
 //
-// The method strings and the yaml tags are part of the on-disk format. Renaming one breaks
+// The method strings and the json tags are part of the on-disk format. Renaming one breaks
 // every credentials file already written.
 package credential
 
@@ -49,10 +49,10 @@ func (m Method) Description() string {
 // with its API key may still hold a browser login, and `if c.Login != nil` would wrongly
 // demand a workspace of it.
 type Credential struct {
-	Current Method  `yaml:"current,omitempty"`
-	Login   *Login  `yaml:"login,omitempty"`
-	ApiKey  *ApiKey `yaml:"apiKey,omitempty"`
-	Manual  *Manual `yaml:"manual,omitempty"`
+	Current Method  `json:"current,omitzero"`
+	Login   *Login  `json:"login,omitzero"`
+	ApiKey  *ApiKey `json:"apiKey,omitzero"`
+	Manual  *Manual `json:"manual,omitzero"`
 }
 
 // Login records ObtainedAt instead of a predicted deadline: the session's ceiling is a
@@ -62,33 +62,33 @@ type Credential struct {
 // It is the one method whose tokens are a map, because a browser login mints a token bound to
 // one workspace: one per `c:` scope, plus the unscoped one that lists the workspaces.
 type Login struct {
-	Issuer       *xurl.URL `yaml:"issuer,omitempty"`
-	RefreshToken string    `yaml:"refreshToken"`
-	ObtainedAt   time.Time `yaml:"obtainedAt"`
+	Issuer       *xurl.URL `json:"issuer,omitzero"`
+	RefreshToken string    `json:"refreshToken,omitzero"`
+	ObtainedAt   time.Time `json:"obtainedAt,omitzero"`
 
-	AccessTokens map[scope.Scope]IssuedToken `yaml:"accessTokens,omitempty"`
+	AccessTokens map[scope.Scope]IssuedToken `json:"accessTokens,omitzero"`
 }
 
 // ApiKey leaves Secret absent when SecretCommand is set, so a long-lived secret never has to
 // sit on disk. AccessToken is the unscoped token: an API key carries whatever workspace its
 // issuer put in it, and nothing re-scopes one.
 type ApiKey struct {
-	Id            string   `yaml:"clientId"`
-	Secret        string   `yaml:"clientSecret,omitempty"`
-	SecretCommand []string `yaml:"clientSecretCommand,omitempty"`
+	Id            string   `json:"clientId,omitzero"`
+	Secret        string   `json:"clientSecret,omitzero"`
+	SecretCommand []string `json:"clientSecretCommand,omitzero"`
 
-	AccessToken IssuedToken `yaml:"accessToken,omitempty"`
+	AccessToken IssuedToken `json:"accessToken,omitzero"`
 }
 
 // Manual is a token somebody pasted in. The token is the whole of it, so an expired one leaves
 // nothing to mint from.
 type Manual struct {
-	AccessToken IssuedToken `yaml:"accessToken,omitempty"`
+	AccessToken IssuedToken `json:"accessToken,omitzero"`
 }
 
 type IssuedToken struct {
-	Token     jwt.JWT   `yaml:"token"`
-	ExpiresAt time.Time `yaml:"expiresAt"`
+	Token     jwt.JWT   `json:"token,omitzero"`
+	ExpiresAt time.Time `json:"expiresAt,omitzero"`
 }
 
 // FromLogin, FromApiKey and FromManual set Current and its pointer together, so that no caller

@@ -114,9 +114,6 @@ linters:
           files:
             - "**/pkg/*.go"
             - "**/pkg/**/*.go"
-            # Excluding pkg/profile is what lets the next rule grant more than this one
-            # does, the same way cmd/meshstack is excluded below.
-            - "!**/pkg/profile/*.go"
             - "!$test"
           list-mode: strict
           deny:
@@ -131,35 +128,6 @@ linters:
             # The process's one HTTP client. pkg/auth and pkg/oidc each address a different
             # host — meshStack and the identity provider — and both go through it.
             - github.com/meshcloud/meshstack-cli/internal/http
-
-        # The only package that reads and writes the configuration files, and therefore
-        # the only one that needs a YAML library — a third external dependency where this
-        # policy allows two, which is why the boundary is one package wide.
-        #
-        # The library is github.com/goccy/go-yaml. It replaced go.yaml.in/yaml/v3 because it
-        # honours encoding.TextMarshaler and encoding.TextUnmarshaler, which is what lets the
-        # stored files hold an xurl.URL and a jwt.JWT rather than strings every reader parses
-        # again. go.yaml.in/yaml/v3 supports neither, and its own README calls v1 through v3
-        # frozen legacy.
-        #
-        # The alternative that keeps the two-dependency policy intact is stdlib JSON, as Docker
-        # uses for ~/.docker/config.json; YAML won because these files are meant to be read and
-        # occasionally hand-corrected by a person, and comments survive in them.
-        pkg-profile:
-          files:
-            - "**/pkg/profile/*.go"
-            - "!$test"
-          list-mode: strict
-          deny:
-            - pkg: github.com/spf13/cobra
-              desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
-            - pkg: github.com/meshcloud/meshstack-cli/pkg/oidc/browser
-              desc: only cmd/ may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
-          allow:
-            - $gostd
-            - github.com/meshcloud/meshstack-cli/client
-            - github.com/meshcloud/meshstack-cli/pkg
-            - github.com/goccy/go-yaml
 
         # internal/http is the process's one HTTP client, and it needs nothing but the standard
         # library to be one. It sits outside client/ because Go's internal rule would otherwise

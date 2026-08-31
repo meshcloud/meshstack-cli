@@ -105,7 +105,7 @@ func run(cmd *cobra.Command, args ...string) error {
 func isolate(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("MESHSTACK_CONFIG_FILE", filepath.Join(dir, "config.yaml"))
+	t.Setenv("MESHSTACK_CONFIG_FILE", filepath.Join(dir, "config.json"))
 	t.Setenv("MESHSTACK_CREDENTIALS_DIR", filepath.Join(dir, "credentials"))
 	for _, key := range []string{
 		"MESHSTACK_ENDPOINT", "MESHSTACK_WORKSPACE", "MESHSTACK_PROFILE",

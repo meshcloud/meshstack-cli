@@ -64,7 +64,7 @@ func TestCredentialsPathRefusesEscapingName(t *testing.T) {
 
 	path, err := CredentialsPath("prod")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(dir, "meshstack", "credentials", "prod.yaml"), path)
+	require.Equal(t, filepath.Join(dir, "meshstack", "credentials", "prod.json"), path)
 
 	for _, name := range []string{"../escape", ".hidden", "a/b", ""} {
 		_, err := CredentialsPath(name)
@@ -82,7 +82,7 @@ func TestPathsFollowTheEnvironment(t *testing.T) {
 
 		configPath, err := ConfigPath()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(dir, "meshstack", "config.yaml"), configPath)
+		require.Equal(t, filepath.Join(dir, "meshstack", "config.json"), configPath)
 
 		credentialsDir, err := CredentialsDir()
 		require.NoError(t, err)
@@ -99,22 +99,22 @@ func TestPathsFollowTheEnvironment(t *testing.T) {
 
 		configPath, err := ConfigPath()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(platform, "meshstack", "config.yaml"), configPath)
+		require.Equal(t, filepath.Join(platform, "meshstack", "config.json"), configPath)
 	})
 
 	t.Run("the file and directory overrides move both", func(t *testing.T) {
 		isolate(t)
 		elsewhere := t.TempDir()
-		t.Setenv(envConfigFile, filepath.Join(elsewhere, "other.yaml"))
+		t.Setenv(envConfigFile, filepath.Join(elsewhere, "other.json"))
 		t.Setenv(envCredentialsDir, filepath.Join(elsewhere, "secrets"))
 
 		configPath, err := ConfigPath()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(elsewhere, "other.yaml"), configPath)
+		require.Equal(t, filepath.Join(elsewhere, "other.json"), configPath)
 
 		credentialsPath, err := CredentialsPath("prod")
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(elsewhere, "secrets", "prod.yaml"), credentialsPath)
+		require.Equal(t, filepath.Join(elsewhere, "secrets", "prod.json"), credentialsPath)
 	})
 }
 
@@ -142,14 +142,14 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 	require.NoError(t, SaveConfig(want))
 
-	path := filepath.Join(dir, "meshstack", "config.yaml")
+	path := filepath.Join(dir, "meshstack", "config.json")
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 	text := string(raw)
-	assert.Contains(t, text, "version: 1")
-	assert.Contains(t, text, "currentProfile: default")
-	assert.Contains(t, text, "endpoint: https://api.dev.meshcloud.io")
-	assert.Contains(t, text, "defaultWorkspace: my-workspace")
+	assert.Contains(t, text, `"version": 1`)
+	assert.Contains(t, text, `"currentProfile": "default"`)
+	assert.Contains(t, text, `"endpoint": "https://api.dev.meshcloud.io"`)
+	assert.Contains(t, text, `"defaultWorkspace": "my-workspace"`)
 	// The profile without a workspace must not gain an empty key.
 	assert.Equal(t, 1, strings.Count(text, "defaultWorkspace"))
 
@@ -157,6 +157,33 @@ func TestConfigRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	want.Version = Version
 	require.Equal(t, want, got)
+}
+
+func TestSaveConfigWritesOnlyTheVersionOfAnEmptyConfig(t *testing.T) {
+	dir := isolate(t)
+
+	require.NoError(t, SaveConfig(Config{}))
+
+	raw, err := os.ReadFile(filepath.Join(dir, "meshstack", "config.json"))
+	require.NoError(t, err)
+	require.Equal(t, "{\n  \"version\": 1\n}\n", string(raw))
+
+	got, err := LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, Config{Version: Version}, got)
+}
+
+func TestLoadConfigSendsAYamlFileBackToLogin(t *testing.T) {
+	isolate(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncurrentProfile: default\n"), fileMode))
+	t.Setenv(envConfigFile, path)
+
+	_, err := LoadConfig()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), path)
+	assert.Contains(t, err.Error(), "meshstack login")
 }
 
 func TestConfigFileModes(t *testing.T) {
@@ -167,7 +194,7 @@ func TestConfigFileModes(t *testing.T) {
 
 	require.NoError(t, SaveConfig(Config{CurrentProfile: "default"}))
 
-	info, err := os.Stat(filepath.Join(dir, "meshstack", "config.yaml"))
+	info, err := os.Stat(filepath.Join(dir, "meshstack", "config.json"))
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 
@@ -184,29 +211,37 @@ func TestLoadConfigRejects(t *testing.T) {
 	}{
 		{
 			name:     "a newer version",
-			content:  "version: 2\ncurrentProfile: default\n",
+			content:  `{"version": 2, "currentProfile": "default"}`,
 			contains: "version 2",
 		},
 		{
 			name:     "an escaping profile name",
-			content:  "version: 1\nprofiles:\n  ../escape:\n    endpoint: https://example.com\n",
+			content:  `{"version": 1, "profiles": {"../escape": {"endpoint": "https://example.com"}}}`,
 			contains: "../escape",
 		},
 		{
 			name:     "a profile name starting with a dot",
-			content:  "version: 1\nprofiles:\n  .hidden:\n    endpoint: https://example.com\n",
+			content:  `{"version": 1, "profiles": {".hidden": {"endpoint": "https://example.com"}}}`,
 			contains: ".hidden",
 		},
 		{
-			name:     "broken YAML",
-			content:  "version: 1\nprofiles: [\n",
-			contains: "config.yaml",
+			name:     "truncated JSON",
+			content:  `{"version": 1, "profiles": [`,
+			contains: "not valid JSON",
+		},
+		// This row is the reason the reader is encoding/json/v2 and not encoding/json. v1
+		// keeps the last of two members with the same name, so a file the user got wrong
+		// resolves to a value nobody wrote.
+		{
+			name:     "a repeated member name",
+			content:  `{"version": 1, "currentProfile": "a", "currentProfile": "b"}`,
+			contains: "duplicate",
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := isolate(t)
-			path := filepath.Join(dir, "meshstack", "config.yaml")
+			path := filepath.Join(dir, "meshstack", "config.json")
 			require.NoError(t, os.MkdirAll(filepath.Dir(path), dirMode))
 			require.NoError(t, os.WriteFile(path, []byte(tc.content), fileMode))
 
@@ -240,5 +275,5 @@ func TestSaveConfigReplacesAtomically(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(dir, "meshstack"))
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
-	require.Equal(t, "config.yaml", entries[0].Name())
+	require.Equal(t, "config.json", entries[0].Name())
 }

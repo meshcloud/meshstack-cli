@@ -15,7 +15,7 @@ import (
 // settings are the keys `profile set` accepts, in the order the error lists them.
 var settings = []string{"endpoint", "workspace"}
 
-// newSet builds `meshstack profile set <key> <value>`, which writes to config.yaml. It
+// newSet builds `meshstack profile set <key> <value>`, which writes to config.json. It
 // never creates a profile: `meshstack auth login` is the one command that does, so a
 // mistyped name is reported rather than quietly configured.
 func newSet(in *cli.Input) *cobra.Command {

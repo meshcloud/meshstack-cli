@@ -123,7 +123,7 @@ func newCLI(t *testing.T) *meshstackCLI {
 	dir := t.TempDir()
 	return &meshstackCLI{
 		t:           t,
-		config:      filepath.Join(dir, "config.yaml"),
+		config:      filepath.Join(dir, "config.json"),
 		credentials: filepath.Join(dir, "credentials"),
 	}
 }

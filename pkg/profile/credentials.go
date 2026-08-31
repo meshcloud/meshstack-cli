@@ -8,7 +8,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 )
 
-// Credentials is `credentials/<profile>.yaml`: how one profile authenticates, and the
+// Credentials is `credentials/<profile>.json`: how one profile authenticates, and the
 // access tokens it has minted so far.
 //
 // The endpoint sits at the top of the file rather than on each method, because a valid
@@ -16,11 +16,11 @@ import (
 // skipped exactly when the CLI is about to send a stored bearer token to whatever
 // endpoint the profile now names.
 type Credentials struct {
-	Version int `yaml:"version"`
+	Version int `json:"version"`
 	// A pointer, because the file of a profile nothing has logged in to yet carries no
 	// endpoint, and an xurl.URL that is present has been parsed.
-	Endpoint              *xurl.URL `yaml:"endpoint,omitempty"`
-	credential.Credential `yaml:",inline"`
+	Endpoint *xurl.URL `json:"endpoint,omitzero"`
+	credential.Credential
 }
 
 // prune drops access tokens that have expired, from whichever of the three shapes the

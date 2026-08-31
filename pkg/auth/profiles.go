@@ -9,7 +9,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 )
 
-// KnownProfile is one entry of config.yaml, for the prompt that asks which endpoint a new
+// KnownProfile is one entry of config.json, for the prompt that asks which endpoint a new
 // profile belongs to.
 type KnownProfile struct {
 	Name             string

@@ -2,14 +2,14 @@ package profile
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"io/fs"
 	"maps"
 	"os"
 	"sync"
 	"time"
-
-	"github.com/goccy/go-yaml"
 
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 )
@@ -50,7 +50,7 @@ type Store interface {
 // Reporting the real failure is exact where a probe is a guess.
 var ErrNotWritable = errors.New("this profile's credentials could not be written")
 
-// fileStore is one profile's `credentials/<profile>.yaml` plus the lock next to it.
+// fileStore is one profile's `credentials/<profile>.json` plus the lock next to it.
 type fileStore struct {
 	path     string
 	lockPath string
@@ -75,7 +75,7 @@ func (s *fileStore) Describe() string { return s.path }
 func (s *fileStore) Writable() bool { return true }
 
 // Read returns empty credentials when the file is missing, because a profile in
-// config.yaml with no credentials file means "not logged in" — the same state as a
+// config.json with no credentials file means "not logged in" — the same state as a
 // fresh install, and not an error.
 func (s *fileStore) Read() (Credentials, error) {
 	creds := Credentials{Version: Version}
@@ -87,9 +87,8 @@ func (s *fileStore) Read() (Credentials, error) {
 		return Credentials{}, diags.Wrap(err, "Cannot read the stored credentials",
 			"%s could not be read.", s.path)
 	}
-	if err := yaml.Unmarshal(data, &creds); err != nil {
-		return Credentials{}, diags.Wrap(err, "Cannot parse the stored credentials",
-			"%s is not valid YAML: %v", s.path, err)
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return Credentials{}, parseFailed("Cannot parse the stored credentials", s.path, data, err)
 	}
 	if err := checkVersion(creds.Version, s.path); err != nil {
 		return Credentials{}, err
@@ -128,12 +127,12 @@ func (s *fileStore) Update(ctx context.Context, mint func(Credentials) (Credenti
 	// Written unconditionally, even when mint changed nothing. Credentials holds a map
 	// and two time.Time values, so a comparison is either uncompilable or subtly wrong
 	// about monotonic clocks and locations — and pruning has to reach the file anyway.
-	data, err := yaml.Marshal(next)
+	data, err := json.Marshal(next, jsontext.WithIndent("  "))
 	if err != nil {
 		return Credentials{}, diags.Wrap(err, "Cannot store the credentials",
 			"%s could not be encoded.", s.path)
 	}
-	if err := writeFileAtomic(s.path, data); err != nil {
+	if err := writeFileAtomic(s.path, append(data, '\n')); err != nil {
 		return Credentials{}, errors.Join(err, ErrNotWritable)
 	}
 	return next, nil

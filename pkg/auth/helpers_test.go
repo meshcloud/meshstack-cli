@@ -42,7 +42,7 @@ type paths struct {
 func isolate(t *testing.T) paths {
 	t.Helper()
 	dir := t.TempDir()
-	found := paths{config: filepath.Join(dir, "config.yaml"), credentials: filepath.Join(dir, "credentials")}
+	found := paths{config: filepath.Join(dir, "config.json"), credentials: filepath.Join(dir, "credentials")}
 	t.Setenv("MESHSTACK_CONFIG_FILE", found.config)
 	t.Setenv("MESHSTACK_CREDENTIALS_DIR", found.credentials)
 	for _, key := range []string{envEndpoint, envApiKey, envApiSecret, envApiToken, envProfile, "MESHSTACK_WORKSPACE"} {

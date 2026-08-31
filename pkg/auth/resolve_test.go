@@ -386,7 +386,7 @@ func TestResolveForLoginUsesTheProfileStoreEvenWithAWholeCredential(t *testing.T
 
 // TestProfileSuppliesTheEndpointForAnEnvironmentCredential pins the rule that the endpoint and
 // the workspace are their own axes of the precedence order. A credential is resolved as a whole,
-// but that is about the credential — an endpoint sitting in config.yaml still applies, and the
+// but that is about the credential — an endpoint sitting in config.json still applies, and the
 // store stays a memory store because the credential did not come from the profile.
 func TestProfileSuppliesTheEndpointForAnEnvironmentCredential(t *testing.T) {
 	at := isolate(t)
