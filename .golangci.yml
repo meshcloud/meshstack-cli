@@ -123,7 +123,7 @@ linters:
             - pkg: github.com/spf13/cobra
               desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
             - pkg: github.com/meshcloud/meshstack-cli/pkg/oidc/browser
-              desc: only cmd/ may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
+              desc: only cmd/ and internal/cli may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
           allow:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
@@ -154,7 +154,7 @@ linters:
             - pkg: github.com/spf13/cobra
               desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
             - pkg: github.com/meshcloud/meshstack-cli/pkg/oidc/browser
-              desc: only cmd/ may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
+              desc: only cmd/ and internal/cli may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
           allow:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client

@@ -189,6 +189,19 @@ the Terraform provider's `scratch/run.sh` does — the reader gets a raw JSON sy
 **Decided:** no format detection. Lane A's parse-error message checks whether the file starts with
 something other than `{` and, when it does, says the format changed and to log in again.
 
+### 11's `LoginWithBrowser` would give the CLI two entry points to choose between
+
+11 writes the browser argument as
+`func (s *Session) LoginWithBrowser(ctx context.Context, open Browser) (LoginResult, error)`.
+`Session.Login` is one entry point that dispatches on the demanded method to a browser login, an
+API key exchange or a pasted token, and all three share the bookkeeping in `login`. A public method
+for one arm leaves `cmd/auth/login.go` picking between two calls by the method it just demanded.
+
+**Decided:** `LoginOptions` gains a `Browser` field, which `Login` passes to `loginWithBrowser`. The
+browser stops being a capability on `auth.Input`, which is what 11 argues for, and `Login` stays the
+one entry point. A nil field produces the error a nil `Input.Browser()` produced, pinned by
+`pkg/auth/login_test.go`.
+
 ## Phase 3
 
 These four came out of reading the Terraform provider's `scratch/` demos against the plan. None

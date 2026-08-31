@@ -1,6 +1,6 @@
-// Package cli implements the meshStack CLI's half of auth.Input: the values its flags
-// carry, the secrets it reads from the environment, from stdin or from a terminal prompt,
-// and the browser login.
+// Package cli holds what the meshStack CLI supplies to pkg/auth: the values its flags carry,
+// the secrets it reads from the environment, from stdin or from a terminal prompt, and the
+// browser login.
 //
 // It is internal because Go's own rule is the guarantee that matters here. This package
 // prompts, and a Terraform provider run must never block on a terminal that is not there —
