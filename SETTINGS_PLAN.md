@@ -476,10 +476,13 @@ about presentation rather than about compiling.
 Checkpoints, in order, each ending with `go build ./...`, the unit suite and `nix develop -c task
 lint` green in both repositories:
 
-1. `pkg/setting`'s `Origin`, `Environ`, `Default` and `DefaultFunc`; `profile.Select` and the four
-   `config.json` operations moved out of `pkg/auth/profiles.go`.
-2. `ResolveSession`: the order in 2, the credential unit rule in 3, the store in 4, `Origins()`.
-   `auth.Input` and `pkg/auth/env.go`'s consts go; `blockSource` replaces `providerInput`.
+1. `pkg/setting`'s `Origin`, `Environ`, `Default` and `DefaultFunc`, and the four `config.json`
+   operations moved out of `pkg/auth/profiles.go`. Pure additions and a pure move, so nothing is
+   implemented twice.
+2. `profile.Select` and `ResolveSession` together: the order in 2, the credential unit rule in 3,
+   the store in 4, `Origins()`. `Select` replaces `selectProfile` and `plainProfile` in the same
+   commit that writes it. `auth.Input` and `pkg/auth/env.go`'s consts go; `blockSource` replaces
+   `providerInput`.
 3. The front ends: the two stdin flags, the three sentinels and the prompts in `cmd/auth/login.go`,
    `pkg/tty`'s global, `auth status` and `profile view` over origins, the `strings.TrimSpace` sweep.
 
