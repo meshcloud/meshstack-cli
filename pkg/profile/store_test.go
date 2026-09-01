@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -454,4 +455,50 @@ func fakeJwt(id string) jwt.JWT {
 		panic(err)
 	}
 	return parsed
+}
+
+func TestBothFilesWriteTheirMapsInASortedOrder(t *testing.T) {
+	dir := isolate(t)
+
+	require.NoError(t, SaveConfig(Config{Profiles: map[string]Profile{
+		"zulu": {DefaultWorkspace: "z"}, "alpha": {DefaultWorkspace: "a"}, "mike": {DefaultWorkspace: "m"},
+	}}))
+	config, err := os.ReadFile(filepath.Join(dir, "meshstack", "config.json"))
+	require.NoError(t, err)
+	assert.Less(t, indexOf(t, config, `"alpha"`), indexOf(t, config, `"mike"`))
+	assert.Less(t, indexOf(t, config, `"mike"`), indexOf(t, config, `"zulu"`))
+
+	store, err := NewFileStore("default")
+	require.NoError(t, err)
+	tokens := map[scope.Scope]credential.IssuedToken{
+		meshstack.Unscoped:                {Token: fakeJwt("u")},
+		meshstack.WorkspaceScope("zulu"):  {Token: fakeJwt("z")},
+		meshstack.WorkspaceScope("alpha"): {Token: fakeJwt("a")},
+	}
+	write := func(Credentials) (Credentials, error) {
+		return Credentials{Version: Version, Credential: credential.FromLogin(
+			credential.Login{RefreshToken: "r", AccessTokens: tokens})}, nil
+	}
+	_, err = store.Update(t.Context(), write)
+	require.NoError(t, err)
+	path := filepath.Join(dir, "meshstack", "credentials", "default.json")
+	first, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Less(t, indexOf(t, first, `"c:alpha"`), indexOf(t, first, `"c:zulu"`))
+	assert.Less(t, indexOf(t, first, `"c:zulu"`), indexOf(t, first, `"unscoped"`))
+
+	// A login renews hourly and rewrites the whole file, so an unstable order would show up
+	// as a change on every renewal.
+	_, err = store.Update(t.Context(), write)
+	require.NoError(t, err)
+	second, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, string(first), string(second))
+}
+
+func indexOf(t *testing.T, data []byte, needle string) int {
+	t.Helper()
+	i := bytes.Index(data, []byte(needle))
+	require.GreaterOrEqual(t, i, 0, "%s is not in the file", needle)
+	return i
 }
