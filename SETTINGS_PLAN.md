@@ -48,6 +48,7 @@ type Selection struct {
     Name     string
     Entry    Profile           // zero when Exists is false
     Exists   bool
+    Named    bool              // a source above config.json asked for it by name
     Endpoint string            // what a source above the profile named, empty when none did
     Origins  []setting.Origin
 }
@@ -66,12 +67,21 @@ exception is now derived rather than flagged: `ResolveSession` raises both error
 `opts.Store` is nil, and tolerates both when it is not. Handing a store in says this command
 writes the profile, and a profile a command is about to write need not exist yet.
 
+The two are different messages for the same `Exists`, which is what `Named` is for: a name a
+source asked for and did not get is a typo, while a derived name that does not exist is a machine
+nobody has configured. **"No profile for this endpoint" is raised after the credential walk**, not
+before it, because that failure is really "the credential would have to come from a profile, and
+there is none" — a run whose credential arrived from above needs no profile at all, which is the
+case an unmatched endpoint plus `MESHSTACK_API_KEY` lands in.
+
 `pkg/profile` also absorbs the four `config.json` operations that sit in `pkg/auth/profiles.go`
 today, because all four only read and write that one file: `List`, `Ensure`, `SetEndpoint` and
 `SetWorkspace`, plus `DefaultName` and `DescribeConfigPath`. `pkg/auth/profiles.go` disappears.
 `List` returns `[]Summary`, because the struct and the function cannot both be `Known` and neither
-name wants to be the adjective. `DescribeConfigPath` is exported only until `selectProfile`, its
-three remaining callers, becomes `Select` here.
+name wants to be the adjective. **`DescribeConfigPath` stays exported.** The plan expected
+`selectProfile` to be its last cross-package caller, but the "unknown profile" message it appears
+in moved to `ResolveSession` rather than into `Select` — `Exists` is reported, not judged — so
+`pkg/auth` still names the file.
 `pkg/profile` imports `pkg/meshstack` for `SameEndpoint` and `ParseEndpoint`. There is no cycle:
 `pkg/meshstack` reaches only `pkg/oidc/scope`, `pkg/diags`, `client/types/xurl` and `pkg/setting`,
 and `pkg/setting` reaches only `pkg/diags`.
@@ -84,6 +94,7 @@ type ResolveSessionOptions struct {
     Settings     setting.Source
     DemandMethod credential.Method
     Store        profile.Store   // nil: chosen from the credential's winning source, per 4
+    Defaults     setting.Source  // below the environment; only --dev-local brings any, per 7
 }
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, error)
@@ -92,6 +103,14 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, 
 An options struct rather than bare arguments, so a later addition — a clock, a second source — is a
 new field instead of a signature change both front ends have to follow. A nil `Settings` is a front
 end contributing nothing explicit, not an error.
+
+`Defaults` is the one addition implementing it required, and only `--dev-local` sets it. Its two
+defaults sit at different tiers — the reserved profile name above `currentProfile`, the local
+endpoint below the selected profile's own — so neither `setting.Default` at the bottom of the
+prefix nor an injection at the explicit tier expresses both. `ResolveForDevLocalLogin` therefore
+calls `profile.Select` first, decides its endpoint default only after finding that the selected
+profile names none, and hands the pair down as one source that answers those two keys and no
+others.
 
 `profile.ConfigDir` does not appear in either signature. Neither front end offers a config-directory
 flag or block attribute, so its ranked list is the environment and the built-in default, and
@@ -279,9 +298,11 @@ structural and load-bearing.**
 choosing the store, which is the rule above, and telling `mintManual` to re-read the token from the
 front end, which eager resolution has already done.
 
-**The profile is two sources, not one, and each opens its file on first use.** A config source over
-`config.json` answers step 1; a credentials source over `credentials/<profile>.json` is consulted
-only in step 3. Without the split, a run whose credential came wholly from the environment would
+**The profile is two places, not one, and each opens its file on first use.** `config.json`
+answers step 1; `credentials/<profile>.json` is consulted only in step 3. Neither is a
+`setting.Source`: the credentials file has to hand over a `Login`, and a `SecretCommand` that must
+stay unresolved, neither of which fits `Lookup`'s one string — so step 3 reads it as a
+`profile.Credentials` behind a memoised accessor instead. Without the split, a run whose credential came wholly from the environment would
 open a credentials file it never reads — and `resolve.go:183`'s "this credential belongs to a
 different meshStack" check sits behind exactly that short-circuit, so a machine whose default
 profile points at another meshStack would start failing for no reason.
@@ -440,6 +461,12 @@ failed and there is no `Session` to ask.
 prompt: `pkg/auth/login.go:145` uses it so a browser login fails at once instead of waiting ten
 minutes for a callback nobody will complete. A terminal check cannot stand in — `meshstack login |
 tee` and an agent driving the CLI both reach a person through stderr.
+
+`pkg/auth` therefore composes nothing: both its readers are `!noInput` alone. That widens the
+degrade-to-memory case at `token.go:126` by one step, from "interactive" to "nobody said not to
+wait", so a `meshstack login` driven through a pipe now fails on an unwritable credentials file
+rather than warning. That is the right answer for the command the check exists for — a login that
+cannot save has done pointless work — and a CI job still sets `MESHSTACK_NO_INPUT`.
 
 ## 9. Messages: the static half in the domain package, the specifics in `pkg/auth`
 

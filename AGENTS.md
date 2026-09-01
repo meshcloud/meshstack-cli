@@ -57,7 +57,7 @@ the flag back.
 | `pkg/` | Logic that does not need a CLI process, and that the Terraform provider can import. |
 | `client/` | The meshStack API client. Path-identical to the provider's former `client/`. |
 | `internal/http` | The process's one HTTP client, and the request building both front ends share. |
-| `internal/cli` | The CLI's half of `auth.Input`: flags, stdin, a terminal prompt, the browser login. |
+| `internal/cli` | The CLI's settings source over its flags, plus stdin, a terminal prompt and the browser login. |
 
 <rules id="command-tree">
 In `cmd/`, **the package name is the subcommand and the file name is the leaf command**:
@@ -178,11 +178,12 @@ The comment above that `packages` output shows the two lines a consumer needs.
 an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE`,
 `MESHSTACK_NO_INPUT` and `MESHSTACK_CONFIG_DIR`.
 
-**No `MESHSTACK_*` name is exported.** Each is a private const in the package that consults it —
-`pkg/auth`, `pkg/profile`, `pkg/meshstack`, `pkg/tty` — and every message that has to mention one is
-produced there too, so neither front end assembles a sentence out of a constant it imported. A front
-end that needs the *value* of a secret variable gets it through `auth.SecretFromEnv` or
-`auth.TokenFromEnv`. The Taskfile reads a git-ignored `.env` for local runs.
+**Each one is declared once, in the domain package it belongs to**, as a `setting.Value` whose
+`EnvKey` is both the variable name and the setting's identity. `pkg/setting` resolves it from a
+ranked list of `setting.Source`, and each front end contributes exactly one source over its own
+flags or block attributes. **No front end assembles a sentence out of an imported name**: every
+message that has to mention a variable is produced in the package that owns the declaration. The
+Taskfile reads a git-ignored `.env` for local runs.
 
 `MESHSTACK_SKIP_VERSION_CHECK=true` skips the minimum backend version check in `client/client.go`.
 
