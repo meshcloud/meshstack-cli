@@ -1,175 +1,167 @@
-# Plan — domain-driven settings, and one way to resolve them
+# Plan — resolving a session from settings
 
 One way to declare a configuration item, one way to resolve it, shared by the meshStack CLI and the
 Terraform provider. Each item lives in the domain package it belongs to, carries its own
 `MESHSTACK_*` name and its own help, and reports where its value came from.
 
-Several decisions below contradict comments in the current code. Those are marked, because the
-comment is what will otherwise make a reader think the change is a mistake.
+This is the specification of what is left to build. It states the design, not how the branch got
+here, so a decision it records is a decision to hold rather than one to revisit. **If implementing a
+step shows a decision is wrong, revisit the decision and edit this file** — there is no second
+document that tracks where the plan and the code disagree.
 
-## 1. A setting is a declaration beside the domain, not a domain type
+## What is already there
 
-`pkg/setting` holds the mechanism and nothing else:
+- **`pkg/setting`** — the mechanism. `Value[T]{EnvKey, Short, Long, Parse}` with `Help()`, the
+  `Source` interface (`Lookup(key) (string, bool)` and `Describe(key) string`), and
+  `Resolve[T](v, sources...) (T, Source, error)`, which walks the sources it is handed and stops at
+  the first non-empty answer. It knows nothing about which sources those are.
+- **Eight declarations**, in the domain packages, with no `Setting` suffix: `meshstack.Endpoint`,
+  `meshstack.Workspace`, `profile.Name`, `profile.ConfigDir`, `credential.ApiKeyId`,
+  `credential.ApiSecret`, `credential.ApiToken`, `tty.NoInput`. `declarations_test.go` enumerates
+  them and pins that each has a one-line `Short`, a non-nil `Parse` and a unique `MESHSTACK_*` key.
+- **`pkg/credential`** — `Method` with `MethodLogin`, `MethodApiKey` and `MethodManual`; the
+  `Credential` sum with `Current` as the selection and three pointers as the set; the three
+  constructors; `Validate`; and each method's own token cache, so no cached token can be handed out
+  by a method that did not mint it.
+- **`pkg/meshstack`** — `ParseEndpoint`, `SameEndpoint`, `WorkspaceScope`, `Unscoped`, `ClaimKey`,
+  `ErrMissing`.
+- **`pkg/profile`** — `config.json` and `credentials/<profile>.json`, both `encoding/json/v2`, both
+  written atomically and in a deterministic order. `ConfigDir` is the one path setting; the
+  credentials directory is `<ConfigDir>/credentials` by convention.
+
+Two settings are not settings and stay as they are. `MESHSTACK_NO_BROWSER` is a private const in
+`pkg/oidc/browser`, the only package allowed to read it, and means something `MESHSTACK_NO_INPUT`
+does not — "do not launch a browser, but still print the URL and wait, because a person is coming".
+`MESHSTACK_SKIP_VERSION_CHECK` is read in `client/mesh_info.go`, and `.golangci.yml` forbids `client/`
+to import `pkg/setting` at all.
+
+## 1. Which package resolves what
+
+Two packages resolve, and the split is by domain rather than by convenience.
+
+**`pkg/profile` answers "which profile, and what does `config.json` say about it".** That needs no
+credential and no token, so it does not belong in `pkg/auth`.
 
 ```go
-type Value[T any] struct {
-    EnvKey string          // also the setting's identity — see 9
-    Short  string          // plain text, one line, for a cobra flag
-    Long   string          // markdown, for the provider schema; falls back to Short
-    Parse  func(string) (T, error)
+// Selection is which profile this run uses, and what config.json says about it.
+type Selection struct {
+    Name     string
+    Entry    Profile           // zero when Exists is false
+    Exists   bool
+    Endpoint string            // what a source above the profile named, empty when none did
+    Origins  []setting.Origin
 }
+
+func Select(sources ...setting.Source) (Selection, error)
 ```
 
-Generic over the domain type, so the parse step and its message live at the declaration.
+`pkg/profile` also absorbs the four `config.json` operations that sit in `pkg/auth/profiles.go`
+today, because all four only read and write that one file: `Known`, `Ensure`, `SetEndpoint` and
+`SetWorkspace`, plus `DefaultName` and `describeConfigPath`. `pkg/auth/profiles.go` disappears.
+`pkg/profile` gains an import of `pkg/meshstack` for `SameEndpoint` and `ParseEndpoint`; there is no
+cycle, because `pkg/meshstack` imports only `pkg/oidc/scope`, `pkg/diags` and `client/types/xurl`.
 
-**Four fields, and neither a source list nor a default**, although 3 gives every setting both. A
-tier list on the declaration would teach `pkg/setting` the word "profile", and 6 puts that knowledge
-in `pkg/auth` alone. Both therefore live at the resolution — see 3.
-
-Declarations live in the domain packages, **without a `Setting` suffix**:
-
-```
-meshstack.Endpoint    meshstack.Workspace    profile.Name
-credential.ApiKeyId   credential.ApiSecret   credential.ApiToken
-tty.NoInput           profile.ConfigFile     profile.CredentialsDir
-```
-
-**`MESHSTACK_NO_BROWSER` is not among them.** `pkg/oidc/browser/browser.go:36` declares it as a
-private const and reads it with `os.Getenv`; it never reaches `ResolveSession`, and 12 keeps it that
-way. It stays an environment variable and gains no flag: `acceptance/acceptance_test.go:141` sets it
-to run the suite, and `browser.go:31` records why it is not the same statement as
-`MESHSTACK_NO_INPUT` — "do not launch a browser, but still print the URL and wait, because a person
-is coming". A headless box reached over SSH is that case, and an export beats retyping a flag.
-
-**They do not move into `pkg/setting`, although one package would read better at call sites.**
-`meshstack.ErrMissing` names `MESHSTACK_WORKSPACE` in its text, so `pkg/meshstack` would import
-`pkg/setting`; the endpoint declaration needs `meshstack.ParseEndpoint`. That is a cycle, and the
-same shape repeats for `profile` and `credential`.
-
-This argument depends on 15 keeping `ErrMissing` in the domain package. Move every message into
-`pkg/auth` and the cycle goes away, leaving only cohesion to argue from.
-
-The package is `setting`, not `input` — meshStack's own vocabulary has building block inputs — and
-not `config`, which here means the config file.
-
-## 2. The mechanism declares and reads. It never decides.
+**`pkg/auth` answers "who am I, against what, in which workspace".** It calls `profile.Select` and
+owns everything downstream of it.
 
 ```go
-type Source interface {
-    Lookup(key string) (string, bool)
-    Describe(key string) string   // "--endpoint", "MESHSTACK_ENDPOINT", "profile dev"
+type ResolveSessionOptions struct {
+    Settings     setting.Source
+    DemandMethod credential.Method
+    Store        profile.Store   // nil: chosen from the credential's winning source, per 4
 }
+
+func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, error)
 ```
 
-**`Describe` is what keeps an origin from drifting from its value.** `setting.Resolve` returns the
-winning source alongside the value, and the source that answered is the one that says where it came
-from — see 9. It takes the key, because a flag source names the flag it matched and the environment
-source names the variable, neither of which is one string for the whole source. The name follows
-`env.go:57`, which already has a `describe` doing this job.
+An options struct rather than bare arguments, so a later addition — a clock, a second source — is a
+new field instead of a signature change both front ends have to follow. A nil `Settings` is a front
+end contributing nothing explicit, not an error.
 
-It also keeps 3's boundary: `pkg/setting` learns that a source can describe itself, not that profiles
-exist — which is why an origin cannot be a typed `Kind` enum in this package.
+`profile.ConfigDir` does not appear in either signature. Neither front end offers a config-directory
+flag or block attribute, so its ranked list is the environment and the built-in default, and
+`pkg/profile` resolves it where it opens its files. Threading a path through `LoadConfig`,
+`NewFileStore` and `CredentialsPath` would buy nothing.
 
-**Text, not `T`, although the settings are generic.** The environment, argv and a Terraform
-`types.String` can carry nothing else, and the profile file hands back `entry.Endpoint.String()`
-losslessly because `encoding.TextMarshaler` is the format seam anyway. Nothing ever builds a
-heterogeneous list of settings — each is resolved by name — so no non-generic `resolvable` interface
-is needed.
+### `pkg/setting` gains three pieces of mechanism
 
-**Two functions, and the plan means different ones in different places.** Naming them apart now:
+`Origin` moves here from the sketch in `pkg/auth`, because both resolving packages now produce
+origins and both need the type. It is mechanism: a key, and what the winning source said about it.
 
 ```go
-func setting.Resolve[T any](v Value[T], sources ...Source) (T, Source, error)   // one setting
-func auth.ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, error)
+type Origin struct {
+    Key    string   // the setting's EnvKey, which is its identity
+    Source string   // "--endpoint", "MESHSTACK_ENDPOINT", "profile dev", "built-in default"
+}
+
+func Environ() Source                          // Lookup is os.Getenv, Describe is the key
+func Default(value string) Source              // the bottom of a ranked list
+func DefaultFunc(f func() (string, bool)) Source
 ```
 
-`setting.Resolve` walks the sources it is handed and knows nothing about which they are.
-`auth.ResolveSession` owns the per-setting ranked lists from 3, the credential rule from 4 and the
-ordering from 6, and calls `setting.Resolve` once per setting. Where the sections below say
-"`Resolve`" without a package, they mean `auth.ResolveSession`.
+`Default` and `DefaultFunc` answer whatever key they are asked, because a default source is only
+ever placed in one setting's list. `DefaultFunc` exists for a default that can fail — a directory
+derived from `os.UserConfigDir` — where the failure is `("", false)` and the hand-written message
+from 6 says what is missing.
 
-## 3. One ranked source list per setting
+## 2. The order, written out
 
 ```
 explicit → environment → profile → built-in default
 ```
 
-`Resolve` walks the list in order and stops at the first hit, so a source below the winner is never
-consulted. Laziness therefore needs no mechanism of its own.
+`ResolveSession` walks each setting's list in order and stops at the first hit, so a source below
+the winner is never consulted. The list differs per setting, and it is named at the resolution
+rather than on the declaration — a tier list on a `setting.Value` would teach `pkg/setting` the word
+"profile".
 
-**There is no interactive tier, because a prompt is not a source.** `Resolve` reports that it found
-no value, and `cmd/auth/login.go` — the one command allowed to ask — prompts and calls `Resolve`
-again with the answer as an explicit source. 6 already blesses that pattern for the endpoint. Four
-settings can prompt, all four inside `meshstack login`: the endpoint, `credential.ApiKeyId`,
-`credential.ApiSecret` and `meshstack.Workspace`.
+| # | resolve | from |
+|---|---|---|
+| 1 | the profile selection, through `profile.Select` | `Endpoint` from explicit → environment; then `Name` from explicit → environment → the only profile matching that endpoint → `currentProfile` → `"default"` |
+| 2 | `Endpoint`, second instalment | the selected profile, only when 1 found none |
+| 3 | the credential, as one unit per 3 | explicit → environment → the profile's credentials file |
+| 4 | `Workspace` | explicit → environment → the profile's `defaultWorkspace`; no default |
+| 5 | `NoInput` | explicit → environment → `false` |
 
-**The workspace prompt is a different animal, and it is why the prompt cannot be a source.** It
-offers a list fetched from meshStack, and `pkg/auth/workspaces.go:16` already builds that list from
-an *unscoped* token: with no `c:` scope the principal holds only the list rights, which is exactly
-what a user has before picking a workspace. So the prompt needs a finished `Session` — a resolved
-endpoint, a resolved credential and a network call. It cannot run inside the resolution that produces
-that session, and it does not: `Session.Workspaces` runs after `ResolveSession` returns.
+**Steps 1 and 2 are one list in two instalments, not two resolutions.** `Endpoint`'s list is
+explicit → environment → profile throughout. Step 1 evaluates the prefix, because the profile is
+what it is being used to pick; step 2 evaluates the one remaining source, and only when the prefix
+came back empty. Re-reading the prefix could not change the answer, which is why step 2 is a single
+lookup rather than a second walk.
 
-This also makes "the provider never prompts" true because the provider never reaches the prompting
-code, which is a stronger guarantee than the empty slice 10 used to hand it.
+`Endpoint` has no built-in default, so a missing endpoint after step 2 is an error.
 
-**What it costs:** `MESHSTACK_API_KEY=k` exported, no secret anywhere, at a terminal, running
-`meshstack buildingblock list`. `internal/cli/secret.go` prompts today. It will error instead, naming
-`meshstack login --api-key=k`. Accepted — a command that is not `login` should not open a login
-dialogue.
+**There is no interactive tier, because a prompt is not a source.** `ResolveSession` reports that it
+found no value, and `cmd/auth/login.go` — the one command allowed to ask — prompts and resolves
+again with the answer in its own explicit source. See 5 for how it recognises which failure it may
+answer.
 
-**The list differs per setting, and it is named at the resolution rather than on the setting.**
-`tty.NoInput` takes a flag and the environment but no profile — "never prompt" describes this
-invocation, not this installation. `credential.ApiSecret`'s explicit source in the CLI is stdin
-behind a flag, because a secret is never a flag *value*.
+**The workspace prompt is why the prompt cannot be a source.** It offers a list fetched from
+meshStack, built from an *unscoped* token: with no `c:` scope the principal holds only the list
+rights, which is exactly what a user has before picking a workspace. So it needs a finished
+`Session` — a resolved endpoint, a resolved credential and a network call — and it cannot run inside
+the resolution that produces one. `Session.Workspaces` runs after `ResolveSession` returns.
 
-**`tty.NoInput` earns its place, though not for the reason its name suggests.** Its main use is not
-the prompt: `tty.go:42`'s `MayInvolveAPerson()` is deliberately weaker than a terminal check, and
-`pkg/auth/login.go:145` uses it so a browser login fails at once instead of waiting ten minutes for a
-callback nobody will complete. A terminal check cannot stand in — `meshstack login | tee` and an
-agent driving the CLI both reach a person through stderr. Its second use is `token.go:126`, where a
-credentials file that cannot be written is fatal when interactive and silent when not.
+**A missing workspace is not an error here.** Step 4 resolves and never demands.
+`Session.RequireWorkspace` stays a post-resolution call, made by `provider.go` and by the commands
+that act on meshObjects, and deliberately not by `meshstack workspace list` or `meshstack auth
+status` — the two commands the error message itself tells the user to run. Folding the check into
+`ResolveSession` would make the escape hatch the message names unreachable.
 
-`auth.ResolveSession` holds one ranked `[]Source` per setting, and that table is the only place a
-ranking is visible. **The price is that those three facts are a convention inside one function, not
-data a test can check across every declaration.** The alternative buys that test with the import
-cycle in 1.
+**Delete the `strings.TrimSpace` guards around the workspace.** They exist because
+`workspace.Name.Empty()` trimmed and a plain `== ""` would not. Once every workspace reaches a call
+site through step 4, it was parsed with `setting.Text`, which trims, so `== ""` is the same check
+the method was.
 
-**The built-in default is the lowest-ranked source, not a field on the setting.** The list above
-already ends with it, and text carries it without loss: a default path, or `false`. A field could not
-express `profile.ConfigFile`, whose default calls `os.UserHomeDir()` and can fail. As a `Source` that
-failure is `("", false)`, and the hand-written message from 9 says what is missing.
-
-### Stdin is opt-in, through `--api-secret-stdin`
-
-Docker, helm, `az acr`, crane and gh all gate stdin behind a flag, and one reason settles it here:
-**with stdin implicit, "was a secret piped?" cannot be answered.** `!IsTerminal(stdin)` is true in
-every CI job, every container without `-t` and every `< /dev/null`. The only way to tell is to read,
-which consumes a line that may belong to the command and blocks forever on an open pipe nobody
-writes to. So implicit stdin can neither outrank the environment nor report that it lost.
-
-Behind a flag it is an explicit source, so it outranks the environment by the ranking above with no
-special case. When `MESHSTACK_API_SECRET` is also exported, one `slog.WarnContext` names it as
-ignored. **Not a hard error**, although docker makes the two-flag case one:
-`gh auth login --with-token` exits 1 when `GH_TOKEN` is set, and that breaks exactly the CI runs
-which export the variable on purpose.
-
-This replaces the order in `internal/cli/secret.go:27`, whose doc comment justifies the environment
-outranking the *prompt* and takes it outranking stdin along for the ride. `readLine` survives
-unchanged, including its reason for reading exactly one line.
-
-The cost is that `printf %s "$secret" | meshstack login --api-key=k` now needs the flag. Per 13 no
-release tag exists, so no script breaks.
-
-## 4. Pairing is the credential invariant
+## 3. A credential resolves as a unit
 
 > **A credential resolves as a unit, in one walk down the ranked sources. The first source carrying
 > an identity defines the credential. Its secret is its own secret slot when it has one; otherwise
 > the first secret offered by a source that carries no identity of its own; otherwise nothing.**
 
-The last clause is the one the earlier wording missed. Without it rows 1 and 4 are the same shape —
-the block supplies the id, the block has no secret, the environment has one — and the table demanded
-opposite answers.
+**This walk is not `setting.Resolve`.** It reads `credential.ApiKeyId`, `ApiSecret` and `ApiToken`
+out of each source by their `EnvKey`, but the pairing is its own code in `pkg/auth`, because
+`setting.Resolve` resolves one value and this rule relates three.
 
 | case | identity from | secret from | why |
 |---|---|---|---|
@@ -179,12 +171,12 @@ opposite answers.
 | block `apikey = "k"`, stale `MESHSTACK_API_KEY=j` + `MESHSTACK_API_SECRET=s` | block | nothing, so this fails | the environment carries a competing id, so its secret is skipped |
 
 **Row 1 is the case to protect, not an edge case.** An id in the provider block, or on `--api-key`,
-with the secret in the environment is the normal non-interactive setup. It must keep working, and an
-acceptance test on both front ends should say so.
+with the secret in the environment is the normal non-interactive setup. An acceptance test on both
+front ends says so.
 
-**The exclusion in row 4 fires against one source and no other.** Only a source that offers an id of
-its own is skipped, and that is the environment — the profile always stores its id beside its secret,
-and a prompt carries neither. So the cost is one `Lookup` and one branch.
+**The exclusion in row 4 fires against one source and no other.** Only a source offering an id of
+its own is skipped, and that is the environment — the profile always stores its id beside its
+secret, and a prompt carries neither. So the cost is one `Lookup` and one branch.
 
 **Row 4 has to explain itself, or it is worse than the 401 it replaces.** The provider says
 approximately:
@@ -200,310 +192,179 @@ belong in the docs**, next to the row 1 setup they qualify.
 
 ### A token is an identity
 
-**`MESHSTACK_API_TOKEN` counts as an identity in the walk**, and so does a profile's `Manual`. A token
-names who you are as much as a key id does. It matters most for the exclusion clause: without it, a
-source holding a token would sit quietly and still be allowed to hand its secret to another source's
-`apikey`.
+`MESHSTACK_API_TOKEN` counts as an identity in the walk, and so does a profile's `Manual`. It
+matters most for the exclusion clause: without it, a source holding a token would sit quietly and
+still hand its secret to another source's `apikey`. **A token needs no secret**, so the second half
+of the unit rule does not run for it.
 
-**A token needs no secret**, so the second half of the unit rule does not run for it.
+**One source carrying both a token and a key id is an error**, not a precedence contest. They are
+two different methods rather than two spellings of one thing, so choosing silently hands the user an
+identity they did not pick. The message follows row 4's shape, naming both and saying to remove one.
+Only the environment and the provider block can hold both — the CLI has no `--api-token` flag,
+because a token is a secret and 5 keeps secrets out of flag values.
 
-**One source carrying both a token and a key id is an error**, not a precedence contest. They are two
-different methods rather than two spellings of one thing, so choosing silently hands the user an
-identity they did not pick — the failure the behaviour changes below refuse to accept. The message
-follows row 4's shape, naming both and saying to remove one.
+### A demanded method filters every source
 
-The case is narrow: the CLI has no `--api-token` flag, because a token is a secret and 3 keeps
-secrets out of flag values. Only the environment and the provider block can hold both.
+`ResolveSessionOptions.DemandMethod` is not a setting: it has no `MESHSTACK_*` name and supplies no
+value. It says which method the caller insists on, and only `meshstack auth login` and
+`--dev-local` set it.
+
+> **A demanded method filters what every source may offer.** A source that carries a different
+> method's identity is passed over as if it were empty. With none demanded, the first identity wins,
+> and a profile's `Current` decides which of its stored methods that is.
+
+Without it a bare `meshstack login`, which demands `login`, would resolve an exported
+`MESHSTACK_API_KEY` and refuse to open a browser. It is also what makes a bare `--api-key` reuse
+the id already in the profile: the flag demands `apiKey` without supplying an id.
 
 ### Row 3 warns. It does not rewrite the profile.
 
 Row 3 costs the rotation case: the user exports a rotated secret, the profile keeps serving the old
 one, and meshStack answers 401 with nothing said. **The fix is a warning, not a write.**
 
-**Rejected: have the resolution store the environment's secret into the profile.** Three reasons.
+Having the resolution store the environment's secret into the profile is rejected for three reasons.
+**Which secret is newer is not knowable** — a stale `MESHSTACK_API_SECRET` in a shell beside a
+profile logged in an hour ago is at least as common, and overwriting there destroys a working
+credential that unsetting the variable does not bring back. **It makes a read path write**, so every
+command contends for a lock that exists for a rare grant, including each resource in a
+`terraform plan`. And **failing when the update was not possible** turns a cache-write failure into a
+command failure, where a read-only home directory in a container is ordinary today.
 
-- **Which secret is newer is not knowable.** The opposite case is at least as common — a stale
-  `MESHSTACK_API_SECRET` in a shell beside a profile logged in an hour ago. Overwriting there
-  destroys a working credential, and unsetting the variable afterwards does not bring it back. A 401
-  is recoverable; this is not.
-- **It makes a read path write.** `pkg/profile/lock.go:20` puts the lock around a *grant*, which is
-  rare. A write during resolution makes every command contend for it, including each resource in a
-  `terraform plan`.
-- **"Fail if the update was not possible" turns a cache-write failure into a command failure.** A
-  read-only home directory in a container is ordinary and does not stop a working credential today.
-
-The write belongs in `meshstack login`, which already writes and where the user has said to make this
-their credential.
-
-So: keep the profile's paired secret, and when the environment carries a different one, warn.
+So: keep the profile's paired secret, and warn when the environment carries a different one.
 
 > `MESHSTACK_API_SECRET` is set and differs from the secret stored for `dev-key` in profile `dev`.
 > The stored one is being used. To replace it, run
 > `meshstack login --api-key=dev-key --api-secret-stdin`.
 
-Skip the comparison when the profile stores a `SecretCommand` rather than a literal — comparing would
-mean running that command during a resolution.
+Skip the comparison when the profile stores a `SecretCommand` rather than a literal, because
+comparing would mean running that command during a resolution.
 
-**This contradicts `token.go:335-343` and its comment**, which says the environment sits above the
-profile for the secret. That is a bug: with `MESHSTACK_API_SECRET` exported and a profile holding a
+This contradicts `token.go:335-343` and its comment, which puts the environment above the profile
+for the secret. That is a bug: with `MESHSTACK_API_SECRET` exported and a profile holding a
 different key, the call becomes `apiLogin(dev-key, ci-secret)` and meshStack answers 401. The
 `!stored` half of that condition is right and survives; the `env(envApiSecret) != ""` half goes.
 
-It also removes `wholeCredential` and the `forLogin` bypass in `resolve`. **`ResolveForLogin` exists
-only because "one source supplies the whole credential" was wrong for `auth login`** — the unit rule
-above needs no exception. What `auth login` genuinely needs instead is `DemandMethod`, per 14. Check
-both callers before deleting: `cmd/auth/login.go` and `pkg/auth/devlocal.go:33`.
+## 4. The store
 
-And it removes the reason for the comment at `auth_input.go:42` ("The fallback is not a second
-precedence rule"). The provider hands over its `apisecret` attribute and nothing else;
-`auth.SecretFromEnv` and `auth.TokenFromEnv` stop being exported.
+`Session` mints and caches through exactly one store, because `degradeToMemory` replaces it and a
+second one would silently stop being replaced.
 
-## 5. `pkg/credential`, top level, a set with a selection
+**A command that configures a profile hands its store in.** `profile.NewFileStore(name)` is
+`pkg/profile`'s entry point, and `cmd/auth/login.go`, `cmd/auth/logout.go` and `--dev-local` call it
+themselves after `profile.Select`. That is what makes `meshstack login --api-key=k` write the secret
+to disk while an ordinary command with the same environment does not.
 
-Not under `profile` — a credential from the environment touches no file. Not under `auth` —
-`pkg/profile` must import it, and reaching into another package's subtree is the wart that forced
-`pkg/auth/method` to exist. It absorbs that package.
+**Otherwise `ResolveSession` chooses, and the rule is one line:** the store is the profile's
+credentials file when the credential came from it, and a memory store when it came from anywhere
+above. A CI job and a building block run therefore need no files at all, and an ephemeral secret
+from HCL, the environment or a prompt lands in a store that cannot write. **That guarantee is
+structural and load-bearing.**
+
+`Session.whole` disappears rather than being replaced. It exists for two jobs and neither survives:
+choosing the store, which is the rule above, and telling `mintManual` to re-read the token from the
+front end, which eager resolution has already done.
+
+**The profile is two sources, not one, and each opens its file on first use.** A config source over
+`config.json` answers step 1; a credentials source over `credentials/<profile>.json` is consulted
+only in step 3. Without the split, a run whose credential came wholly from the environment would
+open a credentials file it never reads — and `resolve.go:183`'s "this credential belongs to a
+different meshStack" check sits behind exactly that short-circuit, so a machine whose default
+profile points at another meshStack would start failing for no reason.
+
+## 5. Secrets are never a flag value
+
+Two new flags, `--api-secret-stdin` and `--api-token-stdin`, each reading exactly one line.
+
+Docker, helm, `az acr`, crane and gh all gate stdin behind a flag, and one reason settles it here:
+**with stdin implicit, "was a secret piped?" cannot be answered.** `!IsTerminal(stdin)` is true in
+every CI job, every container without `-t` and every `< /dev/null`. The only way to tell is to read,
+which consumes a line that may belong to the command and blocks forever on an open pipe nobody
+writes to. The risk this removes is not a script that pipes a secret on purpose; it is one that
+hands the CLI a non-terminal stdin by accident — the provider's `scratch/headless-login.sh` runs it
+with `</dev/null`, where a `--api-key` today reads an empty secret and gets a silent 401.
+
+Behind a flag it is an explicit source, so it outranks the environment by the ranking in 2 with no
+special case. When `MESHSTACK_API_SECRET` is also exported, one `slog.WarnContext` names it as
+ignored — not a hard error, because `gh auth login --with-token` exits 1 when `GH_TOKEN` is set and
+that breaks exactly the CI runs which export the variable on purpose.
+
+`cmd/` reads stdin once, **before** `ResolveSession`, and contributes the result as a plain string in
+the CLI's own source. A `Source` has neither a context nor an error return, so a read that blocks
+would have nowhere to report itself. `readLine` in `internal/cli/secret.go` survives unchanged,
+including its reason for reading exactly one line. A stored `SecretCommand` stays lazy behind
+`credential.ApiKey.Resolve(ctx)`.
+
+`internal/cli/secret.go`'s `readSecret` goes, and with it the order its doc comment defends. What
+survives is `readLine`, `promptSecret` and `echoOff`, which now serve `meshstack login` alone.
+
+### The three failures a login may answer with a prompt
+
+`meshstack login` prompts and resolves again. To know which failure it may answer, `pkg/auth`
+exports three sentinels, and `errors.Is` is how the command recognises them:
 
 ```go
-type Method string   // "login" | "apiKey" | "manual"
-
-type Credential struct {
-    Current Method  `json:"current,omitzero"`
-    Login   *Login  `json:"login,omitzero"`
-    ApiKey  *ApiKey `json:"apiKey,omitzero"`
-    Manual  *Manual `json:"manual,omitzero"`
-}
-
-type ApiKey struct {
-    Id            string      `json:"clientId"`
-    Secret        string      `json:"clientSecret,omitzero"`
-    SecretCommand []string    `json:"clientSecretCommand,omitzero"`
-    AccessToken   IssuedToken `json:"accessToken,omitzero"`
-}
+var (
+    ErrNoEndpoint     = errors.New("no meshStack endpoint")
+    ErrNoApiSecret    = errors.New("no API key secret")
+    ErrNoApiToken     = errors.New("no meshStack API token")
+)
 ```
 
-`pkg/profile` marshals this directly — no second data model.
+Every other command reports the error as it came. That is the cost 2 accepts:
+`MESHSTACK_API_KEY=k` exported, no secret anywhere, at a terminal, running
+`meshstack buildingblock list` now errors instead of prompting, naming
+`meshstack login --api-key=k`. A command that is not `login` should not open a login dialogue.
 
-### The token cache belongs to the method that minted it
+The sentinels also delete `askForEndpoint`'s two guesses. It no longer infers which failure just
+happened, and it no longer keeps its own copy of profile selection at `cmd/auth/login.go:200-206` —
+which is stale anyway, since it omits `MESHSTACK_PROFILE` and the endpoint match, so
+`MESHSTACK_PROFILE=staging meshstack login` prompts about the wrong profile. It calls
+`profile.Select` like everything else.
 
-`credentials.go:26` puts one `AccessTokens map[scope.Scope]IssuedToken` on the whole credential. That
-cannot survive this section's own decision: a profile holding a login **and** an API key would mix
-tokens from two methods in one key space, so switching `Current` could hand out a token the API key
-never minted. Today `resolve.go:45` guards that at runtime with `current`, "the method every cached
-token belongs to", read under a mutex — a guard that exists only because the file shape cannot say
-who a cached token belongs to.
-
-So the cache goes on the method, and **only `Login` needs a map**:
-
-```go
-type Login  struct { …; AccessTokens map[scope.Scope]IssuedToken `json:"accessTokens,omitzero"` }
-type ApiKey struct { …; AccessToken  IssuedToken                 `json:"accessToken,omitzero"`  }
-type Manual struct { …; AccessToken  IssuedToken                 `json:"accessToken,omitzero"`  }
-```
-
-`token.go:83` already states why: a browser login mints a user access token bound to one workspace,
-so it needs one token per `c:` scope plus the unscoped one that `Session.Workspaces` uses. "An API
-key or a pasted token carries whatever workspace its issuer put in it, and nothing re-scopes one", so
-`Session.Scope()` returns `workspace.Unscoped` for both. A single field says that; a one-entry map
-only implies it.
-
-The single token *is* the unscoped token — the field name carries it and no scope key is written.
-Making the file uniform instead, with `{"accessToken": {"": …}}`, would need a custom marshaller to
-render one token as a one-entry map, which is the opposite of the simplification.
-
-Mixing is now impossible rather than guarded, so **check in phase 3 whether `resolve.go:45`'s
-`current` is still needed as a cache guard.** `store.go:121` and `store.go:179` prune expired tokens
-and now walk whichever of the three shapes is present.
-
-**It holds more than one credential at a time**, so that `meshstack login` switches back from an API
-key without asking for the id again. `Current` is the selection; the pointers are the set.
-**Presence is not selection**: always switch on `Current`, never on a nil check.
-`if c.Login != nil { return ErrMissing }` would wrongly demand a workspace from a profile minting
-with its API key.
-
-**One type for the file and for the resolution, although they are different shapes.** A credential
-resolved from the environment, a flag or a provider block is exactly one method, so it carries two
-nil pointers and only `Current` means anything. A closed sum — an interface with a marker method —
-would make "presence is not selection" impossible to get wrong instead of a rule to remember, and it
-is still not worth two conversions and turning six branches into type switches.
-
-The rule is held up where holding it is cheap:
-
-- **Constructors, so that no caller assembles the struct.** `credential.FromLogin`,
-  `credential.FromApiKey` and `credential.FromManual` each set `Current` and its pointer together.
-- **One invariant check, called by the constructors and after unmarshalling:** `Current` is
-  non-empty, and the pointer it names is non-nil. A hand-edited profile file then fails with a
-  message rather than resolving to a credential nobody selected.
-- A test over all three methods that the check rejects every mismatched pair.
-
-**Minting stays in `pkg/auth`**, with one three-arm switch. `Mint` on the type would pull
-`internal/http` and `pkg/oidc` — and through it the whole API client — into `pkg/profile`, which
-reads and writes two files.
-
-**No behaviour methods on the type**, although they look natural. Every branch on the method already
-lives in `pkg/auth` (six) or `cmd/` (two, both presentation); `pkg/profile` branches zero times. Only
-`ApiKey.Resolve(ctx)` and `Method.Description()` stay — they are about the shape, not about which
-method is current.
-
-An ephemeral secret from HCL, the environment or a prompt lands in the same `Secret` field that gets
-marshalled. It stays out of the file because such a credential gets a memory store, which cannot
-write. **That guarantee is structural and load-bearing** — check it before touching the store split.
-
-## 6. Sources may require settings
-
-`Endpoint` resolves from the profile; `profile.Name` resolves partly from an endpoint match.
-
-> **A source may itself require settings. Those settings resolve from the sources ranked above it,
-> and never from the source being built.**
-
-Two properties this leans on, both for the package doc:
-
-- **Adding a lower-ranked source can never change an already-resolved value.** This is what makes
-  resolving the endpoint twice a technique rather than a bug.
-- **A prompt never happens inside a resolution.** Per 3 it cannot: `cmd/auth/login.go` prompts for an
-  endpoint *before* re-resolving and feeds it in as explicit. That is what keeps a source that is
-  still being built from asking a question about itself.
-
-The **ordering** lives in `auth.ResolveSession`. `pkg/setting` never learns that profiles exist.
-
-### The order, written out
-
-Three of these passes deliberately use a shorter list than the setting's full one, so the sequence
-has to be explicit rather than left to the prose above.
-
-| # | resolve | from |
-|---|---|---|
-| 1 | `profile.ConfigFile`, `profile.CredentialsDir` | explicit → environment → default |
-| 2 | `Endpoint`, first instalment | explicit → environment |
-| 3 | `profile.Name` | explicit → environment → endpoint match on (2) → `"default"` |
-| 4 | the profile source itself | read with (1) and (3) |
-| 5 | `Endpoint`, second instalment | the profile, but only when (2) found nothing |
-| 6 | the credential, as one unit per 4 | explicit → environment → profile, filtered by `DemandMethod` per 14 |
-| 7 | `Workspace` | explicit → environment → profile; no default |
-| 8 | `tty.NoInput` | explicit → environment → `false` |
-
-**A missing workspace is not always an error.** It is needed only when the credential method is
-`login`, because a meshStack user access token is bound to one workspace while an API key carries its
-own — `provider.go:60` already documents that. When it is needed and missing:
-
-- `meshstack login` mints the unscoped token, calls `Session.Workspaces`, and prompts from the list.
-  This happens after `ResolveSession` returns, per 3, and it is what the CLI does today.
-- Every other command, and the provider, error and name the command that lists the workspaces.
-
-The rename in 7 carries `workspace.Unscoped` to `meshstack.Unscoped`, and dropping `workspace.Name`
-per 8 makes `Session.Workspaces` return `[]string`.
-
-Step 1 comes first because nothing can read a profile before the paths to it exist. Step 2 drops the
-profile tier because the profile is what it is being used to pick, and step 3 skips the match source
-when step 2 found nothing.
-
-**Steps 2 and 5 are one list evaluated in two instalments, not two resolutions.** `Endpoint`'s list
-is explicit → environment → profile throughout; step 2 evaluates the prefix that is available, and
-step 5 evaluates the one remaining source only when the prefix came back empty. Re-reading explicit
-and environment in step 5 could not change the answer — they are the same sources that already said
-nothing — so the property "adding a lower-ranked source can never change an already-resolved value"
-is not a claim to check here, it is why the second instalment is a single lookup.
-
-`Endpoint` has no built-in default, so a missing endpoint after step 5 is an error.
-
-This deletes the copy of profile selection at `cmd/auth/login.go:200-206`, which `askForEndpoint`
-uses to guess which profile resolution would pick — and which is already stale: it omits
-`MESHSTACK_PROFILE` and the endpoint match, so `MESHSTACK_PROFILE=staging meshstack login` prompts
-about the wrong profile.
-
-## 7. `pkg/meshstack` holds names, not objects
-
-`pkg/workspace` renamed, and it gains `parseEndpoint`, `sameEndpoint` and `canonicalEndpoint` from
-`pkg/auth/env.go` — facts about an endpoint, not about authentication.
-
-**It does not wrap `client.MeshWorkspace`.** That type carries `tfsdk:` tags and is the provider's
-state model, so embedding it produces a second workspace type the provider cannot use. And `client/`
-may not import `pkg/`, so a `Name()` accessor there could not return a typed name.
-`meshstack.Workspace(ws.Metadata.Name)` at the call site is fine.
-
-## 8. Named types only where they are a shape or a key
-
-**Dropped, against the domain-driven instinct:** `workspace.Name`, and `profile.Name` as a type.
-Plain `string` matches `client.MeshWorkspaceMetadata.Name`, cobra flag targets and
-`types.String.ValueString()` with no cast at any boundary, and the type prevented no confusion those
-boundaries did not already require an explicit conversion for.
-
-**Kept:** `xurl.URL` and `jwt.JWT` (parsed forms), `credential.Method` (switched on), and
-**`scope.Scope` above all** — it keys `map[scope.Scope]IssuedToken`, so as a plain string, indexing
-that cache with a workspace name instead of `c:<workspace>` would compile and fail *silently*. Every
-other confusion here produces a wrong message a test catches; this one produces a wrong token.
-
-`Name.Scope()` becomes `meshstack.WorkspaceScope(name string) scope.Scope`.
-
-## 9. Origins and help, but no generated errors
+## 6. Origins, help and warnings
 
 `pkg/auth/resolve.go:41`'s `sources map[string]string` goes. It is assembled at eight call sites and
 is sometimes wrong: a provider block supplying `apikey` with the secret in the environment is
-reported as "environment `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`". After 4 that case is
-ordinary rather than exotic — a credential's id and its secret legitimately come from different
-sources — so the origin has to be per setting and recorded by the function that resolves.
+reported as "environment `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`". After 3 that case is
+ordinary rather than exotic, so the origin has to be per setting and recorded by whichever function
+resolved it.
 
 ```go
-type Origin struct {
-    Key    string  // the setting's EnvKey, its identity per 10
-    Source string  // "--endpoint", "MESHSTACK_ENDPOINT", "profile dev", "built-in default"
-}
-
-func (s *Session) Origins() []Origin   // in resolution order, appended by ResolveSession
+func (s *Session) Origins() []setting.Origin   // in the order of 2, appended as it resolves
 ```
 
-**A slice, not a map**: one writer, and the order is the sequence in 6, which is the order a person
-reading it wants. **`Session` keeps plain value fields.** A struct of `setting.Resolved[T]` would
+**A slice, not a map**: one writer, and the order is the sequence in 2, which is the order a person
+reading it wants. `ResolveSession` appends `Selection.Origins` and then its own. `auth.Status` drops
+`Sources` for `Origins`, `meshstack profile view` prints them in order, and `meshstack auth status`
+looks two up by key. **`Session` keeps plain value fields**: a struct of `setting.Resolved[T]` would
 make every read carry an origin — `workspaces.go:40` would become `s.Endpoint.Value.URL` — to serve
-two commands. `Source` comes from `Source.Describe(key)` per 2, so it cannot drift from the value.
+two commands. Each `Origin.Source` comes from the winning source's own `Describe(key)`, so it cannot
+drift from the value.
 
-Also leaving `Session`: `whole bool`, since 4 removes `wholeCredential`; `Workspace workspace.Name`
-becomes `string` per 8; `current method.Method` becomes `credential.Method`.
+Also leaving `Session`: `whole` per 4, and `sources`.
 
-`pkg/auth` emits one debug record per resolution. **Three warnings, all `slog.WarnContext`**, and
-this list is the whole set:
+**Three warnings, all `slog.WarnContext`**, and this is the whole set:
 
 1. a profile picked by matching the endpoint;
-2. `--api-secret-stdin` given while `MESHSTACK_API_SECRET` is also set (3);
-3. the environment's secret differing from the profile's stored one (4).
+2. `--api-secret-stdin` given while `MESHSTACK_API_SECRET` is also set;
+3. the environment's secret differing from the profile's stored one.
 
 **Accepted, and out of scope to fix:** terraform hides provider warnings unless the user sets
 `TF_LOG` or `TF_LOG_PROVIDER`, so under the provider these three reach almost nobody. Promoting them
 to terraform diagnostics would mean a second warning channel beside `slog`, and commit `8f05dce`
-removed exactly that. One plain `slog` interface is worth more than the reach.
-
-`Short` is required and plain; `Long` is markdown, optional, falls back to `Short`. In practice the
-CLI renders `Short` and the provider renders `Long`, so the alignment is **adjacency, not
-derivation** — they sit in one declaration, so changing a fact puts both in the same diff hunk.
-Shared text states facts about the setting and names the environment variable; a sentence about how
-*this front end* exposes it stays in the front end, with no "block", "flag" or "attribute" vocabulary
-in the shared part. This closes a gap: the provider's schema documents no environment variable today.
+removed exactly that.
 
 **The setting does not generate its own "not configured" error**, although it holds everything
-needed. Only the middle clause of those five messages is mechanical; what makes them good is specific
-— which profile, why a secret is not a flag, which command lists the workspaces you may use. And the
+needed. Only the middle clause of those messages is mechanical; what makes them good is specific —
+which profile, why a secret is not a flag, which command lists the workspaces you may use. And the
 reason to generate them does not hold: `pkg/auth` is not a front end, so it may read
 `meshstack.Endpoint.EnvKey` in a hand-written sentence without breaking the rule that no front end
-assembles a sentence out of an imported constant. `EnvKey` therefore becomes a readable field rather
-than a private const.
+assembles a sentence out of an imported constant.
 
-## 10. The front end contributes one source
+## 7. The front ends' sources
 
-**No `Frontend` interface.** Once 3 moved the prompt into `cmd/auth/login.go`, the interface had one
-method returning one value — which is a struct field:
-
-```go
-type ResolveSessionOptions struct {
-    Settings     setting.Source     // the CLI's flags and --api-secret-stdin, or the provider block
-    DemandMethod credential.Method  // set only by cmd/auth/login.go — see 14
-}
-
-func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, error)
-```
-
-**An options struct rather than a bare `setting.Source` argument**, so that a later addition — a
-second source, a clock, an injected store — is a new field instead of a signature change both front
-ends have to follow. A nil `Settings` is a front end contributing nothing explicit, not an error.
+Each front end contributes exactly one `setting.Source`, and **a setting is identified by its
+`EnvKey`**, so there is no second identifier to invent or hold in step.
 
 ```go
 func (b blockSource) Lookup(key string) (string, bool) {
@@ -521,228 +382,137 @@ func (b blockSource) Lookup(key string) (string, bool) {
 func (blockSource) Describe(key string) string { return "provider block " + attribute(key) }
 ```
 
-**A setting is identified by its `EnvKey`.** The rule that every setting gets a `MESHSTACK_*` name
-earns a second keep: there is no second identifier to invent or hold in step.
+The same `switch` serves `Describe`, which is what makes an origin readable: the CLI's source
+answers `--endpoint` where this one answers `provider block endpoint`.
 
-`Describe` per 2 is what makes an origin readable, and the same `switch` serves it: the CLI's flag
-source answers `--endpoint`, this one answers `provider block endpoint`.
+The provider's `.golangci.yml` needs two more `allow` entries for this to compile at all. Its
+`provider` rule is `list-mode: strict` and names four `meshstack-cli/pkg` packages;
+`blockSource` adds `pkg/setting`, to implement the interface, and `pkg/profile`, for
+`profile.Name.EnvKey`. Widening that list is a deliberate edit, because in both repositories
+`depguard` is the dependency policy rather than an enforcement of one written elsewhere.
 
-"The provider never prompts" is no longer a promise any interface has to carry: per 3 the prompt
-lives in `cmd/auth/login.go`, which the provider does not link.
+**`auth.Input` dissolves entirely**, and with it `auth.Values`, `SecretFromEnv`, `TokenFromEnv`,
+`SecretPrompt`, `TokenPrompt`, `MissingSecretError` and `MissingTokenError`. Its two lazy accessors
+existed so that a command served from a cached token never prompted; with prompting moved to
+`cmd/auth/login.go` and the secret arriving in the source, reading it eagerly costs one `getenv`.
+`providerInput` becomes `blockSource`, and the fallback at `auth_input.go:42` goes with it — the
+block hands over its `apisecret` attribute and nothing else.
 
-## 11. The browser is an argument, not a capability on the interface
+`pkg/auth/env.go` loses `envEndpoint`, `envApiKey`, `envApiSecret`, `envApiToken`, `envProfile`,
+`source`, `describe`, `pick` and `env`. Every message that named one of those consts reads the
+declaration's `EnvKey` instead, which is what 6 permits. `DefaultProfile` moves to `pkg/profile`;
+`DevLocalProfile` stays, because it belongs to `--dev-local` alone.
 
-```go
-func (s *Session) LoginWithBrowser(ctx context.Context, open Browser) (LoginResult, error)
-```
-
-`pkg/auth/login.go:134` is the only place a browser is reached; a dead login errors rather than
-re-opening one. So `Input.Browser()`, `providerInput.Browser()` returning nil, its test, and the nil
-check inside `pkg/auth` all go, along with the comment at `provider.go:122` that explains them.
-
-**A setting cannot replace this**, although `MESHSTACK_NO_BROWSER` makes it look like one. To disable
-a browser at runtime the provider would first have to *link* the browser flow, trading a compile-time
-guarantee that `.golangci.yml` enforces for a boolean somebody could get wrong.
-
-## 12. `pkg/tty` loses its global
+## 8. `pkg/tty` loses its global
 
 ```go
 var disabled atomic.Bool
 func Disable() { disabled.Store(true) }
 ```
 
-**This is a second precedence mechanism beside the one being built**, so it goes. All three callers
-already have an owner for the resolved value: `internal/cli/secret.go` and `cmd/auth/login.go` hold
-the CLI's `Input`, and `pkg/auth/token.go:126` holds the `Session`.
+**This is a second precedence mechanism beside the one being built**, so it goes. `pkg/tty` shrinks
+to the `NoInput` declaration, `IsTerminal(f)` and `NoInputHint()`. `MayInvolveAPerson()` collapses
+into `!noInput`, and dropping `IsInteractive()` leaves each caller to compose
+`!noInput && tty.IsTerminal(os.Stdin)` itself.
 
-`pkg/tty` shrinks to the `NoInput` declaration, `IsTerminal(f)` and `NoInputHint()`.
-`MayInvolveAPerson()` collapses into `!noInput`. Dropping `IsInteractive()` leaves `token.go:126` to
-compose `!noInput && tty.IsTerminal(...)` itself. The concept stays — see the note in 3 on what
-`tty.NoInput` is actually for. `MESHSTACK_NO_BROWSER` is declared in `pkg/oidc/browser`, the only
-package that may read it, and is not a setting at all per 1.
+Two owners hold the resolved value, and they are the same declaration resolved from the same
+sources, so they cannot disagree. `Session` gains an unexported `noInput` from step 5, which
+`token.go:126` reads. `cmd/meshstack` resolves it once at startup into `cli.Input`, because
+`askForEndpoint` has to decide whether it may prompt at a moment when `ResolveSession` has just
+failed and there is no `Session` to ask.
 
-## 13. `encoding/json/v2` replaces goccy
+`tty.NoInput` earns its place, though not for the reason its name suggests. Its main use is not the
+prompt: `pkg/auth/login.go:145` uses it so a browser login fails at once instead of waiting ten
+minutes for a callback nobody will complete. A terminal check cannot stand in — `meshstack login |
+tee` and an agent driving the CLI both reach a person through stderr.
 
-It is in the Go 1.27 standard library as a real importable package — no `GOEXPERIMENT`, verified
-against go1.27.0, and `go.mod:5` already pins 1.27. Dropping `github.com/goccy/go-yaml` takes the
-module to the two external dependencies `.golangci.yml` already claims as the policy.
-
-**Known and accepted: the import costs the provider's users the `nojsonv2` opt-out.** Go 1.27 keeps
-`GOEXPERIMENT=nojsonv2` for code that breaks under the new implementation, and it only builds when
-nothing in the tree imports v2 — [the request to lift that](https://go.dev/issue/79788) was closed as
-not planned. This module is a library the Terraform provider imports, so a direct v2 import removes
-the hatch for the provider and for anything importing the provider. Chosen anyway: the hatch is
-transitional and Go says it will be removed, and v2's strict parsing is worth having on a file a user
-may edit by hand — v1 accepts `{"b":"x","b":"y"}` and silently keeps `"y"`, while v2 rejects a
-duplicate object name and rejects invalid UTF-8 in a string.
-
-**Strictness is the reason for v2, and it is a reason on its own.** Plain `encoding/json` would have
-carried every mechanical need below — v1 has had `omitzero` since Go 1.24 and has always honoured
-`TextMarshaler` for values — so a config file that reports its own corruption instead of quietly
-picking a value is what the import buys. If this is ever revisited, that is the thing to defend.
-
-- **Each tag option is chosen per field. There is no mechanical `yaml:` → `json:` rename.** In v2
-  `omitempty` omits an *encoded* empty value (`""`, `{}`, `[]`, `null`), while `omitzero` omits the
-  Go zero value or anything whose `IsZero()` reports true.
-  - **`omitzero`** where the Go zero value means "not set": every `time.Time`, every `*xurl.URL`,
-    every pointer in the credential sum, and `Method`.
-  - **No option at all** where the zero value has to round-trip, starting with `Version` — a file
-    must never lose the field that says how to read it.
-  - **`omitempty`** only where an encoded empty value is the absent one. In practice that is
-    `SecretCommand []string`, and `omitzero` says the same thing more precisely there, so
-    `omitempty` may end up unused.
-  - The step-1 test pins this per shape: marshal a zero value, marshal a fully populated one, and
-    unmarshal both back.
-- `xurl.URL` needs nothing: it already implements `encoding.TextMarshaler` and `TextUnmarshaler`.
-- Write with `jsontext.WithIndent`, so the file stays readable by hand.
-
-**A hard break.** No release tag exists, so no installed CLI has files that must keep loading. Rename
-to `config.json` and `credentials/<profile>.json`, leave old YAML unread, keep `Version` at 1. About
-ten doc comments name `config.yaml`.
-
-## 14. `auth.Values` dissolves, except for the demanded method
-
-Four of the five fields at `input.go:76` — `Profile`, `Endpoint`, `Workspace`, `ApiKey` — become
-`Lookup` keys on the front end's `setting.Source`, so `Values` as a bag of values goes.
-
-**`Method` survives, and it is not a setting.** `input.go:82` says what it is: "the method the caller
-demands, empty when it does not care. `--api-key` sets it without setting `ApiKey`, which is how a
-bare `--api-key` reuses the id already in the profile." It has no `MESHSTACK_*` name, it supplies no
-value, and only `meshstack auth login` may set it.
-
-**Without it, 4 breaks that feature.** A bare `--api-key` carries no identity, so the walk reaches the
-profile — and a profile whose `Current` is `login` hands back a browser login. The user asked for the
-API key and gets the browser.
-
-> **A demanded method filters what the profile source may offer.** With a method demanded, the profile
-> offers that method's credential and ignores its own `Current`. With none demanded, `Current`
-> decides, per 5.
-
-So `ResolveSessionOptions` gains `DemandMethod credential.Method`, set only by `cmd/auth/login.go`.
-
-## 15. Messages: the static half in the domain package, the specifics in `pkg/auth`
+## 9. Messages: the static half in the domain package, the specifics in `pkg/auth`
 
 This is the split the code already makes, chosen deliberately rather than inherited.
-`pkg/workspace/workspace.go:72` is a plain `errors.New`, and `token.go:109` wraps it as
-`diags.Errorf("no workspace", "%s", workspace.ErrMissing)`. The domain package owns what a workspace
+`pkg/meshstack`'s `ErrMissing` is a plain `errors.New`, and `token.go:109` wraps it as
+`diags.Errorf("no workspace", "%s", meshstack.ErrMissing)`. The domain package owns what a workspace
 is and which variable names it. Only the resolution knows which profile was picked, why, and whether
-a prompt was possible — which is the specificity 9 asks for.
+a prompt was possible.
 
-**This is also what keeps 1's argument standing.** 1 justifies keeping declarations out of
-`pkg/setting` with a cycle: `pkg/setting` would need `meshstack.ParseEndpoint`, and
-`meshstack.ErrMissing` naming `MESHSTACK_WORKSPACE` makes `pkg/meshstack` import `pkg/setting` back.
-Move all five messages into `pkg/auth` and that cycle disappears, leaving 1 to argue from cohesion
-alone. Keeping the static half in the domain package avoids having to.
+It is also what keeps the declarations out of `pkg/setting`: `pkg/meshstack` naming
+`MESHSTACK_WORKSPACE` in `ErrMissing` would make it import `pkg/setting`, while the endpoint
+declaration needs `meshstack.ParseEndpoint` — a cycle. Keeping the static half in the domain package
+avoids having to move all five messages into `pkg/auth` to break it.
 
 ## Behaviour changes
 
-Two, both deliberate. **One provider CHANGELOG entry, describing the end state.** The provider's
+Three, all deliberate. **One provider CHANGELOG entry, describing the end state.** The provider's
 CHANGELOG is not a history record yet, so rewrite it freely rather than adding a line per pull
 request — a reader wants what the provider does now, not how the branch got there.
 
 **An exported credential variable fixes the identity.** `MESHSTACK_API_KEY=k` alone, with a profile
 holding a browser login, is ignored today and the browser login runs — the user acts under an
 identity they did not ask for, with nothing said. It will instead fix the identity and fail, naming
-the variable. `MESHSTACK_API_TOKEN` behaves the same way, per the token rule in 4, except that it
-succeeds rather than failing because a token needs no secret. The cost lands hardest on the provider,
-which cannot prompt: a stale `MESHSTACK_API_KEY` fails a `terraform plan` that used to work. Chosen
-because silently ignoring a deliberately exported credential variable is the worse failure —
-invisible, and it changes who you are.
+the variable. `MESHSTACK_API_TOKEN` behaves the same way, except that it succeeds rather than
+failing because a token needs no secret. The cost lands hardest on the provider, which cannot
+prompt: a stale `MESHSTACK_API_KEY` fails a `terraform plan` that used to work. Chosen because
+silently ignoring a deliberately exported credential variable is the worse failure — invisible, and
+it changes who you are.
 
-**The file format changes**, per 13. A user with an existing profile runs `meshstack login` again.
+**A bare `--api-key` takes `MESHSTACK_API_KEY` over the profile's stored id.** Today the variable is
+ignored there. It is the same argument as above, and it applies more strongly to `login`, which is
+the command that writes the id to disk. The flag's help becomes "with the stored id,
+MESHSTACK_API_KEY, or a new one".
 
-## Landing order
+**A command that is not `login` no longer prompts for a secret.** It errors instead, naming
+`meshstack login --api-key=k`, per 5.
 
-The order is chosen so that each phase is safe to hand to somebody working on their own, and so that
-a phase's lanes can run at the same time. **Containing the user-visible break is not a goal** — there
-is no release, so it costs nothing to land it early. **The design above wins over these boundaries.**
-If implementing a step shows a decision is wrong, revisit the decision rather than bending the code
-to fit the step.
+## Phase 3 — one lane
 
-### Two rules that make parallel work safe
+Not splittable: the ranked order, the credential unit rule and the origins are one function's
+invariant. It is the phase that changes behaviour, so it carries the full unit suite, the CLI
+acceptance suite, and a test for each row of 3's table and for each behaviour change.
 
-- **One lane at a time may edit `../terraform-provider-meshstack`**, and the table names which. The
-  provider pins this branch, so a CLI push without the matching provider edit leaves the provider not
-  building. Every phase boundary is therefore one CLI push plus one provider pin bump, together.
-- **Every lane ends green**: `task lint`, `go build ./...`, the unit suite, and the provider still
-  builds. A lane that cannot reach that state stops and says so rather than handing on a red tree.
+**It owns `../terraform-provider-meshstack`.** That is a correction to the earlier boundary, not a
+choice: dissolving `auth.Input` breaks `internal/provider/auth_input.go` on the same commit, so
+`blockSource` has to land here for the provider to build at all. Phase 4 keeps everything that is
+about presentation rather than about compiling.
 
-### Phase 1 — the moves, one lane, owns the provider
+Checkpoints, in order, each ending with `go build ./...`, the unit suite and `nix develop -c task
+lint` green in both repositories:
 
-Steps 2 and 3 of the old order, together, plus the empty mechanism.
+1. `pkg/setting`'s `Origin`, `Environ`, `Default` and `DefaultFunc`; `profile.Select` and the four
+   `config.json` operations moved out of `pkg/auth/profiles.go`.
+2. `ResolveSession`: the order in 2, the credential unit rule in 3, the store in 4, `Origins()`.
+   `auth.Input` and `pkg/auth/env.go`'s consts go; `blockSource` replaces `providerInput`.
+3. The front ends: the two stdin flags, the three sentinels and the prompts in `cmd/auth/login.go`,
+   `pkg/tty`'s global, `auth status` and `profile view` over origins, the `strings.TrimSpace` sweep.
 
-| does | why here |
-|---|---|
-| `pkg/credential`: absorb `pkg/auth/method`, move the three shapes out of `pkg/profile` | pure move |
-| `pkg/meshstack`: rename `pkg/workspace`, drop the named types per 8, move `ParseEndpoint`, `sameEndpoint` and `canonicalEndpoint` out of `pkg/auth/env.go` | pure rename |
-| `pkg/setting`: the package, `Value[T]`, `Source`, `setting.Resolve` — no declarations yet | tiny, and it unblocks every phase-2 lane |
+## Phase 4 — the provider, one lane
 
-Both moves land in one lane because both edit the provider's `auth_input.go`, so splitting them buys
-a merge conflict and a second pin bump. Verification: everything compiles, the unit suite is
-unchanged, the provider builds.
+`Short` and `Long` reaching the schema — which closes a gap, since the provider's schema documents
+no environment variable today — then `task generate`, the CHANGELOG rewrite, and the docs from 3:
+the row 1 setup and the two messages that qualify it. Verification: the provider unit tests and its
+acceptance suite.
 
-### Phase 2 — three lanes at once
-
-| lane | does | touches | provider |
-|---|---|---|---|
-| A | json/v2 and the file format per 13, and the per-method token cache from 5 | `pkg/profile` I/O, the tags and token fields on the moved shapes | none |
-| B | the declarations | one new file per domain package: `meshstack`, `credential`, `profile`, `tty` | none |
-| C | decision 11, the browser as an argument | `pkg/auth/login.go`, `internal/cli`, `provider.go:122` | **owns it** |
-
-A and B meet only in `pkg/credential`, and in different files — A edits struct tags, B adds a
-declarations file. C is the one lane touching the provider in this phase.
-
-Lane B's own test: every `Short` non-empty and backtick-free, and every `EnvKey` unique across all
-declarations. Lane A's: the round trip per shape from 13.
-
-### Phase 3 — `auth.ResolveSession`, one lane
-
-Step 5, and with it everything that needs a resolved value to reach a `Session`:
-
-- the ranked table from 6 and the credential unit rule from 4;
-- `Origins()` and `auth status` reporting them, per 9;
-- `DemandMethod` and the removal of `ResolveForLogin`, per 14;
-- `--api-secret-stdin` and the source that reads it, per 3;
-- decision 12 — `pkg/tty` can only lose its global once a `Session` owns the resolved value;
-- the messages, wrapped per 15.
-
-This is the phase that changes behaviour, so it carries the full unit suite, the CLI acceptance
-suite, and a test for each row of 4's table and for each behaviour change.
-
-Not splittable: the ranked table, the credential unit rule and the origins are one function's
-invariant.
-
-### Phase 4 — the provider, one lane
-
-Step 6: `blockSource`, the aligned `Short`/`Long` text reaching the schema, `task generate`, the
-CHANGELOG rewrite, and the docs from 4 — the row 1 setup and the two messages that qualify it.
-Verification: provider unit tests and the provider acceptance suite.
-
-## Open questions
-
-None left. Answered during the review: `Frontend`'s name (10 deletes it), how `Session` carries the
-resolved settings and their origins (9), whether `auth status` reports them (yes, 9), `--no-browser`
-as a flag (no, and `MESHSTACK_NO_BROWSER` stays an environment variable — 1 and 12), where
-`AccessTokens` lives (5), whether `auth.Values` survives (14), and where the "not configured"
-messages live (15).
+`Short` is plain text and one line, for a cobra flag; `Long` is markdown, for the provider's schema,
+and falls back to `Short` through `Help()`. The alignment is **adjacency, not derivation** — they
+sit in one declaration, so changing a fact puts both in the same diff hunk. Shared text states facts
+about the setting and names the environment variable; a sentence about how *this front end* exposes
+it stays in the front end, with no "block", "flag" or "attribute" vocabulary in the shared part.
 
 ## Not in scope
 
 - **Splitting the per-profile credentials file into a durable part and a token cache**, in two
   directories under `~/.config`. It is a real improvement — for the `apiKey` and `manual` methods the
   durable file would become write-once, where today an hourly renewal rewrites the file holding a
-  client secret that never changes. It is deferred because it is orthogonal to resolving settings and
-  because it lands in phase 2 lane A, the lane that already owns the format break.
+  client secret that never changes. It is deferred because it is orthogonal to resolving settings.
   - It does **not** shrink the lock, which is what it looks like it should do. `lock.go:20` says the
     lock exists because Keycloak rotates the refresh token on every refresh, and a refresh token is
     durable — so a `login`-method renewal writes both files and needs the lock over both.
-  - It costs 5's "no second data model", and it turns `login.go:156`'s deliberate one write of the
-    refresh token and the unscoped access token together into two.
+  - It costs the single data model `pkg/profile` marshals, and it turns `login.go:156`'s deliberate
+    one write of the refresh token and the unscoped access token together into two.
   - When it happens, both parts stay under `~/.config`. Access tokens are secrets, so `~/.cache`
     would spread secrets over two trees with different permission expectations; one tree at 0700 is
     easier to audit.
+- A source cannot distinguish "set to empty" from "unset", so no setting can be deliberately cleared
+  by an explicit empty value — `--workspace=""` cannot shed a profile's default. Nothing needs it.
 - The memory store meaning two things ("not mine to persist" and "could not be persisted").
-- Path A holding a store it does not need.
 - The one-minute HTTP timeout against a backoff sized for four (`internal/http/http_client.go:23`).
 - Restoring `ErrRefreshRejected` hints.
 - Deleting the `requireDevLocalCredentials` skip guard once the meshfed change merges.
