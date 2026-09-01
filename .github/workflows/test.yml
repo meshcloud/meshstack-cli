@@ -49,27 +49,22 @@ jobs:
         with:
           # The repository's pinned Go, because it is what builds the linter below.
           go-version-file: 'go.mod'
+      # Built here rather than by the action below, because golangci-lint's formatters use the
+      # go/format compiled into the binary: the formatting they enforce comes from the Go release
+      # that BUILT the linter, not from the toolchain on PATH. A published binary carries whatever
+      # Go was current at its release, which once left 1.27 and 1.26 disagreeing with no
+      # formatting that satisfies both. The tool directive in go.mod is the single pin, so no
+      # version is repeated here, and `go install` puts it where the action will find it.
+      - name: build the pinned golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          # golangci-lint's formatters use the go/format compiled into the binary, so the
-          # formatting they enforce comes from the Go release that BUILT the linter, not
-          # from the toolchain on PATH. The published binaries are built with whatever Go
-          # was current at release time, which made 'version: latest' with install-mode
-          # 'binary' enforce a different gofmt than the pinned Go: 1.27 widens end-of-line
-          # comment alignment groups, and 1.26 rejected the result, so the two disagreed
-          # with no formatting that satisfies both. Building the linter here with go.mod's
-          # Go ties formatting to the version the code is written against.
-          #
-          # The version tracks what nixpkgs-unstable packages, because that is the binary a
-          # developer gets from flake.nix, and it must be one that supports the pinned Go:
-          # v2.13.0 is where golangci-lint added Go 1.27, and nixpkgs builds v2.13.1 with
-          # Go 1.27 too.
-          install-mode: goinstall
-          version: v2.13.1
-          # Deliberately no only-new-issues: this repository starts clean and CI keeps it
-          # that way, so filtering to changed code cannot help and can only hide a finding.
-          # It hid this one, and still hides it in the provider's identical job.
+          # The step above already installed it; the action is here for the annotations it puts
+          # on the pull request diff, which a bare `run:` does not produce.
+          install-mode: none
+          # Deliberately no only-new-issues: this repository starts clean and CI keeps it that
+          # way, so filtering to changed code cannot help and can only hide a finding.
       - name: Suggest fix command on failure
         if: failure()
         run: |
