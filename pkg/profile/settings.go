@@ -5,7 +5,13 @@ import "github.com/meshcloud/meshstack-cli/pkg/setting"
 var Name = setting.Value[string]{
 	EnvKey: "MESHSTACK_PROFILE",
 	Short:  "The profile whose credentials and defaults this run uses. Also read from MESHSTACK_PROFILE.",
-	Parse:  setting.Text,
+	Long: "The profile whose credentials and defaults this run uses, also read from `MESHSTACK_PROFILE`.\n\n" +
+		"A profile is a named bundle of endpoint, credential and default workspace, written by " +
+		"`meshstack auth login` into the meshStack CLI's configuration directory. It supplies each of those " +
+		"only where nothing above it did, so it is never an override.\n\n" +
+		"With no name given, the profile is the one whose endpoint matches the endpoint in use, else the one " +
+		"`meshstack profile set` last selected, else `default`.",
+	Parse: setting.Text,
 }
 
 var ConfigDir = setting.Value[string]{

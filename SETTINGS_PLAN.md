@@ -206,8 +206,12 @@ out of each source by their `EnvKey`, but the pairing is its own code in `pkg/au
 | `MESHSTACK_API_KEY=dev-key`, profile holds `dev-key` and its secret | environment | the profile's own slot | the profile names the same id, so its secret is not somebody else's |
 
 **Row 1 is the case to protect, not an edge case.** An id in the provider block, or on `--api-key`,
-with the secret in the environment is the normal non-interactive setup. An acceptance test on both
-front ends says so.
+with the secret in the environment is the normal non-interactive setup. **A unit test on each front
+end says so** — `pkg/auth/resolve_test.go` and the provider's `auth_source_test.go` — rather than an
+acceptance test, as this plan first said. Neither acceptance suite can express it: the CLI's runs
+one binary against a live meshStack with the credential in the environment, and the provider's
+pins every test to one provider block it shares, so adding row 1 there would mean a second block and
+a second live credential to prove a rule that is entirely about which source answers.
 
 **Rows 4 and 5 are the same test, read in both directions.** A secret is skipped when it sits beside
 a *different* id, not beside any id at all — that is what row 4's "competing" means, and reading it
@@ -548,6 +552,17 @@ and falls back to `Short` through `Help()`. The alignment is **adjacency, not de
 sit in one declaration, so changing a fact puts both in the same diff hunk. Shared text states facts
 about the setting and names the environment variable; a sentence about how *this front end* exposes
 it stays in the front end, with no "block", "flag" or "attribute" vocabulary in the shared part.
+
+All six declarations the provider renders therefore grew a `Long`, because four of them reached the
+schema as one line where the attribute needed a paragraph. Verification is the provider's unit tests
+rather than its acceptance suite: nothing in this phase changes what a request carries.
+
+**`templates/index.md.tmpl` now renders `{{ .SchemaMarkdown }}`.** It used to restate the six
+attributes by hand, so `task generate` could not carry a schema edit into `docs/index.md` and the
+two had already drifted. The generated list breaks out of its bullet where a description runs to
+several paragraphs — that is tfplugindocs' rendering of a multi-paragraph description, and it is
+accepted rather than worked around by shortening the text a `terraform providers schema` consumer
+also reads.
 
 ## Not in scope
 
