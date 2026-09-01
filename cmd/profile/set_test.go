@@ -2,7 +2,6 @@ package profile
 
 import (
 	"bytes"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,8 +44,7 @@ func TestSetTakesExactlyTwoArguments(t *testing.T) {
 func isolate(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("MESHSTACK_CONFIG_FILE", filepath.Join(dir, "config.json"))
-	t.Setenv("MESHSTACK_CREDENTIALS_DIR", filepath.Join(dir, "credentials"))
+	t.Setenv("MESHSTACK_CONFIG_DIR", dir)
 	for _, key := range []string{
 		"MESHSTACK_ENDPOINT", "MESHSTACK_WORKSPACE", "MESHSTACK_PROFILE",
 		"MESHSTACK_API_KEY", "MESHSTACK_API_SECRET", "MESHSTACK_API_TOKEN",

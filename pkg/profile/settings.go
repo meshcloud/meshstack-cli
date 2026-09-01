@@ -8,14 +8,12 @@ var Name = setting.Value[string]{
 	Parse:  setting.Text,
 }
 
-var ConfigFile = setting.Value[string]{
-	EnvKey: envConfigFile,
-	Short:  "The file describing every profile. Also read from MESHSTACK_CONFIG_FILE.",
-	Parse:  setting.Text,
-}
-
-var CredentialsDir = setting.Value[string]{
-	EnvKey: envCredentialsDir,
-	Short:  "The directory holding one credentials file per profile. Also read from MESHSTACK_CREDENTIALS_DIR.",
-	Parse:  setting.Text,
+var ConfigDir = setting.Value[string]{
+	EnvKey: envConfigDir,
+	Short:  "The directory holding config.json and one credentials file per profile. Also read from MESHSTACK_CONFIG_DIR.",
+	Long: "The directory holding the meshStack CLI's configuration, also read from `MESHSTACK_CONFIG_DIR`.\n\n" +
+		"`config.json` describes every profile, and `credentials/<profile>.json` holds that profile's " +
+		"credentials and its cached tokens. The credentials directory is a convention rather than a " +
+		"setting of its own, so it moves with this one and cannot be pointed elsewhere.",
+	Parse: setting.Text,
 }

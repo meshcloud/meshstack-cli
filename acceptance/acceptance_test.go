@@ -13,8 +13,8 @@
 //     and a stray export pointing them at a real meshStack is the accident worth making
 //     impossible rather than merely unlikely.
 //
-// Each test gets its own MESHSTACK_CONFIG_FILE and MESHSTACK_CREDENTIALS_DIR under a temporary
-// directory, and the child's environment blanks every other MESHSTACK_* name — the Taskfile
+// Each test gets its own MESHSTACK_CONFIG_DIR under a temporary directory, and the child's
+// environment blanks every other MESHSTACK_* name — the Taskfile
 // loads a developer's .env, and a test that inherited an endpoint or an API key would not be
 // proving that the profile it just wrote is what the next command uses.
 package acceptance
@@ -42,8 +42,7 @@ import (
 const (
 	envAcc               = "MESHSTACK_ACC"
 	envEndpoint          = "MESHSTACK_ENDPOINT"
-	envConfigFile        = "MESHSTACK_CONFIG_FILE"
-	envCredentialsDir    = "MESHSTACK_CREDENTIALS_DIR"
+	envConfigDir         = "MESHSTACK_CONFIG_DIR"
 	envSkipVersionCheck  = "MESHSTACK_SKIP_VERSION_CHECK"
 	envNoBrowser         = "MESHSTACK_NO_BROWSER"
 	envProfile           = "MESHSTACK_PROFILE"
@@ -110,28 +109,21 @@ func requireLocalStack(t *testing.T) (string, client.MeshInfo) {
 	return endpoint, meshInfo(t, endpoint)
 }
 
-// meshstackCLI is one test's own installation: its own configuration file and its own
-// credentials directory, so that two tests never share a profile.
+// meshstackCLI is one test's own installation: its own configuration directory, so that two
+// tests never share a profile.
 type meshstackCLI struct {
-	t           *testing.T
-	config      string
-	credentials string
+	t   *testing.T
+	dir string
 }
 
 func newCLI(t *testing.T) *meshstackCLI {
 	t.Helper()
-	dir := t.TempDir()
-	return &meshstackCLI{
-		t:           t,
-		config:      filepath.Join(dir, "config.json"),
-		credentials: filepath.Join(dir, "credentials"),
-	}
+	return &meshstackCLI{t: t, dir: t.TempDir()}
 }
 
 func (c *meshstackCLI) environ() []string {
 	return append(os.Environ(),
-		envConfigFile+"="+c.config,
-		envCredentialsDir+"="+c.credentials,
+		envConfigDir+"="+c.dir,
 		// The dev stack reports a version below the client's minimum, which is a statement
 		// about the backend rather than about anything under test here.
 		envSkipVersionCheck+"="+skipVersionCheckHint,

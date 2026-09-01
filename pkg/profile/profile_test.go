@@ -17,8 +17,7 @@ func isolate(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv(envXDGConfigHome, dir)
-	t.Setenv(envConfigFile, "")
-	t.Setenv(envCredentialsDir, "")
+	t.Setenv(envConfigDir, "")
 	return dir
 }
 
@@ -84,14 +83,14 @@ func TestPathsFollowTheEnvironment(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, filepath.Join(dir, "meshstack", "config.json"), configPath)
 
-		credentials, err := credentialsDir()
+		credentials, err := CredentialsPath("prod")
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(dir, "meshstack", "credentials"), credentials)
+		require.Equal(t, filepath.Join(dir, "meshstack", "credentials", "prod.json"), credentials)
 	})
 
 	t.Run("the platform directory is the fallback", func(t *testing.T) {
 		t.Setenv(envXDGConfigHome, "")
-		t.Setenv(envConfigFile, "")
+		t.Setenv(envConfigDir, "")
 		platform, err := os.UserConfigDir()
 		if err != nil {
 			t.Skip("no platform configuration directory in this environment")
@@ -102,19 +101,18 @@ func TestPathsFollowTheEnvironment(t *testing.T) {
 		require.Equal(t, filepath.Join(platform, "meshstack", "config.json"), configPath)
 	})
 
-	t.Run("the file and directory overrides move both", func(t *testing.T) {
+	t.Run("MESHSTACK_CONFIG_DIR moves both", func(t *testing.T) {
 		isolate(t)
 		elsewhere := t.TempDir()
-		t.Setenv(envConfigFile, filepath.Join(elsewhere, "other.json"))
-		t.Setenv(envCredentialsDir, filepath.Join(elsewhere, "secrets"))
+		t.Setenv(envConfigDir, elsewhere)
 
 		configPath, err := ConfigPath()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(elsewhere, "other.json"), configPath)
+		require.Equal(t, filepath.Join(elsewhere, "config.json"), configPath)
 
 		credentialsPath, err := CredentialsPath("prod")
 		require.NoError(t, err)
-		require.Equal(t, filepath.Join(elsewhere, "secrets", "prod.json"), credentialsPath)
+		require.Equal(t, filepath.Join(elsewhere, "credentials", "prod.json"), credentialsPath)
 	})
 }
 
@@ -174,10 +172,10 @@ func TestSaveConfigWritesOnlyTheVersionOfAnEmptyConfig(t *testing.T) {
 }
 
 func TestLoadConfigSendsAYamlFileBackToLogin(t *testing.T) {
-	isolate(t)
-	path := filepath.Join(t.TempDir(), "config.yaml")
+	dir := isolate(t)
+	path := filepath.Join(dir, "meshstack", "config.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), dirMode))
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncurrentProfile: default\n"), fileMode))
-	t.Setenv(envConfigFile, path)
 
 	_, err := LoadConfig()
 

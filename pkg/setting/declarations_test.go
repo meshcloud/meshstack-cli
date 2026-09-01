@@ -14,7 +14,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
-// declaration drops the type parameter, because one []setting.Value[T] cannot hold the nine
+// declaration drops the type parameter, because one []setting.Value[T] cannot hold the eight
 // different T the declarations produce.
 type declaration struct {
 	name     string
@@ -34,8 +34,7 @@ var declarations = []declaration{
 	declared("credential.ApiSecret", credential.ApiSecret),
 	declared("credential.ApiToken", credential.ApiToken),
 	declared("profile.Name", profile.Name),
-	declared("profile.ConfigFile", profile.ConfigFile),
-	declared("profile.CredentialsDir", profile.CredentialsDir),
+	declared("profile.ConfigDir", profile.ConfigDir),
 	declared("tty.NoInput", tty.NoInput),
 }
 

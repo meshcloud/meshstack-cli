@@ -176,7 +176,7 @@ The comment above that `packages` output shows the two lines a consumer needs.
 
 `MESHSTACK_ENDPOINT`, `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`, with `MESHSTACK_API_TOKEN` as
 an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE`,
-`MESHSTACK_NO_INPUT`, `MESHSTACK_CONFIG_FILE` and `MESHSTACK_CREDENTIALS_DIR`.
+`MESHSTACK_NO_INPUT` and `MESHSTACK_CONFIG_DIR`.
 
 **No `MESHSTACK_*` name is exported.** Each is a private const in the package that consults it —
 `pkg/auth`, `pkg/profile`, `pkg/meshstack`, `pkg/tty` — and every message that has to mention one is

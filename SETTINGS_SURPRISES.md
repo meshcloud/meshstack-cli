@@ -291,6 +291,38 @@ browser stops being a capability on `auth.Input`, which is what 11 argues for, a
 one entry point. A nil field produces the error a nil `Input.Browser()` produced, pinned by
 `pkg/auth/login_test.go`.
 
+### One `MESHSTACK_CONFIG_DIR` replaces the file and the directory
+
+1 lists `profile.ConfigFile` and `profile.CredentialsDir` as two of the nine declarations, and 3
+gives each its own ranked sources and its own default. Two settings can disagree: a
+`MESHSTACK_CONFIG_FILE` naming one installation's profiles beside a `MESHSTACK_CREDENTIALS_DIR`
+holding another's resolves to a profile whose credentials are simply absent, which reads as "log in
+again" rather than as the misconfiguration it is. Nothing wants them apart, either — every caller
+that sets one sets the other, and every default already derives both from one directory.
+
+**Decided:** one declaration, `profile.ConfigDir` over `MESHSTACK_CONFIG_DIR`, so there are eight
+declarations rather than nine. The credentials directory stops being configurable and becomes a
+convention: `<ConfigDir>/config.json` and `<ConfigDir>/credentials/<profile>.json`. Both old
+variables are gone with no fallback, because 13's "no release tag exists" covers them too.
+
+**This supersedes "`profile.CredentialsDir` is a function already" above.** That entry's decision
+still stands — `credentialsDir()` is unexported — and `ConfigDir()` now collides with a declaration
+for exactly the same reason, so it is unexported to `configDir()`. It had no caller outside
+`pkg/profile`. `ConfigPath` stays exported, because `pkg/auth`'s `status.go` and `resolve.go` call
+it. `credentialsDir()` is gone entirely: with the subdirectory fixed it named three lines for one
+caller, so `CredentialsPath` joins `credentials` itself.
+
+It also narrows "13 does not say what an existing user's `config.yaml` produces". Nothing can name a
+`.yaml` file any more, so the sentence that entry decided on now fires only for YAML found *inside*
+`config.json`. The message and `TestLoadConfigSendsAYamlFileBackToLogin` stay; the comment on
+`parseFailed` that argued from `MESHSTACK_CONFIG_FILE` went with the variable.
+
+The provider's `scratch/run.sh` needed more than the two exports collapsing into one. Its
+`noworkspace` mode wrote a workspace-stripped copy of `config.json` to a temporary path and pointed
+`MESHSTACK_CONFIG_FILE` at it, deliberately keeping the real credentials directory, which one
+setting cannot express. It now makes a temporary *directory*, writes the stripped `config.json`
+there and symlinks `credentials` back to the shared one, so the demo still proves what it proved.
+
 ## Phase 3
 
 These four came out of reading the Terraform provider's `scratch/` demos against the plan. None

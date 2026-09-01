@@ -43,12 +43,8 @@ const Version = 1
 // reshuffles accessTokens and the file changes when nothing in it did.
 var writeOptions = json.JoinOptions(jsontext.WithIndent("  "), json.Deterministic(true))
 
-// These keys are private for the same reason every other MESHSTACK_* name in this
-// module is: no front end assembles a sentence out of a constant it imported, so every
-// message naming one is produced in this package.
 const (
-	envConfigFile     = "MESHSTACK_CONFIG_FILE"
-	envCredentialsDir = "MESHSTACK_CREDENTIALS_DIR"
+	envConfigDir = "MESHSTACK_CONFIG_DIR"
 	// os.UserConfigDir already honours XDG_CONFIG_HOME on Linux. Naming it here is what
 	// makes it win on macOS and Windows too, where the platform directory differs.
 	envXDGConfigHome = "XDG_CONFIG_HOME"
@@ -92,42 +88,28 @@ func ValidateName(name string) error {
 		"A profile name becomes a file name under the credentials directory, so it must start with a letter or a digit and may then contain letters, digits, dots, dashes and underscores, up to 64 characters.")
 }
 
-// ConfigDir returns the directory holding `config.json` and `credentials/`. It is the
-// platform's own configuration directory, except that XDG_CONFIG_HOME wins wherever it
-// is set. The directory is not created here.
-func ConfigDir() (string, error) {
+func configDir() (string, error) {
+	if dir := os.Getenv(envConfigDir); dir != "" {
+		return dir, nil
+	}
 	if xdg := os.Getenv(envXDGConfigHome); xdg != "" {
 		return filepath.Join(xdg, "meshstack"), nil
 	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", diags.Wrap(err, "Cannot locate a configuration directory",
-			"Set %s to a directory this process may write to.", envXDGConfigHome)
+			"Set %s to a directory this process may write to.", envConfigDir)
 	}
 	return filepath.Join(dir, "meshstack"), nil
 }
 
 // ConfigPath returns the path of `config.json`.
 func ConfigPath() (string, error) {
-	if override := os.Getenv(envConfigFile); override != "" {
-		return override, nil
-	}
-	dir, err := ConfigDir()
+	dir, err := configDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, "config.json"), nil
-}
-
-func credentialsDir() (string, error) {
-	if override := os.Getenv(envCredentialsDir); override != "" {
-		return override, nil
-	}
-	dir, err := ConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "credentials"), nil
 }
 
 // CredentialsPath returns the path of one profile's credentials file, refusing a name
@@ -136,11 +118,11 @@ func CredentialsPath(name string) (string, error) {
 	if err := ValidateName(name); err != nil {
 		return "", err
 	}
-	dir, err := credentialsDir()
+	dir, err := configDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, name+".json"), nil
+	return filepath.Join(dir, "credentials", name+".json"), nil
 }
 
 // LoadConfig reads `config.json`. A missing file is an empty configuration rather than
@@ -199,10 +181,6 @@ func SaveConfig(cfg Config) error {
 	return writeFileAtomic(path, append(data, '\n'))
 }
 
-// parseFailed checks the first byte, and needs no more format detection than that. The rename
-// to `.json` leaves a file written before the format changed unread, except where
-// MESHSTACK_CONFIG_FILE names one explicitly, and there a bare syntax error would not tell the
-// user what to do about it.
 func parseFailed(summary, path string, data []byte, cause error) error {
 	if !bytes.HasPrefix(bytes.TrimLeft(data, " \t\r\n"), []byte("{")) {
 		return diags.Wrap(cause, summary,
