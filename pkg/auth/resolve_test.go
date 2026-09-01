@@ -101,7 +101,7 @@ func TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault(t *testing.T) {
 			{name: "explicit wins", explicit: "named", env: "from-env", current: "current", want: "named"},
 			{name: "the environment beats currentProfile", env: "from-env", current: "current", want: "from-env"},
 			{name: "currentProfile beats the built-in default", current: "current", want: "current"},
-			{name: "the built-in default is the floor", want: DefaultProfile},
+			{name: "the built-in default is the floor", want: profile.DefaultName},
 		}
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -219,7 +219,7 @@ func TestWithoutAWholeCredentialResolutionFallsToTheProfile(t *testing.T) {
 		{name: "then MESHSTACK_PROFILE", envName: "from-env", envHost: "https://matched.example.com", current: "current", want: "from-env", wantFrom: "environment " + envProfile},
 		{name: "then a match on the endpoint", envHost: "https://matched.example.com", current: "current", want: "matched", wantFrom: "profile matched on the endpoint"},
 		{name: "then currentProfile", current: "current", want: "current"},
-		{name: "then default", want: DefaultProfile, wantFrom: "built-in default profile default"},
+		{name: "then default", want: profile.DefaultName, wantFrom: "built-in default profile default"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

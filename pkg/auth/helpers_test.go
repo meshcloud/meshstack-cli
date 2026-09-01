@@ -77,7 +77,7 @@ func writeConfig(t *testing.T, current string, profiles map[string]profile.Profi
 
 // writeCredentials and readCredentials work on the profile these tests select, which is the
 // one every precedence rule lands in when nothing names another.
-const testProfile = DefaultProfile
+const testProfile = profile.DefaultName
 
 func writeCredentials(t *testing.T, credentials profile.Credentials) {
 	t.Helper()

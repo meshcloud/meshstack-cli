@@ -22,16 +22,11 @@ const (
 	envProfile = "MESHSTACK_PROFILE"
 )
 
-// DefaultProfile is the built-in default at the bottom of the precedence order, and the
-// profile every front end lands in when nothing else names one.
-// TODO move that to profile package?
-const DefaultProfile = "default"
-
 // DevLocalProfile is the name reserved for `meshstack login --dev-local`. That flag writes a
 // profile whose every value came from a local dev stack's /mesh/info, so a re-run overwrites
 // it without asking and a stack rebuilt from scratch leaves nothing stale behind. Keeping it
-// off DefaultProfile is what makes that safe: a developer's own `default` profile points at a
-// real meshStack and must survive. --profile names another one for anybody who wants two.
+// off profile.DefaultName is what makes that safe: a developer's own `default` profile points
+// at a real meshStack and must survive. --profile names another one for anybody who wants two.
 const DevLocalProfile = "dev-local"
 
 // TODO user agent should be defined from cmd package when building client.

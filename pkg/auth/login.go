@@ -225,7 +225,7 @@ func (s *Session) rememberWorkspace(name string, result *LoginResult) error {
 	if s.Profile == "" {
 		return nil
 	}
-	return SetProfileWorkspace(s.Profile, name)
+	return profile.SetWorkspace(s.Profile, name)
 }
 
 func (s *Session) loginWithApiKey(ctx context.Context, result *LoginResult) error {

@@ -16,6 +16,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
@@ -129,7 +130,7 @@ func runDevLocalLogin(cmd *cobra.Command, in *cli.Input) error {
 		return err
 	}
 	if session.Profile != "" {
-		if err := auth.EnsureProfile(session.Profile, &session.Endpoint); err != nil {
+		if err := profile.Ensure(session.Profile, &session.Endpoint); err != nil {
 			return err
 		}
 	}
@@ -159,11 +160,8 @@ func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
 		}
 	}
 
-	// auth.EnsureProfile is the only thing that ever creates a profile, and this is its
-	// only caller: resolution deliberately creates nothing, so that a mistyped --profile on
-	// an ordinary command reports an unknown profile instead of leaving one behind.
 	if session.Profile != "" {
-		if err := auth.EnsureProfile(session.Profile, &session.Endpoint); err != nil {
+		if err := profile.Ensure(session.Profile, &session.Endpoint); err != nil {
 			return err
 		}
 	}
@@ -186,24 +184,24 @@ func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
 // askForEndpoint answers "could a missing endpoint be what just failed, and may I ask?".
 //
 // It reports false whenever the profile that resolution would have selected already exists,
-// because such a profile always has an endpoint — auth.EnsureProfile refuses to create one
+// because such a profile always has an endpoint — profile.Ensure refuses to create one
 // without — so the failure was something else and a prompt would only delay its message.
 func askForEndpoint(cmd *cobra.Command, in *cli.Input) (string, bool) {
 	if in.Endpoint != "" || !tty.IsInteractive() {
 		return "", false
 	}
-	known, err := auth.KnownProfiles()
+	known, err := profile.List()
 	if err != nil {
 		return "", false
 	}
 	target := in.Profile
 	if target == "" {
-		target = auth.DefaultProfile
-		if i := slices.IndexFunc(known, func(p auth.KnownProfile) bool { return p.IsCurrent }); i >= 0 {
+		target = profile.DefaultName
+		if i := slices.IndexFunc(known, func(p profile.Summary) bool { return p.IsCurrent }); i >= 0 {
 			target = known[i].Name
 		}
 	}
-	if slices.ContainsFunc(known, func(p auth.KnownProfile) bool { return p.Name == target }) {
+	if slices.ContainsFunc(known, func(p profile.Summary) bool { return p.Name == target }) {
 		return "", false
 	}
 
@@ -236,7 +234,7 @@ type knownEndpoint struct {
 	profiles []string
 }
 
-func knownEndpoints(known []auth.KnownProfile) []knownEndpoint {
+func knownEndpoints(known []profile.Summary) []knownEndpoint {
 	var list []knownEndpoint
 	for _, p := range known {
 		if p.Endpoint == "" {

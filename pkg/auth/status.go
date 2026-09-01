@@ -73,7 +73,10 @@ func (s *Session) Status() (Status, error) {
 		status.ConfigPath = path
 	}
 	if login := credentials.Login; login != nil {
-		status.Login = &LoginStatus{Issuer: endpointString(login.Issuer), ObtainedAt: login.ObtainedAt}
+		status.Login = &LoginStatus{ObtainedAt: login.ObtainedAt}
+		if login.Issuer != nil {
+			status.Login.Issuer = login.Issuer.String()
+		}
 		if !login.ObtainedAt.IsZero() {
 			status.Login.Age = time.Since(login.ObtainedAt)
 		}

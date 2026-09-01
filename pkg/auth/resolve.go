@@ -215,7 +215,7 @@ func plainProfile(config profile.Config, explicit string) (profile.Profile, stri
 		name = config.CurrentProfile
 	}
 	if name == "" {
-		name = DefaultProfile
+		name = profile.DefaultName
 	}
 	entry, ok := config.Profiles[name]
 	return entry, name, ok
@@ -264,7 +264,7 @@ func selectProfile(ctx context.Context, config profile.Config, explicit, endpoin
 			// A mistyped --profile must report an unknown profile rather than quietly
 			// creating one. Creation happens in `auth login` and nowhere else.
 			return "", "", diags.Errorf("unknown profile",
-				"profile %q is not in %s. `meshstack auth login --profile %s` creates it.", named, describeConfigPath(), named)
+				"profile %q is not in %s. `meshstack auth login --profile %s` creates it.", named, profile.DescribeConfigPath(), named)
 		}
 		return named, fromSource.describe(detail), nil
 	}
@@ -297,7 +297,7 @@ func selectProfile(ctx context.Context, config profile.Config, explicit, endpoin
 			}
 			return "", "", diags.Errorf("no profile for this endpoint",
 				"no profile in %s is configured for %s, and no credential was supplied through %s and %s. `meshstack auth login --endpoint %s` creates one.",
-				describeConfigPath(), endpoint, envApiKey, envApiSecret, endpoint)
+				profile.DescribeConfigPath(), endpoint, envApiKey, envApiSecret, endpoint)
 		default:
 			return "", "", diags.Errorf("several profiles match this endpoint",
 				"%s are all configured for %s. Pick one with --profile.", strings.Join(quoteAll(matches), ", "), endpoint)
@@ -305,9 +305,9 @@ func selectProfile(ctx context.Context, config profile.Config, explicit, endpoin
 	}
 
 	if config.CurrentProfile != "" {
-		return config.CurrentProfile, sourceProfile.describe("currentProfile in " + describeConfigPath()), nil
+		return config.CurrentProfile, sourceProfile.describe("currentProfile in " + profile.DescribeConfigPath()), nil
 	}
-	return DefaultProfile, sourceDefault.describe("profile " + DefaultProfile), nil
+	return profile.DefaultName, sourceDefault.describe("profile " + profile.DefaultName), nil
 }
 
 // currentMethod decides which method mints for this session. A credential either names one or
@@ -327,14 +327,6 @@ func currentMethod(credentials profile.Credentials, demanded credential.Method, 
 	// Nothing stored yet. Login is the method `meshstack login` creates, and the error a
 	// command gets from a profile with no credentials names it.
 	return credential.MethodLogin, nil
-}
-
-func describeConfigPath() string {
-	path, err := profile.ConfigPath()
-	if err != nil {
-		return "the meshStack CLI configuration"
-	}
-	return path
 }
 
 func quoteAll(values []string) []string {

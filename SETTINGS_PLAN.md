@@ -56,8 +56,11 @@ func Select(sources ...setting.Source) (Selection, error)
 ```
 
 `pkg/profile` also absorbs the four `config.json` operations that sit in `pkg/auth/profiles.go`
-today, because all four only read and write that one file: `Known`, `Ensure`, `SetEndpoint` and
-`SetWorkspace`, plus `DefaultName` and `describeConfigPath`. `pkg/auth/profiles.go` disappears.
+today, because all four only read and write that one file: `List`, `Ensure`, `SetEndpoint` and
+`SetWorkspace`, plus `DefaultName` and `DescribeConfigPath`. `pkg/auth/profiles.go` disappears.
+`List` returns `[]Summary`, because the struct and the function cannot both be `Known` and neither
+name wants to be the adjective. `DescribeConfigPath` is exported only until `selectProfile`, its
+three remaining callers, becomes `Select` here.
 `pkg/profile` gains an import of `pkg/meshstack` for `SameEndpoint` and `ParseEndpoint`; there is no
 cycle, because `pkg/meshstack` imports only `pkg/oidc/scope`, `pkg/diags` and `client/types/xurl`.
 
