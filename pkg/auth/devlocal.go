@@ -2,6 +2,9 @@ package auth
 
 import (
 	"context"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/internal/http"
@@ -12,10 +15,55 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// DevLocalProfile is reserved, so that a re-run of --dev-local overwrites it without asking.
-// Keeping it off profile.DefaultName is what makes that safe: a developer's own `default`
-// profile points at a real meshStack and must survive.
+// DevLocalProfile is the name --dev-local resolves through, and the prefix every profile it
+// writes carries. The prefix is reserved, so that a re-run overwrites those profiles without
+// asking. Keeping it off profile.DefaultName is what makes that safe: a developer's own
+// `default` profile points at a real meshStack and must survive.
 const DevLocalProfile = "dev-local"
+
+// DevLocalProfileName turns an api key's configured name or a login's username into the profile
+// --dev-local writes it to: dev-local-terraform-provider-acceptance,
+// dev-local-partner-at-meshcloud-io.
+//
+// An `@` becomes `-at-` rather than a plain `-`, so that the two halves of an address stay
+// readable. Everything else outside a-z0-9 becomes a single `-`, which can in principle map two
+// different names onto one profile; that fails here rather than letting the later one silently
+// take the earlier one's credential.
+func DevLocalProfileName(name string) (string, error) {
+	slug := devLocalSlug(name)
+	if slug == "" {
+		return "", diags.Errorf("cannot name a profile after this local dev credential",
+			"%q has no character a profile name can be built from.", name)
+	}
+	claimed, taken := devLocalSlugs[slug]
+	if taken && claimed != name {
+		return "", diags.Errorf("two local dev credentials want the same profile",
+			"%q and %q both become the profile %s%s. Rename one of them in the dev stack's configuration.",
+			claimed, name, DevLocalProfile+"-", slug)
+	}
+	devLocalSlugs[slug] = name
+	return DevLocalProfile + "-" + slug, nil
+}
+
+// devLocalSlugs remembers what each slug was built from, for the collision check above. One login
+// runs one --dev-local, so a process-wide map is the whole of the bookkeeping needed.
+var devLocalSlugs = map[string]string{}
+
+func devLocalSlug(name string) string {
+	var b strings.Builder
+	lastDash := true
+	for _, r := range strings.ToLower(strings.ReplaceAll(name, "@", "-at-")) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastDash = false
+		case !lastDash:
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
 
 // devLocalEndpoint is the only default endpoint anywhere in this package: guessing one for a
 // real meshStack would send a credential somewhere nobody named, while guessing one for a
@@ -90,26 +138,79 @@ func (s *Session) loginDevLocal(ctx context.Context, result *LoginResult) error 
 			"%s serves no devLocalCredentials in /mesh/info. meshStack publishes them only on a local dev stack, so --dev-local cannot bootstrap anything here. Use `meshstack login --api-key=<id>` with a key issued in meshPanel instead.",
 			s.Endpoint)
 	}
+	if len(dev.ApiKeys) == 0 {
+		return diags.Errorf("this meshStack publishes no local dev api keys",
+			"%s serves devLocalCredentials in /mesh/info but no apiKeys in it, so there is nothing to log in with.",
+			s.Endpoint)
+	}
 
-	token, err := apiLogin(ctx, s.Endpoint, dev.ApiKeyClientId, dev.ApiKeyClientSecret)
+	names, err := s.bootstrapApiKeyProfiles(ctx, dev)
 	if err != nil {
 		return err
 	}
-	if err := s.storeApiKey(ctx, &credential.ApiKey{
-		Id:     dev.ApiKeyClientId,
-		Secret: dev.ApiKeyClientSecret,
-	}, token); err != nil {
+	userNames, err := s.bootstrapUserProfiles(dev)
+	if err != nil {
 		return err
 	}
-	result.Username = dev.ApiKeyClientId
+	result.Username = strings.Join(append(names, userNames...), ", ")
+	return nil
+}
 
-	// The dev stack's key is not workspace-bound, so nothing here needs a workspace. The
-	// profile does, for a workspace-scoped command run later.
-	if s.Workspace == "" {
-		s.Workspace = info.AdminWorkspaceIdentifier
+// bootstrapApiKeyProfiles writes one logged-in profile per published key. Every key gets one
+// rather than one being chosen here, because they do not hold the same rights and which is
+// wanted is the caller's question, not this flag's.
+func (s *Session) bootstrapApiKeyProfiles(ctx context.Context, dev *client.DevLocalCredentials) ([]string, error) {
+	written := make([]string, 0, len(dev.ApiKeys))
+	for _, name := range slices.Sorted(maps.Keys(dev.ApiKeys)) {
+		key := dev.ApiKeys[name]
+		profileName, err := DevLocalProfileName(name)
+		if err != nil {
+			return nil, err
+		}
+		token, err := apiLogin(ctx, s.Endpoint, key.ClientId, key.ClientSecret)
+		if err != nil {
+			return nil, err
+		}
+		if err := profile.Ensure(profileName, &s.Endpoint); err != nil {
+			return nil, err
+		}
+		store, err := profile.NewFileStore(profileName)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := store.Update(ctx, func(c profile.Credentials) (profile.Credentials, error) {
+			c.Version = profile.Version
+			c.Endpoint = &s.Endpoint
+			stored := credential.ApiKey{Id: key.ClientId, Secret: key.ClientSecret, AccessToken: issuedToken(token)}
+			c.Credential = switchTo(c.Credential, credential.FromApiKey(stored))
+			return c, nil
+		}); err != nil {
+			return nil, err
+		}
+		written = append(written, profileName)
 	}
-	if s.Workspace == "" {
-		return nil
+	return written, nil
+}
+
+// bootstrapUserProfiles writes one profile per seeded login, carrying the endpoint and nothing
+// else. No credential, because the CLI's keycloak client runs the authorization code flow and has
+// no password grant, so `meshstack login --profile <name>` still has to do the browser exchange.
+//
+// No default workspace either, deliberately: one of these logs in and discovers what it can reach
+// exactly as any other user does, and a workspace put here by the flag would make that path
+// untested for the one stack where it is easiest to test. What the profile saves is naming the
+// endpoint again, and nothing more.
+func (s *Session) bootstrapUserProfiles(dev *client.DevLocalCredentials) ([]string, error) {
+	written := make([]string, 0, len(dev.Users))
+	for _, username := range slices.Sorted(maps.Keys(dev.Users)) {
+		profileName, err := DevLocalProfileName(username)
+		if err != nil {
+			return nil, err
+		}
+		if err := profile.Ensure(profileName, &s.Endpoint); err != nil {
+			return nil, err
+		}
+		written = append(written, profileName)
 	}
-	return s.rememberWorkspace(s.Workspace, result)
+	return written, nil
 }

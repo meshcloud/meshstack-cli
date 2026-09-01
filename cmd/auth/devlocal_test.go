@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	devApiKeyName         = "terraform-provider-acceptance"
 	devApiKeyClientId     = "37abbe45-aba7-4617-b87d-93f4cbf95832"
 	devApiKeyClientSecret = "eUp1jPMfM2RyNOjdVRuLmHGOYCvzZrN5"
 	devAdminWorkspace     = "demo-partner"
@@ -27,44 +28,55 @@ const (
 // --dev-local bootstraps a profile out of a document nobody configured, so the assertions are
 // about what reached disk: the profile in config.json, and the credential the CLI can use next.
 func TestDevLocalLogin(t *testing.T) {
-	tests := []struct {
-		name        string
-		args        []string
-		wantProfile string
-	}{
-		{
-			name:        "the reserved profile name is the default",
-			args:        nil,
-			wantProfile: auth.DevLocalProfile,
-		},
-		{
-			name:        "--profile overrides the reserved name",
-			args:        []string{"--profile", "scratch"},
-			wantProfile: "scratch",
-		},
+	dir := isolateAt(t)
+	stack := devLocalStack(t, true)
+
+	cmd := loginWithRootFlags(cli.New())
+	require.NoError(t, run(cmd, "--dev-local", "--endpoint", stack))
+
+	config, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	require.NoError(t, err)
+
+	t.Run("one profile per published api key, named after the key", func(t *testing.T) {
+		assert.Contains(t, string(config), auth.DevLocalProfile+"-"+devApiKeyName)
+		assert.Contains(t, string(config), stack)
+
+		credentials, err := os.ReadFile(
+			filepath.Join(dir, "credentials", auth.DevLocalProfile+"-"+devApiKeyName+".json"))
+		require.NoError(t, err)
+		assert.Contains(t, string(credentials), devApiKeyClientId)
+		assert.Contains(t, string(credentials), devApiKeyClientSecret)
+		assert.Contains(t, string(credentials), `"current": "apiKey"`)
+	})
+
+	t.Run("one profile per seeded login, with the address made readable", func(t *testing.T) {
+		assert.Contains(t, string(config), auth.DevLocalProfile+"-partner-at-meshcloud-io")
+		assert.Contains(t, string(config), auth.DevLocalProfile+"-customer-e-at-meshcloud-io")
+	})
+
+	t.Run("a login profile carries no default workspace, so it discovers like any other user", func(t *testing.T) {
+		assert.NotContains(t, string(config), devAdminWorkspace)
+	})
+
+	t.Run("a login profile carries no credential, because the browser exchange still has to happen", func(t *testing.T) {
+		_, err := os.Stat(filepath.Join(dir, "credentials", auth.DevLocalProfile+"-partner-at-meshcloud-io.json"))
+		assert.ErrorIs(t, err, os.ErrNotExist)
+	})
+}
+
+func TestDevLocalProfileName(t *testing.T) {
+	tests := map[string]string{
+		"terraform-provider-acceptance": "dev-local-terraform-provider-acceptance",
+		"partner@meshcloud.io":          "dev-local-partner-at-meshcloud-io",
+		"customer-e@meshcloud.io":       "dev-local-customer-e-at-meshcloud-io",
+		"Mixed.Case@Example.IO":         "dev-local-mixed-case-at-example-io",
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			dir := isolateAt(t)
-			stack := devLocalStack(t, true)
-
-			cmd := loginWithRootFlags(cli.New())
-			require.NoError(t, run(cmd, append([]string{"--dev-local", "--endpoint", stack}, test.args...)...))
-
-			config, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	for name, want := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := auth.DevLocalProfileName(name)
 			require.NoError(t, err)
-			assert.Contains(t, string(config), test.wantProfile)
-			assert.Contains(t, string(config), stack)
-			// An ADM_ key is not workspace-bound, but a profile with no workspace fails every
-			// workspace-scoped command later, so the admin workspace becomes the default.
-			assert.Contains(t, string(config), devAdminWorkspace)
-
-			credentials, err := os.ReadFile(filepath.Join(dir, "credentials", test.wantProfile+".json"))
-			require.NoError(t, err)
-			assert.Contains(t, string(credentials), devApiKeyClientId)
-			assert.Contains(t, string(credentials), devApiKeyClientSecret)
-			assert.Contains(t, string(credentials), `"current": "apiKey"`)
+			assert.Equal(t, want, got)
 		})
 	}
 }
@@ -139,10 +151,21 @@ func devLocalStack(t *testing.T, withDevLocalCredentials bool) string {
 		}
 		if withDevLocalCredentials {
 			info["devLocalCredentials"] = map[string]any{
-				"apiKeyClientId":     devApiKeyClientId,
-				"apiKeyClientSecret": devApiKeyClientSecret,
-				"users": []map[string]any{
-					{"username": "partner@meshcloud.io", "password": "sample123", "workspace": devAdminWorkspace},
+				"apiKeys": map[string]any{
+					devApiKeyName: map[string]any{
+						"clientId":     devApiKeyClientId,
+						"clientSecret": devApiKeyClientSecret,
+					},
+				},
+				"users": map[string]any{
+					"partner@meshcloud.io": map[string]any{
+						"password":   "sample123",
+						"workspaces": map[string]any{devAdminWorkspace: "Organization Admin"},
+					},
+					"customer-e@meshcloud.io": map[string]any{
+						"password":   "sample123",
+						"workspaces": map[string]any{},
+					},
 				},
 			}
 		}

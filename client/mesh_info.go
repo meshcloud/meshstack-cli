@@ -42,25 +42,37 @@ type MeshInfo struct {
 	DevLocalCredentials *DevLocalCredentials `json:"devLocalCredentials,omitempty" tfsdk:"-"`
 }
 
-// DevLocalCredentials is the local dev stack's own credentials: one global API key holding
-// ADM_ rights, and the keycloak logins seeded into its realm.
+// DevLocalCredentials is the local dev stack's own credentials: every API key it is configured
+// with, and every keycloak login seeded into its realm. Both maps are keyed the way that stack
+// names them, so a consumer picks by name rather than by position.
 type DevLocalCredentials struct {
-	ApiKeyClientId     string         `json:"apiKeyClientId"`
-	ApiKeyClientSecret string         `json:"apiKeyClientSecret"`
-	Users              []DevLocalUser `json:"users"`
+	// Keyed by the key's configured name. Which one to use is the caller's choice, and they do
+	// not hold the same rights: the one the Terraform suite runs as holds ADM_, while the one a
+	// runner uses reaches building block runs alone.
+	ApiKeys map[string]DevLocalApiKey `json:"apiKeys"`
+	// Keyed by username.
+	Users map[string]DevLocalUser `json:"users"`
 }
 
-// DevLocalUser is one seeded login. The list is ordered and a consumer takes the first: a user
-// whose keycloak account carries no workspace attribute cannot act after a browser login, and
-// reports an empty Workspace rather than a name that would fail.
+type DevLocalApiKey struct {
+	ClientId     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+}
+
+// DevLocalUser is one seeded login. Workspaces is keyed by workspace identifier and holds the role
+// the login has there; it is empty for a login that holds none, which is a real case rather than a
+// broken entry — such a login authenticates and then sees nothing.
 //
-// Workspace is a plain string because client/ may not import pkg/workspace — .golangci.yml's
+// Nothing configures a client from Workspaces: a seeded login discovers what it can reach exactly
+// as any other user does. It is here so that a test knows which logins are supposed to see
+// something, and can hold discovery to that without hardcoding another repository's seed data.
+//
+// The identifiers are plain strings because client/ may not import pkg/workspace — .golangci.yml's
 // depguard rule for this package allows the standard library, client/ itself and internal/http,
 // and nothing else.
 type DevLocalUser struct {
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	Workspace string `json:"workspace,omitempty"`
+	Password   string            `json:"password"`
+	Workspaces map[string]string `json:"workspaces"`
 }
 
 type MeshInfoClient interface {

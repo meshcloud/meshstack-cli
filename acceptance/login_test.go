@@ -28,18 +28,24 @@ func TestAccDevLocalLogin(t *testing.T) {
 	cli.mustRun("login", "--dev-local", "--endpoint", endpoint)
 
 	require.FileExists(t, filepath.Join(cli.dir, "config.json"))
-	// The reserved profile name, which is what makes the flag configless on the way back out.
-	credentials := filepath.Join(cli.dir, "credentials", "dev-local.json")
-	require.FileExists(t, credentials)
-	stored, err := os.ReadFile(credentials)
-	require.NoError(t, err)
-	assert.Contains(t, string(stored), dev.ApiKeyClientId)
-	assert.Contains(t, string(stored), dev.ApiKeyClientSecret)
+	require.NotEmpty(t, dev.ApiKeys, "the local dev stack published no api keys to bootstrap from")
 
-	// The proof itself: the next two commands are given nothing at all, and work off what the
-	// login wrote. --verify is the one that makes a round trip with the credential.
-	cli.mustRun("auth", "status", "--verify")
-	cli.mustRun("workspace", "list")
+	for name, key := range dev.ApiKeys {
+		t.Run(name, func(t *testing.T) {
+			// One profile per key, named after the key, so a caller picks the rights it needs
+			// rather than getting whichever key this flag happened to choose.
+			profile := "dev-local-" + name
+			stored, err := os.ReadFile(filepath.Join(cli.dir, "credentials", profile+".json"))
+			require.NoError(t, err)
+			assert.Contains(t, string(stored), key.ClientId)
+			assert.Contains(t, string(stored), key.ClientSecret)
+
+			// The proof itself: these are given nothing but the profile, and work off what the
+			// login wrote. --verify is the one that makes a round trip with the credential.
+			cli.mustRun("auth", "status", "--verify", "--profile", profile)
+			cli.mustRun("workspace", "list", "--profile", profile)
+		})
+	}
 }
 
 // TestAccBrowserLoginHeadless drives the authorization code flow with no browser and no
@@ -49,29 +55,46 @@ func TestAccDevLocalLogin(t *testing.T) {
 //
 // ../terraform-provider-meshstack/scratch/headless-login.sh is the shell reference this
 // replicates.
+// Every seeded login gets a subtest, so the ones that differ are covered rather than assumed: a
+// login holding two workspaces, one holding a single workspace, and one holding none, which
+// authenticates and then sees nothing.
 func TestAccBrowserLoginHeadless(t *testing.T) {
 	endpoint, info := requireLocalStack(t)
 	dev := requireDevLocalCredentials(t, endpoint, info)
 	require.NotEmpty(t, dev.Users, "the local dev stack published no seeded logins to log in as")
-	// The list is ordered and the first entry is the one meant to be used: it is the one whose
-	// keycloak account carries a workspace, without which a browser login cannot act.
-	user := dev.Users[0]
-	require.NotEmptyf(t, user.Workspace, "the first seeded login %q has no workspace, so a browser login as it cannot act", user.Username)
 
-	const profileName = "acc-browser-login"
-	cli := newCLI(t)
-	login := cli.command("login", "--profile", profileName, "--endpoint", endpoint, "--workspace", user.Workspace)
-	output := &syncBuffer{}
-	login.Stdout, login.Stderr = output, output
-	require.NoError(t, login.Start())
+	for username, user := range dev.Users {
+		t.Run(username, func(t *testing.T) {
+			profileName := "acc-" + strings.NewReplacer("@", "-at-", ".", "-").Replace(username)
+			cli := newCLI(t)
 
-	completeKeycloakLogin(t, awaitAuthorizationURL(t, output, info.Issuer.String()), user.Username, user.Password)
+			// Deliberately no --workspace: an unscoped login is what makes the listing below a
+			// discovery test rather than a check that the flag was echoed back.
+			login := cli.command("login", "--profile", profileName, "--endpoint", endpoint)
+			output := &syncBuffer{}
+			login.Stdout, login.Stderr = output, output
+			require.NoError(t, login.Start())
 
-	require.NoErrorf(t, login.Wait(), "the browser login did not finish:\n%s", output.String())
-	assert.Contains(t, output.String(), user.Username, "the login reports who it logged in as")
+			completeKeycloakLogin(t, awaitAuthorizationURL(t, output, info.Issuer.String()), username, user.Password)
 
-	// A login is only worth anything if what follows it works.
-	cli.mustRun("auth", "status", "--verify", "--profile", profileName)
+			require.NoErrorf(t, login.Wait(), "the browser login did not finish:\n%s", output.String())
+			assert.Contains(t, output.String(), username, "the login reports who it logged in as")
+
+			// A login is only worth anything if what follows it works.
+			cli.mustRun("auth", "status", "--verify", "--profile", profileName)
+
+			// One is enough. This runs against a stack somebody develops on, where
+			// partner@meshcloud.io may have been added to a workspace by hand, so asserting a
+			// count or a set would report the developer rather than the CLI. A login that holds
+			// no role is only required not to fail.
+			listed := cli.mustRun("workspace", "list", "--profile", profileName)
+			if len(user.Workspaces) > 0 {
+				assert.NotEmptyf(t, strings.Fields(listed),
+					"this login holds a role on %d workspace(s), so discovery should list at least one. It said:\n%s",
+					len(user.Workspaces), listed)
+			}
+		})
+	}
 }
 
 // awaitAuthorizationURL watches the subprocess's output for the URL it wants a person to

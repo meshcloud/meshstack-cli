@@ -26,17 +26,27 @@ func TestMeshInfoDevLocalCredentials(t *testing.T) {
 			document: `{"version":"2026.34.0","issuer":"https://login.example.com/auth/realms/meshfed","devLocalCredentials":null}`,
 		},
 		{
-			name:     "a local dev stack carries the api key and the seeded logins",
-			document: `{"version":"2026.34.0","issuer":"http://localhost:5050/auth/realms/meshfed","cliClientId":"meshstack-cli","devLocalCredentials":{"apiKeyClientId":"37abbe45-aba7-4617-b87d-93f4cbf95832","apiKeyClientSecret":"eUp1jPMfM2RyNOjdVRuLmHGOYCvzZrN5","users":[{"username":"partner@meshcloud.io","password":"sample123","workspace":"demo-partner"},{"username":"customer@meshcloud.io","password":"sample123","workspace":"demo-customer"},{"username":"customer-e@meshcloud.io","password":"sample123"}]}}`,
+			name:     "a local dev stack carries every api key and every seeded login",
+			document: `{"version":"2026.34.0","issuer":"http://localhost:5050/auth/realms/meshfed","cliClientId":"meshstack-cli","devLocalCredentials":{"apiKeys":{"terraform-provider-acceptance":{"clientId":"37abbe45-aba7-4617-b87d-93f4cbf95832","clientSecret":"eUp1jPMfM2RyNOjdVRuLmHGOYCvzZrN5"},"meshcloud-hosted-runner":{"clientId":"00000000-0000-0000-0000-000000000001","clientSecret":"eUp1jPMfM2RyNOjdVRuLmHGOYCvzZrN5"}},"users":{"partner@meshcloud.io":{"password":"sample123","workspaces":{"demo-partner":"Organization Admin","managed-customer":"Workspace Manager"}},"customer-e@meshcloud.io":{"password":"sample123","workspaces":{}}}}}`,
 			want: &DevLocalCredentials{
-				ApiKeyClientId:     "37abbe45-aba7-4617-b87d-93f4cbf95832",
-				ApiKeyClientSecret: "eUp1jPMfM2RyNOjdVRuLmHGOYCvzZrN5",
-				Users: []DevLocalUser{
-					{Username: "partner@meshcloud.io", Password: "sample123", Workspace: "demo-partner"},
-					{Username: "customer@meshcloud.io", Password: "sample123", Workspace: "demo-customer"},
-					// No workspace attribute in keycloak, so a browser login for this one
-					// cannot act and the field is absent rather than empty-and-usable.
-					{Username: "customer-e@meshcloud.io", Password: "sample123"},
+				ApiKeys: map[string]DevLocalApiKey{
+					"terraform-provider-acceptance": {
+						ClientId:     "37abbe45-aba7-4617-b87d-93f4cbf95832",
+						ClientSecret: "eUp1jPMfM2RyNOjdVRuLmHGOYCvzZrN5",
+					},
+					"meshcloud-hosted-runner": {
+						ClientId:     "00000000-0000-0000-0000-000000000001",
+						ClientSecret: "eUp1jPMfM2RyNOjdVRuLmHGOYCvzZrN5",
+					},
+				},
+				Users: map[string]DevLocalUser{
+					"partner@meshcloud.io": {
+						Password:   "sample123",
+						Workspaces: map[string]string{"demo-partner": "Organization Admin", "managed-customer": "Workspace Manager"},
+					},
+					// No workspace attribute in keycloak, so a browser login as this one
+					// authenticates and then sees nothing. Empty, not absent.
+					"customer-e@meshcloud.io": {Password: "sample123", Workspaces: map[string]string{}},
 				},
 			},
 		},
