@@ -30,7 +30,7 @@ func TestHintErrExplainsTheFailureWhoseCauseIsNotInTheErrorText(t *testing.T) {
 		warnings := logs.warnings()
 		require.Len(t, warnings, 1)
 		assert.Contains(t, warnings[0], "scoped to workspace demo")
-		assert.Contains(t, warnings[0], "--workspace")
+		assert.Contains(t, warnings[0], meshstack.Workspace.EnvKey)
 	})
 
 	t.Run("a 403 with any other credential names its own workspace", func(t *testing.T) {
@@ -47,7 +47,7 @@ func TestHintErrExplainsTheFailureWhoseCauseIsNotInTheErrorText(t *testing.T) {
 		warnings := logs.warnings()
 		require.Len(t, warnings, 1)
 		assert.Contains(t, warnings[0], "this credential's own workspace is what decides")
-		assert.NotContains(t, warnings[0], "demo", "an API key token is not scoped by --workspace")
+		assert.NotContains(t, warnings[0], "demo", "an API key token is not scoped by a workspace setting")
 	})
 
 	t.Run("a 403 without a session at all", func(t *testing.T) {

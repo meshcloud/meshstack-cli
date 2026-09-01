@@ -81,14 +81,14 @@ func Select(ctx context.Context, sources ...setting.Source) (Selection, error) {
 				matches[i] = strconv.Quote(match)
 			}
 			return Selection{}, diags.Errorf("several profiles match this endpoint",
-				"%s are all configured for %s. Pick one with --profile.", strings.Join(matches, ", "), endpoint)
+				"%s are all configured for %s. Name one with %s.", strings.Join(matches, ", "), endpoint, Name.EnvKey)
 		case len(matches) == 1:
 			selection.Name, source = matches[0], "the only profile for "+endpoint.String()
 			// A terraform plan whose identity depends on which profiles exist on the machine
 			// should at least announce it.
 			slog.WarnContext(ctx, "picked a profile by endpoint",
-				"detail", fmt.Sprintf("profile %q is the only one configured for %s, so this command uses its credentials. Name one with --profile to be explicit.",
-					selection.Name, endpoint))
+				"detail", fmt.Sprintf("profile %q is the only one configured for %s, so this command uses its credentials. Name one with %s to be explicit.",
+					selection.Name, endpoint, Name.EnvKey))
 		case config.CurrentProfile != "":
 			selection.Name, source = config.CurrentProfile, "currentProfile in "+DescribeConfigPath()
 		default:

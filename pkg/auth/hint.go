@@ -7,6 +7,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 )
 
 // HintErr logs a warning for the one failure whose cause is not in the error text, and
@@ -37,8 +38,8 @@ func forbiddenHint(session *Session) string {
 	// same note without a workspace name, because the credential's own workspace is what
 	// decides what it reaches.
 	if session.Method() != credential.MethodLogin || strings.TrimSpace(session.Workspace) == "" {
-		return "this credential's own workspace is what decides what it reaches; a --workspace on the command line cannot widen it."
+		return "this credential's own workspace is what decides what it reaches, and naming another one cannot widen it."
 	}
 	return "this token is scoped to workspace " + session.Workspace +
-		". If the object belongs to another workspace, name it with --workspace."
+		". If the object belongs to another workspace, name that one with " + meshstack.Workspace.EnvKey + "."
 }

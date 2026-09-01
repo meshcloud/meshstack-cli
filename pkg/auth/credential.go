@@ -69,8 +69,8 @@ func resolveCredential(ctx context.Context, opts ResolveSessionOptions, selectio
 		// endpoint would send a stored bearer token to a different meshStack.
 		if credentials.Endpoint != nil && !meshstack.SameEndpoint(*credentials.Endpoint, endpoint) {
 			return profile.Credentials{}, diags.Errorf("this credential belongs to a different meshStack",
-				"profile %q was logged in to %s, but this command targets %s. Pick another profile with --profile, or log in again.",
-				selection.Name, credentials.Endpoint, endpoint)
+				"profile %q was logged in to %s, but this command targets %s. Name another profile with %s, or log in again.",
+				selection.Name, credentials.Endpoint, endpoint, profile.Name.EnvKey)
 		}
 		read = &credentials
 		return credentials, nil

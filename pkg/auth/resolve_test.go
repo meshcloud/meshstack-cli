@@ -54,7 +54,7 @@ func TestExplicitBeatsEnvironmentBeatsProfileBeatsDefault(t *testing.T) {
 			_, err := ResolveSession(t.Context(), ResolveSessionOptions{})
 			p := problemOf(t, err)
 			require.Equal(t, "meshStack endpoint is not configured", p.Summary())
-			assert.Contains(t, p.Detail(), "--endpoint")
+			assert.Contains(t, p.Detail(), meshstack.Endpoint.EnvKey)
 			assert.Contains(t, p.Detail(), meshstack.Endpoint.EnvKey)
 		})
 	})
@@ -363,7 +363,7 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 		require.Contains(t, logs.warnings(), "picked a profile by endpoint")
 	})
 
-	t.Run("several matches stop and name --profile", func(t *testing.T) {
+	t.Run("several matches stop and name the profile setting", func(t *testing.T) {
 		isolate(t)
 		writeConfig(t, "", map[string]profile.Profile{
 			"alpha": {Endpoint: mustUrl("https://api.live.example.com")},
@@ -378,7 +378,7 @@ func TestSelectingAProfileByEndpoint(t *testing.T) {
 		assert.Contains(t, p.Detail(), `"alpha"`)
 		assert.Contains(t, p.Detail(), `"beta"`)
 		assert.NotContains(t, p.Detail(), `"other"`)
-		assert.Contains(t, p.Detail(), "--profile")
+		assert.Contains(t, p.Detail(), profile.Name.EnvKey)
 	})
 
 	t.Run("no match and no credential from above names the endpoint", func(t *testing.T) {
@@ -452,7 +452,7 @@ func TestACredentialForAnotherEndpointIsRefusedBeforeItIsUsed(t *testing.T) {
 	require.Equal(t, "this credential belongs to a different meshStack", p.Summary())
 	assert.Contains(t, p.Detail(), "https://api.old.example.com")
 	assert.Contains(t, p.Detail(), "https://api.new.example.com")
-	assert.Contains(t, p.Detail(), "--profile")
+	assert.Contains(t, p.Detail(), profile.Name.EnvKey)
 	assert.NotContains(t, p.Detail(), "a-token-for-the-old-instance")
 }
 

@@ -117,7 +117,7 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, 
 	}
 	if raw == "" {
 		return nil, diags.Wrap(ErrNoEndpoint, "meshStack endpoint is not configured",
-			"profile %q names no endpoint. Set it with --endpoint, %s, or `meshstack profile set endpoint <url>`.",
+			"profile %q names no endpoint. Set it with %s, or with `meshstack profile set endpoint <url>`.",
 			selection.Name, meshstack.Endpoint.EnvKey)
 	}
 	if session.Endpoint, err = meshstack.ParseEndpoint(raw); err != nil {

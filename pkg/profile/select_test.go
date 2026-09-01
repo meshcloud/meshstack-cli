@@ -118,5 +118,5 @@ func TestSelectRefusesAnEndpointSeveralProfilesMatch(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `"alpha"`)
 	assert.Contains(t, err.Error(), `"beta"`)
-	assert.Contains(t, err.Error(), "--profile")
+	assert.Contains(t, err.Error(), Name.EnvKey)
 }

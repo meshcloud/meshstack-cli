@@ -557,6 +557,14 @@ All six declarations the provider renders therefore grew a `Long`, because four 
 schema as one line where the attribute needed a paragraph. Verification is the provider's unit tests
 rather than its acceptance suite: nothing in this phase changes what a request carries.
 
+**The same rule governs a message, not only the help text.** A message produced under `pkg/` names
+the environment variable, because that is the one identifier both front ends honour — telling a
+Terraform practitioner to pass `--profile` is telling them to do something they cannot. Naming the
+meshStack CLI's own command is the exception and stays: `meshstack login` and
+`meshstack profile set` are the remedy whichever front end hit the error, because only the CLI
+writes a profile. Five messages read the flag before phase 4: two in `profile.Select`, and one each
+in the endpoint check, the missing-endpoint error and the 403 hint.
+
 **`templates/index.md.tmpl` now renders `{{ .SchemaMarkdown }}`.** It used to restate the six
 attributes by hand, so `task generate` could not carry a schema edit into `docs/index.md` and the
 two had already drifted. The generated list breaks out of its bullet where a description runs to
