@@ -2,6 +2,7 @@ package profile
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
@@ -40,14 +41,7 @@ func List() ([]Summary, error) {
 			IsCurrent:        name == config.CurrentProfile,
 		})
 	}
-	slices.SortFunc(known, func(a, b Summary) int {
-		if a.Name < b.Name {
-			return -1
-		} else if a.Name > b.Name {
-			return 1
-		}
-		return 0
-	})
+	slices.SortFunc(known, func(a, b Summary) int { return strings.Compare(a.Name, b.Name) })
 	return known, nil
 }
 
