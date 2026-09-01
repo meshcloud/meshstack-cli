@@ -88,7 +88,16 @@ func printMethods(out io.Writer, status auth.Status) {
 		label = ""
 	}
 	if apiKey := status.ApiKey; apiKey != nil {
-		row(out, label, "apiKey "+apiKey.ClientId, "secret from "+apiKey.SecretFrom)
+		from := apiKey.SecretFrom
+		if from == "" {
+			from = originOf(status, credential.ApiSecret.EnvKey)
+		}
+		if from == "" {
+			// A profile that holds an API key beside the login it is authenticating with:
+			// nothing resolved the secret, so nothing recorded where it came from.
+			from = "the credentials file"
+		}
+		row(out, label, "apiKey "+apiKey.ClientId, "secret from "+from)
 		label = ""
 	}
 	// A pasted token is not a method on disk — nothing can renew it — so it is named here

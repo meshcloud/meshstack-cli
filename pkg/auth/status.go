@@ -41,8 +41,8 @@ type LoginStatus struct {
 
 type ApiKeyStatus struct {
 	ClientId string
-	// SecretFrom names what produces the secret: the store holding it, or the command that
-	// prints it. Which source supplied it is the MESHSTACK_API_SECRET origin's job.
+	// SecretFrom names the command that prints the secret, and is empty for one held as a
+	// literal — where it came from is the MESHSTACK_API_SECRET origin's job.
 	SecretFrom string
 }
 
@@ -83,7 +83,7 @@ func (s *Session) Status() (Status, error) {
 		}
 	}
 	if apiKey := credentials.ApiKey; apiKey != nil {
-		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.Id, SecretFrom: s.currentStore().Describe()}
+		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.Id}
 		if len(apiKey.SecretCommand) > 0 {
 			status.ApiKey.SecretFrom = "the command " + apiKey.SecretCommand[0]
 		}
