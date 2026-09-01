@@ -52,8 +52,19 @@ type Selection struct {
     Origins  []setting.Origin
 }
 
-func Select(sources ...setting.Source) (Selection, error)
+func Select(ctx context.Context, sources ...setting.Source) (Selection, error)
 ```
+
+It takes a context because it emits one of the three warnings in 6 — a profile picked by matching
+the endpoint — and it warns where the decision is made rather than reporting the fact upward for
+`pkg/auth` to phrase. `meshstack profile set` calls `Select` directly, so a warning owned by
+`pkg/auth` would not reach it.
+
+**`Exists` is reported, not judged.** Today `selectProfile` refuses a named profile that is not in
+`config.json`, and refuses an endpoint no profile matches, unless it was called for a login. That
+exception is now derived rather than flagged: `ResolveSession` raises both errors when
+`opts.Store` is nil, and tolerates both when it is not. Handing a store in says this command
+writes the profile, and a profile a command is about to write need not exist yet.
 
 `pkg/profile` also absorbs the four `config.json` operations that sit in `pkg/auth/profiles.go`
 today, because all four only read and write that one file: `List`, `Ensure`, `SetEndpoint` and
@@ -61,8 +72,9 @@ today, because all four only read and write that one file: `List`, `Ensure`, `Se
 `List` returns `[]Summary`, because the struct and the function cannot both be `Known` and neither
 name wants to be the adjective. `DescribeConfigPath` is exported only until `selectProfile`, its
 three remaining callers, becomes `Select` here.
-`pkg/profile` gains an import of `pkg/meshstack` for `SameEndpoint` and `ParseEndpoint`; there is no
-cycle, because `pkg/meshstack` imports only `pkg/oidc/scope`, `pkg/diags` and `client/types/xurl`.
+`pkg/profile` imports `pkg/meshstack` for `SameEndpoint` and `ParseEndpoint`. There is no cycle:
+`pkg/meshstack` reaches only `pkg/oidc/scope`, `pkg/diags`, `client/types/xurl` and `pkg/setting`,
+and `pkg/setting` reaches only `pkg/diags`.
 
 **`pkg/auth` answers "who am I, against what, in which workspace".** It calls `profile.Select` and
 owns everything downstream of it.
@@ -482,12 +494,17 @@ lint` green in both repositories:
 1. `pkg/setting`'s `Origin`, `Environ`, `Default` and `DefaultFunc`, and the four `config.json`
    operations moved out of `pkg/auth/profiles.go`. Pure additions and a pure move, so nothing is
    implemented twice.
-2. `profile.Select` and `ResolveSession` together: the order in 2, the credential unit rule in 3,
-   the store in 4, `Origins()`. `Select` replaces `selectProfile` and `plainProfile` in the same
-   commit that writes it. `auth.Input` and `pkg/auth/env.go`'s consts go; `blockSource` replaces
-   `providerInput`.
-3. The front ends: the two stdin flags, the three sentinels and the prompts in `cmd/auth/login.go`,
-   `pkg/tty`'s global, `auth status` and `profile view` over origins, the `strings.TrimSpace` sweep.
+2. Everything else, in one checkpoint. `profile.Select` replaces `selectProfile` and `plainProfile`
+   in the same commit that writes it; `ResolveSession` brings the order in 2, the credential unit
+   rule in 3, the store in 4 and `Origins()`; `auth.Input` and `pkg/auth/env.go`'s consts go;
+   `blockSource` replaces `providerInput`; and the front ends get the two stdin flags, the three
+   sentinels, the prompts, `pkg/tty` without its global, origins in `auth status` and
+   `profile view`, and the `strings.TrimSpace` sweep.
+
+   The front ends cannot be a checkpoint of their own. `ResolveSession` reads the secret from the
+   front end's source, so a commit that lands the resolution without the prompts is one where
+   `meshstack login --api-key=k` cannot ask for a secret. Commit it in steps, but do not stop on a
+   step that leaves a command worse than it was.
 
 ## Phase 4 — the provider, one lane
 
