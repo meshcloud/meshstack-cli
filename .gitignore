@@ -1,0 +1,22 @@
+# Binary produced by 'task build'
+/meshstack
+
+# Release artifacts produced by goreleaser
+/dist/
+
+# Go environment created by the Nix dev shell (flake.nix shellHook)
+/.nix-go/
+
+# Store symlink left behind by 'nix build'
+/result
+/result-*
+
+# Local meshStack credentials, read by the Taskfile's dotenv
+.env
+
+# Editor and IDE directories
+.vscode/
+.idea/
+
+# Per-developer Claude Code settings; .claude/settings.json is shared and committed
+.claude/settings.local.json

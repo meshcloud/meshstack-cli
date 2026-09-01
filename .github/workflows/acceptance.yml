@@ -1,0 +1,102 @@
+# meshStack CLI acceptance tests against a live backend.
+name: Acceptance Tests
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+
+# Testing only needs permissions to read the repository contents.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref (this job is expensive).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Acceptance tests against a real, fully dockerized meshStack backend brought up from pre-built
+  # images as service containers. Runs on the org's self-hosted mesh-runners (which can pull the
+  # private GAR images); forks are skipped (no runners, no MESHFED_REGISTRY variable).
+  # The internal registry path comes from the MESHFED_REGISTRY repo/org configuration variable so
+  # it is not hardcoded here. Canonical local equivalent: meshfed-release/docker-compose.acc.yml.
+  acceptance:
+    name: Go Acceptance Test
+    # Forks lack the self-hosted runners and the MESHFED_REGISTRY variable. Running on the main push
+    # as well as on PRs is what surfaces a CLI/backend regression before a release tag.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: mesh-runners
+
+    # ARC runs these self-hosted runners in kubernetes container mode, where a job using service
+    # containers MUST declare a job container — so nix-ci stays as the (GAR-available, proven) base.
+    # The Go toolchain + module/build cache come from actions/setup-go below, aligned with the other
+    # jobs in this repository.
+    container:
+      image: ${{ vars.MESHFED_REGISTRY }}/meshstack-container/nix-ci:latest
+
+    # The backend as service containers, trimmed to what the CLI actually talks to: /mesh/info, the
+    # keycloak login and the meshObject API. No building-block runners and no replicator — the CLI
+    # never drives a replication or a building-block run. On mesh-runners all services + the job
+    # container share one network, so the images' baked localhost config resolves between them. JVM
+    # services use `--restart on-failure` to absorb the mariadb startup race; the readiness step
+    # below is the real gate.
+    services:
+      mariadb:
+        image: ${{ vars.MESHFED_REGISTRY }}/meshstack-container/mariadb-ci
+
+      ravendb:
+        image: ${{ vars.MESHFED_REGISTRY }}/meshstack-container/ravendb-ci
+
+      rabbitmq:
+        image: ${{ vars.MESHFED_REGISTRY }}/dockerhub/rabbitmq:3.11.18-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+
+      # Cap each JVM service container's heap. The ARC $job-pod hook injects a JAVA_TOOL_OPTIONS -Xmx
+      # only into the job container, not service containers, so an uncapped JVM here sizes its heap to
+      # ~25% of node memory; several at once overcommit the spot node and OOM-kill it — surfacing as a
+      # truncated ("did not complete") acc run. Mirrors meshfed-release's service-container caps.
+      keycloak:
+        image: ${{ vars.MESHFED_REGISTRY }}/meshstack-container/keycloak-ci:26
+        env:
+          JAVA_TOOL_OPTIONS: -Xmx1g
+
+      meshfed-api:
+        image: ${{ vars.MESHFED_REGISTRY }}/meshstack-container/meshfed:latest
+        env:
+          # 8080 is free here (the tf-block-runner that claimed it in the provider's setup is not part
+          # of this stack), but keep 8089 so both repositories' acc stacks stay comparable. Mgmt 8180.
+          SERVER_PORT: "8089"
+          JAVA_TOOL_OPTIONS: -Xmx2g   # heap cap (working set ~1.4Gi), see keycloak
+        options: --restart on-failure
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Wait for backend to be ready
+        timeout-minutes: 8
+        shell: bash
+        run: .github/scripts/wait-for-backend.sh
+
+      - name: Run acceptance tests
+        # The only two the suite reads here: the gate, and the loopback endpoint it insists on.
+        # No credentials — the tests bootstrap from the backend's own /mesh/info devLocalCredentials,
+        # and blank every other MESHSTACK_* for the binary they drive. See acceptance/.
+        env:
+          MESHSTACK_ACC: "1"
+          MESHSTACK_ENDPOINT: http://localhost:8089
+        run: go test ./acceptance/... -v -count=1 -run 'TestAcc' -timeout 15m

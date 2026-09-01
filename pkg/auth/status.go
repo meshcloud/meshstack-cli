@@ -1,0 +1,99 @@
+package auth
+
+import (
+	"time"
+
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
+	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
+	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
+)
+
+// Status is everything `meshstack auth status` reports without making a network call. That
+// is the whole stored state except whether the credential was revoked, which nothing local
+// can know because a refresh token carries no expiry — so proving that gets a --verify flag
+// rather than a round trip on every call.
+type Status struct {
+	Profile         string
+	ConfigPath      string
+	CredentialsPath string
+	Endpoint        string
+	Workspace       string
+
+	// Origins is where each resolved value came from, in the order the resolution walked
+	// them. `meshstack profile view` prints all of it; `meshstack auth status` looks up two.
+	Origins []setting.Origin
+
+	Current credential.Method
+	Login   *LoginStatus
+	ApiKey  *ApiKeyStatus
+	Token   *TokenStatus
+}
+
+type LoginStatus struct {
+	Issuer     string
+	ObtainedAt time.Time
+	// Age is how long ago the login happened. A meshStack CLI login lasts at most 24 hours,
+	// idle and absolute, but that is a server-side constant: reporting the age is always
+	// truthful where predicting the deadline would not be.
+	Age time.Duration
+}
+
+type ApiKeyStatus struct {
+	ClientId string
+	// SecretFrom names the command that prints the secret, and is empty for one held as a
+	// literal — where it came from is the MESHSTACK_API_SECRET origin's job.
+	SecretFrom string
+}
+
+type TokenStatus struct {
+	Scope     scope.Scope
+	ExpiresAt time.Time
+	// ExpiresIn is negative for a token that has already expired, and zero when the token
+	// carries no expiry at all.
+	ExpiresIn time.Duration
+}
+
+// Status reads the stored state. It makes no network call, so it stays fast enough for a
+// shell prompt or a script.
+func (s *Session) Status() (Status, error) {
+	credentials, err := s.currentStore().Read()
+	if err != nil {
+		return Status{}, err
+	}
+
+	status := Status{
+		Profile:         s.Profile,
+		CredentialsPath: s.currentStore().Describe(),
+		Endpoint:        s.Endpoint.String(),
+		Workspace:       s.Workspace,
+		Origins:         s.origins,
+		Current:         s.Method(),
+	}
+	if path, err := profile.ConfigPath(); err == nil {
+		status.ConfigPath = path
+	}
+	if login := credentials.Login; login != nil {
+		status.Login = &LoginStatus{ObtainedAt: login.ObtainedAt}
+		if login.Issuer != nil {
+			status.Login.Issuer = login.Issuer.String()
+		}
+		if !login.ObtainedAt.IsZero() {
+			status.Login.Age = time.Since(login.ObtainedAt)
+		}
+	}
+	if apiKey := credentials.ApiKey; apiKey != nil {
+		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.Id}
+		if len(apiKey.SecretCommand) > 0 {
+			status.ApiKey.SecretFrom = "the command " + apiKey.SecretCommand[0]
+		}
+	}
+	scope := s.Scope()
+	if token, ok := cachedToken(credentials, s.Method(), scope); ok {
+		status.Token = &TokenStatus{Scope: scope, ExpiresAt: token.ExpiresAt}
+		if !token.ExpiresAt.IsZero() {
+			status.Token.ExpiresIn = time.Until(token.ExpiresAt)
+		}
+	}
+	return status, nil
+}

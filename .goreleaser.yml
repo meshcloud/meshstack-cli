@@ -1,0 +1,69 @@
+# Visit https://goreleaser.com for documentation on how to customize this behavior.
+version: 2
+
+# Everything published carries the repository name, meshstack-cli: the archives, the
+# checksum file and the container image. The binary inside them is meshstack, which
+# is why the build below names it explicitly instead of inheriting project_name.
+project_name: meshstack-cli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/meshstack
+    binary: meshstack
+    env:
+      # A statically linked binary runs in the distroless container image and on any
+      # glibc version.
+      - CGO_ENABLED=0
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    # The Dockerfile (from its VERSION build arg) and flake.nix set the same ldflag, and
+    # all three have to agree. Nothing fails when one is missing: that binary reports `dev`.
+    ldflags:
+      - '-s -w -X main.Version={{ .Version }}'
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # There is no 32-bit x86 or arm64 Windows target worth publishing.
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  algorithm: sha256
+
+changelog:
+  # Conventional Commits, so group the notes by type and drop the noise.
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: Others
+      order: 99
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

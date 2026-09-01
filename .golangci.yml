@@ -1,0 +1,225 @@
+# Visit https://golangci-lint.run/ for usage documentation
+# and information on other useful linters.
+#
+# Kept deliberately close to the meshStack Terraform provider's configuration, so
+# that code moving between the two repositories does not trip a different linter set.
+version: "2"
+issues:
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+  settings:
+    gci:
+      sections:
+        - standard     # Go standard library
+        - default      # All other external dependencies
+        - localmodule  # This repository's modules
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - durationcheck
+    - errcheck
+    - copyloopvar
+    - forbidigo
+    - forcetypeassert
+    - godot
+    - ineffassign
+    - makezero
+    - misspell
+    - nilerr
+    - predeclared
+    - staticcheck
+    - usetesting
+    - unconvert
+    - unparam
+    - unused
+    - govet
+    - testifylint
+    - thelper
+
+  exclusions:
+    rules:
+      # A test that stands up an httptest.Server and points a client at it makes no request
+      # the shipped binary makes, so the rule below has nothing to say about it.
+      - path: _test\.go
+        linters:
+          - forbidigo
+
+      # The one package that may build a client, which is the whole point of the rule.
+      - path: internal/http/
+        linters:
+          - forbidigo
+
+  settings:
+    # One HTTP client for the process, built in internal/http, and nothing else may make an
+    # outbound request of its own. There used to be three: pkg/auth posted to /api/login
+    # through http.DefaultClient, which has no timeout at all; pkg/oidc kept one with a
+    # 30-second one; and the API client built a third with five minutes. Only the last of them
+    # retried, so which policy a request got depended on which package happened to make it.
+    #
+    # It sits at the module root rather than under client/ because Go's internal rule would
+    # otherwise close it to pkg/oidc and pkg/auth, and outside the module's internal tree
+    # because the Terraform provider must not be able to configure it.
+    #
+    # This is forbidigo rather than a depguard deny because depguard bans an import path and
+    # net/http is one package for three unrelated things. Denying it would also deny
+    # http.StatusOK and http.MethodPost, which every caller reading a response needs, and the
+    # http.Server that pkg/oidc/browser runs for the loopback redirect — a server, not a
+    # second client. Naming the identifiers keeps all of that legal.
+    forbidigo:
+      # Match on the type rather than on the written name. It is what makes `pkg` below work,
+      # and it is what this rule needs, because internal/http's own type is also called Client
+      # and is imported under the name http. Without it, every legitimate use would be a
+      # finding and every net/http one behind an alias would not.
+      analyze-types: true
+      forbid:
+        - pattern: \.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
+          pkg: ^net/http$
+          msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
+
+    # These rules are the dependency policy, not an enforcement of one written down
+    # elsewhere, so widening one is a decision rather than a lint fix. The lists below
+    # are exhaustive by intent: two external dependencies, cobra and charmbracelet/log,
+    # each confined to a smaller area than the module.
+    #
+    # The reason to keep it that tight is outside this repository. The meshStack
+    # Terraform provider imports client/ and pkg/auth, so every dependency reachable
+    # from those packages lands in the provider's dependency tree, and from there in
+    # the public checksum database.
+    depguard:
+      rules:
+        # The package the Terraform provider consumes most directly.
+        client:
+          files:
+            # Both patterns are needed: '**/dir/**/*.go' only matches files in
+            # subdirectories of dir, never files directly inside it.
+            - "**/client/*.go"
+            - "**/client/**/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/client
+            # The HTTP machinery client/ is built on. It moved out of client/internal so that
+            # pkg/oidc and pkg/auth could reach it too, which is why the meshObject clients
+            # import it from the module root now.
+            - github.com/meshcloud/meshstack-cli/internal/http
+
+        pkg:
+          files:
+            - "**/pkg/*.go"
+            - "**/pkg/**/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: github.com/spf13/cobra
+              desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
+            - pkg: github.com/meshcloud/meshstack-cli/pkg/oidc/browser
+              desc: only cmd/ and internal/cli may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/meshcloud/meshstack-cli/pkg
+            # The process's one HTTP client. pkg/auth and pkg/oidc each address a different
+            # host — meshStack and the identity provider — and both go through it.
+            - github.com/meshcloud/meshstack-cli/internal/http
+
+        # internal/http is the process's one HTTP client, and it needs nothing but the standard
+        # library to be one. It sits outside client/ because Go's internal rule would otherwise
+        # close it to pkg/, and inside the module's internal tree because the Terraform provider
+        # must not be able to configure it.
+        internal-http:
+          files:
+            - "**/internal/http/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
+
+        # internal/cli implements the CLI's half of auth.Input: flags, stdin, a terminal
+        # prompt and the browser login. Go's internal rule already keeps it out of the
+        # Terraform provider, which is what makes it the one place outside cmd/ that may
+        # reach pkg/oidc/browser. The pkg rule above cannot reach these files — its
+        # files: list names **/pkg/ — so the deny there does not apply to them.
+        internal-cli:
+          files:
+            - "**/internal/cli/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli
+
+        # cmd/ builds the command tree, and is the only place cobra is used.
+        cmd:
+          files:
+            - "**/cmd/*.go"
+            - "**/cmd/**/*.go"
+            # Excluding cmd/meshstack is what lets the next rule grant more than this
+            # one does. A file matching two rules has to satisfy both, so overlapping
+            # rules intersect and never widen.
+            - "!**/cmd/meshstack/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Write user-facing output through the command's own streams
+          allow:
+            - $gostd
+            - log/slog # a longer prefix than the deny above, so it outranks it
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+
+        # The one package that configures a logger, and therefore the only one that may
+        # name a logging implementation. Everywhere else logs through log/slog against
+        # the handler installed here.
+        cmd-meshstack:
+          files:
+            - "**/cmd/meshstack/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Write user-facing output through the command's own streams
+          allow:
+            - $gostd
+            - log/slog
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+            - github.com/charmbracelet/log
+
+        # acceptance/ drives the built binary against a live local meshStack, as a
+        # subprocess. It is deny-by-default like everything else, and it needs less than
+        # most: os/exec and net/http out of the standard library, testify, and client/ for
+        # the one struct it shares with the code under test — it decodes /mesh/info into
+        # client.MeshInfo, so the suite fails when that type and the backend disagree.
+        #
+        # It deliberately may not reach pkg/ or internal/. A test that called the CLI's own
+        # resolution to work out where its profile went would pass whenever that resolution
+        # was consistently wrong; asserting on the files and the exit status is the whole
+        # point of running the binary rather than a cobra command in-process.
+        acceptance:
+          files:
+            - "**/acceptance/*.go"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/stretchr/testify
+
+        # Tests may additionally use testify, which is what the client's moved tests
+        # are written against.
+        tests:
+          files:
+            - "$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+            - github.com/stretchr/testify
