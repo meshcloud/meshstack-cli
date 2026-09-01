@@ -15,10 +15,10 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// fromProfile decides the store, and with it whether anything this session mints can ever
-// reach a file.
 type resolvedCredential struct {
-	credential  credential.Credential
+	credential credential.Credential
+	// fromProfile decides the store, and with it whether anything this session mints can ever
+	// reach a file.
 	fromProfile bool
 	origins     []setting.Origin
 }

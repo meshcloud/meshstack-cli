@@ -191,7 +191,7 @@ the method was.
 
 > **A credential resolves as a unit, in one walk down the ranked sources. The first source carrying
 > an identity defines the credential. Its secret is its own secret slot when it has one; otherwise
-> the first secret offered by a source that carries no identity of its own; otherwise nothing.**
+> the first secret offered by a source that carries no competing identity; otherwise nothing.**
 
 **This walk is not `setting.Resolve`.** It reads `credential.ApiKeyId`, `ApiSecret` and `ApiToken`
 out of each source by their `EnvKey`, but the pairing is its own code in `pkg/auth`, because
@@ -203,14 +203,17 @@ out of each source by their `EnvKey`, but the pairing is its own code in `pkg/au
 | `login --api-key=k`, secret prompted | flag | prompt | a flag never carries a secret, and nothing else offers one |
 | profile holds `dev-key` + stored secret, `MESHSTACK_API_SECRET` exported | profile | the profile's own slot | its own slot wins before anything else is asked |
 | block `apikey = "k"`, stale `MESHSTACK_API_KEY=j` + `MESHSTACK_API_SECRET=s` | block | nothing, so this fails | the environment carries a competing id, so its secret is skipped |
+| `MESHSTACK_API_KEY=dev-key`, profile holds `dev-key` and its secret | environment | the profile's own slot | the profile names the same id, so its secret is not somebody else's |
 
 **Row 1 is the case to protect, not an edge case.** An id in the provider block, or on `--api-key`,
 with the secret in the environment is the normal non-interactive setup. An acceptance test on both
 front ends says so.
 
-**The exclusion in row 4 fires against one source and no other.** Only a source offering an id of
-its own is skipped, and that is the environment — the profile always stores its id beside its
-secret, and a prompt carries neither. So the cost is one `Lookup` and one branch.
+**Rows 4 and 5 are the same test, read in both directions.** A secret is skipped when it sits beside
+a *different* id, not beside any id at all — that is what row 4's "competing" means, and reading it
+as "any" would fail row 5, where exporting only `MESHSTACK_API_KEY` beside the profile that stores
+that very key and its secret is an ordinary thing to do. So the cost is one `Lookup` and one
+comparison.
 
 **Row 4 has to explain itself, or it is worse than the 401 it replaces.** The provider says
 approximately:

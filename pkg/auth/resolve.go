@@ -111,7 +111,9 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, 
 	raw := selection.Endpoint
 	if raw == "" && selection.Entry.Endpoint != nil {
 		raw = selection.Entry.Endpoint.String()
-		session.origins = append(session.origins, fromProfile(meshstack.Endpoint.EnvKey, selection.Name))
+		session.origins = append(session.origins, setting.Origin{
+			Key: meshstack.Endpoint.EnvKey, Source: "profile " + selection.Name,
+		})
 	}
 	if raw == "" {
 		return nil, diags.Wrap(ErrNoEndpoint, "meshStack endpoint is not configured",
@@ -149,7 +151,9 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, 
 		})
 	case selection.Entry.DefaultWorkspace != "":
 		session.Workspace = selection.Entry.DefaultWorkspace
-		session.origins = append(session.origins, fromProfile(meshstack.Workspace.EnvKey, selection.Name))
+		session.origins = append(session.origins, setting.Origin{
+			Key: meshstack.Workspace.EnvKey, Source: "profile " + selection.Name,
+		})
 	}
 
 	if session.noInput, from, err = setting.Resolve(tty.NoInput, sources...); err != nil {
@@ -187,7 +191,3 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, 
 // A slice rather than a map: there is one writer, and that order is the one a person reading
 // `meshstack profile view` wants.
 func (s *Session) Origins() []setting.Origin { return s.origins }
-
-func fromProfile(key, name string) setting.Origin {
-	return setting.Origin{Key: key, Source: "profile " + name}
-}
