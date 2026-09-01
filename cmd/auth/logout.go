@@ -8,10 +8,10 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/cli"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
+	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// newLogout builds `meshstack auth logout`. There is no per-method logout: the credentials
-// file is the login, and removing it is the whole of it.
 func newLogout(in *cli.Input) *cobra.Command {
 	var revoke bool
 
@@ -21,14 +21,30 @@ func newLogout(in *cli.Input) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			// Resolved the way a login is, because this command acts on the profile's file:
-			// otherwise a shell that exports a credential would make logging out a no-op
-			// against a memory store while the file stayed where it was.
-			session, err := auth.ResolveForLogin(ctx, in)
+			// The profile's own store, because this command acts on that file: otherwise a
+			// shell exporting a credential would make logging out a no-op against a memory
+			// store while the file stayed where it was.
+			selection, err := profile.Select(ctx, in, setting.Environ())
 			if err != nil {
 				return err
 			}
-			was := session.Method()
+			store, err := profile.NewFileStore(selection.Name)
+			if err != nil {
+				return err
+			}
+			// Read from the file rather than from the session, for the same reason: what is
+			// about to be removed is what this command reports, whatever the environment
+			// would have authenticated with.
+			credentials, err := store.Read()
+			if err != nil {
+				return err
+			}
+			was := credentials.Current
+
+			session, err := auth.ResolveSession(ctx, auth.ResolveSessionOptions{Settings: in, Store: store})
+			if err != nil {
+				return err
+			}
 			if err := session.Logout(ctx, revoke); err != nil {
 				return err
 			}

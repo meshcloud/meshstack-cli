@@ -16,10 +16,9 @@ const DefaultName = "default"
 // Summary is one entry of config.json as a listing shows it, for the prompt that asks which
 // endpoint a new profile belongs to.
 type Summary struct {
-	Name             string
-	Endpoint         string
-	DefaultWorkspace string
-	IsCurrent        bool
+	Name      string
+	Endpoint  string
+	IsCurrent bool
 }
 
 // List returns the configured profiles, sorted by name.
@@ -35,10 +34,9 @@ func List() ([]Summary, error) {
 			endpoint = entry.Endpoint.String()
 		}
 		known = append(known, Summary{
-			Name:             name,
-			Endpoint:         endpoint,
-			DefaultWorkspace: entry.DefaultWorkspace,
-			IsCurrent:        name == config.CurrentProfile,
+			Name:      name,
+			Endpoint:  endpoint,
+			IsCurrent: name == config.CurrentProfile,
 		})
 	}
 	slices.SortFunc(known, func(a, b Summary) int { return strings.Compare(a.Name, b.Name) })

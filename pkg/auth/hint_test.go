@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 )
 
 // TestHintErrExplainsTheFailureWhoseCauseIsNotInTheErrorText holds the hint table: a 403 is
@@ -18,7 +20,7 @@ func TestHintErrExplainsTheFailureWhoseCauseIsNotInTheErrorText(t *testing.T) {
 	t.Run("a 403 with a workspace-scoped login names the workspace", func(t *testing.T) {
 		isolate(t)
 		loginProfile(t, "https://api.example.com", "demo", storedLogin())
-		session := resolved(t, &fakeInput{})
+		session := resolved(t, ResolveSessionOptions{})
 		logs := captureLogs(t)
 
 		// Wrapped, because what a command actually holds is the client's error inside its own.
@@ -33,11 +35,11 @@ func TestHintErrExplainsTheFailureWhoseCauseIsNotInTheErrorText(t *testing.T) {
 
 	t.Run("a 403 with any other credential names its own workspace", func(t *testing.T) {
 		isolate(t)
-		t.Setenv(envEndpoint, "https://api.example.com")
-		t.Setenv(envApiKey, "key-42")
-		t.Setenv(envApiSecret, testSecret)
-		t.Setenv("MESHSTACK_WORKSPACE", "demo")
-		session := resolved(t, &fakeInput{secret: testSecret})
+		t.Setenv(meshstack.Endpoint.EnvKey, "https://api.example.com")
+		t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+		t.Setenv(credential.ApiSecret.EnvKey, testSecret)
+		t.Setenv(meshstack.Workspace.EnvKey, "demo")
+		session := resolved(t, ResolveSessionOptions{})
 		logs := captureLogs(t)
 
 		require.Equal(t, forbidden, HintErr(forbidden, session))

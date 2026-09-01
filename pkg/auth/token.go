@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
-	"strings"
 	"time"
 
 	"github.com/meshcloud/meshstack-cli/internal/http"
@@ -16,7 +15,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
 // graceWindow is how much life a token must have left to count as valid. It covers a request
@@ -25,22 +23,16 @@ import (
 // client.Authorization.RefreshBearerToken for what does.
 const graceWindow = 30 * time.Second
 
-// BearerToken produces the token for the Authorization header, renewing it when neither cache
-// holds a valid one. It runs before every HTTP request, so it does no I/O while the in-process
-// token is still good. Ruling nothing out is what makes it the common path.
+// BearerToken runs before every HTTP request, so it does no I/O while the in-process token is
+// still good. Ruling nothing out is what makes it the common path.
 func (s *Session) BearerToken(ctx context.Context) (string, error) {
 	return s.RefreshBearerToken(ctx, "")
 }
 
-// RefreshBearerToken implements client.Authorization, and is the whole of BearerToken as well:
-// it answers with a valid token for this session's scope that is not the rejected one, so a 401
-// on a token both caches still believe in mints a new one exactly once.
-//
-// Ruling out that one token is all the two methods differ by, and it is what a session would
-// otherwise have to remember. A request refused a token another goroutine has already replaced
-// needs no mint at all: the replacement is in the cache, it is not the ruled out one, and it
-// comes back without any I/O. That matters most for a browser login, where every mint spends a
-// refresh grant that rotates the refresh token.
+// RefreshBearerToken implements client.Authorization. Ruling out one token as an argument is
+// what saves the session from remembering it: a request refused a token another goroutine has
+// already replaced needs no mint at all. That matters most for a browser login, where every
+// mint spends a refresh grant that rotates the refresh token.
 func (s *Session) RefreshBearerToken(ctx context.Context, rejected string) (string, error) {
 	s.mu.Lock()
 	cached, current := s.cached, s.current
@@ -92,42 +84,34 @@ func (s *Session) Scope() scope.Scope {
 	return meshstack.WorkspaceScope(s.Workspace)
 }
 
-// Method reports which method mints for this session.
 func (s *Session) Method() credential.Method {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.current
 }
 
-// RequireWorkspace fails before any request is made when a browser login has no workspace to
-// scope its token to, because an unscoped user token reaches almost nothing and meshfed's own
-// message names neither the flag nor the profile setting.
-//
-// A command calls it when it acts on meshObjects. `meshstack workspace list` and
-// `meshstack auth status` do not, because they are what a user needs in order to pick one.
+// RequireWorkspace is a post-resolution call, made by a command that acts on meshObjects and
+// deliberately not by `meshstack workspace list` or `meshstack auth status` — the two the
+// message itself tells the user to run. Folding it into the resolution would make the escape
+// hatch it names unreachable.
 func (s *Session) RequireWorkspace() error {
-	if s.Method() == credential.MethodLogin && strings.TrimSpace(s.Workspace) == "" {
+	if s.Method() == credential.MethodLogin && s.Workspace == "" {
 		return diags.Errorf("no workspace", "%s", meshstack.ErrMissing)
 	}
 	return nil
 }
 
-// degradeToMemory keeps a machine with no writable home directory usable: the token lives for
-// this process and is re-minted by the next one, which is what a container gets anyway.
+// degradeToMemory keeps a machine with no writable home directory usable. It takes over the
+// credentials the failed write was carrying rather than re-reading the file, because a refresh
+// grant rotates before the write: the file's copy is the one keycloak has already retired.
 //
-// It takes over the credentials the failed write was carrying, rather than re-reading the
-// file, because a refresh grant rotates before the write happens: the file's copy of the
-// refresh token is the one keycloak has already retired, and renewing from it later is the
-// replay that ends the session.
-//
-// It fails instead when this process can interact with a person, because a `meshstack auth
-// login` that cannot save has done pointless work and stopping early is a kindness. A CI job
-// cannot act on a warning, so it gets a debug record and carries on.
+// It fails instead when somebody may be watching, because an `auth login` that cannot save has
+// done pointless work. A CI job cannot act on a warning, so it carries on.
 func (s *Session) degradeToMemory(cause error, renewed renewal) error {
-	if tty.IsInteractive() {
+	if !s.noInput {
 		return diags.Wrap(cause, "cannot write this profile's credentials",
 			"%s could not be written: %v. Fix the permissions, or supply a credential through %s and %s instead.",
-			s.currentStore().Describe(), cause, envApiKey, envApiSecret)
+			s.currentStore().Describe(), cause, credential.ApiKeyId.EnvKey, credential.ApiSecret.EnvKey)
 	}
 	slog.Debug("keeping tokens in memory only", "store", s.currentStore().Describe(), "cause", cause)
 	credentials := renewed.credentials
@@ -145,19 +129,18 @@ func (s *Session) degradeToMemory(cause error, renewed renewal) error {
 	return nil
 }
 
-// unscoped returns a session that mints the unscoped token, sharing this one's store, input and
-// discovered configuration, so that a token it obtains is cached and locked exactly like any
-// other. It is a fresh value rather than a copy because a Session carries a mutex.
+// unscoped shares this session's store and discovered configuration, so that a token it
+// obtains is cached and locked exactly like any other. It is a fresh value rather than a copy
+// because a Session carries a mutex.
 func (s *Session) unscoped() *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return &Session{
 		Endpoint:   s.Endpoint,
 		Profile:    s.Profile,
-		input:      s.input,
+		noInput:    s.noInput,
+		resolved:   s.resolved,
 		store:      s.store,
-		whole:      s.whole,
-		sources:    s.sources,
 		current:    s.current,
 		oidcConfig: s.oidcConfig,
 	}
@@ -171,21 +154,18 @@ func (s *Session) currentStore() profile.Store {
 	return s.store
 }
 
-// renewal is what one pass through renew produced. Its credentials are nil only when the mint
-// never ran — the lock could not be taken — and otherwise hold what the store was asked to
-// write, whether or not the write succeeded: a refresh grant rotates before the write, so what
-// the mint returned is the only copy the identity provider still honours.
+// renewal carries credentials whether or not the write succeeded, and nil only when the mint
+// never ran: a refresh grant rotates before the write, so what the mint returned is the only
+// copy the identity provider still honours.
 type renewal struct {
 	token       credential.IssuedToken
 	credentials *profile.Credentials
 }
 
 func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current credential.Method, rejected string) (renewal, error) {
-	// Discovery is two GETs on a client that allows a minute per request, and it happens above
-	// Update so that the credentials lock covers the token grant and nothing else. A hold that
-	// outlasts profile's lockStaleAfter is broken by the next process, and the two then run a
-	// refresh grant each on one refresh token. Only the login method refreshes, so an API key
-	// still pays for no discovery at all.
+	// Above Update, so that the credentials lock covers the token grant and nothing else: a
+	// hold that outlasts profile's lockStaleAfter is broken by the next process, and the two
+	// then run a refresh grant each on one refresh token.
 	var config oidc.Client
 	if current == credential.MethodLogin {
 		discovered, err := s.discover(ctx)
@@ -198,10 +178,8 @@ func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current cre
 	var out renewal
 	var mintErr error
 	_, err := s.currentStore().Update(ctx, func(credentials profile.Credentials) (profile.Credentials, error) {
-		// Re-read under the lock: another process, or another goroutine that was already
-		// waiting on it, may have renewed meanwhile, in which case its token is used and
-		// nothing else happens. Only the rejected token itself is refused here — a 401 says
-		// nothing about a token that was minted after it.
+		// Re-read under the lock: another process may have renewed meanwhile. Only the
+		// rejected token itself is refused here — a 401 says nothing about one minted after it.
 		if stored, ok := cachedToken(credentials, current, tokenScope); ok && valid(stored) && stored.Token.String != rejected {
 			out = renewal{token: stored, credentials: &credentials}
 			return credentials, nil
@@ -209,19 +187,15 @@ func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current cre
 		var updated profile.Credentials
 		updated, out.token, mintErr = s.mint(ctx, config, credentials, current, tokenScope)
 		out.credentials = &updated
-		// A failed mint still writes what it changed, and the error travels beside the
-		// credentials rather than inside them. The refresh grant is why: keycloak rotates the
-		// refresh token before anything else can go wrong, so a mint that rotates and then
-		// fails the workspace check must not leave the old token on disk — one reuse is
-		// tolerated and the next one ends the whole session.
+		// A failed mint still writes what it changed: keycloak rotates the refresh token
+		// before anything else can go wrong, so a mint that rotates and then fails the
+		// workspace check must not leave the retired token on disk.
 		return updated, nil
 	})
 	if err == nil {
 		err = mintErr
 	}
 	if err != nil {
-		// What was minted travels with the error, because a write that failed has already spent
-		// the grant that produced it.
 		return out, err
 	}
 	if !valid(out.token) {
@@ -230,13 +204,15 @@ func (s *Session) renew(ctx context.Context, tokenScope scope.Scope, current cre
 	return out, nil
 }
 
-// mint obtains a fresh access token from the current method, and never from another one. It
-// runs under the credentials lock, so the one request it may make is the grant itself: config
-// is discovered above, and is the zero value for the methods that need none.
+// mint runs under the credentials lock, so the one request it may make is the grant itself:
+// config is discovered above, and is the zero value for the methods that need none.
 func (s *Session) mint(ctx context.Context, config oidc.Client, credentials profile.Credentials, current credential.Method, tokenScope scope.Scope) (profile.Credentials, credential.IssuedToken, error) {
 	switch current {
 	case credential.MethodManual:
-		return s.mintManual(ctx, credentials, tokenScope)
+		// The token was resolved and parsed before this session existed, so there is nothing
+		// left to mint from: an expired one gets the caller's dead-method message.
+		token, _ := cachedToken(credentials, credential.MethodManual, tokenScope)
+		return credentials, token, nil
 	case credential.MethodApiKey:
 		return s.mintApiKey(ctx, credentials, tokenScope)
 	case credential.MethodLogin:
@@ -247,40 +223,19 @@ func (s *Session) mint(ctx context.Context, config oidc.Client, credentials prof
 	}
 }
 
-func (s *Session) mintManual(ctx context.Context, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, credential.IssuedToken, error) {
-	// A stored API token has nothing behind it to mint from, so the caller's dead-method
-	// message is the right outcome. Only a token that arrived whole from the environment or a
-	// provider block is fetched here, and then it is fetched afresh each time, which is what
-	// makes a memory store cost no files.
-	if !s.whole {
-		stored, _ := cachedToken(credentials, credential.MethodManual, tokenScope)
-		return credentials, stored, nil
-	}
-	token, err := s.input.ApiToken(ctx)
-	if err != nil {
-		return credentials, credential.IssuedToken{}, err
-	}
-	if strings.TrimSpace(token) == "" {
-		return credentials, credential.IssuedToken{}, diags.Errorf("no meshStack API token",
-			"%s is set but empty.", envApiToken)
-	}
-	parsed, err := jwt.Parse(token)
-	if err != nil {
-		return credentials, credential.IssuedToken{}, diags.Wrap(err, "this is not a meshStack API token",
-			"what %s supplied could not be read as an access token: %v", envApiToken, err)
-	}
-	issued := issuedToken(parsed)
-	return withToken(credentials, credential.MethodManual, tokenScope, issued), issued, nil
-}
-
 func (s *Session) mintApiKey(ctx context.Context, credentials profile.Credentials, tokenScope scope.Scope) (profile.Credentials, credential.IssuedToken, error) {
 	apiKey := credentials.ApiKey
 	if apiKey == nil || apiKey.Id == "" {
 		return credentials, credential.IssuedToken{}, diags.Errorf("no meshStack API key",
 			"this profile's current method is an API key, but it holds no key id. Run `meshstack auth login --api-key=<id>`.")
 	}
-	secret, err := s.apiKeySecret(ctx, apiKey)
+	// Resolve rather than read: the resolution paired this id with a secret it may only know
+	// how to produce, and a clientSecretCommand runs here rather than during a resolution.
+	secret, err := apiKey.Resolve(ctx)
 	if err != nil {
+		return credentials, credential.IssuedToken{}, err
+	}
+	if err := credential.CheckSecret(secret); err != nil {
 		return credentials, credential.IssuedToken{}, err
 	}
 	token, err := apiLogin(ctx, s.Endpoint, apiKey.Id, secret)
@@ -297,9 +252,8 @@ func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials
 	if login == nil || login.RefreshToken == "" {
 		return credentials, credential.IssuedToken{}, s.deadMethodError(credential.MethodLogin)
 	}
-	// Stricter than the endpoint check on the file, and it catches a repointed keycloak
-	// behind an unchanged endpoint — but it exists only where a login method does, which is
-	// why it cannot replace the endpoint check.
+	// Stricter than the endpoint check on the file, and it catches a repointed keycloak behind
+	// an unchanged endpoint — but it exists only where a login method does.
 	if login.Issuer != nil && login.Issuer.String() != config.Issuer.String() {
 		return credentials, credential.IssuedToken{}, diags.Errorf("this login belongs to a different identity provider",
 			"the stored login came from %s, but %s now reports %s. Run `meshstack login` to log in again.",
@@ -310,14 +264,13 @@ func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials
 	if err != nil {
 		return credentials, credential.IssuedToken{}, err
 	}
-	// A workspace the user is not in yields a token rather than an error: it comes back
-	// without MC_CUSTOMER and with an empty group list, and the next API call then fails on
-	// permissions. Checking the claim here is what turns that into a message naming the
-	// workspace. It is not a security check, and the signature is not verified.
+	// A workspace the user is not in yields a token rather than an error, and the next API
+	// call then fails on permissions. Checking the claim is what turns that into a message
+	// naming the workspace. It is not a security check: no signature is verified.
 	updated := *login
 	updated.RefreshToken = refreshed.RefreshToken
 	credentials.Login = &updated
-	if strings.TrimSpace(s.Workspace) != "" {
+	if s.Workspace != "" {
 		if got := jwt.WorkspaceClaim.GetFrom(refreshed.AccessToken); got != s.Workspace {
 			// The rotated refresh token goes back either way — the grant already succeeded, so
 			// keycloak has invalidated the one on disk whatever this check says.
@@ -330,25 +283,6 @@ func (s *Session) mintLogin(ctx context.Context, config oidc.Client, credentials
 	issued := issuedToken(refreshed.AccessToken)
 	slog.Debug("minted an access token from the browser login", "scope", tokenScope, "expiresAt", issued.ExpiresAt)
 	return withToken(credentials, credential.MethodLogin, tokenScope, issued), issued, nil
-}
-
-// apiKeySecret answers where the secret comes from. The environment sits above the profile,
-// so a set MESHSTACK_API_SECRET reaches the front end's accessor and wins; otherwise a stored
-// secret or a secret command is used; otherwise the front end prompts.
-func (s *Session) apiKeySecret(ctx context.Context, apiKey *credential.ApiKey) (string, error) {
-	stored := apiKey.Secret != "" || len(apiKey.SecretCommand) > 0
-	if env(envApiSecret) != "" || !stored {
-		secret, err := s.input.ApiKeySecret(ctx)
-		if err != nil {
-			return "", err
-		}
-		return secret, credential.CheckSecret(secret)
-	}
-	secret, err := apiKey.Resolve(ctx)
-	if err != nil {
-		return "", err
-	}
-	return secret, credential.CheckSecret(secret)
 }
 
 // discover reads /mesh/info and the identity provider's configuration, at most once per
@@ -370,13 +304,14 @@ func (s *Session) discover(ctx context.Context) (oidc.Client, error) {
 	return config, nil
 }
 
-// deadMethodError names the way out. Renewal never switches method, so when the current one
-// cannot mint, the command fails and says what to do.
+// deadMethodError names the way out. Renewal never switches method — falling back from a
+// browser login to an API key would change the identity behind the command — so when the
+// current one cannot mint, the command fails and says what to do.
 func (s *Session) deadMethodError(current credential.Method) error {
 	switch current {
 	case credential.MethodManual:
 		return diags.Errorf("this API token has expired",
-			"nothing can refresh an API token. Set %s to a fresh one, or store one with `meshstack auth login --api-token`.", envApiToken)
+			"nothing can refresh an API token. Set %s to a fresh one, or store one with `meshstack auth login --api-token`.", credential.ApiToken.EnvKey)
 	case credential.MethodApiKey:
 		clientId := "<id>"
 		if credentials, err := s.currentStore().Read(); err == nil && credentials.ApiKey != nil && credentials.ApiKey.Id != "" {
@@ -390,9 +325,8 @@ func (s *Session) deadMethodError(current credential.Method) error {
 	}
 }
 
-// issuedToken carries an access token into the store with the deadline it states itself. A
-// token that states none is stored with a zero expiry, which valid reads as "the server
-// decides", and that is the honest answer for one nothing can renew.
+// issuedToken takes the deadline from the token itself. One that states none is stored with a
+// zero expiry, which valid reads as "the server decides".
 func issuedToken(token jwt.JWT) credential.IssuedToken {
 	issued := credential.IssuedToken{Token: token}
 	if expiry := jwt.Expiry.GetFrom(token); expiry != nil {
@@ -401,12 +335,9 @@ func issuedToken(token jwt.JWT) credential.IssuedToken {
 	return issued
 }
 
-// cachedToken and withToken read and write the access token one method holds. The switch over
-// the three shapes is here rather than on credential.Credential, because every other branch on
-// the current method is in this package too.
-//
-// Only a browser login keys its tokens by scope. For the other two the scope is always
-// meshstack.Unscoped, so tokenScope is ignored and the single field is that token.
+// cachedToken and withToken switch over the three shapes here rather than on
+// credential.Credential, because every other branch on the current method is in this package
+// too. Only a browser login keys its tokens by scope; for the other two tokenScope is ignored.
 func cachedToken(credentials profile.Credentials, current credential.Method, tokenScope scope.Scope) (credential.IssuedToken, bool) {
 	switch current {
 	case credential.MethodLogin:

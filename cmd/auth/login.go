@@ -3,6 +3,7 @@ package auth
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -17,7 +18,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
-	"github.com/meshcloud/meshstack-cli/pkg/tty"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
 // bareApiKey is what --api-key means without a value: keep the id already in the profile.
@@ -42,10 +43,13 @@ func (v *apiKeyId) Type() string       { return "" }
 // would be shared by both instances.
 func NewLogin(in *cli.Input) *cobra.Command {
 	var (
-		apiKey   apiKeyId
-		apiToken bool
-		devLocal bool
-		force    bool
+		apiKey      apiKeyId
+		apiToken    bool
+		devLocal    bool
+		force       bool
+		secretStdin bool
+		tokenStdin  bool
+		method      credential.Method
 	)
 
 	cmd := &cobra.Command{
@@ -81,40 +85,56 @@ MESHSTACK_API_TOKEN, through stdin, or through a prompt that does not echo.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			switch {
 			case devLocal:
-				// The method is named for the same reason every other form names one: it is
-				// what switches a profile that already holds something else.
-				in.Method = credential.MethodApiKey
 				return runDevLocalLogin(cmd, in)
 			case cmd.Flags().Changed("api-key"):
 				if apiKey == "" {
 					return diags.Errorf("the API key id is empty",
 						"`--api-key=` was given without an id. Leave the value off entirely to reuse the id already in the profile.")
 				}
-				in.Method = credential.MethodApiKey
+				method = credential.MethodApiKey
 				if apiKey != bareApiKey {
 					in.ApiKey = string(apiKey)
 				}
 				force = true
 			case apiToken:
-				in.Method = credential.MethodManual
+				method = credential.MethodManual
 				force = true
 			default:
 				// Every form names the method it wants, and bare means the browser login.
 				// Naming it is what makes `meshstack login` switch a profile back from its
 				// API key rather than logging in again with whatever is current.
-				in.Method = credential.MethodLogin
+				method = credential.MethodLogin
 			}
-			return runLogin(cmd, in, force)
+			// Read before the resolution, because a setting.Source has neither a context nor
+			// an error return, so a read that blocked would have nowhere to report itself.
+			if secretStdin {
+				secret, err := in.ReadLine()
+				if err != nil {
+					return err
+				}
+				in.ApiSecret = secret
+			}
+			if tokenStdin {
+				token, err := in.ReadLine()
+				if err != nil {
+					return err
+				}
+				in.ApiToken = token
+			}
+			return runLogin(cmd, in, method, force)
 		},
 	}
 
 	flags := cmd.Flags()
-	flags.Var(&apiKey, "api-key", "switch to the apiKey method, with the stored id or a new one")
+	flags.Var(&apiKey, "api-key", "switch to the apiKey method, with the stored id, MESHSTACK_API_KEY, or a new one")
 	flags.Lookup("api-key").NoOptDefVal = bareApiKey
 	flags.BoolVar(&apiToken, "api-token", false, "store an API token that nothing can refresh")
 	flags.BoolVar(&devLocal, "dev-local", false, "configure a profile from a local dev stack's own published credentials")
 	flags.BoolVar(&force, "force", false, "log in again even if the stored login still works")
+	flags.BoolVar(&secretStdin, "api-secret-stdin", false, "read the API key secret from the first line of stdin")
+	flags.BoolVar(&tokenStdin, "api-token-stdin", false, "read the API token from the first line of stdin")
 	cmd.MarkFlagsMutuallyExclusive("api-key", "api-token", "dev-local")
+	cmd.MarkFlagsMutuallyExclusive("api-secret-stdin", "api-token-stdin")
 
 	return cmd
 }
@@ -129,10 +149,8 @@ func runDevLocalLogin(cmd *cobra.Command, in *cli.Input) error {
 	if err != nil {
 		return err
 	}
-	if session.Profile != "" {
-		if err := profile.Ensure(session.Profile, &session.Endpoint); err != nil {
-			return err
-		}
+	if err := profile.Ensure(session.Profile, &session.Endpoint); err != nil {
+		return err
 	}
 	result, err := session.LoginDevLocal(ctx)
 	if err != nil {
@@ -142,32 +160,27 @@ func runDevLocalLogin(cmd *cobra.Command, in *cli.Input) error {
 	return nil
 }
 
-func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
+func runLogin(cmd *cobra.Command, in *cli.Input, method credential.Method, force bool) error {
 	ctx := cmd.Context()
 
-	session, err := auth.ResolveForLogin(ctx, in)
+	session, err := loginSession(ctx, in, method)
 	if err != nil {
-		// One failure has a way out here, and only here: this login is about to create a
-		// profile and no endpoint has been named yet. Everything else is reported as it
-		// came, including the non-interactive case, whose message already names --endpoint.
-		endpoint, ok := askForEndpoint(cmd, in)
-		if !ok {
+		// This is the one command allowed to ask, and pkg/auth names the three failures a
+		// person could answer. Everything else is reported as it came.
+		if !askAbout(cmd, in, err) {
 			return err
 		}
-		in.Endpoint = endpoint
-		if session, err = auth.ResolveForLogin(ctx, in); err != nil {
+		if session, err = loginSession(ctx, in, method); err != nil {
 			return err
 		}
 	}
 
-	if session.Profile != "" {
-		if err := profile.Ensure(session.Profile, &session.Endpoint); err != nil {
-			return err
-		}
+	if err := profile.Ensure(session.Profile, &session.Endpoint); err != nil {
+		return err
 	}
 
 	options := auth.LoginOptions{Force: force, Browser: in.Browser()}
-	if tty.IsInteractive() {
+	if in.MayPrompt {
 		options.ChooseWorkspace = func(_ context.Context, candidates []string) (string, error) {
 			return chooseWorkspace(cmd, candidates)
 		}
@@ -181,32 +194,63 @@ func runLogin(cmd *cobra.Command, in *cli.Input, force bool) error {
 	return nil
 }
 
-// askForEndpoint answers "could a missing endpoint be what just failed, and may I ask?".
-//
-// It reports false whenever the profile that resolution would have selected already exists,
-// because such a profile always has an endpoint — profile.Ensure refuses to create one
-// without — so the failure was something else and a prompt would only delay its message.
-func askForEndpoint(cmd *cobra.Command, in *cli.Input) (string, bool) {
-	if in.Endpoint != "" || !tty.IsInteractive() {
-		return "", false
+// loginSession resolves with the profile's own store, which is what makes `meshstack login
+// --api-key=k` write the secret to disk while an ordinary command with the same environment
+// does not.
+func loginSession(ctx context.Context, in *cli.Input, method credential.Method) (*auth.Session, error) {
+	selection, err := profile.Select(ctx, in, setting.Environ())
+	if err != nil {
+		return nil, err
 	}
+	store, err := profile.NewFileStore(selection.Name)
+	if err != nil {
+		return nil, err
+	}
+	return auth.ResolveSession(ctx, auth.ResolveSessionOptions{
+		Settings: in, DemandMethod: method, Store: store,
+	})
+}
+
+// askAbout puts the failure to the person at the keyboard and reports whether they supplied
+// something worth resolving again with. It no longer guesses which failure happened: the
+// three sentinels say so.
+func askAbout(cmd *cobra.Command, in *cli.Input, failure error) bool {
+	if !in.MayPrompt {
+		return false
+	}
+	ctx := cmd.Context()
+	switch {
+	case errors.Is(failure, auth.ErrNoEndpoint):
+		endpoint, asked := askForEndpoint(ctx, cmd, in)
+		in.Endpoint = endpoint
+		return asked
+	case errors.Is(failure, auth.ErrNoApiSecret):
+		secret, err := in.PromptSecret(ctx, "meshStack API key secret")
+		in.ApiSecret = secret
+		return err == nil && secret != ""
+	case errors.Is(failure, auth.ErrNoApiToken):
+		token, err := in.PromptSecret(ctx, "meshStack API token")
+		in.ApiToken = token
+		return err == nil && token != ""
+	}
+	return false
+}
+
+// askForEndpoint offers the endpoints already configured, because a second profile against a
+// meshStack the machine already knows is the common case. It selects the profile the way
+// everything else does rather than keeping its own copy of that rule.
+func askForEndpoint(ctx context.Context, cmd *cobra.Command, in *cli.Input) (string, bool) {
 	known, err := profile.List()
 	if err != nil {
 		return "", false
 	}
-	target := in.Profile
-	if target == "" {
-		target = profile.DefaultName
-		if i := slices.IndexFunc(known, func(p profile.Summary) bool { return p.IsCurrent }); i >= 0 {
-			target = known[i].Name
-		}
-	}
-	if slices.ContainsFunc(known, func(p profile.Summary) bool { return p.Name == target }) {
+	selection, err := profile.Select(ctx, in, setting.Environ())
+	if err != nil {
 		return "", false
 	}
 
 	out := cmd.ErrOrStderr()
-	_, _ = fmt.Fprintf(out, "Profile %q does not exist. Which endpoint?\n", target)
+	_, _ = fmt.Fprintf(out, "Profile %q has no endpoint. Which one?\n", selection.Name)
 	endpoints := knownEndpoints(known)
 	for i, endpoint := range endpoints {
 		_, _ = fmt.Fprintf(out, "  %d) %-40s (profile %s)\n", i+1, endpoint.url, strings.Join(endpoint.profiles, ", "))
@@ -227,8 +271,7 @@ func askForEndpoint(cmd *cobra.Command, in *cli.Input) (string, bool) {
 	return typed, true
 }
 
-// knownEndpoint is one line of that prompt: the URL a choice returns, and the profiles
-// already configured for it.
+// knownEndpoint is one line of that prompt.
 type knownEndpoint struct {
 	url      string
 	profiles []string
@@ -249,9 +292,8 @@ func knownEndpoints(known []profile.Summary) []knownEndpoint {
 	return list
 }
 
-// chooseWorkspace asks which workspace this profile should default to. An empty answer
-// leaves the profile's default alone, which is the right outcome for a user who wants to
-// decide later with `meshstack profile set workspace`.
+// chooseWorkspace leaves the profile's default alone on an empty answer, for a user who
+// wants to decide later with `meshstack profile set workspace`.
 func chooseWorkspace(cmd *cobra.Command, candidates []string) (string, error) {
 	out := cmd.ErrOrStderr()
 	if len(candidates) == 0 {
@@ -276,8 +318,7 @@ func chooseWorkspace(cmd *cobra.Command, candidates []string) (string, error) {
 	return candidates[picked-1], nil
 }
 
-// ask puts a question on stderr and reads one line, so that a command's real output stays
-// pipeable while it is being asked.
+// ask writes to stderr, so that a command's real output stays pipeable while it is asking.
 func ask(cmd *cobra.Command, prompt string) (string, error) {
 	_, _ = fmt.Fprint(cmd.ErrOrStderr(), prompt)
 	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')

@@ -8,16 +8,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/internal/cli"
-	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
 // settings are the keys `profile set` accepts, in the order the error lists them.
 var settings = []string{"endpoint", "workspace"}
 
-// newSet builds `meshstack profile set <key> <value>`, which writes to config.json. It
-// never creates a profile: `meshstack auth login` is the one command that does, so a
+// newSet never creates a profile: `meshstack auth login` is the one command that does, so a
 // mistyped name is reported rather than quietly configured.
 func newSet(in *cli.Input) *cobra.Command {
 	return &cobra.Command{
@@ -33,23 +32,23 @@ func newSet(in *cli.Input) *cobra.Command {
 					"%q is not a profile setting. The settings are: %s.", key, strings.Join(settings, ", "))
 			}
 
-			// Resolved the way a login is, because this command configures a profile: a
-			// shell that exports a credential must not make it write nothing.
-			session, err := auth.ResolveForLogin(cmd.Context(), in)
+			// No session: this command writes config.json and never authenticates, so
+			// demanding a credential it will not use would refuse to fix a broken profile.
+			selection, err := profile.Select(cmd.Context(), in, setting.Environ())
 			if err != nil {
 				return err
 			}
 
 			switch key {
 			case "endpoint":
-				err = profile.SetEndpoint(session.Profile, value)
+				err = profile.SetEndpoint(selection.Name, value)
 			case "workspace":
-				err = profile.SetWorkspace(session.Profile, value)
+				err = profile.SetWorkspace(selection.Name, value)
 			}
 			if err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Profile %q now has %s %s.\n", session.Profile, key, value)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Profile %q now has %s %s.\n", selection.Name, key, value)
 			return nil
 		},
 	}

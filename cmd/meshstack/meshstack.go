@@ -23,6 +23,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/profile"
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/internal/cli"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
@@ -39,10 +40,10 @@ func main() {
 }
 
 func newRootCommand() *cobra.Command {
-	var debug, noInput bool
+	var debug bool
 
 	// One Input serves the whole tree, because the persistent flags below are what it
-	// carries. `auth login` adds the two flags only it owns.
+	// carries. `auth login` adds the flags only it owns.
 	cli.UserAgent = "meshstack-cli/" + Version
 	in := cli.New()
 
@@ -60,11 +61,18 @@ func newRootCommand() *cobra.Command {
 		// A command that fails prints its error, not the whole help text. The user asks
 		// for help explicitly.
 		SilenceUsage: true,
-		PersistentPreRun: func(_ *cobra.Command, _ []string) {
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 			setupLogging(debug)
-			if noInput {
-				tty.Disable()
+			// Resolved here because a command deciding whether it may ask does so at a moment
+			// when the resolution has just failed and there is no Session to ask. A prompt
+			// also needs a terminal to read the answer from; a browser login does not.
+			noInput, _, err := setting.Resolve(tty.NoInput, in, setting.Environ())
+			if err != nil {
+				return err
 			}
+			in.NoInput = noInput
+			in.MayPrompt = !noInput && tty.IsTerminal(os.Stdin)
+			return nil
 		},
 	}
 
@@ -73,7 +81,7 @@ func newRootCommand() *cobra.Command {
 	flags.StringVar(&in.Profile, "profile", "", "configuration profile to use")
 	flags.StringVar(&in.Endpoint, "endpoint", "", "meshStack API endpoint")
 	flags.StringVar(&in.Workspace, "workspace", "", "workspace to act in, for this invocation only")
-	flags.BoolVar(&noInput, "no-input", false, "never prompt; fail instead")
+	flags.BoolVar(&in.NoInput, "no-input", false, "never wait for a person; fail instead")
 
 	cmd.AddCommand(auth.New(in))
 	// `meshstack login` is a shortcut for `meshstack auth login`. Cobra matches an

@@ -53,11 +53,11 @@ func loginProfile(t *testing.T, endpoint string, ws string, held credential.Cred
 func TestBearerTokenMintsFromTheApiKeyOncePerTokenLife(t *testing.T) {
 	stack := newMeshStack(t)
 	at := isolate(t)
-	t.Setenv(envEndpoint, stack.URL.String())
-	t.Setenv(envApiKey, "key-42")
-	t.Setenv(envApiSecret, testSecret)
+	t.Setenv(meshstack.Endpoint.EnvKey, stack.URL.String())
+	t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+	t.Setenv(credential.ApiSecret.EnvKey, testSecret)
 
-	session := resolved(t, &fakeInput{secret: testSecret})
+	session := resolved(t, ResolveSessionOptions{})
 
 	first, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 		isolate(t)
 		apiKeyProfile(t, stack, credential.IssuedToken{Token: mustJwt(fakeToken("nearly-expired")), ExpiresAt: insideGrace()})
 
-		session := resolved(t, &fakeInput{})
+		session := resolved(t, ResolveSessionOptions{})
 		token, err := session.BearerToken(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, "api-key-token-1", tokenId(token))
@@ -92,7 +92,7 @@ func TestATokenInsideTheGraceWindowIsRenewed(t *testing.T) {
 		isolate(t)
 		apiKeyProfile(t, stack, credential.IssuedToken{Token: mustJwt(fakeToken("still-good")), ExpiresAt: futureExpiry()})
 
-		session := resolved(t, &fakeInput{})
+		session := resolved(t, ResolveSessionOptions{})
 		token, err := session.BearerToken(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, fakeToken("still-good"), token)
@@ -110,7 +110,7 @@ func TestTheLoginMethodRefreshesForTheWorkspaceAndStoresTheRotatedToken(t *testi
 		Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
 	}))
 
-	session := resolved(t, &fakeInput{})
+	session := resolved(t, ResolveSessionOptions{})
 	require.Equal(t, "demo", session.Workspace)
 	require.Equal(t, meshstack.WorkspaceScope("demo"), session.Scope())
 
@@ -148,7 +148,7 @@ func TestARefreshForAnotherWorkspaceFailsNamingTheWorkspace(t *testing.T) {
 		Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
 	}))
 
-	session := resolved(t, &fakeInput{})
+	session := resolved(t, ResolveSessionOptions{})
 	_, err := session.BearerToken(t.Context())
 	p := problemOf(t, err)
 	require.Equal(t, "this login cannot act in that workspace", p.Summary())
@@ -161,11 +161,11 @@ func TestARefreshForAnotherWorkspaceFailsNamingTheWorkspace(t *testing.T) {
 func TestRefreshBearerTokenForcesExactlyOneRemint(t *testing.T) {
 	stack := newMeshStack(t)
 	isolate(t)
-	t.Setenv(envEndpoint, stack.URL.String())
-	t.Setenv(envApiKey, "key-42")
-	t.Setenv(envApiSecret, testSecret)
+	t.Setenv(meshstack.Endpoint.EnvKey, stack.URL.String())
+	t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+	t.Setenv(credential.ApiSecret.EnvKey, testSecret)
 
-	session := resolved(t, &fakeInput{secret: testSecret})
+	session := resolved(t, ResolveSessionOptions{})
 	first, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 1, stack.apiLoginCount())
@@ -197,11 +197,11 @@ func TestTheApiKeyExchangeSeparatesARefusalFromAnOutage(t *testing.T) {
 		stack := newMeshStack(t)
 		stack.answerApiLoginWith(http.StatusUnauthorized)
 		isolate(t)
-		t.Setenv(envEndpoint, stack.URL.String())
-		t.Setenv(envApiKey, "key-42")
-		t.Setenv(envApiSecret, testSecret)
+		t.Setenv(meshstack.Endpoint.EnvKey, stack.URL.String())
+		t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+		t.Setenv(credential.ApiSecret.EnvKey, testSecret)
 
-		session := resolved(t, &fakeInput{secret: testSecret})
+		session := resolved(t, ResolveSessionOptions{})
 		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "meshStack refused this API key", p.Summary())
@@ -214,11 +214,11 @@ func TestTheApiKeyExchangeSeparatesARefusalFromAnOutage(t *testing.T) {
 		stack := newMeshStack(t)
 		stack.answerApiLoginWith(http.StatusForbidden)
 		isolate(t)
-		t.Setenv(envEndpoint, stack.URL.String())
-		t.Setenv(envApiKey, "key-42")
-		t.Setenv(envApiSecret, testSecret)
+		t.Setenv(meshstack.Endpoint.EnvKey, stack.URL.String())
+		t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+		t.Setenv(credential.ApiSecret.EnvKey, testSecret)
 
-		session := resolved(t, &fakeInput{secret: testSecret})
+		session := resolved(t, ResolveSessionOptions{})
 		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "could not log in to meshStack with an API key", p.Summary())
@@ -239,11 +239,11 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 			Credential: credential.FromManual(credential.Manual{}),
 		})
 
-		session := resolved(t, &fakeInput{token: fakeToken("unused")})
+		session := resolved(t, ResolveSessionOptions{})
 		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "this API token has expired", p.Summary())
-		assert.Contains(t, p.Detail(), envApiToken)
+		assert.Contains(t, p.Detail(), credential.ApiToken.EnvKey)
 		assert.Contains(t, p.Detail(), "meshstack auth login --api-token")
 	})
 
@@ -255,7 +255,7 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 		isolate(t)
 		apiKeyProfile(t, stack, credential.IssuedToken{})
 
-		session := resolved(t, &fakeInput{})
+		session := resolved(t, ResolveSessionOptions{})
 		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "this API key no longer works", p.Summary())
@@ -268,7 +268,7 @@ func TestADeadMethodNamesTheWayOut(t *testing.T) {
 		// A login entry with no refresh token: the file was written by a CLI that stored none.
 		loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{}))
 
-		session := resolved(t, &fakeInput{})
+		session := resolved(t, ResolveSessionOptions{})
 		_, err := session.BearerToken(t.Context())
 		p := problemOf(t, err)
 		require.Equal(t, "this login has expired or was revoked", p.Summary())
@@ -294,7 +294,7 @@ func TestRenewalNeverSwitchesMethod(t *testing.T) {
 		ApiKey: &credential.ApiKey{Id: "key-42", Secret: testSecret},
 	})
 
-	session := resolved(t, &fakeInput{secret: testSecret})
+	session := resolved(t, ResolveSessionOptions{})
 	require.Equal(t, credential.MethodLogin, session.Method())
 
 	_, err := session.BearerToken(t.Context())
@@ -313,7 +313,7 @@ func TestTheStoredIssuerIsCheckedBeforeTheRefreshGrant(t *testing.T) {
 		Issuer: mustUrl("https://sso.somewhere-else.example.com"), RefreshToken: "refresh-old",
 	}))
 
-	session := resolved(t, &fakeInput{})
+	session := resolved(t, ResolveSessionOptions{})
 	_, err := session.BearerToken(t.Context())
 	p := problemOf(t, err)
 	require.Equal(t, "this login belongs to a different identity provider", p.Summary())
@@ -329,12 +329,12 @@ func TestRequireWorkspace(t *testing.T) {
 		isolate(t)
 		loginProfile(t, "https://api.example.com", "", storedLogin())
 
-		session := resolved(t, &fakeInput{})
+		session := resolved(t, ResolveSessionOptions{})
 		require.Empty(t, session.Workspace)
 		p := problemOf(t, session.RequireWorkspace())
 		require.Equal(t, "no workspace", p.Summary())
 		assert.Contains(t, p.Detail(), "--workspace")
-		assert.Contains(t, p.Detail(), "MESHSTACK_WORKSPACE")
+		assert.Contains(t, p.Detail(), meshstack.Workspace.EnvKey)
 		assert.Contains(t, p.Detail(), "meshstack profile set workspace")
 	})
 
@@ -342,24 +342,24 @@ func TestRequireWorkspace(t *testing.T) {
 		isolate(t)
 		loginProfile(t, "https://api.example.com", "demo", storedLogin())
 
-		require.NoError(t, resolved(t, &fakeInput{}).RequireWorkspace())
+		require.NoError(t, resolved(t, ResolveSessionOptions{}).RequireWorkspace())
 	})
 
 	t.Run("an API key carries its own", func(t *testing.T) {
 		isolate(t)
-		t.Setenv(envEndpoint, "https://api.example.com")
-		t.Setenv(envApiKey, "key-42")
-		t.Setenv(envApiSecret, testSecret)
+		t.Setenv(meshstack.Endpoint.EnvKey, "https://api.example.com")
+		t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+		t.Setenv(credential.ApiSecret.EnvKey, testSecret)
 
-		require.NoError(t, resolved(t, &fakeInput{secret: testSecret}).RequireWorkspace())
+		require.NoError(t, resolved(t, ResolveSessionOptions{}).RequireWorkspace())
 	})
 
 	t.Run("an API token carries its own", func(t *testing.T) {
 		isolate(t)
-		t.Setenv(envEndpoint, "https://api.example.com")
-		t.Setenv(envApiToken, "pasted-token")
+		t.Setenv(meshstack.Endpoint.EnvKey, "https://api.example.com")
+		t.Setenv(credential.ApiToken.EnvKey, fakeToken("pasted-token"))
 
-		require.NoError(t, resolved(t, &fakeInput{token: fakeToken("pasted-token")}).RequireWorkspace())
+		require.NoError(t, resolved(t, ResolveSessionOptions{}).RequireWorkspace())
 	})
 }
 
@@ -370,28 +370,28 @@ func TestOnlyTheLoginMethodIsScopedToAWorkspace(t *testing.T) {
 		isolate(t)
 		loginProfile(t, "https://api.example.com", "demo", storedLogin())
 
-		require.Equal(t, meshstack.WorkspaceScope("demo"), resolved(t, &fakeInput{}).Scope())
+		require.Equal(t, meshstack.WorkspaceScope("demo"), resolved(t, ResolveSessionOptions{}).Scope())
 	})
 
 	t.Run("apiKey", func(t *testing.T) {
 		isolate(t)
-		t.Setenv(envEndpoint, "https://api.example.com")
-		t.Setenv(envApiKey, "key-42")
-		t.Setenv(envApiSecret, testSecret)
-		t.Setenv("MESHSTACK_WORKSPACE", "demo")
+		t.Setenv(meshstack.Endpoint.EnvKey, "https://api.example.com")
+		t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+		t.Setenv(credential.ApiSecret.EnvKey, testSecret)
+		t.Setenv(meshstack.Workspace.EnvKey, "demo")
 
-		session := resolved(t, &fakeInput{secret: testSecret})
+		session := resolved(t, ResolveSessionOptions{})
 		require.Equal(t, "demo", session.Workspace, "the workspace still resolves; it is a request parameter too")
 		require.Equal(t, meshstack.Unscoped, session.Scope())
 	})
 
 	t.Run("manual", func(t *testing.T) {
 		isolate(t)
-		t.Setenv(envEndpoint, "https://api.example.com")
-		t.Setenv(envApiToken, "pasted-token")
-		t.Setenv("MESHSTACK_WORKSPACE", "demo")
+		t.Setenv(meshstack.Endpoint.EnvKey, "https://api.example.com")
+		t.Setenv(credential.ApiToken.EnvKey, fakeToken("pasted-token"))
+		t.Setenv(meshstack.Workspace.EnvKey, "demo")
 
-		require.Equal(t, meshstack.Unscoped, resolved(t, &fakeInput{token: fakeToken("pasted-token")}).Scope())
+		require.Equal(t, meshstack.Unscoped, resolved(t, ResolveSessionOptions{}).Scope())
 	})
 }
 
@@ -422,11 +422,11 @@ func TestConcurrentBearerTokenCallsMintOnce(t *testing.T) {
 	t.Run("a memory store", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		t.Setenv(envEndpoint, stack.URL.String())
-		t.Setenv(envApiKey, "key-42")
-		t.Setenv(envApiSecret, testSecret)
+		t.Setenv(meshstack.Endpoint.EnvKey, stack.URL.String())
+		t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+		t.Setenv(credential.ApiSecret.EnvKey, testSecret)
 
-		run(t, 32, stack, resolved(t, &fakeInput{secret: testSecret}))
+		run(t, 32, stack, resolved(t, ResolveSessionOptions{}))
 	})
 
 	// The lock is the riskier half: the waiters have to re-read under it and find the
@@ -436,7 +436,7 @@ func TestConcurrentBearerTokenCallsMintOnce(t *testing.T) {
 		isolate(t)
 		apiKeyProfile(t, stack, credential.IssuedToken{})
 
-		run(t, 8, stack, resolved(t, &fakeInput{}))
+		run(t, 8, stack, resolved(t, ResolveSessionOptions{}))
 	})
 }
 
@@ -463,7 +463,7 @@ func TestOnlyTheGrantRunsUnderTheCredentialsLock(t *testing.T) {
 		Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
 	}))
 
-	session := resolved(t, &fakeInput{})
+	session := resolved(t, ResolveSessionOptions{})
 	_, err := session.BearerToken(t.Context())
 	require.NoError(t, err)
 
@@ -509,7 +509,7 @@ func TestAStoreThatCannotBeWrittenKeepsWhatItMinted(t *testing.T) {
 		loginProfile(t, stack.URL.String(), "demo", credential.FromLogin(credential.Login{
 			Issuer: mustUrl(stack.URL.String()), RefreshToken: "refresh-old",
 		}))
-		return resolved(t, &fakeInput{})
+		return resolved(t, ResolveSessionOptions{})
 	}
 
 	t.Run("a write that failed after the grant does not grant again", func(t *testing.T) {
@@ -580,11 +580,11 @@ func TestConcurrentRefreshCallsMintOnce(t *testing.T) {
 	t.Run("a memory store", func(t *testing.T) {
 		stack := newMeshStack(t)
 		isolate(t)
-		t.Setenv(envEndpoint, stack.URL.String())
-		t.Setenv(envApiKey, "key-42")
-		t.Setenv(envApiSecret, testSecret)
+		t.Setenv(meshstack.Endpoint.EnvKey, stack.URL.String())
+		t.Setenv(credential.ApiKeyId.EnvKey, "key-42")
+		t.Setenv(credential.ApiSecret.EnvKey, testSecret)
 
-		run(t, 32, stack, resolved(t, &fakeInput{secret: testSecret}))
+		run(t, 32, stack, resolved(t, ResolveSessionOptions{}))
 	})
 
 	t.Run("a file store under its lock", func(t *testing.T) {
@@ -592,6 +592,6 @@ func TestConcurrentRefreshCallsMintOnce(t *testing.T) {
 		isolate(t)
 		apiKeyProfile(t, stack, credential.IssuedToken{})
 
-		run(t, 8, stack, resolved(t, &fakeInput{}))
+		run(t, 8, stack, resolved(t, ResolveSessionOptions{}))
 	})
 }

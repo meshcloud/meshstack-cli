@@ -2,8 +2,6 @@ package profile
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -11,8 +9,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 )
 
-// newView builds `meshstack profile view`: the resolved configuration, where each value
-// came from, and the two files it was read out of. It makes no network call.
 func newView(in *cli.Input) *cobra.Command {
 	return &cobra.Command{
 		Use:   "view",
@@ -21,7 +17,7 @@ func newView(in *cli.Input) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Resolved the way an ordinary command is, so that what this prints is what the
 			// next command will use, including a credential that never reaches a profile.
-			session, err := auth.Resolve(cmd.Context(), in)
+			session, err := auth.ResolveSession(cmd.Context(), auth.ResolveSessionOptions{Settings: in})
 			if err != nil {
 				return err
 			}
@@ -31,18 +27,16 @@ func newView(in *cli.Input) *cobra.Command {
 			}
 
 			out := cmd.OutOrStdout()
-			profileName := status.Profile
-			if profileName == "" {
-				profileName = "none"
-			}
-			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Profile", profileName)
+			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Profile", status.Profile)
 			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Endpoint", status.Endpoint)
 			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Workspace", orNone(status.Workspace))
 			_, _ = fmt.Fprintf(out, "%-11s %s\n", "Method", status.Current.Description())
 
+			// In resolution order rather than sorted: that is the order the precedence rules
+			// were applied in, and the order a person reading them wants.
 			_, _ = fmt.Fprintln(out, "\nSources")
-			for _, key := range slices.Sorted(maps.Keys(status.Sources)) {
-				_, _ = fmt.Fprintf(out, "  %-11s %s\n", key, orNone(status.Sources[key]))
+			for _, origin := range status.Origins {
+				_, _ = fmt.Fprintf(out, "  %-20s %s\n", origin.Key, origin.Source)
 			}
 
 			_, _ = fmt.Fprintln(out, "\nFiles")

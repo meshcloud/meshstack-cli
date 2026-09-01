@@ -6,6 +6,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
 // Status is everything `meshstack auth status` reports without making a network call. That
@@ -19,9 +20,9 @@ type Status struct {
 	Endpoint        string
 	Workspace       string
 
-	// Sources says where each resolved value came from, keyed by "endpoint", "workspace",
-	// "profile" and "credential". `meshstack profile view` prints it.
-	Sources map[string]string
+	// Origins is where each resolved value came from, in the order the resolution walked
+	// them. `meshstack profile view` prints all of it; `meshstack auth status` looks up two.
+	Origins []setting.Origin
 
 	Current credential.Method
 	Login   *LoginStatus
@@ -40,8 +41,8 @@ type LoginStatus struct {
 
 type ApiKeyStatus struct {
 	ClientId string
-	// SecretFrom names where the secret comes from: the credentials file, or the command that
-	// prints it.
+	// SecretFrom names what produces the secret: the store holding it, or the command that
+	// prints it. Which source supplied it is the MESHSTACK_API_SECRET origin's job.
 	SecretFrom string
 }
 
@@ -66,7 +67,7 @@ func (s *Session) Status() (Status, error) {
 		CredentialsPath: s.currentStore().Describe(),
 		Endpoint:        s.Endpoint.String(),
 		Workspace:       s.Workspace,
-		Sources:         s.sources,
+		Origins:         s.origins,
 		Current:         s.Method(),
 	}
 	if path, err := profile.ConfigPath(); err == nil {
@@ -82,14 +83,9 @@ func (s *Session) Status() (Status, error) {
 		}
 	}
 	if apiKey := credentials.ApiKey; apiKey != nil {
-		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.Id}
-		switch {
-		case len(apiKey.SecretCommand) > 0:
+		status.ApiKey = &ApiKeyStatus{ClientId: apiKey.Id, SecretFrom: s.currentStore().Describe()}
+		if len(apiKey.SecretCommand) > 0 {
 			status.ApiKey.SecretFrom = "the command " + apiKey.SecretCommand[0]
-		case apiKey.Secret != "":
-			status.ApiKey.SecretFrom = "the credentials file"
-		default:
-			status.ApiKey.SecretFrom = "the environment or a prompt"
 		}
 	}
 	scope := s.Scope()

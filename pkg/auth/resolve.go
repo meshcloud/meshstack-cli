@@ -2,10 +2,8 @@ package auth
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
-	"slices"
-	"strings"
 	"sync"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
@@ -14,325 +12,182 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
+	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
-// Session is one process's answer to "who am I, against what, in which workspace". It is the
-// client.Authorization both front ends hand to client.New, so a 401 on a token it believed
-// valid forces one re-mint.
-//
-// A session is safe for concurrent use: BearerToken is called before every request, and a
-// Terraform provider makes many at once.
+// The three failures `meshstack auth login` may answer with a prompt, and the reason
+// ResolveSession names them at all: every other command reports the error as it came,
+// because a command that is not a login should not open a login dialogue.
+var (
+	ErrNoEndpoint  = errors.New("no meshStack endpoint")
+	ErrNoApiSecret = errors.New("no API key secret")
+	ErrNoApiToken  = errors.New("no meshStack API token")
+)
+
+// Session is the client.Authorization both front ends hand to client.New. It is safe for
+// concurrent use, because a Terraform provider has many requests in flight at once.
 type Session struct {
-	// Endpoint, Workspace and Profile are the resolved configuration. Profile is empty when
-	// the credential did not come from a profile, which is the case a CI job and a building
-	// block run land in.
 	Endpoint  xurl.URL
 	Workspace string
 	Profile   string
 
-	input Input
-	store profile.Store
+	// noInput says nobody is here to wait on. It is the resolved tty.NoInput setting rather
+	// than a question asked of the terminal, because a browser login reaches a person
+	// through stderr from a pipe as well.
+	noInput bool
 
-	// whole records that the credential arrived complete from above the profile layer — the
-	// environment, or a Terraform provider block. Such a credential is never written into a
-	// profile, and an API token among them is re-read from the front end rather than stored.
-	whole bool
+	// resolved is the credential the ranked order settled on. The store holds it too for
+	// every command but a login, where the store is the file the login is about to write.
+	resolved credential.Credential
 
-	// sources records where each value came from, for `meshstack profile view`.
-	sources map[string]string
+	origins []setting.Origin
+	store   profile.Store
 
 	mu sync.Mutex
 	// current is the method every cached token belongs to. It is read under mu because
 	// Login rewrites it.
 	current credential.Method
-	// cached is the in-process cache: the token last obtained for this session's scope.
-	// Checking it costs no I/O, which is what keeps BearerToken off the filesystem.
-	//
-	// A rejected token is not recorded beside it. RefreshBearerToken is told which token came
-	// back 401 as an argument, so "do not hand this one out again" lasts exactly as long as the
-	// call that needs it.
+	// cached costs no I/O to check, which is what keeps BearerToken off the filesystem. A
+	// rejected token is not recorded beside it: RefreshBearerToken takes that as an argument,
+	// so "do not hand this one out again" lasts exactly as long as the call that needs it.
 	cached credential.IssuedToken
 	// oidcConfig is discovered at most once per process, and only by the login method.
 	oidcConfig *oidc.Client
 }
 
-// Resolve produces the session an ordinary command works through. Every precedence rule
-// applies here and only here.
-//
-// It makes no request: resolution reads the two configuration files and nothing else. Every
-// request it leads to — discovery, a refresh grant, the API key exchange — is made later,
-// from BearerToken, and carries the context of the command that made it. The context reaches
-// here only so the log records carry it.
-func Resolve(ctx context.Context, in Input) (*Session, error) {
-	return resolve(ctx, in, false)
-}
+// ResolveSessionOptions is a struct rather than bare arguments so that a later addition — a
+// clock, a second source — is a new field instead of a signature change both front ends have
+// to follow.
+type ResolveSessionOptions struct {
+	// Settings is the front end's own source: the CLI's flags, or the provider block. Nil is
+	// a front end contributing nothing explicit rather than an error.
+	Settings setting.Source
 
-// ResolveForLogin produces the session `meshstack auth login` works through. It differs in
-// one way: the store is always the profile's, whatever supplied the credential, because
-// writing a profile is that command's purpose. So MESHSTACK_API_SECRET reaches disk when
-// `auth login --api-key` puts it there, and never otherwise.
-func ResolveForLogin(ctx context.Context, in Input) (*Session, error) {
-	return resolve(ctx, in, true)
-}
+	// DemandMethod is not a setting: it has no MESHSTACK_* name and supplies no value. It
+	// filters what every source may offer, so a source carrying another method's identity is
+	// passed over as if it were empty — which is what keeps a bare `meshstack login` from
+	// resolving an exported API key and refusing to open a browser.
+	DemandMethod credential.Method
 
-func resolve(ctx context.Context, in Input, forLogin bool) (*Session, error) {
-	values := in.Explicit()
-	sources := map[string]string{}
-
-	endpointRaw, endpointFrom, endpointDetail := pick(values.Endpoint, envEndpoint)
-	ws, wsFrom, wsDetail := pick(values.Workspace, "")
-	if ws == "" {
-		if fromEnv := meshstack.WorkspaceFromEnv(); fromEnv != "" {
-			ws, wsFrom, wsDetail = fromEnv, sourceEnv, "MESHSTACK_WORKSPACE"
-		}
-	}
-	apiKeyId, _, _ := pick(values.ApiKey, envApiKey)
-
-	config, err := profile.LoadConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	session := &Session{input: in, sources: sources, Workspace: ws}
-
-	// A credential is resolved as a whole, never field by field: take the highest-ranked
-	// source that supplies a complete one.
+	// Store is handed in by a command that configures a profile, and saying so has two
+	// effects: the credential reaches that file whatever supplied it, and a profile that
+	// does not exist yet is tolerated rather than reported.
 	//
-	// Two callers skip it. `auth login`, because its whole job is to write whatever it was
-	// given into a profile. And a caller that named a profile through a flag or a provider
-	// block attribute, because that is the top layer of the same precedence order — naming a
-	// profile is a statement about which credential to use, and `meshstack auth status
-	// --profile dev` reporting somebody's exported API key instead is the wart that proves it.
-	// MESHSTACK_PROFILE does not count here: it sits in the environment layer, alongside
-	// MESHSTACK_API_KEY, so neither outranks the other and the credential wins as before.
-	if !forLogin && values.Profile == "" {
-		if resolved, ok := wholeCredential(values, apiKeyId); ok {
-			// The endpoint and the workspace are their own axes of the precedence order, so a
-			// profile may still supply them where the credential came from the environment.
-			// Only a profile named explicitly, or the default one, is consulted: matching by
-			// endpoint is impossible without an endpoint, and picking a profile because of its
-			// credential would contradict the credential this command was given.
-			if entry, name, found := plainProfile(config, values.Profile); found {
-				if endpointRaw == "" && entry.Endpoint != nil {
-					endpointRaw, endpointFrom, endpointDetail = entry.Endpoint.String(), sourceProfile, "'"+name+"'"
-				}
-				if ws == "" && strings.TrimSpace(entry.DefaultWorkspace) != "" {
-					session.Workspace, wsFrom, wsDetail = entry.DefaultWorkspace, sourceProfile, "'"+name+"' default"
-				}
-			}
-			if endpointRaw == "" {
-				return nil, diags.Errorf("meshStack endpoint is not configured",
-					"a credential was supplied but no endpoint. Set it with --endpoint, %s, or a profile.", envEndpoint)
-			}
-			session.Endpoint, err = meshstack.ParseEndpoint(endpointRaw)
-			if err != nil {
-				return nil, err
-			}
-			session.current = resolved.credential.Current
-			session.whole = true
-			session.store = profile.NewMemoryStore(profile.Credentials{
-				Version:    profile.Version,
-				Endpoint:   &session.Endpoint,
-				Credential: resolved.credential,
-			})
-			sources["endpoint"] = endpointFrom.describe(endpointDetail)
-			sources["workspace"] = wsFrom.describe(wsDetail)
-			sources["credential"] = resolved.from
-			slog.DebugContext(ctx, "resolved a credential without a profile",
-				"method", session.current, "source", resolved.from, "store", session.store.Describe())
-			return session, nil
+	// Left nil, the store is chosen: the profile's credentials file when the credential came
+	// from it, and a memory store when it came from anywhere above. That is what makes a CI
+	// job and a building block run need no files at all.
+	Store profile.Store
+
+	// Defaults sits below the environment and above the selected profile. Only `--dev-local`
+	// brings any, and it decides its endpoint default only after finding that the profile
+	// names none, because both of its defaults would be wrong for every other command.
+	Defaults setting.Source
+}
+
+// ResolveSession applies every precedence rule, here and only here, in the order
+// explicit → environment → profile → built-in default.
+//
+// It makes no request: it reads the two configuration files and nothing else. The context is
+// for the log records and for the warnings the credential walk emits.
+func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (*Session, error) {
+	sources := []setting.Source{opts.Settings, setting.Environ(), opts.Defaults}
+
+	selection, err := profile.Select(ctx, sources...)
+	if err != nil {
+		return nil, err
+	}
+	// A mistyped --profile must report an unknown profile rather than quietly creating one.
+	if selection.Named && !selection.Exists && opts.Store == nil {
+		return nil, diags.Errorf("unknown profile",
+			"profile %q is not in %s. `meshstack auth login --profile %s` creates it.",
+			selection.Name, profile.DescribeConfigPath(), selection.Name)
+	}
+
+	// The endpoint's list is explicit → environment → profile throughout. Select evaluated
+	// the prefix, because the profile is what it was being used to pick; this is the one
+	// remaining source, and re-reading the prefix could not change the answer.
+	session := &Session{Profile: selection.Name, origins: selection.Origins}
+	raw := selection.Endpoint
+	if raw == "" && selection.Entry.Endpoint != nil {
+		raw = selection.Entry.Endpoint.String()
+		session.origins = append(session.origins, fromProfile(meshstack.Endpoint.EnvKey, selection.Name))
+	}
+	if raw == "" {
+		return nil, diags.Wrap(ErrNoEndpoint, "meshStack endpoint is not configured",
+			"profile %q names no endpoint. Set it with --endpoint, %s, or `meshstack profile set endpoint <url>`.",
+			selection.Name, meshstack.Endpoint.EnvKey)
+	}
+	if session.Endpoint, err = meshstack.ParseEndpoint(raw); err != nil {
+		return nil, err
+	}
+
+	resolved, err := resolveCredential(ctx, opts, selection, session.Endpoint, sources)
+	if err != nil {
+		return nil, err
+	}
+	session.resolved, session.current = resolved.credential, resolved.credential.Current
+	session.origins = append(session.origins, resolved.origins...)
+
+	// Reported here rather than from Select, because it is the credential that makes an
+	// unconfigured machine a failure: one supplied from above needs no profile at all.
+	if !selection.Exists && resolved.fromProfile && opts.Store == nil {
+		return nil, diags.Errorf("no profile for this endpoint",
+			"no profile in %s is configured for %s, and no credential was supplied through %s and %s. `meshstack auth login --endpoint %s` creates one.",
+			profile.DescribeConfigPath(), session.Endpoint, credential.ApiKeyId.EnvKey, credential.ApiSecret.EnvKey, session.Endpoint)
+	}
+
+	workspace, from, err := setting.Resolve(meshstack.Workspace, sources...)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case from != nil:
+		session.Workspace = workspace
+		session.origins = append(session.origins, setting.Origin{
+			Key: meshstack.Workspace.EnvKey, Source: from.Describe(meshstack.Workspace.EnvKey),
+		})
+	case selection.Entry.DefaultWorkspace != "":
+		session.Workspace = selection.Entry.DefaultWorkspace
+		session.origins = append(session.origins, fromProfile(meshstack.Workspace.EnvKey, selection.Name))
+	}
+
+	if session.noInput, from, err = setting.Resolve(tty.NoInput, sources...); err != nil {
+		return nil, err
+	}
+	if from != nil {
+		session.origins = append(session.origins, setting.Origin{
+			Key: tty.NoInput.EnvKey, Source: from.Describe(tty.NoInput.EnvKey),
+		})
+	}
+
+	switch {
+	case opts.Store != nil:
+		session.store = opts.Store
+	case resolved.fromProfile:
+		if session.store, err = profile.NewFileStore(selection.Name); err != nil {
+			return nil, err
 		}
+	default:
+		// An ephemeral credential — from HCL, the environment or a prompt — lands in a store
+		// that cannot write, so it can never mix its identity into somebody's profile.
+		session.store = profile.NewMemoryStore(profile.Credentials{
+			Endpoint: &session.Endpoint, Credential: resolved.credential,
+		})
 	}
 
-	// Otherwise the profile is what holds the credential.
-	name, nameFrom, err := selectProfile(ctx, config, values.Profile, endpointRaw, forLogin)
-	if err != nil {
-		return nil, err
-	}
-	session.Profile = name
-	sources["profile"] = nameFrom
-
-	entry := config.Profiles[name]
-	if endpointRaw == "" && entry.Endpoint != nil {
-		endpointRaw, endpointFrom, endpointDetail = entry.Endpoint.String(), sourceProfile, "'"+name+"'"
-	}
-	if endpointRaw == "" {
-		return nil, diags.Errorf("meshStack endpoint is not configured",
-			"profile %q has no endpoint. Set it with --endpoint, %s, or `meshstack profile set endpoint <url>`.", name, envEndpoint)
-	}
-	session.Endpoint, err = meshstack.ParseEndpoint(endpointRaw)
-	if err != nil {
-		return nil, err
-	}
-
-	if ws == "" && strings.TrimSpace(entry.DefaultWorkspace) != "" {
-		session.Workspace, wsFrom, wsDetail = entry.DefaultWorkspace, sourceProfile, "'"+name+"' default"
-	}
-
-	store, err := profile.NewFileStore(name)
-	if err != nil {
-		return nil, err
-	}
-	credentials, err := store.Read()
-	if err != nil {
-		return nil, err
-	}
-
-	// The endpoint check has to cover the whole file rather than each method, because the
-	// common path uses a cached access token without consulting a method at all. Without it,
-	// repointing a profile's endpoint would send a stored bearer token to a different
-	// meshStack instance.
-	if credentials.Endpoint != nil && !meshstack.SameEndpoint(*credentials.Endpoint, session.Endpoint) {
-		return nil, diags.Errorf("this credential belongs to a different meshStack",
-			"profile %q was logged in to %s, but this command targets %s. Pick another profile with --profile, or log in again.",
-			name, credentials.Endpoint, session.Endpoint)
-	}
-
-	session.store = store
-
-	current, err := currentMethod(credentials, values.Method, forLogin)
-	if err != nil {
-		return nil, err
-	}
-	session.current = current
-
-	sources["endpoint"] = endpointFrom.describe(endpointDetail)
-	sources["workspace"] = wsFrom.describe(wsDetail)
-	sources["credential"] = sourceProfile.describe("'" + name + "'")
-	slog.DebugContext(ctx, "resolved a credential from a profile",
-		"profile", name, "method", current, "endpoint", session.Endpoint.String(), "workspace", session.Workspace)
+	slog.DebugContext(ctx, "resolved a session",
+		"profile", session.Profile, "method", session.current,
+		"endpoint", session.Endpoint.String(), "workspace", session.Workspace,
+		"store", session.store.Describe())
 	return session, nil
 }
 
-// plainProfile finds the profile a caller named, or the default one, without matching on the
-// endpoint and without failing on a name that does not exist.
-func plainProfile(config profile.Config, explicit string) (profile.Profile, string, bool) {
-	name := explicit
-	if name == "" {
-		name = env(envProfile)
-	}
-	if name == "" {
-		name = config.CurrentProfile
-	}
-	if name == "" {
-		name = profile.DefaultName
-	}
-	entry, ok := config.Profiles[name]
-	return entry, name, ok
-}
+// Origins is where each resolved value came from, in the order the resolution walked them.
+// A slice rather than a map: there is one writer, and that order is the one a person reading
+// `meshstack profile view` wants.
+func (s *Session) Origins() []setting.Origin { return s.origins }
 
-// wholeCredential reports a credential supplied entirely above the profile layer. Persisting
-// one into the selected profile would let a CI job's identity overwrite a token minted from
-// that profile's own method, and mix two identities in one file — so these get a memory
-// store, and a building block run needs no files at all.
-type resolvedCredential struct {
-	credential credential.Credential
-	from       string
-}
-
-func wholeCredential(values Values, apiKeyId string) (resolvedCredential, bool) {
-	switch {
-	case values.Method == credential.MethodManual:
-		return resolvedCredential{
-			credential: credential.FromManual(credential.Manual{}),
-			from:       sourceExplicit.describe("api token"),
-		}, true
-	case values.Method == "" && env(envApiToken) != "":
-		return resolvedCredential{
-			credential: credential.FromManual(credential.Manual{}),
-			from:       sourceEnv.describe(envApiToken),
-		}, true
-	case values.Method == credential.MethodApiKey && apiKeyId != "":
-		return resolvedCredential{
-			credential: credential.FromApiKey(credential.ApiKey{Id: apiKeyId}),
-			from:       sourceExplicit.describe("api key"),
-		}, true
-	case values.Method == "" && apiKeyId != "" && env(envApiSecret) != "":
-		return resolvedCredential{
-			credential: credential.FromApiKey(credential.ApiKey{Id: apiKeyId}),
-			from:       sourceEnv.describe(envApiKey + " and " + envApiSecret),
-		}, true
-	}
-	return resolvedCredential{}, false
-}
-
-// selectProfile applies the profile layer of the precedence order: an explicit name, then
-// MESHSTACK_PROFILE, then a match on the endpoint, then the current profile, then "default".
-func selectProfile(ctx context.Context, config profile.Config, explicit, endpoint string, forLogin bool) (name, from string, err error) {
-	if named, fromSource, detail := pick(explicit, envProfile); named != "" {
-		if _, ok := config.Profiles[named]; !ok && !forLogin {
-			// A mistyped --profile must report an unknown profile rather than quietly
-			// creating one. Creation happens in `auth login` and nowhere else.
-			return "", "", diags.Errorf("unknown profile",
-				"profile %q is not in %s. `meshstack auth login --profile %s` creates it.", named, profile.DescribeConfigPath(), named)
-		}
-		return named, fromSource.describe(detail), nil
-	}
-
-	// An endpoint given on its own is almost always meant as "the instance I have a profile
-	// for", so resolving it is friendlier than refusing.
-	if endpoint != "" {
-		wanted, err := meshstack.ParseEndpoint(endpoint)
-		if err != nil {
-			return "", "", err
-		}
-		var matches []string
-		for candidate, entry := range config.Profiles {
-			if entry.Endpoint != nil && meshstack.SameEndpoint(*entry.Endpoint, wanted) {
-				matches = append(matches, candidate)
-			}
-		}
-		slices.Sort(matches)
-		switch len(matches) {
-		case 1:
-			// A terraform plan whose identity depends on which profiles exist on the machine
-			// should at least announce it.
-			slog.WarnContext(ctx, "picked a profile by endpoint",
-				"detail", fmt.Sprintf("profile %q is the only one configured for %s, so this command uses its credentials. Name one with --profile to be explicit.",
-					matches[0], endpoint))
-			return matches[0], sourceProfile.describe("matched on the endpoint"), nil
-		case 0:
-			if forLogin {
-				break
-			}
-			return "", "", diags.Errorf("no profile for this endpoint",
-				"no profile in %s is configured for %s, and no credential was supplied through %s and %s. `meshstack auth login --endpoint %s` creates one.",
-				profile.DescribeConfigPath(), endpoint, envApiKey, envApiSecret, endpoint)
-		default:
-			return "", "", diags.Errorf("several profiles match this endpoint",
-				"%s are all configured for %s. Pick one with --profile.", strings.Join(quoteAll(matches), ", "), endpoint)
-		}
-	}
-
-	if config.CurrentProfile != "" {
-		return config.CurrentProfile, sourceProfile.describe("currentProfile in " + profile.DescribeConfigPath()), nil
-	}
-	return profile.DefaultName, sourceDefault.describe("profile " + profile.DefaultName), nil
-}
-
-// currentMethod decides which method mints for this session. A credential either names one or
-// holds nothing at all, because credential.Validate refuses the state in between.
-func currentMethod(credentials profile.Credentials, demanded credential.Method, forLogin bool) (credential.Method, error) {
-	if demanded != "" {
-		if !forLogin && credentials.Current != "" && demanded != credentials.Current {
-			return "", diags.Errorf("this profile uses a different authentication method",
-				"the profile's current method is %s. `meshstack auth login` is the only command that switches it.",
-				credentials.Current.Description())
-		}
-		return demanded, nil
-	}
-	if credentials.Current != "" {
-		return credentials.Current, nil
-	}
-	// Nothing stored yet. Login is the method `meshstack login` creates, and the error a
-	// command gets from a profile with no credentials names it.
-	return credential.MethodLogin, nil
-}
-
-func quoteAll(values []string) []string {
-	quoted := make([]string, len(values))
-	for i, v := range values {
-		quoted[i] = fmt.Sprintf("%q", v)
-	}
-	return quoted
+func fromProfile(key, name string) setting.Origin {
+	return setting.Origin{Key: key, Source: "profile " + name}
 }

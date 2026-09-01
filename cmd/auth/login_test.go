@@ -2,6 +2,8 @@ package auth
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -9,30 +11,30 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/cli"
-	"github.com/meshcloud/meshstack-cli/pkg/credential"
 )
+
+// testSecret has the shape credential.CheckSecret expects: 32 alphanumerics, no whitespace,
+// not a UUID.
+const testSecret = "abcdef0123456789abcdef0123456789"
 
 // --api-key takes an optional value, and pflag resolves such a flag before it looks at the
 // next argument. So the equals form is the only one that can carry an id, and the two ways
 // of getting that wrong each have to say so.
 func TestApiKeyFlagForms(t *testing.T) {
 	tests := []struct {
-		name       string
-		args       []string
-		wantMethod credential.Method
-		wantId     string
-		wantErr    string
+		name    string
+		args    []string
+		wantId  string
+		wantErr string
 	}{
 		{
-			name:       "bare reuses the id already in the profile",
-			args:       []string{"--api-key"},
-			wantMethod: credential.MethodApiKey,
+			name: "bare reuses the id already in the profile",
+			args: []string{"--api-key"},
 		},
 		{
-			name:       "the equals form carries a new id",
-			args:       []string{"--api-key=0000-0001"},
-			wantMethod: credential.MethodApiKey,
-			wantId:     "0000-0001",
+			name:   "the equals form carries a new id",
+			args:   []string{"--api-key=0000-0001"},
+			wantId: "0000-0001",
 		},
 		{
 			name:    "a separate id is not an argument",
@@ -48,30 +50,56 @@ func TestApiKeyFlagForms(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			isolate(t)
+			isolateAt(t)
 			in := cli.New()
-			cmd := NewLogin(in)
-			err := run(cmd, test.args...)
+			err := run(NewLogin(in), test.args...)
 
 			require.Error(t, err, "no profile is configured, so every form fails eventually")
 			if test.wantErr != "" {
 				assert.Contains(t, err.Error(), test.wantErr)
-				assert.Empty(t, in.Method, "the flag was refused, so no method was demanded")
+				assert.Empty(t, in.ApiKey, "the flag was refused, so nothing reached the source")
 				return
 			}
 			// The form was accepted; what stopped it is the missing endpoint further on.
 			assert.Contains(t, err.Error(), "endpoint")
-			assert.Equal(t, test.wantMethod, in.Method)
 			assert.Equal(t, test.wantId, in.ApiKey)
 		})
 	}
 }
 
-func TestApiKeyAndApiTokenAreMutuallyExclusive(t *testing.T) {
-	isolate(t)
-	in := cli.New()
+// A secret is never a flag value, so --api-secret-stdin is how one reaches the resolution
+// without landing in shell history, in ps output or in a CI log.
+func TestApiSecretStdinReachesTheProfile(t *testing.T) {
+	dir := isolateAt(t)
+	stack := devLocalStack(t, false)
+	stdinWith(t, testSecret+"\n")
 
-	err := run(NewLogin(in), "--api-key", "--api-token")
+	require.NoError(t, run(loginWithRootFlags(cli.New()),
+		"--endpoint", stack, "--api-key=key-42", "--api-secret-stdin"))
+
+	credentials, err := os.ReadFile(filepath.Join(dir, "credentials", "default.json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(credentials), "key-42")
+	assert.Contains(t, string(credentials), testSecret)
+	assert.Contains(t, string(credentials), `"current": "apiKey"`)
+}
+
+func TestApiTokenStdinReachesTheProfile(t *testing.T) {
+	dir := isolateAt(t)
+	stdinWith(t, devLocalToken()+"\n")
+
+	require.NoError(t, run(loginWithRootFlags(cli.New()),
+		"--endpoint", "https://api.example.com", "--api-token", "--api-token-stdin"))
+
+	credentials, err := os.ReadFile(filepath.Join(dir, "credentials", "default.json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(credentials), `"current": "manual"`)
+}
+
+func TestApiKeyAndApiTokenAreMutuallyExclusive(t *testing.T) {
+	isolateAt(t)
+
+	err := run(NewLogin(cli.New()), "--api-key", "--api-token")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "api-key")
@@ -80,7 +108,7 @@ func TestApiKeyAndApiTokenAreMutuallyExclusive(t *testing.T) {
 }
 
 func TestLoginTakesNoArguments(t *testing.T) {
-	isolate(t)
+	isolateAt(t)
 
 	err := run(NewLogin(cli.New()), "workspace-name")
 
@@ -98,19 +126,19 @@ func run(cmd *cobra.Command, args ...string) error {
 	return cmd.Execute()
 }
 
-// isolate points the CLI at an empty configuration directory and clears every MESHSTACK_*
-// variable, so that no test reads a developer's real profile — the Taskfile loads .env into
-// `task test`, so these are often set.
-func isolate(t *testing.T) {
+// stdinWith replaces the process's stdin, because the two --*-stdin flags read a file rather
+// than cobra's input stream: a terminal check and a prompt both need the real descriptor.
+// cli.New captures it, so this has to run first.
+func stdinWith(t *testing.T, content string) {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("MESHSTACK_CONFIG_DIR", dir)
-	for _, key := range []string{
-		"MESHSTACK_ENDPOINT", "MESHSTACK_WORKSPACE", "MESHSTACK_PROFILE",
-		"MESHSTACK_API_KEY", "MESHSTACK_API_SECRET", "MESHSTACK_API_TOKEN",
-	} {
-		t.Setenv(key, "")
-	}
-	// The test process's own stdin may be a terminal, and nothing here may prompt.
-	t.Setenv("MESHSTACK_NO_INPUT", "1")
+	path := filepath.Join(t.TempDir(), "stdin")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	file, err := os.Open(path)
+	require.NoError(t, err)
+	previous := os.Stdin
+	os.Stdin = file
+	t.Cleanup(func() {
+		os.Stdin = previous
+		_ = file.Close()
+	})
 }

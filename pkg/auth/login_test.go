@@ -22,10 +22,11 @@ func TestALoginWithNoBrowserFailsAndNamesMeshstackLogin(t *testing.T) {
 		return http.StatusBadRequest, map[string]any{"error": "invalid_grant"}
 	})
 
-	session, err := ResolveForLogin(t.Context(), &fakeInput{})
-	require.NoError(t, err)
+	session := resolved(t, ResolveSessionOptions{
+		DemandMethod: credential.MethodLogin, Store: profileStore(t, testProfile),
+	})
 
-	_, err = session.Login(t.Context(), LoginOptions{})
+	_, err := session.Login(t.Context(), LoginOptions{})
 
 	problem := problemOf(t, err)
 	require.Equal(t, "this front end cannot create a login", problem.Summary())

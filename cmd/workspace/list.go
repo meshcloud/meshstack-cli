@@ -19,7 +19,7 @@ func newList(in *cli.Input) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			session, err := auth.Resolve(ctx, in)
+			session, err := auth.ResolveSession(ctx, auth.ResolveSessionOptions{Settings: in})
 			if err != nil {
 				return err
 			}

@@ -1,22 +1,23 @@
-// Package cli holds what the meshStack CLI supplies to pkg/auth: the values its flags carry,
-// the secrets it reads from the environment, from stdin or from a terminal prompt, and the
-// browser login.
+// Package cli is the meshStack CLI's half of resolving a session: its settings source, the
+// secrets it reads from stdin or a prompt, and the browser login.
 //
 // It is internal because Go's own rule is the guarantee that matters here. This package
-// prompts, and a Terraform provider run must never block on a terminal that is not there —
-// so rather than trusting a convention, the import is impossible. That is also what makes
-// it the one place outside cmd/ that may reach pkg/oidc/browser; .golangci.yml carries the
-// rule and the reasoning.
+// prompts, and a Terraform provider run must never block on a terminal that is not there, so
+// the import is impossible rather than merely discouraged. That is also what makes it the one
+// place outside cmd/ that may reach pkg/oidc/browser; .golangci.yml carries that rule.
 package cli
 
 import (
-	"context"
 	"io"
 	"os"
 
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/browser"
+	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
+	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
 // UserAgent identifies this CLI to the meshStack API. cmd/meshstack replaces it with the
@@ -24,48 +25,74 @@ import (
 // main to read it there.
 var UserAgent = "meshstack-cli"
 
-// Input implements auth.Input over the meshStack CLI's flags, stdin and a terminal prompt.
-// The fields are bound to flags by the commands that own them: the root command binds
-// Profile, Endpoint and Workspace, and `auth login` binds ApiKey and Method. One Input is
-// shared by the whole command tree, because the persistent flags feeding it are.
+// Input is the top of every ranked list. One serves the whole command tree, because the
+// persistent flags feeding it do.
 //
-// No secret is a field here. A secret is never a flag value, so it arrives through
-// ApiKeySecret and ApiToken at the moment it is needed and is never held.
+// ApiSecret and ApiToken hold what --api-secret-stdin and --api-token-stdin read, which is a
+// line of stdin rather than an argv entry. The read happens before the resolution, because a
+// Source has neither a context nor an error return to report one that blocked.
 type Input struct {
 	Profile   string
 	Endpoint  string
 	Workspace string
 	ApiKey    string
-	Method    credential.Method
+	ApiSecret string
+	ApiToken  string
+	NoInput   bool
 
-	// in and out are where a prompt reads and writes. They are fields only so that a test
-	// can drive one; nothing outside this package sets them. in is an *os.File because
+	// MayPrompt is tty.NoInput and a terminal check, resolved once by cmd/meshstack. It is
+	// separate from NoInput, which is the flag alone, because a command has to know whether
+	// it may ask at a moment when the resolution has just failed and there is no Session.
+	MayPrompt bool
+
+	// in and out are fields only so that a test can drive one. in is an *os.File because
 	// deciding whether to prompt at all means asking whether it is a terminal.
 	in  *os.File
 	out io.Writer
 }
+
+var _ setting.Source = (*Input)(nil)
 
 func New() *Input {
 	// Prompts go to stderr so that a command's real output stays pipeable.
 	return &Input{in: os.Stdin, out: os.Stderr}
 }
 
-func (i *Input) Explicit() auth.Values {
-	return auth.Values{
-		Profile:   i.Profile,
-		Endpoint:  i.Endpoint,
-		Workspace: i.Workspace,
-		ApiKey:    i.ApiKey,
-		Method:    i.Method,
+func (i *Input) Lookup(key string) (string, bool) {
+	_, value := i.flag(key)
+	return value, value != ""
+}
+
+func (i *Input) Describe(key string) string {
+	name, _ := i.flag(key)
+	return name
+}
+
+// flag answers both halves of setting.Source from one switch, so an origin naming a flag
+// cannot drift from the value that flag carried.
+func (i *Input) flag(key string) (name, value string) {
+	switch key {
+	case meshstack.Endpoint.EnvKey:
+		return "--endpoint", i.Endpoint
+	case meshstack.Workspace.EnvKey:
+		return "--workspace", i.Workspace
+	case profile.Name.EnvKey:
+		return "--profile", i.Profile
+	case credential.ApiKeyId.EnvKey:
+		return "--api-key", i.ApiKey
+	case credential.ApiSecret.EnvKey:
+		return "--api-secret-stdin", i.ApiSecret
+	case credential.ApiToken.EnvKey:
+		return "--api-token-stdin", i.ApiToken
+	case tty.NoInput.EnvKey:
+		// A boolean flag left off answers nothing rather than "false", so that it does not
+		// silence MESHSTACK_NO_INPUT below it.
+		if !i.NoInput {
+			return "--no-input", ""
+		}
+		return "--no-input", "true"
 	}
-}
-
-func (i *Input) ApiKeySecret(ctx context.Context) (string, error) {
-	return i.readSecret(ctx, auth.SecretFromEnv, auth.SecretPrompt, auth.MissingSecretError)
-}
-
-func (i *Input) ApiToken(ctx context.Context) (string, error) {
-	return i.readSecret(ctx, auth.TokenFromEnv, auth.TokenPrompt, auth.MissingTokenError)
+	return key, ""
 }
 
 func (i *Input) Browser() auth.Browser {

@@ -2,41 +2,74 @@ package auth
 
 import (
 	"context"
-	"strings"
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// devLocalEndpoint is where a local dev stack's meshfed-api listens. It is the only default
-// endpoint anywhere in this package, and it belongs to `--dev-local` alone: guessing one for a
+// DevLocalProfile is reserved, so that a re-run of --dev-local overwrites it without asking.
+// Keeping it off profile.DefaultName is what makes that safe: a developer's own `default`
+// profile points at a real meshStack and must survive.
+const DevLocalProfile = "dev-local"
+
+// devLocalEndpoint is the only default endpoint anywhere in this package: guessing one for a
 // real meshStack would send a credential somewhere nobody named, while guessing one for a
-// stack that runs on the developer's own machine is what makes that flag configless.
+// stack on the developer's own machine is what makes the flag configless.
 const devLocalEndpoint = "http://localhost:8080"
 
-// ResolveForDevLocalLogin produces the session `meshstack login --dev-local` works through.
-// It is ResolveForLogin with the two defaults that flag brings: the reserved profile name, and
-// the local dev stack's endpoint when neither a flag, the environment nor that profile named
-// one. Both are applied here rather than in the shared precedence order, because both would be
-// wrong for every other command.
-func ResolveForDevLocalLogin(ctx context.Context, in Input) (*Session, error) {
-	values := in.Explicit()
-	if values.Profile == "" && env(envProfile) == "" {
-		values.Profile = DevLocalProfile
+// ResolveForDevLocalLogin produces the session `meshstack login --dev-local` works through:
+// ResolveSession with the two defaults that flag brings, and with the profile's own store,
+// because bootstrapping a profile is the whole of what the flag does.
+//
+// The endpoint default is decided here rather than declared, because it sits below the
+// selected profile's own endpoint while the profile name sits above currentProfile. Both
+// would be wrong for every other command, so neither belongs on a declaration.
+func ResolveForDevLocalLogin(ctx context.Context, settings setting.Source) (*Session, error) {
+	defaults := devLocalDefaults{name: DevLocalProfile}
+	selection, err := profile.Select(ctx, settings, setting.Environ(), defaults)
+	if err != nil {
+		return nil, err
 	}
-	if values.Endpoint == "" && env(envEndpoint) == "" && !hasEndpoint(values.Profile) {
-		values.Endpoint = devLocalEndpoint
+	if selection.Endpoint == "" && selection.Entry.Endpoint == nil {
+		defaults.endpoint = devLocalEndpoint
 	}
-	return ResolveForLogin(ctx, withValues{Input: in, values: values})
+	store, err := profile.NewFileStore(selection.Name)
+	if err != nil {
+		return nil, err
+	}
+	return ResolveSession(ctx, ResolveSessionOptions{
+		Settings:     settings,
+		Defaults:     defaults,
+		DemandMethod: credential.MethodApiKey,
+		Store:        store,
+	})
 }
 
-// LoginDevLocal bootstraps this session's profile from the credentials a local dev stack
-// publishes in /mesh/info, so that running against one needs no .env file and no key issued by
-// hand. It takes no LoginOptions: there is nothing to force — the exchange happens every time
-// — and nothing to choose, because the workspace comes out of the same document.
+// devLocalDefaults answers those two settings and no others, unlike setting.Default, which
+// answers whatever key it is asked because it is only ever placed in one setting's list.
+type devLocalDefaults struct{ name, endpoint string }
+
+func (d devLocalDefaults) Lookup(key string) (string, bool) {
+	switch key {
+	case profile.Name.EnvKey:
+		return d.name, d.name != ""
+	case meshstack.Endpoint.EnvKey:
+		return d.endpoint, d.endpoint != ""
+	}
+	return "", false
+}
+
+func (devLocalDefaults) Describe(string) string { return "the --dev-local default" }
+
+// LoginDevLocal bootstraps the profile from what a local dev stack publishes in /mesh/info,
+// so running against one needs no .env file and no key issued by hand. It takes no
+// LoginOptions: the exchange happens every time, and the workspace comes out of the same
+// document.
 func (s *Session) LoginDevLocal(ctx context.Context) (LoginResult, error) {
 	return s.login(ctx, credential.MethodApiKey, func(result *LoginResult) error {
 		return s.loginDevLocal(ctx, result)
@@ -70,34 +103,13 @@ func (s *Session) loginDevLocal(ctx context.Context, result *LoginResult) error 
 	}
 	result.Username = dev.ApiKeyClientId
 
-	// The dev stack's key holds ADM_ rights and is therefore not workspace-bound, so nothing
-	// here needs a workspace. The profile does: a workspace-scoped command run later fails
-	// without one, and on a dev stack the admin workspace is the answer a developer would give.
-	if strings.TrimSpace(s.Workspace) == "" {
+	// The dev stack's key is not workspace-bound, so nothing here needs a workspace. The
+	// profile does, for a workspace-scoped command run later.
+	if s.Workspace == "" {
 		s.Workspace = info.AdminWorkspaceIdentifier
 	}
-	if strings.TrimSpace(s.Workspace) == "" {
+	if s.Workspace == "" {
 		return nil
 	}
 	return s.rememberWorkspace(s.Workspace, result)
-}
-
-// withValues overrides what a front end reported explicitly, so that ResolveForDevLocalLogin
-// can apply its two defaults and still run the one resolution everything else runs.
-type withValues struct {
-	Input
-	values Values
-}
-
-func (w withValues) Explicit() Values { return w.values }
-
-// hasEndpoint reports whether the named profile already carries an endpoint, which is what
-// keeps the dev-local default from overriding a profile somebody configured by hand.
-func hasEndpoint(name string) bool {
-	config, err := profile.LoadConfig()
-	if err != nil {
-		return false
-	}
-	entry, ok := config.Profiles[name]
-	return ok && entry.Endpoint != nil
 }

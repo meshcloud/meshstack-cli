@@ -7,37 +7,26 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"os/exec"
 	"runtime"
 	"strings"
-
-	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
-// readSecret applies the order the design fixes for both the API key secret and the API
-// token, neither of which is ever a flag value: the environment, then one line of stdin
-// when stdin is not a terminal, then a prompt without echo, and otherwise an error naming
-// every way the value could have arrived.
-//
-// The environment outranks the prompt so that a shell which already exports the value never
-// asks for it again.
-func (i *Input) readSecret(ctx context.Context, fromEnv func() (string, bool), prompt string, missing func() error) (string, error) {
-	if value, ok := fromEnv(); ok {
-		return value, nil
+// ReadLine reads one line of stdin, for --api-secret-stdin and --api-token-stdin. Exactly one,
+// because whatever follows it belongs to the command rather than to the secret; and a last
+// line without a newline is a value too, since a `printf %s "$secret" |` pipeline is the
+// documented way to supply one.
+func (i *Input) ReadLine() (string, error) {
+	line, err := bufio.NewReader(i.stdin()).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
 	}
-	if !tty.IsTerminal(i.stdin()) {
-		return readLine(i.stdin())
-	}
-	// A terminal that may not be asked — --no-input, or MESHSTACK_NO_INPUT — is the one
-	// case left, and it gets the error rather than a prompt nobody will answer.
-	if !tty.IsInteractive() {
-		return "", missing()
-	}
-	return i.promptSecret(ctx, prompt)
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
-func (i *Input) promptSecret(ctx context.Context, prompt string) (string, error) {
+// PromptSecret asks for a secret without echoing it. It serves `meshstack login` alone: every
+// other command reports the resolution's error rather than opening a login dialogue.
+func (i *Input) PromptSecret(ctx context.Context, prompt string) (string, error) {
 	restore, err := i.echoOff(ctx)
 	if err != nil {
 		_, _ = fmt.Fprintf(i.stderr(), "warning: echo could not be turned off (%v), so what you type will be visible.\n", err)
@@ -45,7 +34,7 @@ func (i *Input) promptSecret(ctx context.Context, prompt string) (string, error)
 	defer restore()
 
 	_, _ = fmt.Fprintf(i.stderr(), "%s: ", prompt)
-	value, err := readLine(i.stdin())
+	value, err := i.ReadLine()
 	// The Enter key produced no echo, so the next thing written would land on the prompt.
 	_, _ = fmt.Fprintln(i.stderr())
 	return value, err
@@ -87,15 +76,4 @@ func (i *Input) stty(ctx context.Context, arg string) error {
 		return fmt.Errorf("stty %s: %w", arg, err)
 	}
 	return nil
-}
-
-// readLine reads exactly one line, because whatever follows it on stdin belongs to the
-// command rather than to the secret. A last line without a newline is a value too: a
-// `printf %s "$secret" |` pipeline is the documented way to supply one.
-func readLine(f *os.File) (string, error) {
-	line, err := bufio.NewReader(f).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	return strings.TrimRight(line, "\r\n"), nil
 }

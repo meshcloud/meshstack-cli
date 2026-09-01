@@ -21,9 +21,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
+	"github.com/meshcloud/meshstack-cli/pkg/meshstack"
 	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
 
 // testSecret has the shape credential.CheckSecret expects of an API key secret: 32
@@ -43,13 +46,16 @@ func isolate(t *testing.T) paths {
 	t.Helper()
 	dir := t.TempDir()
 	found := paths{config: filepath.Join(dir, "config.json"), credentials: filepath.Join(dir, "credentials")}
-	t.Setenv("MESHSTACK_CONFIG_DIR", dir)
-	for _, key := range []string{envEndpoint, envApiKey, envApiSecret, envApiToken, envProfile, "MESHSTACK_WORKSPACE"} {
+	t.Setenv(profile.ConfigDir.EnvKey, dir)
+	for _, key := range []string{
+		meshstack.Endpoint.EnvKey, meshstack.Workspace.EnvKey, profile.Name.EnvKey,
+		credential.ApiKeyId.EnvKey, credential.ApiSecret.EnvKey, credential.ApiToken.EnvKey,
+	} {
 		t.Setenv(key, "")
 	}
 	// A test process is not a person: nothing prompts, and an unwritable store degrades to
 	// memory rather than stopping.
-	t.Setenv("MESHSTACK_NO_INPUT", "1")
+	t.Setenv(tty.NoInput.EnvKey, "true")
 	return found
 }
 
@@ -81,7 +87,12 @@ const testProfile = profile.DefaultName
 
 func writeCredentials(t *testing.T, credentials profile.Credentials) {
 	t.Helper()
-	store, err := profile.NewFileStore(testProfile)
+	writeCredentialsFor(t, testProfile, credentials)
+}
+
+func writeCredentialsFor(t *testing.T, name string, credentials profile.Credentials) {
+	t.Helper()
+	store, err := profile.NewFileStore(name)
 	require.NoError(t, err)
 	_, err = store.Update(t.Context(), func(profile.Credentials) (profile.Credentials, error) {
 		return credentials, nil
@@ -105,23 +116,43 @@ func readCredentials(t *testing.T) profile.Credentials {
 	return credentials
 }
 
-type fakeInput struct {
-	values Values
-	secret string
-	token  string
+// source stands in for a front end's own settings source: a CLI flag, or a provider block
+// attribute. Describe says "explicit" so that an origin assertion can tell it from the
+// environment, which describes itself with the bare variable name.
+type source map[string]string
+
+func (s source) Lookup(key string) (string, bool) {
+	value, ok := s[key]
+	return value, ok && value != ""
 }
 
-func (f *fakeInput) Explicit() Values { return f.values }
+func (s source) Describe(key string) string { return "explicit " + key }
 
-func (f *fakeInput) ApiKeySecret(context.Context) (string, error) { return f.secret, nil }
-
-func (f *fakeInput) ApiToken(context.Context) (string, error) { return f.token, nil }
-
-func resolved(t *testing.T, in Input) *Session {
+// profileStore is what a command that configures a profile hands in, and the only way a
+// resolution writes to one.
+func profileStore(t *testing.T, name string) profile.Store {
 	t.Helper()
-	session, err := Resolve(t.Context(), in)
+	store, err := profile.NewFileStore(name)
+	require.NoError(t, err)
+	return store
+}
+
+func resolved(t *testing.T, opts ResolveSessionOptions) *Session {
+	t.Helper()
+	session, err := ResolveSession(t.Context(), opts)
 	require.NoError(t, err)
 	return session
+}
+
+// originOf is what `meshstack auth status` does with Origins, and what an assertion about
+// where a value came from needs.
+func originOf(session *Session, key string) string {
+	for _, origin := range session.Origins() {
+		if origin.Key == key {
+			return origin.Source
+		}
+	}
+	return ""
 }
 
 // problemOf is what a front end renders, so an assertion about a message asserts on the

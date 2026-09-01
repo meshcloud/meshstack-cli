@@ -84,7 +84,7 @@ func TestDevLocalLoginAgainstAnOrdinaryMeshStack(t *testing.T) {
 }
 
 func TestDevLocalAndApiKeyAreMutuallyExclusive(t *testing.T) {
-	isolate(t)
+	isolateAt(t)
 
 	err := run(NewLogin(cli.New()), "--dev-local", "--api-key")
 
@@ -103,8 +103,10 @@ func loginWithRootFlags(in *cli.Input) *cobra.Command {
 	return cmd
 }
 
-// isolateAt is isolate, plus the directory it isolated into, for a test that asserts on the
-// files a command wrote.
+// isolateAt points the CLI at an empty configuration directory and clears every MESHSTACK_*
+// variable, so that no test reads a developer's real profile — the Taskfile loads .env into
+// `task test`, so these are often set. It returns the directory, for a test that asserts on
+// the files a command wrote.
 func isolateAt(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
