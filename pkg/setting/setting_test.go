@@ -95,6 +95,66 @@ func TestResolveReportsWhichSourceCarriedAValueThatWillNotParse(t *testing.T) {
 	assert.ErrorAs(t, err, &numErr, "the parse error stays reachable through errors.As")
 }
 
+func TestEnviron(t *testing.T) {
+	t.Run("an unset variable has not answered", func(t *testing.T) {
+		value, ok := Environ().Lookup("MESHSTACK_NOTHING_EXPORTS_THIS")
+
+		assert.False(t, ok)
+		assert.Empty(t, value)
+	})
+
+	t.Run("a variable exported as empty has not answered either", func(t *testing.T) {
+		t.Setenv(endpoint.EnvKey, "")
+
+		value, ok := Environ().Lookup(endpoint.EnvKey)
+
+		assert.False(t, ok)
+		assert.Empty(t, value)
+	})
+
+	t.Run("a variable that carries a value answers, and names itself", func(t *testing.T) {
+		t.Setenv(endpoint.EnvKey, "https://env.example.com")
+
+		value, ok := Environ().Lookup(endpoint.EnvKey)
+
+		require.True(t, ok)
+		assert.Equal(t, "https://env.example.com", value)
+		assert.Equal(t, endpoint.EnvKey, Environ().Describe(endpoint.EnvKey))
+	})
+
+	t.Run("an empty variable does not silence the source below it", func(t *testing.T) {
+		t.Setenv(endpoint.EnvKey, "")
+
+		value, from, err := Resolve(endpoint, Environ(), Default("https://default.example.com"))
+
+		require.NoError(t, err)
+		assert.Equal(t, "https://default.example.com", value)
+		assert.Equal(t, "built-in default", from.Describe(endpoint.EnvKey))
+	})
+}
+
+func TestDefaultAnswersWhateverKeyItIsAsked(t *testing.T) {
+	source := Default("https://default.example.com")
+
+	for _, key := range []string{endpoint.EnvKey, port.EnvKey, "MESHSTACK_ANYTHING_ELSE"} {
+		value, ok := source.Lookup(key)
+
+		require.True(t, ok, "a default source is only ever placed in one setting's list, so it answers every key")
+		assert.Equal(t, "https://default.example.com", value)
+		assert.Equal(t, "built-in default", source.Describe(key))
+	}
+}
+
+func TestDefaultFuncReportsItsFailureAsNoValue(t *testing.T) {
+	failed := DefaultFunc(func() (string, bool) { return "", false })
+
+	value, from, err := Resolve(endpoint, failed)
+
+	require.NoError(t, err, "the message naming what is missing is the caller's to write")
+	assert.Empty(t, value)
+	assert.Nil(t, from)
+}
+
 func TestHelpFallsBackToShort(t *testing.T) {
 	assert.Equal(t, endpoint.Short, endpoint.Help())
 	assert.Equal(t, "# The endpoint", Value[string]{Short: "the endpoint", Long: "# The endpoint"}.Help())

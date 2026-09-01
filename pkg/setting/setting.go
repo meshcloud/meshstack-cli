@@ -8,6 +8,7 @@
 package setting
 
 import (
+	"os"
 	"strings"
 
 	"github.com/meshcloud/meshstack-cli/pkg/diags"
@@ -44,6 +45,43 @@ type Source interface {
 	Lookup(key string) (string, bool)
 	Describe(key string) string
 }
+
+// Origin is where one resolved value came from. Source is the winning source's own Describe,
+// so it cannot drift from the value; Key is the setting's EnvKey.
+type Origin struct {
+	Key    string
+	Source string
+}
+
+// Environ is the environment layer of a ranked list.
+func Environ() Source { return environ{} }
+
+type environ struct{}
+
+// An exported but empty variable has not answered, the way Resolve treats every other source:
+// `export MESHSTACK_WORKSPACE=` must not silence the profile below it.
+func (environ) Lookup(key string) (string, bool) {
+	value := os.Getenv(key)
+	return value, value != ""
+}
+
+func (environ) Describe(key string) string { return key }
+
+// Default is the bottom of a ranked list.
+func Default(value string) Source {
+	return DefaultFunc(func() (string, bool) { return value, value != "" })
+}
+
+// DefaultFunc is a default that can fail — a directory derived from os.UserConfigDir — where
+// the failure is ("", false) and the message naming what is missing belongs to the caller.
+func DefaultFunc(f func() (string, bool)) Source { return defaultSource{answer: f} }
+
+type defaultSource struct{ answer func() (string, bool) }
+
+// The key is ignored: a default source is only ever placed in one setting's ranked list.
+func (d defaultSource) Lookup(string) (string, bool) { return d.answer() }
+
+func (defaultSource) Describe(string) string { return "built-in default" }
 
 // Resolve returns the first value a source carries, the source that answered, and an error only
 // if that value would not parse. Nothing configured is the zero T, a nil Source and a nil error:
