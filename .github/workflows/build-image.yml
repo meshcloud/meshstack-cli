@@ -1,0 +1,84 @@
+# Builds the meshstack container image and pushes it to GHCR only. Modelled on
+# meshcloud/building-block-runner's build-images.yml, minus the Docker Hub push.
+name: Build Image
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+  IMAGE_NAME: meshstack-cli
+
+on:
+  # Called by the release workflow, so a tagged release publishes the matching image.
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version to tag the image with, e.g. v1.2.3"
+        required: true
+        type: string
+  # A push to main refreshes :main, which is what makes the image usable before the
+  # first release exists.
+  push:
+    branches:
+      - main
+  # Pull requests build the image but do not push it, so a broken Dockerfile fails
+  # review rather than main.
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/build-image.yml'
+      - 'go.mod'
+      - 'go.sum'
+      - '**/*.go'
+
+jobs:
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Tags are computed here rather than with docker/metadata-action, to keep the
+      # set of pinned actions small.
+      - name: Determine version and tags
+        id: meta
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            version="${{ inputs.version }}"
+            tags="${REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${version}"
+            tags="${tags},${REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:latest"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            version="main-$(git rev-parse --short HEAD)"
+            tags="${REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:main"
+            tags="${tags},${REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${version}"
+          else
+            version="pr-${{ github.event.number }}"
+            tags="${REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${version}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -32,13 +32,14 @@
         # package, so it is the only binary installed either way, and an unrestricted set
         # is what lets doCheck below run the whole suite instead of one directory's
         # tests. That directory is also what names the binary `meshstack`, which is why
-        # no build here or anywhere else passes -o.
+        # no build here or anywhere else passes -o. See AGENTS.md.
 
         # Derived from go.mod and go.sum: when it goes stale the build fails and prints
         # the value to paste back in.
-        vendorHash = "sha256-siWz7kvslsEfoyGTO1e3Iek0Wsj+y4AkalzD3ybgL34=";
+        vendorHash = "sha256-vvO0VufdztbH0PCXGwJ1yEfB4Xo1Ot/b5JkrVe0YTE0=";
 
-        # A build without this ldflag reports `dev`.
+        # The third place setting -X main.Version, after .goreleaser.yml and the
+        # Dockerfile; all three have to agree. A build without it reports `dev`.
         ldflags = [ "-s" "-w" "-X main.Version=${version}" ];
 
         # The suite passes in the sandbox — every test that wants $HOME, a config file
@@ -90,6 +91,9 @@
 
             # https://taskfile.dev
             go-task
+
+            # https://goreleaser.com — task release:check / release:snapshot
+            goreleaser
           ];
 
           shellHook = ''

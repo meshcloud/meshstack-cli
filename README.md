@@ -1,20 +1,26 @@
 # meshStack CLI
 
-`meshstack` will be the command line interface for [meshStack](https://www.meshcloud.io/).
+`meshstack` is the command line interface for [meshStack](https://www.meshcloud.io/).
 
-It is being built. Nothing here does anything useful yet: the binary prints one line and exits, and
-the repository exists so far to carry the build, the linter, the test workflow and the acceptance
-suite that meshStack's own CI runs against a live backend.
+## Install
+
+```shell
+go install github.com/meshcloud/meshstack-cli/cmd/meshstack@latest
+```
 
 ## Development
 
-The Nix dev shell provides Go and `task`:
+The Nix dev shell provides Go, `goreleaser` and `task`. `task lint` builds `golangci-lint` from
+the tool directive in `go.mod`, so the dev shell deliberately does not carry it:
 
 ```shell
 nix develop
-task build   # ./meshstack
-task test    # go test ./...
-task lint    # golangci-lint run, add -- --fix to apply fixes
+task build            # ./meshstack
+task test             # go test ./...
+task lint             # golangci-lint run, add -- --fix to apply fixes
+task release:snapshot # build the release artifacts without publishing
 ```
 
-The Go version is pinned in `go.mod` and in `flake.nix`, and both have to be bumped together.
+The Go version is pinned in `go.mod` and in `flake.nix`, and is kept in lock-step with the
+[meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack), which
+imports this repository's client package.
