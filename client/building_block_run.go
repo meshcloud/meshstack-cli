@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
 type MeshBuildingBlockRun struct {
@@ -50,11 +50,5 @@ func newBuildingBlockRunClient(ctx context.Context, httpClient internal.HttpClie
 }
 
 func (c meshBuildingBlockRunClient) GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error) {
-	return internal.DoAuthorizedRequest[MeshBuildingBlockRunLogs](
-		ctx,
-		c.meshObject.HttpClient,
-		"GET",
-		c.meshObject.ApiUrl.JoinPath(runUuid, "logs"),
-		internal.WithAccept(c.meshObject.MeshObjectMimeType()),
-	)
+	return c.meshObject.GetAtPath[MeshBuildingBlockRunLogs](ctx, runUuid, "logs")
 }

@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
 type MeshBuildingBlockRunnerImplementationType string
 
+// TODO Turn this into enum!
 const (
 	MeshBuildingBlockRunnerImplementationTypeTerraform           MeshBuildingBlockRunnerImplementationType = "TERRAFORM"
 	MeshBuildingBlockRunnerImplementationTypeGithubWorkflow      MeshBuildingBlockRunnerImplementationType = "GITHUB_WORKFLOW"

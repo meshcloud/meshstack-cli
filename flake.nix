@@ -36,7 +36,7 @@
 
         # Derived from go.mod and go.sum: when it goes stale the build fails and prints
         # the value to paste back in.
-        vendorHash = "sha256-LOfCstf4K2SR/kd6NHPLHcjAIOxeKbmDa+ikkzj31YA=";
+        vendorHash = "sha256-siWz7kvslsEfoyGTO1e3Iek0Wsj+y4AkalzD3ybgL34=";
 
         # A build without this ldflag reports `dev`.
         ldflags = [ "-s" "-w" "-X main.Version=${version}" ];

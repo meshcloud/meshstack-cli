@@ -3,7 +3,8 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshLandingZone struct {
@@ -93,7 +94,7 @@ func (c meshLandingZoneClient) Read(ctx context.Context, name string) (*MeshLand
 }
 
 func (c meshLandingZoneClient) List(ctx context.Context, query MeshLandingZoneListQuery) ([]MeshLandingZone, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshLandingZoneClient) Create(ctx context.Context, landingZone *MeshLandingZoneCreate) (*MeshLandingZone, error) {

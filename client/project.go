@@ -3,7 +3,8 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshProject struct {
@@ -65,7 +66,7 @@ type meshProjectListQuery struct {
 }
 
 func (c meshProjectClient) List(ctx context.Context, workspaceIdentifier string, paymentMethodIdentifier *string) ([]MeshProject, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshProjectListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshProjectListQuery{
 		WorkspaceIdentifier: workspaceIdentifier,
 		PaymentIdentifier:   paymentMethodIdentifier,
 	}))

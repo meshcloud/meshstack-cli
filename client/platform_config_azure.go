@@ -1,6 +1,6 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type AzurePlatformConfig struct {
 	EntraTenant string                  `json:"entraTenant" tfsdk:"entra_tenant"`

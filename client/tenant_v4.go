@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type TenantLifecycleState string
@@ -142,7 +143,7 @@ func (c meshTenantClient) Create(ctx context.Context, tenant *MeshTenantCreate) 
 }
 
 func (c meshTenantClient) List(ctx context.Context, query MeshTenantQuery) ([]MeshTenant, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshTenantClient) Delete(ctx context.Context, uuid string) error {

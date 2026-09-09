@@ -3,8 +3,9 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshServiceInstance struct {
@@ -53,5 +54,5 @@ func (c meshServiceInstanceClient) Read(ctx context.Context, instanceId string) 
 }
 
 func (c meshServiceInstanceClient) List(ctx context.Context, filter MeshServiceInstanceFilter) ([]MeshServiceInstance, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(filter))
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }

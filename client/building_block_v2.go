@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type BuildingBlockLifecycleState string
@@ -307,7 +308,7 @@ func (c meshBuildingBlockV2Client) ReadFunc(uuid string) func(ctx context.Contex
 }
 
 func (c meshBuildingBlockV2Client) List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(filter))
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
@@ -322,11 +323,10 @@ func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingB
 }
 
 func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purge bool) error {
-	var options []internal.RequestOption
 	if purge {
-		options = append(options, internal.WithPathElems("purge"))
+		return c.meshObject.DeleteAtPath(ctx, uuid, "purge")
 	}
-	return c.meshObject.Delete(ctx, uuid, options...)
+	return c.meshObject.Delete(ctx, uuid)
 }
 
 // IsWaitingForInput reports whether the building block run is paused awaiting
@@ -392,15 +392,7 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 	return
 }
 
-func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) error {
-	// trigger-run returns an empty 2xx body; use DoAuthorizedRequest[any] to signal no body expected.
-	// No body is sent, so the backend triggers a normal (non-dry) apply run.
-	_, err := internal.DoAuthorizedRequest[any](
-		ctx,
-		c.meshObject.HttpClient,
-		"POST",
-		c.meshObject.ApiUrl.JoinPath(bbUuid, "trigger-run"),
-		internal.WithAccept(c.meshObject.MeshObjectMimeType()),
-	)
-	return err
+func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (err error) {
+	_, err = c.meshObject.PostAtPath[any](ctx, nil, bbUuid, "trigger-run")
+	return
 }

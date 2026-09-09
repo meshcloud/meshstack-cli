@@ -1,6 +1,6 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type AwsPlatformConfig struct {
 	Region      string                `json:"region,omitempty" tfsdk:"region"`

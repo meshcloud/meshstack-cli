@@ -3,8 +3,9 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshPlatform struct {
@@ -112,7 +113,7 @@ func (c meshPlatformClient) Read(ctx context.Context, uuid string) (*MeshPlatfor
 }
 
 func (c meshPlatformClient) List(ctx context.Context, query MeshPlatformListQuery) ([]MeshPlatform, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshPlatformClient) Create(ctx context.Context, platform MeshPlatform) (*MeshPlatform, error) {

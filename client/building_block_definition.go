@@ -3,9 +3,10 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockType string
@@ -149,7 +150,7 @@ type meshBuildingBlockDefinitionListQuery struct {
 }
 
 func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
 		IncludeAllPublished: true,
 		OwnedByWorkspace:    workspaceIdentifier,
 	}))

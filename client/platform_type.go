@@ -3,7 +3,8 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshPlatformType struct {
@@ -81,7 +82,7 @@ type meshPlatformTypeListQuery struct {
 }
 
 func (c meshPlatformTypeClient) List(ctx context.Context, category *string, lifecycleStatus *string) ([]MeshPlatformType, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshPlatformTypeListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshPlatformTypeListQuery{
 		Category:        category,
 		LifecycleStatus: lifecycleStatus,
 	}))
