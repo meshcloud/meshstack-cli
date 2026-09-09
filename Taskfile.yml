@@ -1,0 +1,34 @@
+# Run these inside `nix develop`, which provides the pinned Go toolchain and every tool
+# named below.
+#
+# {{.CLI_ARGS}} passes everything after `--` to the underlying tool, which is how
+# `task lint -- --fix` and `task test -- -run TestFoo` work.
+version: '3'
+
+# Git-ignored, and holds the MESHSTACK_* values the acceptance suite reads.
+dotenv: ['.env']
+
+tasks:
+  build:
+    # Writes ./meshstack, named after the directory, so no -o flag is needed.
+    desc: Build the meshstack binary
+    cmds:
+      - go build {{.CLI_ARGS}} ./cmd/meshstack
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      # `go tool`, not a binary on PATH: building it from the tool directive in go.mod makes
+      # go.mod the one place its version is pinned, and ties it to the same Go release the code
+      # is written against.
+      - go tool golangci-lint run {{.CLI_ARGS}}
+
+  tidy:
+    desc: Tidy go.mod and go.sum
+    cmds:
+      - go mod tidy

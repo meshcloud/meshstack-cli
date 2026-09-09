@@ -1,0 +1,12 @@
+plugins {
+  id 'io.meshcloud.meshstack.go-satellite'
+}
+
+satellite {
+  acceptance {
+    run = 'TestAcc'
+    // MESHSTACK_ENDPOINT, MESHSTACK_API_KEY and MESHSTACK_API_SECRET are deliberately absent: the
+    // plugin appends them after everything named here, so a value set here would be ignored.
+    environment MESHSTACK_ACC: '1'
+  }
+}
