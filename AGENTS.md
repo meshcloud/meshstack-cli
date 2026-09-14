@@ -128,7 +128,7 @@ resolved. Do **not** add a login exchange here or anywhere else: a second one ge
 starts returning 401 once it expires, and for a browser login it would end the user's session.
 
 **`client/` no longer owns HTTP either.** The client, the request options and the retry policy are
-`internal/http`, one directory above, because `pkg/oidc` and `pkg/auth` need them and Go's internal
+`internal/http`, one directory above, because `internal/oidc` and `pkg/auth` need them and Go's internal
 rule closes `client/internal` to both. Its names carry no `Http` prefix — the package is what says
 that — so it reads `http.Client`, `http.Error`, `http.NewClient`.
 

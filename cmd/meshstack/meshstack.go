@@ -1,15 +1,4 @@
-// Command meshstack is the command line interface for meshStack.
-//
-// This package holds the root command. Every other package under cmd/ follows one
-// rule: the package name is the subcommand and the file name is the leaf command,
-// so cmd/buildingblock/list.go holds `meshstack buildingblock list`. Each of those
-// packages exports a New function returning its *cobra.Command, and this package
-// wires them in with AddCommand. Registration is explicit rather than done from
-// init(), so the whole command tree can be read in one place and a command cannot
-// appear in the binary just because its package was imported for another reason.
-//
-// The directory is named meshstack, not meshstack-cli, because `go build` and
-// `go install` name the binary after it.
+// Command meshstack is the command line interface (CLI) for meshStack.
 package main
 
 import (
@@ -17,20 +6,11 @@ import (
 	"os"
 
 	clog "github.com/charmbracelet/log"
+	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
-	"github.com/meshcloud/meshstack-cli/cmd/profile"
-	"github.com/meshcloud/meshstack-cli/cmd/workspace"
-	"github.com/meshcloud/meshstack-cli/internal/cli"
-	"github.com/meshcloud/meshstack-cli/internal/setting"
-	"github.com/meshcloud/meshstack-cli/pkg/tty"
 )
-
-// Version identifies this build. A release overrides it with
-// -ldflags "-X main.Version=<tag>", and it also identifies the CLI to the meshStack
-// API through the client's user agent.
-var Version = "dev"
 
 func main() {
 	if err := newRootCommand().Execute(); err != nil {
@@ -41,12 +21,6 @@ func main() {
 
 func newRootCommand() *cobra.Command {
 	var debug bool
-
-	// One Input serves the whole tree, because the persistent flags below are what it
-	// carries. `auth login` adds the flags only it owns.
-	cli.UserAgent = "meshstack-cli/" + Version
-	in := cli.New()
-
 	cmd := &cobra.Command{
 		Use:   "meshstack",
 		Short: "Command line interface for meshStack",
@@ -57,41 +31,22 @@ func newRootCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
-		Version: Version,
+		Version: internal.Version,
 		// A command that fails prints its error, not the whole help text. The user asks
 		// for help explicitly.
 		SilenceUsage: true,
-		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			setupLogging(debug)
-			// Resolved here because a command deciding whether it may ask does so at a moment
-			// when the resolution has just failed and there is no Session to ask. A prompt
-			// also needs a terminal to read the answer from; a browser login does not.
-			noInput, _, err := setting.Resolve(tty.NoInput, in.Source())
-			if err != nil {
-				return err
-			}
-			in.NoInput = noInput
-			in.MayPrompt = !noInput && tty.IsTerminal(os.Stdin)
-			return nil
 		},
 	}
 
 	flags := cmd.PersistentFlags()
 	flags.BoolVar(&debug, "debug", false, "log at debug level")
-	flags.StringVar(&in.Profile, "profile", "", "configuration profile to use")
-	flags.StringVar(&in.Endpoint, "endpoint", "", "meshStack API endpoint")
-	flags.StringVar(&in.Workspace, "workspace", "", "workspace to act in, for this invocation only")
-	flags.BoolVar(&in.NoInput, "no-input", false, "never wait for a person; fail instead")
+	flags.StringVar(&internal.GlobalFlags.Endpoint, "endpoint", "", "meshStack API endpoint")
 
-	cmd.AddCommand(auth.New(in))
-	// `meshstack login` is a shortcut for `meshstack auth login`. Cobra matches an
-	// argument against one command's children, so Aliases never reach past siblings
-	// and cannot express this. The second call is deliberate: adding the value
-	// auth.New() already registered would overwrite its parent, and both paths would
-	// then print the same usage line.
-	cmd.AddCommand(auth.NewLogin(in))
-	cmd.AddCommand(profile.New(in))
-	cmd.AddCommand(workspace.New(in))
+	cmd.AddCommand(auth.New())
+	// `meshstack login` is a shortcut for `meshstack auth login`.
+	cmd.AddCommand(auth.NewLogin())
 
 	return cmd
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,47 +31,13 @@ var sharedClient = func() (client *gohttp.Client) {
 	return
 }()
 
-func NewClient(userAgent string, auth Authorization) Client {
-	return Client{sharedClient, userAgent, auth}
+func NewClient(userAgent string) Client {
+	return Client{sharedClient, userAgent}
 }
 
 type Client struct {
 	*gohttp.Client
-	UserAgent     string
-	Authorization Authorization
-}
-
-func (c Client) DoAuthorizedRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (result R, err error) {
-	if c.Authorization == nil {
-		return result, fmt.Errorf("cannot do authorized request with unconfigured authorization")
-	}
-	withAuthBearerToken := func(token string) []RequestOption {
-		return append(options, withHeader("Authorization", "Bearer "+token))
-	}
-
-	cachedToken, tokenErr := c.Authorization.BearerToken(ctx)
-	if tokenErr != nil {
-		return result, tokenErr
-	}
-	result, err = c.DoRequest[R](ctx, method, url, withAuthBearerToken(cachedToken)...)
-
-	// A 401 on a token the authorization believed valid forces exactly one refresh. The
-	// renewal grace window covers a request issued just before expiry and modest clock skew,
-	// but not a clock that is minutes wrong — which containers with a frozen clock really are.
-	// One bounded retry turns that from a confusing failure into a hiccup. Re-running DoRequest
-	// is safe because buildRequest encodes the payload afresh on every call.
-	if httpErr, ok := errors.AsType[Error](err); ok && httpErr.IsUnauthorized() {
-		refreshedToken, refreshErr := c.Authorization.RefreshBearerToken(ctx, cachedToken)
-		switch {
-		case refreshErr != nil:
-			return result, errors.Join(err, fmt.Errorf("cannot renew the rejected token: %w", refreshErr))
-		case refreshedToken == cachedToken:
-			return result, err
-		}
-		slog.DebugContext(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
-		return c.DoRequest[R](ctx, method, url, withAuthBearerToken(refreshedToken)...)
-	}
-	return result, err
+	UserAgent string
 }
 
 // DoRequest sends one request and parses the answer as JSON. A non-2xx status is an Error
@@ -103,9 +68,11 @@ func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.UR
 }
 
 func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {
-	options = slices.Insert(options, 0,
-		withHeader("User-Agent", c.UserAgent),
-	)
+	if c.UserAgent != "" {
+		options = slices.Insert(options, 0,
+			withHeader("User-Agent", c.UserAgent),
+		)
+	}
 	opts := requestOptions{}
 	for _, option := range options {
 		option(&opts)

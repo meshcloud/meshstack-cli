@@ -17,12 +17,17 @@ type URL struct {
 	*url.URL
 }
 
-// UnmarshalText lowers the host, so that the parsed and the stored form are canonical.
-// ParseRequestURI already lowers the scheme; a path stays as it is, being case-sensitive.
+// UnmarshalText validates and canonicalizes the URL as well.
+//
+//goland:noinspection GoMixedReceiverTypes
 func (u *URL) UnmarshalText(text []byte) (err error) {
 	u.URL, err = url.ParseRequestURI(string(text))
 	if err != nil {
 		return
+	}
+	if u.Path == "/" {
+		// ignore single trailing slash
+		u.Path = ""
 	}
 	if !u.IsAbs() {
 		return fmt.Errorf("unmarshaled URL '%s' is not absolute", u)
@@ -31,11 +36,10 @@ func (u *URL) UnmarshalText(text []byte) (err error) {
 	return
 }
 
-// Equal compares both URLs whole, path included: an endpoint is a root URL, and several
-// meshStacks can sit on one host under different paths.
+// Equal compares both URLs whole.
 func (u URL) Equal(other URL) bool {
 	if u.URL == nil || other.URL == nil {
-		return u.URL == other.URL
+		return false
 	}
 	return u.String() == other.String()
 }
@@ -49,7 +53,7 @@ func (u URL) MarshalText() ([]byte, error) {
 
 func MustParsef(format string, args ...any) (result URL) {
 	if err := result.UnmarshalText([]byte(fmt.Sprintf(format, args...))); err != nil {
-		panic(err.Error())
+		panic(err)
 	}
 	return
 }

@@ -22,6 +22,7 @@ builds:
       - -trimpath
     # The Dockerfile (from its VERSION build arg) and flake.nix set the same ldflag, and
     # all three have to agree. Nothing fails when one is missing: that binary reports `dev`.
+    # TODO fix path to Version (moved to internal)
     ldflags:
       - '-s -w -X main.Version={{ .Version }}'
     goos:

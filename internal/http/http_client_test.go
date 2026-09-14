@@ -20,7 +20,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/pkg/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
 func TestHttpClient(t *testing.T) {
@@ -171,7 +171,7 @@ func TestHttpClient(t *testing.T) {
 		})
 	})
 
-	// PUT and DELETE are idempotent, but they are not retried on their own any more: GET is the
+	// PUT and DELETE are idempotent, but they are not retried on their own anymore: GET is the
 	// only method the client replays unasked. MeshObjectClient marks both with Retryable.
 	t.Run("DoRequest with DELETE marked Retryable", func(t *testing.T) {
 		attempts := 0
@@ -206,21 +206,20 @@ func TestHttpClient(t *testing.T) {
 		assert.Equal(t, 2, attempt)
 	})
 
-	t.Run("DoAuthorizedRequest with BearerTokenAuthorization", func(t *testing.T) {
+	t.Run("DoRequest with BearerToken as Authorization", func(t *testing.T) {
 		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			assert.Equal(t, "Bearer my-static-token", req.Header.Get("Authorization"))
 			resp.WriteHeader(gohttp.StatusAccepted)
 		})
-		client.Authorization = http.BearerTokenAuthorization{Token: "my-static-token"}
-		_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("create"),
+		_, err := client.WithAuthorization(http.BearerToken("my-static-token")).DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("create"),
 			http.WithJsonPayload("content", "text/plain"))
 		require.NoError(t, err)
 	})
 
-	t.Run("DoAuthorizedRequest re-mints once on 401", func(t *testing.T) {
+	t.Run("DoRequest re-mints once on 401", func(t *testing.T) {
 		t.Run("retries with the freshly minted token", func(t *testing.T) {
 			auth := &refreshableAuthorization{token: "stale"}
-			seen := []string{}
+			var seen []string
 			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 				seen = append(seen, req.Header.Get("Authorization"))
 				if req.Header.Get("Authorization") == "Bearer stale" {
@@ -229,11 +228,10 @@ func TestHttpClient(t *testing.T) {
 				}
 				resp.WriteHeader(gohttp.StatusAccepted)
 			})
-			client.Authorization = auth
-			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+			_, err := client.WithAuthorization(auth).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
 			require.NoError(t, err)
 			assert.Equal(t, []string{"Bearer stale", "Bearer fresh"}, seen)
-			assert.Equal(t, []string{"stale"}, auth.rejected, "the token that was refused is what the refresh is told about")
+			assert.Equal(t, []http.BearerToken{"stale"}, auth.rejected, "the token that was refused is what the refresh is told about")
 		})
 
 		t.Run("reports the 401 when the re-mint changes nothing", func(t *testing.T) {
@@ -243,8 +241,7 @@ func TestHttpClient(t *testing.T) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
-			client.Authorization = auth
-			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+			_, err := client.WithAuthorization(auth).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
 			var httpErr http.Error
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
@@ -258,8 +255,7 @@ func TestHttpClient(t *testing.T) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
-			client.Authorization = auth
-			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+			_, err := client.WithAuthorization(auth).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
 			var httpErr http.Error
 			require.ErrorAs(t, err, &httpErr, "the 401 the request ran into must stay reachable")
 			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
@@ -273,8 +269,7 @@ func TestHttpClient(t *testing.T) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
-			client.Authorization = http.BearerTokenAuthorization{Token: "static"}
-			_, err := client.DoAuthorizedRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+			_, err := client.WithAuthorization(http.BearerToken("static")).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
 			var httpErr http.Error
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
@@ -286,17 +281,17 @@ func TestHttpClient(t *testing.T) {
 // refreshableAuthorization mints "fresh" once it has been told its token was refused, and
 // records every token it was told about.
 type refreshableAuthorization struct {
-	token      string
+	token      http.BearerToken
 	keepToken  bool
 	refreshErr error
-	rejected   []string
+	rejected   []http.BearerToken
 }
 
-func (a *refreshableAuthorization) BearerToken(context.Context) (string, error) {
+func (a *refreshableAuthorization) GetBearerToken(context.Context) (http.BearerToken, error) {
 	return a.token, nil
 }
 
-func (a *refreshableAuthorization) RefreshBearerToken(_ context.Context, rejected string) (string, error) {
+func (a *refreshableAuthorization) RefreshBearerToken(_ context.Context, rejected http.BearerToken) (http.BearerToken, error) {
 	a.rejected = append(a.rejected, rejected)
 	if a.refreshErr != nil {
 		return "", a.refreshErr
@@ -446,7 +441,7 @@ func TestFormPayloadOption(t *testing.T) {
 			ClientId:    "meshstack-cli",
 		})
 		assert.Equal(t, "http://127.0.0.1:31234/callback", got.Get("post_logout_redirect_uri"))
-		assert.Equal(t, idToken.String, got.Get("id_token_hint"))
+		assert.Equal(t, idToken.String(), got.Get("id_token_hint"))
 		assert.False(t, got.Has("unset_uri"), "a URL nobody set is dropped like any other zero value")
 	})
 
@@ -476,9 +471,7 @@ func TestFormPayloadOption(t *testing.T) {
 
 		assert.Equal(t, "https://sso.example.com/realms/meshfed", got.Issuer.String())
 		assert.Equal(t, "sso.example.com", got.Issuer.Host, "the field is a parsed URL, not the text it came from")
-		assert.Equal(t, accessToken, got.AccessToken.String)
-		assert.Equal(t, "my-workspace", jwt.WorkspaceClaim.GetFrom(got.AccessToken),
-			"the claims come with the token, so nothing has to decode it a second time")
+		assert.Equal(t, accessToken, got.AccessToken.String())
 	})
 
 	// One case is enough here: that a declared type refusing the answer fails the whole call.

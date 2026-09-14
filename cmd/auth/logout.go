@@ -5,13 +5,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meshcloud/meshstack-cli/internal/cli"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 	"github.com/meshcloud/meshstack-cli/pkg/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/profile"
 )
 
-func newLogout(in *cli.Input) *cobra.Command {
+func newLogout() *cobra.Command {
 	var revoke bool
 
 	cmd := &cobra.Command{
@@ -40,7 +39,7 @@ func newLogout(in *cli.Input) *cobra.Command {
 			}
 			was := credentials.Current
 
-			session, err := auth.ResolveSession(ctx, auth.ResolveSessionOptions{Settings: in.Source(), Store: store})
+			session, err := auth.ResolveSession(ctx, auth.ResolveSessionOptions{UseSettingsFrom: in.Source(), Store: store})
 			if err != nil {
 				return err
 			}

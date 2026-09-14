@@ -26,14 +26,13 @@ func TestJsonLogRedactsTheToken(t *testing.T) {
 		resp.WriteHeader(gohttp.StatusOK)
 		_, _ = resp.Write([]byte(`{"answer":"served"}`))
 	})
-	client.Authorization = http.BearerTokenAuthorization{Token: "supersecret"}
-
-	_, err := client.DoAuthorizedRequest[map[string]string](t.Context(), http.MethodPost, client.ServerUrl,
+	const secret = "supersecret"
+	_, err := client.WithAuthorization(http.BearerToken(secret)).DoRequest[map[string]string](t.Context(), http.MethodPost, client.ServerUrl,
 		http.WithJsonPayload(map[string]string{"asked": "for"}, "application/json"))
 	require.NoError(t, err)
 
 	logged := written.String()
-	assert.NotContains(t, logged, "supersecret")
+	assert.NotContains(t, logged, secret)
 	assert.Contains(t, logged, "[REDACTED]")
 	// The bodies survive the JSON encoding too; a struct with no exported field would arrive
 	// as an empty object and say nothing about the request that was made.

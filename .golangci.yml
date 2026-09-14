@@ -44,53 +44,31 @@ linters:
 
   exclusions:
     rules:
-      # A test that stands up an httptest.Server and points a client at it makes no request
-      # the shipped binary makes, so the rule below has nothing to say about it.
-      - path: _test\.go
-        linters:
-          - forbidigo
-
       # The one package that may build a client, which is the whole point of the rule.
       - path: internal/http/
         linters:
           - forbidigo
 
+      # Tests and internal/testserver may use the http package freely
+      - path: _test\.go
+        linters:
+          - forbidigo
+      - path: internal/testserver/
+        linters:
+          - forbidigo
+
+
+
   settings:
     # One HTTP client for the process, built in internal/http, and nothing else may make an
-    # outbound request of its own. There used to be three: pkg/auth posted to /api/login
-    # through http.DefaultClient, which has no timeout at all; pkg/oidc kept one with a
-    # 30-second one; and the API client built a third with five minutes. Only the last of them
-    # retried, so which policy a request got depended on which package happened to make it.
-    #
-    # It sits at the module root rather than under client/ because Go's internal rule would
-    # otherwise close it to pkg/oidc and pkg/auth, and inside the module's internal tree
-    # because the Terraform provider must not be able to configure it.
-    #
-    # This is forbidigo rather than a depguard deny because depguard bans an import path and
-    # net/http is one package for three unrelated things. Denying it would also deny
-    # http.StatusOK and http.MethodPost, which every caller reading a response needs, and the
-    # http.Server that pkg/oidc/browser runs for the loopback redirect — a server, not a
-    # second client. Naming the identifiers keeps all of that legal.
+    # outbound request of its own. Use forbigo solely for this purpose, see also test exclusions above.
     forbidigo:
-      # Match on the type rather than on the written name. It is what makes `pkg` below work,
-      # and it is what this rule needs, because internal/http's own type is also called Client
-      # and is imported under the name http. Without it, every legitimate use would be a
-      # finding and every net/http one behind an alias would not.
       analyze-types: true
       forbid:
         - pattern: \.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
           pkg: ^net/http$
           msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
 
-    # These rules are the dependency policy, not an enforcement of one written down
-    # elsewhere, so widening one is a decision rather than a lint fix. The lists below
-    # are exhaustive by intent: two external dependencies, cobra and charmbracelet/log,
-    # each confined to a smaller area than the module.
-    #
-    # The reason to keep it that tight is outside this repository. The meshStack
-    # Terraform provider imports client/ and pkg/auth, so every dependency reachable
-    # from those packages lands in the provider's dependency tree, and from there in
-    # the public checksum database.
     depguard:
       rules:
         # The package the Terraform provider consumes most directly.
@@ -105,11 +83,8 @@ linters:
           allow:
             - $gostd
             - github.com/meshcloud/meshstack-cli/client
-            # The HTTP machinery client/ is built on. It moved out of client/internal so that
-            # pkg/oidc and pkg/auth could reach it too, which is why the meshObject clients
-            # import it from the module root now.
             - github.com/meshcloud/meshstack-cli/internal/http
-            # The setting mechanism, for MESHSTACK_SKIP_VERSION_CHECK.
+            # The setting mechanism, for example MESHSTACK_SKIP_VERSION_CHECK uses it.
             - github.com/meshcloud/meshstack-cli/internal/setting
 
         pkg:
@@ -159,6 +134,44 @@ linters:
           allow:
             - $gostd
             - github.com/meshcloud/meshstack-cli
+
+        # internal/lock is the only package that takes a file lock, so it is the only place
+        # gofrs/flock may be imported. It needs nothing else: the Locker composes an RWMutex
+        # with a lock file and knows about neither settings nor credentials.
+        internal-lock:
+          files:
+            - "**/internal/lock/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/gofrs/flock
+
+        # The tests import flock too, to probe the lock file from outside the Locker: asserting
+        # on the file rather than on a second Locker is what tells a held lock apart from a
+        # mutex that merely happens to serialize the callers. The tests rule below excludes
+        # these files, because overlapping rules intersect and would deny flock again.
+        internal-lock-tests:
+          files:
+            - "**/internal/lock/*_test.go"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/internal/lock
+            - github.com/gofrs/flock
+            - github.com/stretchr/testify
+
+        # internal/testserver stands in for a meshStack backend in tests. Its files are not
+        # test files, so the tests rule below does not reach them, and it needs internal/auth
+        # for the api key settings, so that the env variable names stay declared in one place.
+        internal-testserver:
+          files:
+            - "**/internal/testserver/*.go"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/stretchr/testify
+            - github.com/meshcloud/meshstack-cli/internal/auth
 
         # cmd/ builds the command tree, and is the only place cobra is used.
         cmd:
@@ -222,6 +235,7 @@ linters:
         tests:
           files:
             - "$test"
+            - "!**/internal/lock/*_test.go"
           list-mode: strict
           allow:
             - $gostd

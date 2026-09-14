@@ -16,8 +16,8 @@ func (k EnvKey) Lookup(key string) (string, error) {
 	return os.Getenv(string(k)), nil
 }
 
-func (k EnvKey) Describe(key string) SourceDescription {
-	return SourceDescription{"environment variable", key}
+func (k EnvKey) Describe(key string) string {
+	return "environment variable " + key
 }
 
 var _ Source = EnvKey("")

@@ -1,45 +1,18 @@
 package setting
 
-import (
-	"fmt"
-)
+import "fmt"
 
 type Source interface {
 	// Lookup returns empty string, no error if nothing can be provided, handled in Resolve.
 	// An error can be returned if a fatal condition is detected, usually used for low-priority sources such as DefaultSource.
 	Lookup(key string) (string, error)
-	// Describe returns SourceDescription with proper SourceDescription.String representation for logging
-	Describe(key string) SourceDescription
-}
-
-type Sources []Source
-
-type SourceDescription struct {
-	// Type is a constant string identifying sources (env, default, custom such as flag/stdin/prompt, tf provider block attribute).
-	Type string
-	// Details is appended with space to Type in SourceDescription.String. If empty, that source is currently a DefaultSource.
-	Details string
-}
-
-func (s SourceDescription) String() string {
-	if s.Details == "" {
-		return s.Type
-	}
-	return fmt.Sprintf("%s %s", s.Type, s.Details)
-}
-
-type LookupFunc func() (string, error)
-
-// StaticLookup constructs a static lookup value. Useful for DefaultSource.
-func StaticLookup(v string) LookupFunc {
-	return func() (string, error) {
-		return v, nil
-	}
+	// Describe returns a string representation of the Lookup for logging or error handling/hinting
+	Describe(key string) string
 }
 
 // DefaultSource provides Setting.Default source from the given LookupFunc.
-// See also StaticLookup.
-type DefaultSource LookupFunc
+// See also StaticDefault.
+type DefaultSource func() (string, error)
 
 var _ Source = DefaultSource(nil)
 
@@ -47,11 +20,56 @@ func (d DefaultSource) Lookup(string) (string, error) {
 	return d()
 }
 
-func (d DefaultSource) Describe(key string) SourceDescription {
-	return SourceDescription{"default value", fmt.Sprintf("for %s", key)}
+func (d DefaultSource) Describe(key string) string {
+	return fmt.Sprintf("default value for %s", key)
+}
+
+// StaticDefault constructs a default static value. Useful for Setting.Default.
+func StaticDefault(v string) DefaultSource {
+	return func() (string, error) {
+		return v, nil
+	}
+}
+
+// LookupSource calls its Func when queried as source.
+// If MatchingKey is non-empty, Func is only called if given Setting.EnvKey() matches.
+type LookupSource struct {
+	MatchingKey string
+	Description string
+	Func        func() (string, error)
+}
+
+func (s LookupSource) Lookup(key string) (string, error) {
+	if s.MatchingKey != "" && s.MatchingKey != key {
+		return "", nil
+	}
+	return s.Func()
+}
+
+func (s LookupSource) Describe(key string) string {
+	if s.MatchingKey != "" && s.MatchingKey != key {
+		return ""
+	}
+	return s.Description
 }
 
 // ExplicitSource gives the sources a higher precedence than EnvKey source, see Resolve.
 type ExplicitSource struct {
 	Source
+}
+
+// ExplicitSourcesOption conveniently exposes ExplicitSource as an option,
+// and ensures by ExplicitSourcesOption.ResolveSetting that this explicit source is always used.
+type ExplicitSourcesOption struct {
+	UseSettingsFrom []ExplicitSource
+}
+
+// ResolveSetting ensures the explicitly configured sources are resolved alongside the given ones.
+func (o ExplicitSourcesOption) ResolveSetting[T any](setting Setting[T], sources ...Source) (T, error) {
+	for _, explicitSource := range o.UseSettingsFrom {
+		if explicitSource.Source != nil {
+			sources = append(sources, explicitSource)
+		}
+	}
+	return setting.Resolve(sources...)
 }

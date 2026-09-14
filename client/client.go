@@ -16,11 +16,6 @@ var MinMeshStackVersion = version.MustParse("2026.36.0")
 type HttpError = http.Error
 
 type Client struct {
-	// Endpoint is the meshStack this client was built against. It is the one thing here that is
-	// not a sub-client, and it is here because nothing else keeps it: pkg/auth resolves it from a
-	// block, the environment or a profile, and the sub-clients below only carry the API URLs they
-	// derived from it. The Terraform provider renders it as meshstack_instance.endpoint.
-	Endpoint                       string
 	ApiKey                         MeshApiKeyClient
 	BuildingBlock                  MeshBuildingBlockClient
 	BuildingBlockV2                MeshBuildingBlockV2Client
@@ -44,24 +39,16 @@ type Client struct {
 	Workspace                      MeshWorkspaceClient
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
-}
 
-// NewMeshInfoClient is a little adapter for pkg/oidc to build the oidc.Client after discovering OIDC config from meshstack instance.
-func NewMeshInfoClient(ctx context.Context, rootUrl *url.URL, httpClient http.Client) MeshInfoClient {
-	return newMeshInfoClient(internal.HttpClient{RootUrl: rootUrl, Client: httpClient})
+	// Endpoint is exposed to Terraform provider as data source 'meshstack_instance' exposes it.
+	Endpoint *url.URL
 }
 
 // Authorization produces the (cached) bearer token for each request (and keeps it refreshed transparently).
 type Authorization = http.Authorization
 
-// NewApiTokenAuthorization carries a token somebody else obtained. Nothing refreshes it, so it
-// might expire during long-running work.
-func NewApiTokenAuthorization(apiToken string) Authorization {
-	return http.BearerTokenAuthorization{Token: apiToken}
-}
-
-func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authorization) (Client, error) {
-	httpClient := internal.HttpClient{RootUrl: rootUrl, Client: http.NewClient(userAgent, auth)}
+func New(ctx context.Context, endpoint *url.URL, userAgent string, auth Authorization) (Client, error) {
+	httpClient := internal.HttpClient{RootUrl: endpoint, AuthorizedClient: http.NewClient(userAgent).WithAuthorization(auth)}
 
 	infoClient := newMeshInfoClient(httpClient)
 	if err := infoClient.checkMeshVersion(ctx); err != nil {
@@ -69,7 +56,7 @@ func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authoriza
 	}
 
 	return Client{
-		Endpoint:                       rootUrl.String(),
+		Endpoint:                       endpoint,
 		ApiKey:                         newApiKeyClient(ctx, httpClient),
 		BuildingBlock:                  newBuildingBlockClient(ctx, httpClient),
 		BuildingBlockV2:                newBuildingBlockV2Client(ctx, httpClient),

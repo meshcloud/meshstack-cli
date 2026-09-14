@@ -39,7 +39,7 @@ func (s Setting[T]) Help() string {
 
 // ParseText is the Setting.Parse for a plain string setting.
 // Note that the input is already whitespace trimmed, see Resolve.
-func ParseText(s string) (string, error) { return s, nil }
+func ParseText[T ~string](s string) (T, error) { return T(s), nil }
 
 // ParseBool is the Setting.Parse for a boolean-like string.
 // Any string except indicating "no" leads to true (be generous).

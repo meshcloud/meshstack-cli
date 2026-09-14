@@ -100,7 +100,7 @@ require (
 	github.com/go-xmlfmt/xmlfmt v1.1.3 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/godoc-lint/godoc-lint v0.11.2 // indirect
-	github.com/gofrs/flock v0.13.0 // indirect
+	github.com/gofrs/flock v0.13.1 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golangci/asciicheck v0.5.0 // indirect
 	github.com/golangci/canonicalheader v0.0.0-20260827115959-a25c71c521f6 // indirect
@@ -226,7 +226,7 @@ require (
 	golang.org/x/exp/typeparams v0.0.0-20260811152304-ee035b5b010f // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
