@@ -4,6 +4,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 )
@@ -15,6 +16,13 @@ var (
 
 type URL struct {
 	*url.URL
+}
+
+func MustParsef(format string, args ...any) (result URL) {
+	if err := result.UnmarshalText([]byte(fmt.Sprintf(format, args...))); err != nil {
+		panic(err)
+	}
+	return
 }
 
 // UnmarshalText validates and canonicalizes the URL as well.
@@ -33,7 +41,18 @@ func (u *URL) UnmarshalText(text []byte) (err error) {
 		return fmt.Errorf("unmarshaled URL '%s' is not absolute", u)
 	}
 	u.Host = strings.ToLower(u.Host)
+	if u.Scheme != "https" && (u.Scheme != "http" || !isLoopback(u.Hostname())) {
+		return errors.New("URLs must start with 'https://' unless the host is localhost or another loopback address")
+	}
 	return
+}
+
+func isLoopback(hostname string) bool {
+	if hostname == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Equal compares both URLs whole.
@@ -49,11 +68,4 @@ func (u URL) MarshalText() ([]byte, error) {
 		return nil, errors.New("a zero URL cannot be marshaled; declare an optional URL field as *URL")
 	}
 	return []byte(u.String()), nil
-}
-
-func MustParsef(format string, args ...any) (result URL) {
-	if err := result.UnmarshalText([]byte(fmt.Sprintf(format, args...))); err != nil {
-		panic(err)
-	}
-	return
 }

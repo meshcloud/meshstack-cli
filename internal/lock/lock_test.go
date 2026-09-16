@@ -153,11 +153,7 @@ func TestTheLastReaderReleasesTheFileLock(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for range readers {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			assert.NoError(t, l.WithRLock(t.Context(), func() error {
 				holding <- struct{}{}
 				<-release
@@ -166,7 +162,7 @@ func TestTheLastReaderReleasesTheFileLock(t *testing.T) {
 			}))
 
 			released <- struct{}{}
-		}()
+		})
 	}
 
 	for range readers {
@@ -192,11 +188,7 @@ func TestOnlyOneWriterRunsAtATime(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for range 8 {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			assert.NoError(t, l.WithLock(t.Context(), func() error {
 				if n := live.Add(1); n > peak.Load() {
 					peak.Store(n)
@@ -207,7 +199,7 @@ func TestOnlyOneWriterRunsAtATime(t *testing.T) {
 
 				return nil
 			}))
-		}()
+		})
 	}
 
 	wg.Wait()

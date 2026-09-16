@@ -104,17 +104,15 @@ func (p *MeshBuildingBlockV2Parent) UnmarshalJSON(data []byte) error {
 // knows parentBuildingBlockRefs, both methods can go.
 func (s MeshBuildingBlockV2Spec) MarshalJSON() ([]byte, error) {
 	type wire MeshBuildingBlockV2Spec
-	if len(s.ParentBuildingBlockRefs) == 0 {
-		s.ParentBuildingBlockRefs = parentRefsFromDeprecated(s.ParentBuildingBlocks)
-	}
-
-	encoded, err := json.Marshal(wire(s))
-	if err != nil {
-		return nil, err
+	w := wire(s)
+	if len(w.ParentBuildingBlockRefs) == 0 {
+		w.ParentBuildingBlockRefs = parentRefsFromDeprecated(w.ParentBuildingBlocks)
 	}
 
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &fields); err != nil {
+	if encoded, err := json.Marshal(w); err != nil {
+		return nil, err
+	} else if err := json.Unmarshal(encoded, &fields); err != nil {
 		return nil, err
 	}
 
@@ -128,6 +126,7 @@ func (s MeshBuildingBlockV2Spec) MarshalJSON() ([]byte, error) {
 			BuildingBlockUuid string `json:"buildingBlockUuid"`
 		}{BuildingBlockUuid: ref.Uuid})
 	}
+	var err error
 	if fields["parentBuildingBlocks"], err = json.Marshal(parents); err != nil {
 		return nil, err
 	}
@@ -150,6 +149,7 @@ func (s *MeshBuildingBlockV2Spec) UnmarshalJSON(data []byte) error {
 	type wire MeshBuildingBlockV2Spec
 	var target struct {
 		wire
+
 		ParentBuildingBlocks types.Set[MeshBuildingBlockV2Parent] `json:"parentBuildingBlocks"`
 	}
 	if err := json.Unmarshal(data, &target); err != nil {
@@ -206,7 +206,7 @@ func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
 		moveXtoYIfPresent(&m.Value)
 		return errors.Join(errs...)
 	case m.Value.HasY():
-		return fmt.Errorf("got sensitive argument or default_value but variant Y is set instead")
+		return errors.New("got sensitive argument or default_value but variant Y is set instead")
 	default:
 		return nil
 	}
@@ -214,6 +214,7 @@ func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
 
 type MeshBuildingBlockV2DefinitionVersionRef struct {
 	UuidRef
+
 	// ContentHash is a Terraform-only field (json:"-", never sent to or returned by the backend).
 	// It lets a config signal that the referenced version's content changed so a rerun is triggered
 	// even though the version uuid is unchanged. The building_block (v3) resource honors it via the
@@ -317,7 +318,7 @@ func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingB
 
 func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
 	if bb.Metadata.Uuid == nil {
-		return nil, fmt.Errorf("cannot update building block without UUID")
+		return nil, errors.New("cannot update building block without UUID")
 	}
 	return c.meshObject.Put(ctx, *bb.Metadata.Uuid, bb)
 }
@@ -351,7 +352,7 @@ func bbUuidOrUnknown(bb *MeshBuildingBlockV2) string {
 func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
 	switch {
 	case bb == nil:
-		err = fmt.Errorf("building block not found after creation")
+		err = errors.New("building block not found after creation")
 	case bb.Status == nil:
 		// no status yet — keep polling
 	case bb.Status.Status == BuildingBlockStatusFailed,

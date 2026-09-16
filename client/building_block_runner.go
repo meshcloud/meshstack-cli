@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
@@ -87,7 +87,7 @@ func (c meshBuildingBlockRunnerClient) Read(ctx context.Context, uuid string) (*
 
 func (c meshBuildingBlockRunnerClient) Update(ctx context.Context, runner MeshBuildingBlockRunner) (*MeshBuildingBlockRunner, error) {
 	if runner.Metadata.Uuid == nil || *runner.Metadata.Uuid == "" {
-		return nil, fmt.Errorf("missing metadata.uuid")
+		return nil, errors.New("missing metadata.uuid")
 	}
 
 	return c.meshObject.Put(ctx, *runner.Metadata.Uuid, runner)

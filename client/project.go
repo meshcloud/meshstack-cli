@@ -52,10 +52,6 @@ func newProjectClient(ctx context.Context, httpClient internal.HttpClient) MeshP
 	return meshProjectClient{internal.NewMeshObjectClient[MeshProject](ctx, httpClient, "v2")}
 }
 
-func (c meshProjectClient) projectId(workspace string, name string) string {
-	return workspace + "." + name
-}
-
 func (c meshProjectClient) Read(ctx context.Context, workspace string, name string) (*MeshProject, error) {
 	return c.meshObject.Get(ctx, c.projectId(workspace, name))
 }
@@ -82,4 +78,8 @@ func (c meshProjectClient) Update(ctx context.Context, project *MeshProjectCreat
 
 func (c meshProjectClient) Delete(ctx context.Context, workspace string, name string) error {
 	return c.meshObject.Delete(ctx, c.projectId(workspace, name))
+}
+
+func (c meshProjectClient) projectId(workspace string, name string) string {
+	return workspace + "." + name
 }

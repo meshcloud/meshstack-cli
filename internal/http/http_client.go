@@ -31,13 +31,14 @@ var sharedClient = func() (client *gohttp.Client) {
 	return
 }()
 
-func NewClient(userAgent string) Client {
-	return Client{sharedClient, userAgent}
-}
-
 type Client struct {
 	*gohttp.Client
+
 	UserAgent string
+}
+
+func NewClient(userAgent string) Client {
+	return Client{sharedClient, userAgent}
 }
 
 // DoRequest sends one request and parses the answer as JSON. A non-2xx status is an Error
@@ -132,5 +133,5 @@ func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, o
 		}
 	}
 	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header), "body", loggedBody{requestBody})
-	return req, err
+	return req, nil
 }

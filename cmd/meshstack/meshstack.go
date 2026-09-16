@@ -2,21 +2,33 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"time"
 
 	clog "github.com/charmbracelet/log"
-	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
+	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
 func main() {
-	if err := newRootCommand().Execute(); err != nil {
+	if err := run(); err != nil {
 		// cobra has already written the error to stderr.
 		os.Exit(1)
 	}
+}
+
+func run() error {
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stopSignals()
+	// Ends a run waiting for what never comes, such as a browser login nobody answers.
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	return newRootCommand().ExecuteContext(ctx)
 }
 
 func newRootCommand() *cobra.Command {
@@ -40,9 +52,10 @@ func newRootCommand() *cobra.Command {
 		},
 	}
 
-	flags := cmd.PersistentFlags()
-	flags.BoolVar(&debug, "debug", false, "log at debug level")
-	flags.StringVar(&internal.GlobalFlags.Endpoint, "endpoint", "", "meshStack API endpoint")
+	persistentFlags := cmd.PersistentFlags()
+	persistentFlags.BoolVar(&debug, "debug", false, "log at debug level")
+	internal.EndpointFlag.Register(persistentFlags)
+	internal.SkipVersionCheckFlag.Register(persistentFlags)
 
 	cmd.AddCommand(auth.New())
 	// `meshstack login` is a shortcut for `meshstack auth login`.

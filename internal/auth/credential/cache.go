@@ -43,7 +43,7 @@ func adoptCacheIfIdentityMatches(fromValue reflect.Value, to Credential) {
 	if fromValue.IsNil() {
 		return
 	}
-	from := fromValue.Interface().(Credential) //nolint:forcetypeassert
+	from := fromValue.Interface().(Credential) //nolint:forcetypeassert // the field comes from Credentials, whose pointer fields are all Credential
 	if identityOf(from).Hash != identityOf(to).Hash {
 		return
 	}

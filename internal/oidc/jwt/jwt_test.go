@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/meshcloud/meshstack-cli/internal/json"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/jsontest"
 )
 
 var (
@@ -26,10 +26,9 @@ var (
 )
 
 func TestJWT(t *testing.T) {
-
 	t.Run("an unscoped token", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			token := json.MustUnmarshal[JWT](t, unscopedToken)
+			token := jsontest.MustUnmarshal[JWT](t, unscopedToken)
 			expiry := ExpiryClaim.getFrom(token)
 			assert.Equal(t, Expiry{time.Unix(1767225600, 0)}, expiry)
 			assert.False(t, expiry.Expired(0))
@@ -39,12 +38,11 @@ func TestJWT(t *testing.T) {
 		})
 	})
 	t.Run("an unscoped token without exp", func(t *testing.T) {
-		token := json.MustUnmarshal[JWT](t, unscopedTokenNoExp)
+		token := jsontest.MustUnmarshal[JWT](t, unscopedTokenNoExp)
 		expiry := ExpiryClaim.getFrom(token)
 		assert.Equal(t, Expiry{}, expiry)
 		assert.True(t, expiry.Expired(0))
 	})
-
 }
 
 func TestJWTBroken(t *testing.T) {

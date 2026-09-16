@@ -48,8 +48,7 @@ type MeshBuildingBlockDefinitionGitHubWorkflowsImplementation struct {
 	IntegrationRef     UuidRef `json:"integrationRef" tfsdk:"integration_ref"`
 }
 
-type MeshBuildingBlockDefinitionManualImplementation struct {
-}
+type MeshBuildingBlockDefinitionManualImplementation struct{}
 
 type MeshBuildingBlockDefinitionGitLabPipelineImplementation struct {
 	ProjectID            string       `json:"projectId" tfsdk:"project_id"`
@@ -97,11 +96,12 @@ func (m MeshBuildingBlockDefinitionImplementation) InferTypeFromNonNilField() (r
 }
 
 func (m MeshBuildingBlockDefinitionImplementation) MarshalJSON() ([]byte, error) {
-	if len(m.Type) == 0 {
-		m.Type = m.InferTypeFromNonNilField()
-	}
 	type wrapped MeshBuildingBlockDefinitionImplementation
-	return json.Marshal(wrapped(m))
+	w := wrapped(m)
+	if len(w.Type) == 0 {
+		w.Type = m.InferTypeFromNonNilField()
+	}
+	return json.Marshal(w)
 }
 
 func (m *MeshBuildingBlockDefinitionImplementation) UnmarshalJSON(bytes []byte) error {

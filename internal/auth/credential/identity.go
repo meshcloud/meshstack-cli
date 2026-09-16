@@ -18,7 +18,7 @@ type Identity struct {
 func identityOf(credential Credential) Identity {
 	identity := reflect.New(reflect.ValueOf(credential).Elem().Type())
 	identity.Elem().Set(reflect.ValueOf(credential).Elem())
-	clearCache(identity.Interface().(Credential)) //nolint:forcetypeassert
+	clearCache(identity.Interface().(Credential)) //nolint:forcetypeassert // identity is a fresh copy of a Credential, so it is one
 	marshaled, err := json.Marshal(identity.Interface())
 	if err != nil {
 		panic(fmt.Sprintf("cannot hash the identity of %T: %s", credential, err.Error()))

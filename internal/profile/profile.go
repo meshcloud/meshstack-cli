@@ -5,16 +5,18 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
+//nolint:recvcheck // only exception is init() to set fields after unmarshalling
 type Profile struct {
 	Endpoint   *xurl.URL       `json:"endpoint,omitzero"`
 	Credential credential.Name `json:"credential,omitzero"`
 
 	// Name and Credentials are initialized after load/create in [Profile.init] below.
 	Name      Name `json:"-"`
-	configDir ConfigDirectory
+	configDir config.Directory
 }
 
 func (p Profile) String() string {
@@ -34,7 +36,7 @@ func (p Profile) EndpointSource() setting.Source {
 }
 
 //goland:noinspection GoMixedReceiverTypes
-func (p *Profile) init(name Name, configDir ConfigDirectory) {
+func (p *Profile) init(name Name, configDir config.Directory) {
 	p.Name = name
 	p.configDir = configDir
 }

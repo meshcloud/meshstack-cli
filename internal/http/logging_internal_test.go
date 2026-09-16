@@ -21,10 +21,10 @@ func TestLogRenderingWaitsForTheSink(t *testing.T) {
 
 	rendered := 0
 	body := loggedBody{&countingReader{counted: &rendered}}
-	slog.Debug("request", "body", body)
+	slog.DebugContext(t.Context(), "request", "body", body)
 	assert.Zero(t, rendered, "the dropped record still rendered its body")
 
-	slog.Info("request", "body", body)
+	slog.InfoContext(t.Context(), "request", "body", body)
 	assert.Equal(t, 1, rendered, "the written record did not render its body")
 }
 

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 
+	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
@@ -21,12 +22,12 @@ type Profiles struct {
 	CurrentProfile Name              `json:"currentProfile,omitzero"`
 	Profiles       map[Name]*Profile `json:"profiles,omitzero"`
 
-	configDir ConfigDirectory
+	configDir config.Directory
 }
 
 func LoadProfiles(ctx context.Context, opts ResolveProfileOptions) (profiles Profiles, err error) {
 	// config dir always resolves, as ConfigDirectorySetting has a default.
-	profiles.configDir, err = opts.ResolveSetting(ConfigDirectorySetting)
+	profiles.configDir, err = opts.ResolveSetting(config.DirectorySetting)
 	if err != nil {
 		return
 	}

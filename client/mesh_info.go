@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/client/version"
 	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 // MeshFeatureFlag names an optional meshStack capability. /mesh/info reports each one as a
@@ -39,34 +37,20 @@ type MeshInfoClient interface {
 }
 
 type meshInfoClient struct {
-	httpClient internal.HttpClient
+	http.Client
+
+	Endpoint xurl.URL
 }
 
-func newMeshInfoClient(httpClient internal.HttpClient) meshInfoClient {
-	return meshInfoClient{httpClient: httpClient}
+func newMeshInfoClient(client http.Client, endpoint xurl.URL) MeshInfoClient {
+	return meshInfoClient{client, endpoint}
 }
 
 func (c meshInfoClient) Read(ctx context.Context) (MeshInfo, error) {
-	return c.httpClient.DoRequest[MeshInfo](ctx, "GET", c.httpClient.RootUrl.JoinPath("/mesh/info"), http.WithAccept("application/json"))
+	return c.DoRequest[MeshInfo](ctx, "GET", c.Endpoint.JoinPath("/mesh/info"), http.WithAccept("application/json"))
 }
 
-func (c meshInfoClient) checkMeshVersion(ctx context.Context) error {
-
-	// Skip before the request, not just before the comparison: /mesh/info is a GET on the retrying
-	// client, so an unavailable backend blocks provider configuration for the whole minute
-	// internal/http spends retrying, and then fails it. Opting out of the check has to opt out of
-	// that too.
-	skipVersionCheckSetting := setting.Setting[bool]{Env: "MESHSTACK_SKIP_VERSION_CHECK", Parse: setting.ParseBool, Default: setting.StaticDefault("0")}
-	if skipVersionCheck, err := skipVersionCheckSetting.Resolve(); err != nil {
-		return err
-	} else if skipVersionCheck {
-		return nil
-	}
-
-	info, err := c.Read(ctx)
-	if err != nil {
-		return err
-	}
+func (info MeshInfo) CheckVersion() error {
 	meshVersion, err := version.Parse(info.Version)
 	if err != nil {
 		return fmt.Errorf("failed to parse meshStack version %q: %w", info.Version, err)

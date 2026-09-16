@@ -77,10 +77,11 @@ func (m MeshIntegrationConfig) InferTypeFromNonNilField() (result enum.Entry[Mes
 }
 
 func (m MeshIntegrationConfig) MarshalJSON() ([]byte, error) {
-	m.Type = m.InferTypeFromNonNilField()
 	// Using wrapped type avoids calling MarshalJSON recursively!
 	type wrapped MeshIntegrationConfig
-	return json.Marshal(wrapped(m))
+	w := wrapped(m)
+	w.Type = m.InferTypeFromNonNilField()
+	return json.Marshal(w)
 }
 
 func (m *MeshIntegrationConfig) UnmarshalJSON(bytes []byte) error {

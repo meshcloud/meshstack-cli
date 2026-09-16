@@ -15,7 +15,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
-	"github.com/meshcloud/meshstack-cli/internal/testserver"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
 )
 
 const (
@@ -47,8 +47,7 @@ func TestSessionConcurrentStressTest(t *testing.T) {
 		{name: "only-key-2", apiKey: testApiKey2, every: 300 * time.Millisecond},
 	}
 
-	// workCtx ends the loops below. Every request runs on t.Context() instead, so a request in
-	// flight is never cut off and reported as a failure that was only the deadline.
+	// Everything below runs on workCtx, so a round it cuts off is not a failure: see the ctx.Err() checks.
 	workCtx, endWork := context.WithTimeout(t.Context(), stressDuration(t))
 	defer endWork()
 
@@ -117,27 +116,29 @@ func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserv
 		// The count covers the whole round, resolution and store included, because that is the
 		// span in which revoking a token would defeat the one retry. See revokeTokens.
 		inFlight.Add(1)
-		session, err := auth.ResolveSession(t.Context(), sessionOptsFor(r.apiKey))
+		session, err := auth.ResolveSession(ctx, sessionOptsFor(r.apiKey))
 		if err == nil {
-			r.greetConcurrently(t, server, session, failures)
+			r.greetConcurrently(t, ctx, server, session, failures)
 
 			// Storing is serialized across resolvers because concurrent writers of one profile
 			// are not something the CLI has to support, while concurrent authorization is.
 			storing.Lock()
-			err = session.Store(t.Context())
+			err = session.Store(ctx)
 			storing.Unlock()
 		}
 		inFlight.Add(-1)
 
 		if err != nil {
-			failures.add(fmt.Errorf("%s round %d: %w", r.name, r.rounds.Load()+1, err))
+			if ctx.Err() == nil {
+				failures.add(fmt.Errorf("%s round %d: %w", r.name, r.rounds.Load()+1, err))
+			}
 			return
 		}
 		r.rounds.Add(1)
 	}
 }
 
-func (r *stressResolver) greetConcurrently(t *testing.T, server *testserver.Server, session auth.Session, failures *stressFailures) {
+func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, server *testserver.Server, session auth.Session, failures *stressFailures) {
 	t.Helper()
 	greet := greetingClient(session)
 	// Closing the channel releases every worker in the same instant, so they all reach the
@@ -148,8 +149,10 @@ func (r *stressResolver) greetConcurrently(t *testing.T, server *testserver.Serv
 		workers.Go(func() {
 			<-release
 			for range greetingsPerRound {
-				if err := server.Greeting(t, greet); err != nil {
-					failures.add(fmt.Errorf("%s worker %d: %w", r.name, worker, err))
+				if err := server.Greeting(t, ctx, greet); err != nil {
+					if ctx.Err() == nil {
+						failures.add(fmt.Errorf("%s worker %d: %w", r.name, worker, err))
+					}
 					return
 				}
 			}

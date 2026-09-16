@@ -6,6 +6,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
+//nolint:staticcheck // ST1003: these names go away with this file, which the v2 building block client and the IO type enum replace
 const (
 	MESH_BUILDING_BLOCK_IO_TYPE_STRING        = "STRING"
 	MESH_BUILDING_BLOCK_IO_TYPE_INTEGER       = "INTEGER"

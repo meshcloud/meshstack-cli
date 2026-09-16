@@ -1,12 +1,10 @@
 package setting
 
-import "fmt"
-
 type Source interface {
 	// Lookup returns empty string, no error if nothing can be provided, handled in Resolve.
 	// An error can be returned if a fatal condition is detected, usually used for low-priority sources such as DefaultSource.
 	Lookup(key string) (string, error)
-	// Describe returns a string representation of the Lookup for logging or error handling/hinting
+	// Describe returns a string representation of the Lookup for logging or error handling/hinting.
 	Describe(key string) string
 }
 
@@ -21,7 +19,7 @@ func (d DefaultSource) Lookup(string) (string, error) {
 }
 
 func (d DefaultSource) Describe(key string) string {
-	return fmt.Sprintf("default value for %s", key)
+	return "default value for " + key
 }
 
 // StaticDefault constructs a default static value. Useful for Setting.Default.
@@ -67,6 +65,7 @@ type ExplicitSourcesOption struct {
 // ResolveSetting ensures the explicitly configured sources are resolved alongside the given ones.
 func (o ExplicitSourcesOption) ResolveSetting[T any](setting Setting[T], sources ...Source) (T, error) {
 	for _, explicitSource := range o.UseSettingsFrom {
+		// this nil check is important if "NoSource" is passed (default constructed ExplicitSource).
 		if explicitSource.Source != nil {
 			sources = append(sources, explicitSource)
 		}

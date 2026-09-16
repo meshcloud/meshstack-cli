@@ -26,16 +26,16 @@ type marshalOptions struct {
 // file that holds a credential, or a token minted from one.
 func UserOnlyFilePerms() MarshalOption {
 	return func(opts *marshalOptions) {
-		opts.perm = 0600
+		opts.perm = 0o600
 	}
 }
 
 func MarshalTo(ctx context.Context, file string, payload any, options ...MarshalOption) (err error) {
-	opts := marshalOptions{perm: 0644}
+	opts := marshalOptions{perm: 0o644}
 	for _, option := range options {
 		option(&opts)
 	}
-	if err = os.MkdirAll(filepath.Dir(file), 0755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		return err
 	}
 	// Every reader of these files reads them without taking the lock, so none of them may
@@ -55,7 +55,7 @@ func MarshalTo(ctx context.Context, file string, payload any, options ...Marshal
 			_ = os.Remove(out.Name())
 			err = fmt.Errorf("cannot marshal json to %s: %w", file, err)
 		} else {
-			slog.DebugContext(ctx, fmt.Sprintf("Marshaled json to %s", file))
+			slog.DebugContext(ctx, "Marshaled json to "+file)
 		}
 	}()
 	encoder := jsontext.NewEncoder(out, jsontext.WithIndent("  "), json.Deterministic(true))

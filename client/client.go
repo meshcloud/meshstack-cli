@@ -2,9 +2,9 @@ package client
 
 import (
 	"context"
-	"net/url"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/client/version"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
@@ -14,6 +14,9 @@ var MinMeshStackVersion = version.MustParse("2026.36.0")
 // HttpError represents an HTTP error response with status code.
 // This error is returned when an HTTP request fails with a non-2XX status code.
 type HttpError = http.Error
+
+// Authorization produces the (cached) bearer token for each request (and keeps it refreshed transparently).
+type Authorization = http.Authorization
 
 type Client struct {
 	ApiKey                         MeshApiKeyClient
@@ -41,44 +44,40 @@ type Client struct {
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 
 	// Endpoint is exposed to Terraform provider as data source 'meshstack_instance' exposes it.
-	Endpoint *url.URL
+	Endpoint xurl.URL
 }
 
-// Authorization produces the (cached) bearer token for each request (and keeps it refreshed transparently).
-type Authorization = http.Authorization
-
-func New(ctx context.Context, endpoint *url.URL, userAgent string, auth Authorization) (Client, error) {
-	httpClient := internal.HttpClient{RootUrl: endpoint, AuthorizedClient: http.NewClient(userAgent).WithAuthorization(auth)}
-
-	infoClient := newMeshInfoClient(httpClient)
-	if err := infoClient.checkMeshVersion(ctx); err != nil {
-		return Client{}, err
+func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authorization) Client {
+	client := http.NewClient(userAgent)
+	authorizedClient := internal.HttpClient{
+		AuthorizedClient: client.WithAuthorization(auth),
+		EndpointUrl:      endpoint,
 	}
-
 	return Client{
-		Endpoint:                       endpoint,
-		ApiKey:                         newApiKeyClient(ctx, httpClient),
-		BuildingBlock:                  newBuildingBlockClient(ctx, httpClient),
-		BuildingBlockV2:                newBuildingBlockV2Client(ctx, httpClient),
-		BuildingBlockRun:               newBuildingBlockRunClient(ctx, httpClient),
-		BuildingBlockDefinition:        newBuildingBlockDefinitionClient(ctx, httpClient),
-		BuildingBlockDefinitionVersion: newBuildingBlockDefinitionVersionClient(ctx, httpClient),
-		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, httpClient),
-		Integration:                    newIntegrationClient(ctx, httpClient),
-		LandingZone:                    newLandingZoneClient(ctx, httpClient),
-		Location:                       newLocationClient(ctx, httpClient),
-		MeshInfo:                       infoClient,
-		PaymentMethod:                  newPaymentMethodClient(ctx, httpClient),
-		Platform:                       newPlatformClient(ctx, httpClient),
-		PlatformType:                   newPlatformTypeClient(ctx, httpClient),
-		Project:                        newProjectClient(ctx, httpClient),
-		ProjectGroupBinding:            newProjectGroupBindingClient(ctx, httpClient),
-		ProjectUserBinding:             newProjectUserBindingClient(ctx, httpClient),
-		ServiceInstance:                newServiceInstanceClient(ctx, httpClient),
-		TagDefinition:                  newTagDefinitionClient(ctx, httpClient),
-		Tenant:                         newTenantClient(ctx, httpClient),
-		Workspace:                      newWorkspaceClient(ctx, httpClient),
-		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, httpClient),
-		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, httpClient),
-	}, nil
+		ApiKey:                         newApiKeyClient(ctx, authorizedClient),
+		BuildingBlock:                  newBuildingBlockClient(ctx, authorizedClient),
+		BuildingBlockV2:                newBuildingBlockV2Client(ctx, authorizedClient),
+		BuildingBlockRun:               newBuildingBlockRunClient(ctx, authorizedClient),
+		BuildingBlockDefinition:        newBuildingBlockDefinitionClient(ctx, authorizedClient),
+		BuildingBlockDefinitionVersion: newBuildingBlockDefinitionVersionClient(ctx, authorizedClient),
+		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, authorizedClient),
+		Integration:                    newIntegrationClient(ctx, authorizedClient),
+		LandingZone:                    newLandingZoneClient(ctx, authorizedClient),
+		Location:                       newLocationClient(ctx, authorizedClient),
+		MeshInfo:                       newMeshInfoClient(client, endpoint),
+		PaymentMethod:                  newPaymentMethodClient(ctx, authorizedClient),
+		Platform:                       newPlatformClient(ctx, authorizedClient),
+		PlatformType:                   newPlatformTypeClient(ctx, authorizedClient),
+		Project:                        newProjectClient(ctx, authorizedClient),
+		ProjectGroupBinding:            newProjectGroupBindingClient(ctx, authorizedClient),
+		ProjectUserBinding:             newProjectUserBindingClient(ctx, authorizedClient),
+		ServiceInstance:                newServiceInstanceClient(ctx, authorizedClient),
+		TagDefinition:                  newTagDefinitionClient(ctx, authorizedClient),
+		Tenant:                         newTenantClient(ctx, authorizedClient),
+		Workspace:                      newWorkspaceClient(ctx, authorizedClient),
+		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, authorizedClient),
+		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, authorizedClient),
+
+		Endpoint: endpoint,
+	}
 }

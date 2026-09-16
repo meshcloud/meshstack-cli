@@ -10,22 +10,20 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
-	"github.com/meshcloud/meshstack-cli/internal/json"
+	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 	"github.com/meshcloud/meshstack-cli/internal/setting/setting_test"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/jsontest"
 )
 
-var (
-	//go:embed testdata/jwt.json
-	jwtJson []byte
-)
+//go:embed testdata/jwt.json
+var jwtJson []byte
 
 func TestResolveProfile(t *testing.T) {
-
 	t.Run("init from non-existing config dir", func(t *testing.T) {
-		t.Setenv(ConfigDirectorySetting.EnvKey(), "really-does-not-exists/and-should-never-exist/so-thats-a-unique-path")
+		t.Setenv(config.DirectorySetting.EnvKey(), "really-does-not-exists/and-should-never-exist/so-thats-a-unique-path")
 		currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 		require.NoError(t, err)
 		expectedDefaultProfile := &Profile{Name: "default"}
@@ -35,7 +33,7 @@ func TestResolveProfile(t *testing.T) {
 
 	t.Run("with some name in env and default config dir", func(t *testing.T) {
 		tempDir := t.TempDir()
-		t.Setenv(ConfigDirectorySetting.EnvKey(), tempDir)
+		t.Setenv(config.DirectorySetting.EnvKey(), tempDir)
 		t.Setenv(NameSetting.EnvKey(), "ignored-because-explicit-source-is-active")
 
 		expectedSomeProfile := &Profile{Name: "some-name"}
@@ -56,7 +54,7 @@ func TestResolveProfile(t *testing.T) {
 	expectedDevLocalProfile := &Profile{Name: "dev-local", Endpoint: new(xurl.MustParsef("https://localhost:%d", 1337))}
 
 	t.Run("init from temp writable config dir", func(t *testing.T) {
-		t.Setenv(ConfigDirectorySetting.EnvKey(), t.TempDir())
+		t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 
 		t.Run("with dev-local name and endpoint in env", func(t *testing.T) {
 			t.Setenv(NameSetting.EnvKey(), expectedDevLocalProfile.String())
@@ -82,7 +80,7 @@ func TestResolveProfile(t *testing.T) {
 					require.NoError(t, creds.ModifyCache(t.Context(), creds.ApiKey, func() error {
 						creds.ApiKey.Cache = &struct {
 							Token jwt.JWT `json:"token,omitzero"`
-						}{Token: json.MustUnmarshal[jwt.JWT](t, jwtJson)}
+						}{Token: jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)}
 						return nil
 					}))
 					require.NoError(t, creds.Store(t.Context()))
@@ -102,7 +100,7 @@ func TestResolveProfile(t *testing.T) {
 				assert.NotEmpty(t, creds.ApiKey.ClientId)
 				assert.NotEmpty(t, creds.ApiKey.ClientSecret)
 				require.NoError(t, creds.ReadCache(t.Context(), creds.ApiKey, func() error {
-					assert.Equal(t, json.MustUnmarshal[jwt.JWT](t, jwtJson), creds.ApiKey.Cache.Token)
+					assert.Equal(t, jsontest.MustUnmarshal[jwt.JWT](t, jwtJson), creds.ApiKey.Cache.Token)
 					return nil
 				}))
 			})
@@ -110,7 +108,7 @@ func TestResolveProfile(t *testing.T) {
 	})
 
 	t.Run("load testdata/configdir", func(t *testing.T) {
-		t.Setenv(ConfigDirectorySetting.EnvKey(), "testdata/configdir")
+		t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
 		currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 		require.NoError(t, err)
 		expectedLoggedInDevLocalProfile := &Profile{Name: "dev-local", Endpoint: expectedDevLocalProfile.Endpoint, Credential: "apiKey"}
@@ -131,7 +129,7 @@ func TestResolveProfile(t *testing.T) {
 			assert.Equal(t, uuid.MustParse("08be9109-45bf-42ba-a965-2097b9d0d181"), creds.ApiKey.ClientId)
 			assert.Equal(t, "super-test-secret", creds.ApiKey.ClientSecret)
 			require.NoError(t, creds.ReadCache(t.Context(), creds.ApiKey, func() error {
-				assert.Equal(t, json.MustUnmarshal[jwt.JWT](t, jwtJson), creds.ApiKey.Cache.Token)
+				assert.Equal(t, jsontest.MustUnmarshal[jwt.JWT](t, jwtJson), creds.ApiKey.Cache.Token)
 				return nil
 			}))
 			require.NoError(t, creds.Store(t.Context()))

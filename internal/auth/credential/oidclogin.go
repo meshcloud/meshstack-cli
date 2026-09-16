@@ -25,11 +25,11 @@ func (oidcLogin *OidcLogin) Identity() Identity {
 }
 
 func (oidcLogin *OidcLogin) CachedToken(ctx context.Context) (token jwt.JWT, found bool) {
-	//TODO needs retrieval of workspace scope from ctx
+	// TODO needs retrieval of workspace scope from ctx
 	panic("implement me")
 }
 
 func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.Client) error {
-	//TODO refresh token can also be used to exchange to a different workspace scope on demand afaik
+	// TODO refresh token can also be used to exchange to a different workspace scope on demand afaik
 	panic("implement me")
 }

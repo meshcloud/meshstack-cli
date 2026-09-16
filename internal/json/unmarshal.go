@@ -8,9 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 func Unmarshal(in []byte, out any) error {
@@ -19,6 +16,7 @@ func Unmarshal(in []byte, out any) error {
 
 func UnmarshalFrom(ctx context.Context, file string, out any, unmarshalers ...*json.Unmarshalers) (err error) {
 	var f *os.File
+	//nolint:gosec // G304: internal/config builds every path here from the config dir and validated names
 	f, err = os.Open(file)
 	if err != nil {
 		return err
@@ -28,7 +26,7 @@ func UnmarshalFrom(ctx context.Context, file string, out any, unmarshalers ...*j
 		if err != nil {
 			err = fmt.Errorf("cannot unmarshal json from %s: %w", file, err)
 		} else {
-			slog.DebugContext(ctx, fmt.Sprintf("Unmarshaled json from %s", file))
+			slog.DebugContext(ctx, "Unmarshaled json from "+file)
 		}
 	}()
 	err = json.UnmarshalDecode(jsontext.NewDecoder(f), &out,
@@ -53,10 +51,4 @@ func ModifyAfterUnmarshal[T any](modifier func(target *T)) *json.Unmarshalers {
 		modifier(t)
 		return nil
 	})
-}
-
-func MustUnmarshal[T any](t *testing.T, in []byte) (out T) {
-	t.Helper()
-	require.NoError(t, json.Unmarshal(in, &out))
-	return
 }

@@ -2,39 +2,62 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
+	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 func (s Session) resolveCredentials(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (profile.Credentials, credential.Credential, error) {
 	creds, err := currentProfile.Credentials(ctx)
 	if err != nil {
-		return creds, nil, err
+		return profile.Credentials{}, nil, err
 	}
 
+	var errs, noSourceErrs []error
 	var resolvedCredentials []credential.Credential
-	setResolvedCredential := func(resolved credential.Credential, err error) error {
-		if err == nil && resolved != nil {
-			creds.SetIdentity(resolved)
-			resolvedCredentials = append(resolvedCredentials, resolved)
+	setResolvedCredential := func(resolved credential.Credential, err error) {
+		if opts.ForceAuthWith == "" && errors.Is(err, setting.ErrNoSourceProvidedValue) {
+			noSourceErrs = append(noSourceErrs, err)
+			return
+		} else if err != nil {
+			errs = append(errs, err)
+			return
 		}
-		return err
+		creds.SetIdentity(resolved)
+		resolvedCredentials = append(resolvedCredentials, resolved)
 	}
 
-	if err := setResolvedCredential(s.resolveManualCredential(ctx, opts)); err != nil {
-		return creds, nil, err
+	if opts.ForceAuthWith != "" && !slices.Contains(credential.Names, opts.ForceAuthWith) {
+		return profile.Credentials{}, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", opts.ForceAuthWith, credential.Names)
 	}
-	if err := setResolvedCredential(s.resolveApiKeyCredential(ctx, opts)); err != nil {
-		return creds, nil, err
+	for _, resolver := range []struct {
+		// read for its type alone, which names the field and thus the ForceAuthWith value
+		stored  credential.Credential
+		resolve func(context.Context, ResolveSessionOptions) (credential.Credential, error)
+	}{
+		{new(credential.Manual), s.resolveManualCredential},
+		{new(credential.ApiKey), s.resolveApiKeyCredential},
+	} {
+		if opts.ForceAuthWith != "" && opts.ForceAuthWith != creds.NameOf(resolver.stored) {
+			continue
+		}
+		setResolvedCredential(resolver.resolve(ctx, opts))
+	}
+	if err := errors.Join(errs...); err != nil {
+		return profile.Credentials{}, nil, err
 	}
 
 	switch len(resolvedCredentials) {
 	case 0:
 		if currentProfile.Credential == "" {
-			return creds, nil, fmt.Errorf("profile '%s' selects no credential; run 'meshstack login'", currentProfile)
+			return creds, nil, errors.Join(append([]error{
+				fmt.Errorf("no credential resolved, and profile '%s' selects none", currentProfile),
+			}, noSourceErrs...)...)
 		}
 		current := creds.ByName(currentProfile.Credential)
 		if current == nil {

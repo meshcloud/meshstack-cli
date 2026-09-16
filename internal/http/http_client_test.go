@@ -98,15 +98,15 @@ func TestHttpClient(t *testing.T) {
 
 	t.Run("DoRequest with 2 retries exhausted", func(t *testing.T) {
 		testLogger := installTestLogger(t)
-		retryTestBackoff := retryTestBackoff{}
+		backoff := retryTestBackoff{}
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			resp.WriteHeader(502)
-		}), http.RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff})
+			resp.WriteHeader(gohttp.StatusBadGateway)
+		}), http.RetryOptions{MaxRetries: 2, Backoff: &backoff})
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 		var httpErr http.Error
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, 502, httpErr.StatusCode)
-		assert.Equal(t, 2, retryTestBackoff.Called)
+		assert.Equal(t, 2, backoff.Called)
 		assert.Equal(t, []string{
 			"retrying request [status 502 method GET path /get attempt 1/2 waitTime 0s]",
 			"retrying request [status 502 method GET path /get attempt 2/2 waitTime 0s]",
@@ -115,13 +115,12 @@ func TestHttpClient(t *testing.T) {
 			fmt.Sprintf("request [url %s/get method GET headers User-Agent=test-agent body <empty>]", client.ServerUrl),
 			"response [status 502 body <empty>]",
 		}, testLogger.Debugs)
-
 	})
 
 	t.Run("DoRequest with context cancelled during backoff", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			resp.WriteHeader(502)
+			resp.WriteHeader(gohttp.StatusBadGateway)
 			cancel() // cancel context so the backoff wait is interrupted
 		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
 		_, err := client.DoRequest[any](ctx, gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
@@ -132,7 +131,7 @@ func TestHttpClient(t *testing.T) {
 		attempts := 0
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			attempts++
-			resp.WriteHeader(502)
+			resp.WriteHeader(gohttp.StatusBadGateway)
 		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPatch, client.ServerUrl)
 		require.Error(t, err)
@@ -147,7 +146,7 @@ func TestHttpClient(t *testing.T) {
 			attempts := 0
 			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 				attempts++
-				resp.WriteHeader(503)
+				resp.WriteHeader(gohttp.StatusServiceUnavailable)
 			}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
 			_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("grant"))
 			require.Error(t, err)
@@ -159,7 +158,7 @@ func TestHttpClient(t *testing.T) {
 			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 				attempts++
 				if attempts == 1 {
-					resp.WriteHeader(503)
+					resp.WriteHeader(gohttp.StatusServiceUnavailable)
 					return
 				}
 				resp.WriteHeader(gohttp.StatusOK)
@@ -178,7 +177,7 @@ func TestHttpClient(t *testing.T) {
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			attempts++
 			if attempts == 1 {
-				resp.WriteHeader(503)
+				resp.WriteHeader(gohttp.StatusServiceUnavailable)
 				return
 			}
 			resp.WriteHeader(gohttp.StatusNoContent)
@@ -195,10 +194,10 @@ func TestHttpClient(t *testing.T) {
 			assert.JSONEq(t, `{"key":"value"}`, string(body))
 			attempt++
 			if attempt == 1 {
-				resp.WriteHeader(502)
+				resp.WriteHeader(gohttp.StatusBadGateway)
 				return
 			}
-			resp.WriteHeader(200)
+			resp.WriteHeader(gohttp.StatusOK)
 		}), http.RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff{}})
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl,
 			http.WithJsonPayload(map[string]string{"key": "value"}, "application/json"), http.Retryable())
@@ -493,6 +492,7 @@ func TestFormPayloadOption(t *testing.T) {
 
 type TestClient struct {
 	http.Client
+
 	ServerUrl *url.URL
 }
 

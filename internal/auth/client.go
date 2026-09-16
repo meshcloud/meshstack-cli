@@ -11,6 +11,14 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
+func (s Session) Client(ctx context.Context) client.Client {
+	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %T", s.Endpoint, s.HttpClient.UserAgent, s.Credential))
+	return client.New(ctx, s.Endpoint, s.HttpClient.UserAgent, s)
+}
+
+// Session implements http.Authorization with concurrent cache/persistence.
+var _ http.Authorization = Session{}
+
 func (s Session) GetBearerToken(ctx context.Context) (out http.BearerToken, err error) {
 	return s.RefreshBearerToken(ctx, "")
 }
@@ -46,9 +54,4 @@ func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerTok
 		return nil
 	})
 	return
-}
-
-func (s Session) Client(ctx context.Context) (client.Client, error) {
-	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %T", s.Endpoint, s.HttpClient.UserAgent, s.Credential))
-	return client.New(ctx, s.Endpoint.URL, s.HttpClient.UserAgent, s)
 }

@@ -6,8 +6,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
-const API_VERSION_TAG_DEFINITION = "v1"
-
 type MeshTagDefinition struct {
 	Metadata MeshTagDefinitionMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshTagDefinitionSpec     `json:"spec" tfsdk:"spec"`

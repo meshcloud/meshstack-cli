@@ -24,9 +24,7 @@ type (
 
 // IsSet returns true if the given type uses the generic Set type, ignoring the concrete container type T.
 func IsSet(other reflect.Type) bool {
-	var (
-		setType = reflect.TypeFor[Set[any]]()
-	)
+	setType := reflect.TypeFor[Set[any]]()
 	if other.PkgPath() == setType.PkgPath() {
 		stripGenerics := func(s string) string {
 			if startIdx := strings.Index(s, "["); startIdx > 0 {

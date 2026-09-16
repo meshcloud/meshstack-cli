@@ -1,6 +1,3 @@
-# Visit https://golangci-lint.run/ for usage documentation
-# and information on other useful linters.
-#
 # Kept deliberately close to the meshStack Terraform provider's configuration, so
 # that code moving between the two repositories does not trip a different linter set.
 version: "2"
@@ -10,7 +7,8 @@ issues:
 formatters:
   enable:
     - gci
-    - gofmt
+    # gofumpt rather than gofmt: a strict superset, so there is nothing left to argue about.
+    - gofumpt
   settings:
     gci:
       sections:
@@ -19,45 +17,86 @@ formatters:
         - localmodule  # This repository's modules
 
 linters:
-  default: none
-  enable:
-    - depguard
-    - durationcheck
-    - errcheck
-    - copyloopvar
-    - forbidigo
-    - forcetypeassert
-    - godot
-    - ineffassign
-    - makezero
-    - misspell
-    - nilerr
-    - predeclared
-    - staticcheck
-    - usetesting
-    - unconvert
-    - unparam
-    - unused
-    - govet
-    - testifylint
-    - thelper
+  # Every linter, minus the list below, so a new release's checks arrive on and a rejection is a
+  # line here with a reason. Visit https://golangci-lint.run/ for what each linter does.
+  default: all
+  disable:
+    # Broken or superseded
+    - exhaustruct_v5   # panics on this codebase with exhaustruct v5.0.3
+    - exhaustruct      # deprecated, superseded by exhaustruct_v5
+    - wsl              # deprecated, superseded by wsl_v5
+    - gomodguard       # deprecated, superseded by gomodguard_v2
+
+    # Layout, which gofumpt and gci already settle
+    - wsl_v5
+    - nlreturn
+    - tagalign
+    - lll
+    - decorder
+    - grouper
+    - goheader
+
+    # Styles this repository chose on purpose
+    - nakedret         # a named result returned bare documents itself at the signature
+    - nonamedreturns   # so a named result stays
+    - noinlineerr      # `if err := f(); err != nil` is the house style
+    - varnamelen       # a short receiver or loop name is idiomatic
+    - godox            # a TODO comment is a deliberate marker
+    - gochecknoglobals # a setting is declared once, as a package-level var
+    - gochecknoinits   # pkg/auth checks its enum against credential.Names at init
+    - ireturn          # a constructor returning an interface is the client's shape
+    - testpackage      # an in-package test is a deliberate choice
+    - dupl             # the binding clients are parallel by design
+    - tagliatelle      # OIDC and OAuth field names are snake_case by spec
+    - paralleltest     # t.Setenv forbids t.Parallel
+
+    # Error plumbing we decide case by case
+    - wrapcheck
+    - err113
+
+    # Measurements, not goals
+    - funlen
+    - cyclop
+    - gocyclo
+    - gocognit
+    - maintidx
+    - nestif
+    - mnd
+    - goconst
+    - prealloc
+    - dogsled
+    - interfacebloat
 
   exclusions:
     rules:
+      # A doc comment is required in pkg/, the surface a front end reads, and left to judgement
+      # elsewhere: client/ mirrors the meshObject API, which documents itself.
+      - linters:
+          - revive
+        text: "^exported:"
+        path-except: (^|/)pkg/
+      - linters:
+          - revive
+        text: "^exported:"
+        path: _test\.go
+      # In test code the testing.T comes first, before a context, internal/testutil included.
+      - linters:
+          - revive
+        text: "^context-as-argument:"
+        path: (_test\.go|internal/testutil/)
+      # A test api key is a fixture, not a leaked secret.
+      - linters:
+          - gosec
+        text: G101
+        path: _test\.go
       # The one package that may build a client, which is the whole point of the rule.
       - path: internal/http/
         linters:
           - forbidigo
-
-      # Tests and internal/testserver may use the http package freely
-      - path: _test\.go
+      # Have one central place of a simple HTTP test server
+      - path: internal/testutil/testserver/
         linters:
           - forbidigo
-      - path: internal/testserver/
-        linters:
-          - forbidigo
-
-
 
   settings:
     # One HTTP client for the process, built in internal/http, and nothing else may make an
@@ -69,8 +108,136 @@ linters:
           pkg: ^net/http$
           msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
 
+    gocritic:
+      disabled-checks:
+        # an if-else chain that ends in a return per branch reads as it is written here
+        - ifElseChain
+
+    # The Context form, because the provider's handler reads terraform's logger out of the context
+    # and drops a record without one. Messages are composed with fmt.Sprintf, so static-msg is off.
+    sloglint:
+      context: all
+      no-mixed-args: true
+
+    # The one alias the client/ rules ask for, so a file that needs both http packages cannot drift.
+    importas:
+      alias:
+        - pkg: net/http
+          alias: gohttp
+
+    govet:
+      enable-all: true
+      disable:
+        # field order follows what reads well, not what packs tightest
+        - fieldalignment
+
+    staticcheck:
+      checks:
+        - all
+        # ST1000 wants a comment on every package, which is not where comments earn their place.
+        - -ST1000
+      # Replaces the default list, dropping API, HTTP, ID, JSON, SSH, URI, URL and UUID so that
+      # ClientId, BaseUrl and Uuid stand as the meshObject API spells them. ST1003 still enforces
+      # the rest: no underscores, no ALL_CAPS, camelCase throughout.
+      initialisms: []
+
+    godoclint:
+      default: basic
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    revive:
+      # No default rule set: package-comments wants a comment on every package, and var-naming
+      # wants the API's own field names spelled differently. exported is scoped under exclusions.
+      rules:
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: datarace
+        - name: defer
+        - name: early-return
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: identical-branches
+        - name: modifies-value-receiver
+        - name: range-val-address
+        - name: receiver-naming
+        - name: redundant-import-alias
+        - name: string-of-int
+        - name: superfluous-else
+        - name: time-naming
+        - name: unconditional-recursion
+        - name: unexported-return
+        - name: unnecessary-stmt
+        - name: use-any
+        - name: waitgroup-by-value
+
     depguard:
       rules:
+
+        # cmd/ builds the command tree, and is the only place cobra is used.
+        cmd:
+          files:
+            - "**/cmd/*.go"
+            - "**/cmd/**/*.go"
+            - "!**/cmd/meshstack/*.go"
+            - "!**/cmd/internal/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Use log/slog instead
+          allow:
+            - $gostd
+            - log/slog
+            - json
+            # no direct access to internal/
+            - github.com/meshcloud/meshstack-cli/pkg
+            - github.com/meshcloud/meshstack-cli/cmd/internal
+            - github.com/meshcloud/meshstack-cli/client
+            # keep this list short (ideally only cobra)
+            - github.com/spf13/cobra
+
+        cmd-meshstack:
+          files:
+            - "**/cmd/meshstack/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Use log/slog instead
+          allow:
+            - $gostd
+            - log/slog
+            # the root command registers every subcommand package explicitly, so it reaches all of cmd/
+            - github.com/meshcloud/meshstack-cli/cmd
+            # Keep this list short
+            - github.com/spf13/cobra
+            - github.com/charmbracelet/log
+
+        cmd-internal:
+          files:
+            - "**/cmd/internal/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Use log/slog instead
+          allow:
+            - $gostd
+            - log/slog
+            - github.com/meshcloud/meshstack-cli/pkg
+            - github.com/meshcloud/meshstack-cli/client
+            # Keep this list short
+            - github.com/spf13/cobra
+            - github.com/spf13/pflag
+
         # The package the Terraform provider consumes most directly.
         client:
           files:
@@ -80,39 +247,31 @@ linters:
             - "**/client/**/*.go"
             - "!$test"
           list-mode: strict
+          deny:
+            - pkg: log # as $gostd is allowed
+              desc: Use log/slog instead
           allow:
             - $gostd
+            - log/slog
             - github.com/meshcloud/meshstack-cli/client
             - github.com/meshcloud/meshstack-cli/internal/http
-            # The setting mechanism, for example MESHSTACK_SKIP_VERSION_CHECK uses it.
-            - github.com/meshcloud/meshstack-cli/internal/setting
 
         pkg:
           files:
-            - "**/pkg/*.go"
             - "**/pkg/**/*.go"
             - "!$test"
           list-mode: strict
           deny:
-            - pkg: github.com/spf13/cobra
-              desc: cobra belongs in cmd/; pkg/ is also consumed by the Terraform provider
-            - pkg: github.com/meshcloud/meshstack-cli/pkg/oidc/browser
-              desc: only cmd/ and internal/cli may open a browser; the Terraform provider links pkg/auth and must not be able to reach the browser flow
+            - pkg: log # as $gostd is allowed
+              desc: Use log/slog instead
           allow:
             - $gostd
+            - log/slog
             - github.com/meshcloud/meshstack-cli/client
             - github.com/meshcloud/meshstack-cli/pkg
-            # The process's one HTTP client. pkg/auth and pkg/oidc each address a different
-            # host — meshStack and the identity provider — and both go through it.
-            - github.com/meshcloud/meshstack-cli/internal/http
-            # The setting mechanism. pkg/setting is the narrower view the Terraform provider
-            # gets: a source it may supply, and a declaration it may read.
-            - github.com/meshcloud/meshstack-cli/internal/setting
+            - github.com/meshcloud/meshstack-cli/internal
 
-        # internal/http is the process's one HTTP client, and it needs nothing but the standard
-        # library to be one. It sits outside client/ because Go's internal rule would otherwise
-        # close it to pkg/, and inside the module's internal tree because the Terraform provider
-        # must not be able to configure it.
+        # as client depends on internal/http, also do not leak anything else than $gostd into it
         internal-http:
           files:
             - "**/internal/http/*.go"
@@ -121,113 +280,33 @@ linters:
           allow:
             - $gostd
 
-        # internal/cli implements the CLI's half of auth.Input: flags, stdin, a terminal
-        # prompt and the browser login. Go's internal rule already keeps it out of the
-        # Terraform provider, which is what makes it the one place outside cmd/ that may
-        # reach pkg/oidc/browser. The pkg rule above cannot reach these files — its
-        # files: list names **/pkg/ — so the deny there does not apply to them.
-        internal-cli:
+        internal:
           files:
-            - "**/internal/cli/*.go"
+            - "**/internal/**/*.go"
             - "!$test"
-          list-mode: strict
-          allow:
-            - $gostd
-            - github.com/meshcloud/meshstack-cli
-
-        # internal/lock is the only package that takes a file lock, so it is the only place
-        # gofrs/flock may be imported. It needs nothing else: the Locker composes an RWMutex
-        # with a lock file and knows about neither settings nor credentials.
-        internal-lock:
-          files:
-            - "**/internal/lock/*.go"
-            - "!$test"
-          list-mode: strict
-          allow:
-            - $gostd
-            - github.com/gofrs/flock
-
-        # The tests import flock too, to probe the lock file from outside the Locker: asserting
-        # on the file rather than on a second Locker is what tells a held lock apart from a
-        # mutex that merely happens to serialize the callers. The tests rule below excludes
-        # these files, because overlapping rules intersect and would deny flock again.
-        internal-lock-tests:
-          files:
-            - "**/internal/lock/*_test.go"
-          list-mode: strict
-          allow:
-            - $gostd
-            - github.com/meshcloud/meshstack-cli/internal/lock
-            - github.com/gofrs/flock
-            - github.com/stretchr/testify
-
-        # internal/testserver stands in for a meshStack backend in tests. Its files are not
-        # test files, so the tests rule below does not reach them, and it needs internal/auth
-        # for the api key settings, so that the env variable names stay declared in one place.
-        internal-testserver:
-          files:
-            - "**/internal/testserver/*.go"
-          list-mode: strict
-          allow:
-            - $gostd
-            - github.com/stretchr/testify
-            - github.com/meshcloud/meshstack-cli/internal/auth
-
-        # cmd/ builds the command tree, and is the only place cobra is used.
-        cmd:
-          files:
-            - "**/cmd/*.go"
-            - "**/cmd/**/*.go"
-            # Excluding cmd/meshstack is what lets the next rule grant more than this
-            # one does. A file matching two rules has to satisfy both, so overlapping
-            # rules intersect and never widen.
-            - "!**/cmd/meshstack/*.go"
-            - "!$test"
+            - "!**/internal/testutil/**/*.go"
           list-mode: strict
           deny:
             - pkg: log # as $gostd is allowed
-              desc: Write user-facing output through the command's own streams
-          allow:
-            - $gostd
-            - log/slog # a longer prefix than the deny above, so it outranks it
-            - github.com/meshcloud/meshstack-cli
-            - github.com/spf13/cobra
-
-        # The one package that configures a logger, and therefore the only one that may
-        # name a logging implementation. Everywhere else logs through log/slog against
-        # the handler installed here.
-        cmd-meshstack:
-          files:
-            - "**/cmd/meshstack/*.go"
-            - "!$test"
-          list-mode: strict
-          deny:
-            - pkg: log # as $gostd is allowed
-              desc: Write user-facing output through the command's own streams
+              desc: Use log/slog instead
           allow:
             - $gostd
             - log/slog
-            - github.com/meshcloud/meshstack-cli
-            - github.com/spf13/cobra
-            - github.com/charmbracelet/log
+            - github.com/meshcloud/meshstack-cli/internal
+            # internal/auth builds a client, and the types a profile stores are client/types ones
+            - github.com/meshcloud/meshstack-cli/client
+            # Keep this list of external libraries as small as possible!
+            # Never add cobra here!
+            - github.com/gofrs/flock
 
-        # acceptance/ drives the built binary against a live local meshStack, as a
-        # subprocess. It is deny-by-default like everything else, and it needs less than
-        # most: os/exec and net/http out of the standard library, testify, and client/ for
-        # the one struct it shares with the code under test — it decodes /mesh/info into
-        # client.MeshInfo, so the suite fails when that type and the backend disagree.
-        #
-        # It deliberately may not reach pkg/ or internal/. A test that called the CLI's own
-        # resolution to work out where its profile went would pass whenever that resolution
-        # was consistently wrong; asserting on the files and the exit status is the whole
-        # point of running the binary rather than a cobra command in-process.
-        acceptance:
+        internal-test:
           files:
-            - "**/acceptance/*.go"
+            - "**/internal/testutil/**/*.go"
           list-mode: strict
           allow:
             - $gostd
-            - github.com/meshcloud/meshstack-cli/client
+            - github.com/meshcloud/meshstack-cli
+            # Using testify is ok in testutil
             - github.com/stretchr/testify
 
         # Tests may additionally use testify, which is what the client's moved tests
@@ -235,10 +314,11 @@ linters:
         tests:
           files:
             - "$test"
-            - "!**/internal/lock/*_test.go"
           list-mode: strict
           allow:
             - $gostd
             - github.com/meshcloud/meshstack-cli
+            # more a less the union of hand-picked external libs
             - github.com/spf13/cobra
             - github.com/stretchr/testify
+            - github.com/gofrs/flock

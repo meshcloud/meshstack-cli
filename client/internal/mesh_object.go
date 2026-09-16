@@ -13,23 +13,23 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type HttpClient struct {
 	http.AuthorizedClient
-	// RootUrl allows convenient passing of the endpoint URL to the typed meshObject clients shared by all Public API calls.
-	// See NewMeshObjectClient.
-	RootUrl *url.URL
+
+	// EndpointUrl is used to construct MeshObjectClient.ApiUrl in NewMeshObjectClient
+	EndpointUrl xurl.URL
 }
 
 // MeshObjectClient provides typed CRUD operations for meshStack API objects.
-// It embeds [http.Client] and adds meshObject-specific functionality including automatic
+// It embeds [http.AuthorizedClient] and adds meshObject-specific functionality including automatic
 // MIME type handling and pagination.
-// Authorization comes with the embedded client, which carries the Authorization pkg/auth
-// resolved, so every request here is made as whoever the command was configured to be.
 type MeshObjectClient[M any] struct {
-	http.Client
+	http.AuthorizedClient
+
 	Kind       string
 	ApiVersion string
 	ApiUrl     *url.URL
@@ -47,9 +47,9 @@ func NewMeshObjectClient[M any](ctx context.Context, httpClient HttpClient, apiV
 		explicitApiPathElems = []string{strings.ToLower(pluralizeKind(kind))}
 	}
 	explicitApiPathElems = slices.Insert(explicitApiPathElems, 0, "/api/meshobjects")
-	apiUrl := httpClient.RootUrl.JoinPath(explicitApiPathElems...)
+	apiUrl := httpClient.EndpointUrl.JoinPath(explicitApiPathElems...)
 	slog.InfoContext(ctx, fmt.Sprintf("initialized %s client", reflect.TypeFor[M]().Name()), "url", apiUrl.String(), "kind", kind, "version", apiVersion)
-	return MeshObjectClient[M]{httpClient.Client, kind, apiVersion, apiUrl}
+	return MeshObjectClient[M]{httpClient.AuthorizedClient, kind, apiVersion, apiUrl}
 }
 
 var versionSuffixRe = regexp.MustCompile(`V\d+$`)
@@ -87,6 +87,7 @@ func (c MeshObjectClient[M]) MeshObjectMimeType() string {
 func (c MeshObjectClient[M]) Get(ctx context.Context, id string) (resp *M, err error) {
 	resp, err = c.GetAtPath[*M](ctx, id)
 	if httpErr, ok := errors.AsType[http.Error](err); ok && httpErr.IsNotFound() {
+		//nolint:nilnil // MeshObject clients return nil on 404 as this aligns better how Terraform handles non-existing resources
 		return nil, nil
 	}
 	return

@@ -26,9 +26,8 @@ func (v Variant[X, Y]) MarshalJSON() ([]byte, error) {
 		return json.Marshal(v.X)
 	} else if v.HasY() {
 		return json.Marshal(v.Y)
-	} else {
-		return json.Marshal(nil)
 	}
+	return json.Marshal(nil)
 }
 
 func has[T any](xy any) bool {

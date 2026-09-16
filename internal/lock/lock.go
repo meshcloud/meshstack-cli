@@ -26,14 +26,14 @@ type Locker struct {
 }
 
 func (l Locker) WithLock(ctx context.Context, fn func() error) error {
-	return l.with(false, ctx, fn)
+	return l.with(ctx, false, fn)
 }
 
 func (l Locker) WithRLock(ctx context.Context, fn func() error) error {
-	return l.with(true, ctx, fn)
+	return l.with(ctx, true, fn)
 }
 
-func (l Locker) with(read bool, ctx context.Context, fn func() error) error {
+func (l Locker) with(ctx context.Context, read bool, fn func() error) error {
 	return l.inMemoryLocker(read).With(ctx, func() error {
 		return l.fileLocker(read).With(ctx, fn)
 	})
@@ -58,7 +58,6 @@ func (l Locker) inMemoryLocker(read bool) delegatingLocker {
 }
 
 func (l Locker) fileLocker(read bool) delegatingLocker {
-
 	//goland:noinspection GoResourceLeak
 	f := flock.New(l.pathLock)
 
@@ -92,8 +91,10 @@ func (l Locker) fileLocker(read bool) delegatingLocker {
 	}
 }
 
-type tryLockFunc func() (bool, error)
-type unlockFunc func() error
+type (
+	tryLockFunc func() (bool, error)
+	unlockFunc  func() error
+)
 
 type delegatingLocker struct {
 	DelegateTryLock tryLockFunc
@@ -101,8 +102,8 @@ type delegatingLocker struct {
 }
 
 func (l delegatingLocker) With(ctx context.Context, fn func() error) (err error) {
-	if err := l.SpinLock(ctx); err != nil {
-		return err
+	if lockErr := l.SpinLock(ctx); lockErr != nil {
+		return lockErr
 	}
 	defer func() {
 		err = errors.Join(err, l.Unlock())

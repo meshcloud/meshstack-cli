@@ -12,10 +12,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types"
 )
 
-var (
-	//go:embed testdata/building_block_definition_version_input
-	bbdInputTestdata embed.FS
-)
+//go:embed testdata/building_block_definition_version_input
+var bbdInputTestdata embed.FS
 
 func TestMeshBuildingBlockDefinitionInput_UnmarshalJSON(t *testing.T) {
 	tests := []struct {

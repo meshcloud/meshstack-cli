@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
@@ -153,7 +154,7 @@ func (c meshTenantClient) Delete(ctx context.Context, uuid string) error {
 func (tenant *MeshTenant) CreationSuccessful() (done bool, err error) {
 	switch {
 	case tenant == nil:
-		err = fmt.Errorf("tenant not found after creation")
+		err = errors.New("tenant not found after creation")
 	case tenant.Spec.PlatformTenantId != nil && *tenant.Spec.PlatformTenantId != "":
 		// Creation is complete (platformTenantId is set and not empty)
 		done = true

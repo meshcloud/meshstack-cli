@@ -15,7 +15,9 @@ import (
 
 type ResolveSessionOptions struct {
 	setting.ExplicitSourcesOption
-	UserAgent string
+
+	ForceAuthWith credential.Name
+	UserAgent     string
 }
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {

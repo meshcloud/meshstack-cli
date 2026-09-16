@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	gohttp "net/http"
 	"net/url"
 	"reflect"
@@ -64,9 +65,7 @@ func WithUrlQuery(query any) RequestOption {
 		// whatever filter the caller passed, and one overwriting the other drops a required
 		// parameter — buildingBlockDefinitionUuid is the case the backend rejects outright.
 		merged := req.URL.Query()
-		for key, values := range urlValues {
-			merged[key] = values
-		}
+		maps.Copy(merged, urlValues)
 		req.URL.RawQuery = merged.Encode()
 		return nil
 	})

@@ -1,22 +1,25 @@
-package profile
+package config
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
-type ConfigDirectory string
+type Directory string
 
-var ConfigDirectorySetting = setting.Setting[ConfigDirectory]{
-	Env:   "MESHSTACK_CONFIG_DIR",
-	Short: "The directory holding config.json and one credentials file per profile. Also read from MESHSTACK_CONFIG_DIR.",
-	Long: "The directory holding the meshStack CLI's configuration, also read from `MESHSTACK_CONFIG_DIR`.\n\n" +
-		"`config.json` describes every profile, and `credentials/<profile>.json` holds that profile's " +
-		"credentials and its cached tokens.",
+var DirectorySetting = setting.Setting[Directory]{
+	Env: "MESHSTACK_CONFIG_DIR",
+	Short: func(envKey string) string {
+		return fmt.Sprintf("The directory holding config.json and one credentials file per profile. Also read from %s.", envKey)
+	},
+	Long: func(envKey string) string {
+		return fmt.Sprintf("The directory holding the meshStack CLI's configuration, also read from `%s`.\n\n"+
+			"`config.json` describes every profile, and `credentials/<profile>.json` holds that profile's "+
+			"credentials and its cached tokens.", envKey)
+	},
 	Default: setting.DefaultSource(func() (dir string, err error) {
 		// os.UserConfigDir already honors XDG_CONFIG_HOME on Linux. Naming it here is what
 		// makes it win on macOS and Windows too, where the platform directory differs.
@@ -30,10 +33,10 @@ var ConfigDirectorySetting = setting.Setting[ConfigDirectory]{
 		}
 		return filepath.Join(dir, "meshstack"), nil
 	}),
-	Parse: setting.ParseText[ConfigDirectory],
+	Parse: setting.ParseText[Directory],
 }
 
-func (d ConfigDirectory) Join(elems ...any) string {
+func (d Directory) Join(elems ...any) string {
 	all := []string{string(d)}
 	for _, elem := range elems {
 		all = append(all, fmt.Sprintf("%v", elem))
@@ -41,14 +44,14 @@ func (d ConfigDirectory) Join(elems ...any) string {
 	return filepath.Join(all...)
 }
 
-func (d ConfigDirectory) ProfilesJson() string {
+func (d Directory) ProfilesJson() string {
 	return d.Join("profiles.json")
 }
 
-func (d ConfigDirectory) CredentialsJsonFor(profileName Name) string {
+func (d Directory) CredentialsJsonFor(profileName fmt.Stringer) string {
 	return d.Join("credentials", fmt.Sprintf("%s.json", profileName))
 }
 
-func (d ConfigDirectory) CredentialsCacheJsonFor(profileName Name, credentialName credential.Name) string {
+func (d Directory) CredentialsCacheJsonFor(profileName, credentialName fmt.Stringer) string {
 	return d.Join("credentials-cache", profileName, fmt.Sprintf("%s.json", credentialName))
 }

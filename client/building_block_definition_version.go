@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
@@ -43,14 +42,14 @@ var (
 	MeshBuildingBlockIOTypeSingleSelect = MeshBuildingBlockIOTypes.Entry("SINGLE_SELECT")
 	MeshBuildingBlockIOTypeMultiSelect  = MeshBuildingBlockIOTypes.Entry("MULTI_SELECT")
 
+	// MeshBuildingBlockIOTypeJson is not a member of MeshBuildingBlockIOTypes.
 	// A definition input declaring this type describes a form of its own, through the accompanying
-	// JsonSchema. That makes it a declaration-side type only, so deliberately not an entry of
-	// MeshBuildingBlockIOTypes: what the form produces is JSON text, which a building block's own inputs
-	// report as CODE.
+	// JsonSchema. That makes it a declaration-side type only:
+	// what the form produces is JSON text, which a building block's own inputs report as CODE.
 	MeshBuildingBlockIOTypeJson = enum.Entry[MeshBuildingBlockIOType]("JSON")
 )
 
-// The types a definition input may declare.
+// MeshBuildingBlockDefinitionInputTypes are the types a definition input may declare.
 var MeshBuildingBlockDefinitionInputTypes = MeshBuildingBlockIOTypes.With(MeshBuildingBlockIOTypeJson)
 
 var MeshBuildingBlockOutputIOTypes = enum.Of(
@@ -172,7 +171,7 @@ func (m *MeshBuildingBlockDefinitionInput) UnmarshalJSON(bytes []byte) error {
 		moveXtoYIfPresent(&m.DefaultValue)
 		return errors.Join(errs...)
 	case m.Argument.HasY(), m.DefaultValue.HasY():
-		return fmt.Errorf("got sensitive argument or default_value but variant Y is set instead")
+		return errors.New("got sensitive argument or default_value but variant Y is set instead")
 	default:
 		return nil
 	}

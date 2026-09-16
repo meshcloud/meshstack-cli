@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"reflect"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
@@ -19,15 +20,16 @@ const (
 )
 
 type Credentials struct {
-	Version int `json:"version"`
 	credential.Credentials
 
+	Version      int    `json:"version"`
 	FilePath     string `json:"-"`
 	cacheLockers map[credential.Name]cacheLocker
 }
 
 type cacheLocker struct {
 	lock.Locker
+
 	CacheFilePath string
 }
 
@@ -56,6 +58,23 @@ func (p Profile) Credentials(ctx context.Context) (out Credentials, err error) {
 		}
 	}
 	return
+}
+
+func (p Profile) RemoveCredentials(ctx context.Context) error {
+	var errs []error
+	removeFileIfPresent := func(f string) {
+		err := os.Remove(f)
+		if err == nil {
+			slog.DebugContext(ctx, "Removed file "+f)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("failed to remove %s: %w", f, err))
+		}
+	}
+	removeFileIfPresent(p.configDir.CredentialsJsonFor(p.Name))
+	for _, credentialName := range credential.Names {
+		removeFileIfPresent(p.configDir.CredentialsCacheJsonFor(p.Name, credentialName))
+	}
+	return errors.Join(errs...)
 }
 
 // cacheFile carries the identity the cached tokens were minted for, so that a cache

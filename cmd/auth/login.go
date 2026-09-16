@@ -1,22 +1,23 @@
 package auth
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
-	"github.com/meshcloud/meshstack-cli/internal/auth"
-	"github.com/meshcloud/meshstack-cli/pkg/setting"
 	"github.com/spf13/cobra"
+
+	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/pkg/auth"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-func NewLogin(ctx context.Context) *cobra.Command {
+func NewLogin() *cobra.Command {
 	const apiKeyIdDefault = "<id>"
 	var (
-		apiKey   string
-		apiToken bool
-		force    bool
-		stdin    bool
+		stdinFlag    bool
+		apiKeyFlag   = internal.NewFlagForSetting[string]("apikey", setting.ApiKeyClientId)
+		apiTokenFlag = internal.NewFlagWithPrompt("apitoken", setting.ApiToken)
 	)
 
 	cmd := &cobra.Command{
@@ -27,61 +28,71 @@ func NewLogin(ctx context.Context) *cobra.Command {
 			if len(args) == 0 {
 				return nil
 			}
-			if cmd.Flags().Changed("api-key") {
-				return fmt.Errorf("an API key id needs an equals sign: write `--api-key=%s`. --api-key takes an optional value, so %q was read as a positional argument rather than as the id", args[0], args[0])
+			if cmd.Flags().Changed(apiKeyFlag.Name.String()) {
+				return fmt.Errorf("an API key id needs an equals sign: write `--%s=%s`. --%s takes an optional value, so %q was read as a positional argument rather than as the id",
+					apiKeyFlag.Name, args[0], apiKeyFlag.Name, args[0])
 			}
 			return fmt.Errorf("this command takes no arguments: `meshstack auth login` does not take %q. Everything it needs comes from flags and the environment", args[0])
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			var sources setting.ExplicitSources
+			var sources []setting.ExplicitSource
+			var forceAuthWith auth.Method
 			switch {
-			case cmd.Flags().Changed("api-key"):
-				if apiKey == "" {
-					return errors.New("the API key id is empty: `--api-key=` was given without an id. Leave the value off entirely to reuse the id already in the profile")
-				} else if apiKey != apiKeyIdDefault {
-
+			case cmd.Flags().Changed(apiKeyFlag.Name.String()):
+				forceAuthWith = auth.ApiKeyMethod
+				if apiKeyFlag.Value == "" {
+					return fmt.Errorf("the API key id is empty; --%s= was given without an id; specify --%s to read from env",
+						apiKeyFlag.Name, apiKeyFlag.Name)
 				}
-				method = credential.MethodApiKey
-				if apiKey != apiKeyIdDefault {
-					in.ApiKey = string(apiKey)
-				}
-				force = true
-			case apiToken:
-				method = credential.MethodManual
-				force = true
+				sources = append(sources,
+					// Only add apiKeyFlag as flag settikng source if we have a non-default value
+					// Source is still valuable to generate a proper error hint
+					apiKeyFlag.AsSourceUnless(func(value string) bool {
+						return value == apiKeyIdDefault
+					}),
+					internal.NewPromptingSource(setting.ApiKeyClientSecret, &stdinFlag, cmd, "API Client Secret"),
+				)
+			case apiTokenFlag.Value:
+				forceAuthWith = auth.ManualMethod
+				sources = append(sources, apiTokenFlag.AsSource(cmd, &stdinFlag, "API Token"))
 			default:
-				// Every form names the method it wants, and bare means the browser login.
-				// Naming it is what makes `meshstack login` switch a profile back from its
-				// API key rather than logging in again with whatever is current.
-				method = credential.MethodLogin
+				// TODO pick OIDC here
+				return errors.New("no credentials provided for login")
 			}
-			// Read before the resolution, because a setting.Source has neither a context nor
-			// an error return, so a read that blocked would have nowhere to report itself.
-			if secretStdin {
-				secret, err := in.ReadLine()
-				if err != nil {
-					return err
-				}
-				in.ApiSecret = secret
+			session, err := internal.ResolveSession(cmd.Context(), func(opts *auth.ResolveSessionOptions) {
+				opts.UseSettingsFrom = append(opts.UseSettingsFrom, sources...)
+				opts.ForceAuthWith = forceAuthWith
+			})
+			if err != nil {
+				return err
 			}
-			if tokenStdin {
-				token, err := in.ReadLine()
-				if err != nil {
-					return err
-				}
-				in.ApiToken = token
+			c, err := session.Client(cmd.Context())
+			if err != nil {
+				return err
 			}
-			auth.ResolveSession(ctx, auth.ResolveSessionOptions{})
+			info, err := c.MeshInfo.Read(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := session.Store(cmd.Context()); err != nil {
+				return err
+			}
+			// TODO render Markdown output from model instead of logging?!
+			slog.InfoContext(cmd.Context(), fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s",
+				info.CliClientId, internal.Version, info.Version, session.Endpoint()))
+			return nil
 		},
 	}
 
-	flags := cmd.Flags()
-	flags.StringVar(&apiKey, "api-key", apiKeyIdDefault, "switch to the apiKey method, with the stored id, MESHSTACK_API_KEY, or a new one")
-	flags.BoolVar(&apiToken, "api-token", false, "store an API token that nothing can refresh")
-	flags.BoolVar(&force, "force", false, "log in again even if the stored login still works")
-	flags.BoolVar(&stdin, "stdin", false, "read the API key secret or API token from the first line of stdin")
-	cmd.MarkFlagsMutuallyExclusive("api-key", "api-token")
-	cmd.MarkFlagsRequiredTogether("api-secret-stdin", "api-token-stdin")
+	cmd.MarkFlagsMutuallyExclusive(
+		apiKeyFlag.Register(cmd.Flags()),
+		apiTokenFlag.Register(cmd.Flags()),
+	)
+	// This makes a bare --apikey work, see above for dedicated flags handling
+	cmd.Flags().Lookup(apiKeyFlag.Name.String()).NoOptDefVal = apiKeyIdDefault
+
+	cmd.Flags().BoolVar(&stdinFlag, internal.StdinFlag.Name.String(), false,
+		"prompt the API key secret or API token from stdin")
 
 	return cmd
 }

@@ -140,11 +140,10 @@ func (s *Server) RevokeNewestToken(t *testing.T) (revoked bool) {
 }
 
 // Greeting calls the authorized endpoint and returns what went wrong, for a caller on its own
-// goroutine, where require would be undefined behaviour. The call runs on t.Context(), so a
-// deadline the caller uses to end its own work never cuts a request in half.
-func (s *Server) Greeting(t *testing.T, greet GreetingClient) error {
+// goroutine, where require would be undefined behaviour.
+func (s *Server) Greeting(t *testing.T, ctx context.Context, greet GreetingClient) error {
 	t.Helper()
-	answered, err := greet(t.Context(), s.GreetingUrl(t))
+	answered, err := greet(ctx, s.GreetingUrl(t))
 	if err != nil {
 		return err
 	}
@@ -157,7 +156,7 @@ func (s *Server) Greeting(t *testing.T, greet GreetingClient) error {
 // RequireGreeting fails the test unless the greeting comes back.
 func (s *Server) RequireGreeting(t *testing.T, greet GreetingClient) {
 	t.Helper()
-	require.NoError(t, s.Greeting(t, greet))
+	require.NoError(t, s.Greeting(t, t.Context(), greet))
 }
 
 func (s *Server) handle(resp gohttp.ResponseWriter, req *gohttp.Request) {

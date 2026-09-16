@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+// ErrNoSourceProvidedValue is wrapped with the Setting.EnvKey of the setting that stayed empty,
+// so a caller reading errors.Is still matches while the message names what is missing.
 var ErrNoSourceProvidedValue = errors.New("no source provided a value")
 
 // Resolve returns the first value a source carries, the resolution details, and an error if sth went wrong.
@@ -57,7 +59,7 @@ func (s Setting[T]) Resolve(sources ...Source) (value T, err error) {
 		}
 		return // resolution found
 	}
-	return value, ErrNoSourceProvidedValue
+	return value, fmt.Errorf("%w for %s", ErrNoSourceProvidedValue, s.EnvKey())
 }
 
 // byExplicitSourceFirst is used by Resolve. See ExplicitSource.

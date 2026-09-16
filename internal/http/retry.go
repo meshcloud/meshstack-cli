@@ -138,11 +138,11 @@ func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, er
 		}
 		drainAndCloseResponseBody(req.Context(), resp)
 		if req.GetBody != nil {
-			if body, err := req.GetBody(); err != nil {
-				return nil, err
-			} else {
-				req.Body = body
+			body, bodyErr := req.GetBody()
+			if bodyErr != nil {
+				return nil, errors.Join(err, bodyErr)
 			}
+			req.Body = body
 		}
 		waitTime := backoff.Calculate(attempt)
 		slog.WarnContext(req.Context(), "retrying request", append(
@@ -190,6 +190,7 @@ func makeRequestBodyRetryable(req *gohttp.Request) *gohttp.Request {
 type retryableBody struct {
 	io.Reader
 	io.Closer
+
 	Buffer appendWriter
 }
 
@@ -231,7 +232,7 @@ func drainAndCloseResponseBody(ctx context.Context, resp *gohttp.Response) {
 	if resp != nil && resp.Body != nil {
 		drainedBytes, err := io.CopyN(io.Discard, resp.Body, maxBytes)
 		if err != nil && !errors.Is(err, io.EOF) {
-			slog.DebugContext(ctx, fmt.Sprintf("failed to drain response body: %s", err.Error()))
+			slog.DebugContext(ctx, "failed to drain response body: "+err.Error())
 		}
 		if err := resp.Body.Close(); err != nil {
 			slog.DebugContext(ctx, fmt.Sprintf("failed to close response body after draining %d bytes: %s", drainedBytes, err.Error()))

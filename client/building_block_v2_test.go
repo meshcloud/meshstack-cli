@@ -245,7 +245,7 @@ func TestMeshBuildingBlockV2Parent_UnmarshalJSON(t *testing.T) {
 			var parent MeshBuildingBlockV2Parent
 			require.NoError(t, json.Unmarshal([]byte(tt.response), &parent))
 			assert.Equal(t, MeshBuildingBlockV2Parent{
-				UuidRef:           UuidRef{Kind: MeshObjectKind.BuildingBlock, Uuid: testParentUuid},
+				Kind: MeshObjectKind.BuildingBlock, Uuid: testParentUuid,
 				BuildingBlockUuid: testParentUuid,
 				DefinitionUuid:    tt.wantDefinitionUuid,
 			}, parent)

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth"
+	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
-	"github.com/meshcloud/meshstack-cli/internal/profile"
-	"github.com/meshcloud/meshstack-cli/internal/testserver"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
 )
 
 func TestSessionAuthorizesWithAnApiKey(t *testing.T) {
@@ -52,7 +52,20 @@ func TestSessionWithoutAnyCredentialSaysSo(t *testing.T) {
 	newTestServer(t)
 
 	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	assert.ErrorContains(t, err, "selects no credential")
+	require.ErrorContains(t, err, "selects none")
+	require.ErrorContains(t, err, auth.ApiTokenSetting.EnvKey())
+	require.ErrorContains(t, err, auth.ApiKeyClientIdSetting.EnvKey())
+	require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
+}
+
+func TestSessionWithHalfAnApiKeySaysWhichHalfIsMissing(t *testing.T) {
+	newTestServer(t)
+
+	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), testApiKey1.ClientId)
+
+	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	require.ErrorContains(t, err, "together")
+	require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
 }
 
 func TestSessionRefusesTwoCredentialsAtOnce(t *testing.T) {
@@ -114,7 +127,7 @@ var (
 func newTestServer(t *testing.T) *testserver.Server {
 	t.Helper()
 	server := testserver.New(t, testApiKey1, testApiKey2)
-	t.Setenv(profile.ConfigDirectorySetting.EnvKey(), t.TempDir())
+	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 	t.Setenv(meshstack.EndpointSetting.EnvKey(), server.Url(t).String())
 	return server
 }

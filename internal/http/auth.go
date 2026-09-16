@@ -23,6 +23,7 @@ func (c Client) WithAuthorization(auth Authorization) AuthorizedClient {
 
 type AuthorizedClient struct {
 	Client
+
 	Authorization Authorization
 }
 
@@ -51,14 +52,14 @@ func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, u
 // BearerToken is used in Authorization and also implements it representing a non-refreshable token.
 type BearerToken string
 
-func (token BearerToken) asRequestOption() RequestOption {
-	return withHeader("Authorization", fmt.Sprintf("Bearer %s", token))
-}
-
 func (token BearerToken) GetBearerToken(_ context.Context) (BearerToken, error) {
 	return token, nil
 }
 
 func (token BearerToken) RefreshBearerToken(_ context.Context, _ BearerToken) (BearerToken, error) {
 	return "", fmt.Errorf("cannot renew %T", token)
+}
+
+func (token BearerToken) asRequestOption() RequestOption {
+	return withHeader("Authorization", fmt.Sprintf("Bearer %s", token))
 }

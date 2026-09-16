@@ -11,11 +11,12 @@ type Setting[T any] struct {
 	// Env key is also the setting's identity, so there is no second identifier to hold in step.
 	Env EnvKey
 
-	// Short is one line of plain text, for a cobra flag; Long is Markdown, for the Terraform
+	// Short is one line of plain text, for a cobra flag; Long is (optional) Markdown, for the Terraform
 	// provider's schema. Both state facts about the setting rather than about a front end, so
 	// neither says "flag", "block" or "attribute".
-	Short string
-	Long  string
+	// See Help() and HelpMarkdown().
+	Short func(envKey string) string
+	Long  func(envKey string) string
 
 	// Default source is always used as fallback (if non-nil). See Resolve.
 	Default DefaultSource
@@ -29,12 +30,21 @@ func (s Setting[T]) EnvKey() string {
 	return string(s.Env)
 }
 
-// Help is Long, or Short where a declaration wrote only the one.
 func (s Setting[T]) Help() string {
-	if s.Long != "" {
-		return s.Long
+	if s.Short == nil {
+		return ""
 	}
-	return s.Short
+	return s.Short(s.EnvKey())
+}
+
+func (s Setting[T]) HelpMarkdown() string {
+	if s.Long == nil {
+		return s.Help()
+	}
+	if long := s.Long(s.EnvKey()); long != "" {
+		return long
+	}
+	return s.Help()
 }
 
 // ParseText is the Setting.Parse for a plain string setting.
@@ -43,10 +53,10 @@ func ParseText[T ~string](s string) (T, error) { return T(s), nil }
 
 // ParseBool is the Setting.Parse for a boolean-like string.
 // Any string except indicating "no" leads to true (be generous).
-// Note that an empty string is never passed, see Resolve.
+// Note that an empty string is never passed, see Setting.Resolve.
 func ParseBool(s string) (bool, error) {
 	switch strings.ToLower(s) {
-	case "n", "no", "0":
+	case "n", "no", "0", "false":
 		return false, nil
 	default:
 		return true, nil
