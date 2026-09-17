@@ -43,7 +43,7 @@ linters:
     - varnamelen       # a short receiver or loop name is idiomatic
     - godox            # a TODO comment is a deliberate marker
     - gochecknoglobals # a setting is declared once, as a package-level var
-    - gochecknoinits   # pkg/auth checks its enum against credential.Names at init
+    - gochecknoinits   # credential checks its names against the fields of Credentials at init
     - ireturn          # a constructor returning an interface is the client's shape
     - testpackage      # an in-package test is a deliberate choice
     - dupl             # the binding clients are parallel by design
@@ -97,6 +97,13 @@ linters:
       - path: internal/testutil/testserver/
         linters:
           - forbidigo
+      # cmd/internal/testacc is the browser, not a caller of meshStack: it drives keycloak's HTML
+      # login forms with its own cookie jar, which is the one thing internal/http cannot do for it.
+      # gosec: it launches the binary under test, from a path it built itself, on purpose.
+      - path: cmd/internal/testacc/
+        linters:
+          - forbidigo
+          - gosec
 
   settings:
     # One HTTP client for the process, built in internal/http, and nothing else may make an
@@ -173,6 +180,7 @@ linters:
         - name: superfluous-else
         - name: time-naming
         - name: unconditional-recursion
+        - name: unused-parameter
         - name: unexported-return
         - name: unnecessary-stmt
         - name: use-any

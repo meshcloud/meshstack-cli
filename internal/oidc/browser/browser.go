@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	gohttp "net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -116,6 +117,12 @@ func handler(flow oidc.AuthorizationCodeFlow, arrived chan<- callback) gohttp.Ha
 	})
 }
 
+// noBrowserEnv lets a caller act as the browser itself, as cmd/internal/testacc does: the
+// authorization URL still goes to stderr, and nothing is launched on the machine. Read straight
+// from the environment and deliberately not declared as a setting.Setting, because it is not one —
+// no flag, no profile, no help text.
+const noBrowserEnv = "MESHSTACK_CLI_NO_BROWSER"
+
 func openBrowser(ctx context.Context, authURL xurl.URL) {
 	out := io.Stderr(ctx)
 	_, _ = fmt.Fprintln(out, "Opening your browser to log in to meshStack. If it does not open, visit:")
@@ -123,6 +130,11 @@ func openBrowser(ctx context.Context, authURL xurl.URL) {
 	// Said out loud because this is where an unattended run waits, and the caller owns how long.
 	if deadline, ok := ctx.Deadline(); ok {
 		_, _ = fmt.Fprintf(out, "Waiting up to %s for you to finish.\n", time.Until(deadline).Round(time.Second))
+	}
+
+	if _, suppressed := os.LookupEnv(noBrowserEnv); suppressed {
+		slog.DebugContext(ctx, "not opening a browser, because "+noBrowserEnv+" is set")
+		return
 	}
 
 	// A platform with no execBrowserOpen fails to build rather than falling back to nothing,
