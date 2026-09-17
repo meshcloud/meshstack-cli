@@ -22,7 +22,7 @@ var ApiTokenSetting = setting.Setting[jwt.JWT]{
 }
 
 func (s Session) resolveManualCredential(ctx context.Context, opts ResolveSessionOptions) (credential.Credential, error) {
-	apiToken, apiTokenErr := opts.ResolveSetting(ApiTokenSetting)
+	apiToken, apiTokenErr := opts.ResolveSetting(ctx, ApiTokenSetting)
 	if apiTokenErr != nil {
 		return nil, apiTokenErr
 	}

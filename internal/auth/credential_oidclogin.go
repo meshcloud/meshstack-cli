@@ -12,7 +12,7 @@ import (
 
 // resolveOidcLoginCredential logs a person in through a browser, which is why
 // Session.credentialResolvers offers it only to a caller that named it.
-func (s Session) resolveOidcLoginCredential(ctx context.Context, opts ResolveSessionOptions) (credential.Credential, error) {
+func (s Session) resolveOidcLoginCredential(ctx context.Context, _ ResolveSessionOptions) (credential.Credential, error) {
 	meshInfo, err := s.CheckedMeshInfo()
 	if err != nil {
 		return nil, err

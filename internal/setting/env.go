@@ -1,13 +1,14 @@
 package setting
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
 
 type EnvKey string
 
-func (k EnvKey) Lookup(key string) (string, error) {
+func (k EnvKey) Lookup(_ context.Context, key string) (string, error) {
 	if k != EnvKey(key) {
 		// not self-sourcing a Value is an implementation bug for now
 		// it might become relevant when we migrate env keys and define aliases/fallbacks

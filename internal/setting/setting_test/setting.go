@@ -1,15 +1,16 @@
 package setting_test
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
-type LookupFunc func(key string) (string, error)
+type LookupFunc func(ctx context.Context, key string) (string, error)
 
-func (l LookupFunc) Lookup(key string) (string, error) {
-	return l(key)
+func (l LookupFunc) Lookup(ctx context.Context, key string) (string, error) {
+	return l(ctx, key)
 }
 
 func (l LookupFunc) Describe(key string) string {

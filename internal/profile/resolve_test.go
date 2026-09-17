@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"context"
 	_ "embed"
 	"testing"
 	"uuid"
@@ -39,7 +40,7 @@ func TestResolveProfile(t *testing.T) {
 		expectedSomeProfile := &Profile{Name: "some-name"}
 		profile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{
 			// Use ExplicitSource instead of environment just to cover that in test as well here
-			UseSettingsFrom: []setting.ExplicitSource{{Source: setting_test.LookupFunc(func(key string) (string, error) {
+			UseSettingsFrom: []setting.ExplicitSource{{Source: setting_test.LookupFunc(func(_ context.Context, key string) (string, error) {
 				if key == NameSetting.EnvKey() {
 					return string(expectedSomeProfile.Name), nil
 				}

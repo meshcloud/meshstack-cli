@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
@@ -27,7 +28,7 @@ func (p Profile) String() string {
 func (p Profile) EndpointSource() setting.Source {
 	return setting.LookupSource{
 		Description: fmt.Sprintf("current profile %s", p.Name),
-		Func: func() (string, error) {
+		Func: func(_ context.Context) (string, error) {
 			if p.Endpoint != nil {
 				return p.Endpoint.String(), nil
 			}
@@ -39,7 +40,7 @@ func (p Profile) EndpointSource() setting.Source {
 func (p Profile) WorkspaceSource() setting.Source {
 	return setting.LookupSource{
 		Description: fmt.Sprintf("current profile %s", p.Name),
-		Func: func() (string, error) {
+		Func: func(_ context.Context) (string, error) {
 			return p.Workspace, nil
 		},
 	}

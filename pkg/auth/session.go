@@ -42,7 +42,7 @@ func (s Session) Client(ctx context.Context) (client.Client, error) {
 	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %T",
 		s.internal.Endpoint, s.internal.HttpClient.UserAgent, s.internal.Credential))
 	c := client.New(ctx, s.internal.Endpoint, s.internal.HttpClient.UserAgent, s.internal)
-	if skipVersionCheck, err := s.opts.ResolveSetting(meshstack.SkipVersionCheckSetting); err != nil {
+	if skipVersionCheck, err := s.opts.ResolveSetting(ctx, meshstack.SkipVersionCheckSetting); err != nil {
 		return client.Client{}, err
 	} else if skipVersionCheck {
 		// Neither ResolveSession nor this method does any HTTP backend call if version check is skipped

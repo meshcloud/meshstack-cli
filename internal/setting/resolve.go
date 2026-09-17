@@ -1,6 +1,7 @@
 package setting
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -15,7 +16,7 @@ var ErrNoSourceProvidedValue = errors.New("no source provided a value")
 // Given sources are preceded by Setting.Env, succeeded by Setting.Default (if any), unless ExplicitSource is used, so:
 // [Explicit sources..., Env, other sources..., Default].
 // Returns ErrNoSourceProvidedValue iff no source provided a value.
-func (s Setting[T]) Resolve(sources ...Source) (value T, err error) {
+func (s Setting[T]) Resolve(ctx context.Context, sources ...Source) (value T, err error) {
 	sourcesWithEnvAndDefault := slices.Insert(slices.Clone(sources), 0, Source(s.Env))
 	if s.Default != nil {
 		// a nil DefaultSource in a Source is not a nil Source, so the skip below misses it
@@ -44,7 +45,7 @@ func (s Setting[T]) Resolve(sources ...Source) (value T, err error) {
 			continue
 		}
 		var text string
-		text, err = source.Lookup(s.EnvKey())
+		text, err = source.Lookup(ctx, s.EnvKey())
 		if err != nil {
 			return value, fmt.Errorf("value from source '%s' could not be looked up: %w", source.Describe(s.EnvKey()), err)
 		}

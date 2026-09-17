@@ -44,7 +44,7 @@ func TestHttpClient(t *testing.T) {
 	})
 
 	t.Run("DoRequest object call with empty 2xx body errors", func(t *testing.T) {
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusOK)
 		})
 		_, err := client.DoRequest[*string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
@@ -53,7 +53,7 @@ func TestHttpClient(t *testing.T) {
 	})
 
 	t.Run("DoRequest no-content call (any) tolerates an empty 2xx body", func(t *testing.T) {
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusAccepted) // empty body by design (trigger-run/delete)
 		})
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("trigger-run"))
@@ -66,7 +66,7 @@ func TestHttpClient(t *testing.T) {
 				testLogger := installTestLogger(t)
 				retryTestBackoff := retryTestBackoff{WaitTime: 1 * time.Second}
 				retried := false
-				client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+				client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 					if !retried {
 						if retryableStatusCode == 429 {
 							// In delay-seconds form. Its HTTP-date form is read against a mocked
@@ -99,7 +99,7 @@ func TestHttpClient(t *testing.T) {
 	t.Run("DoRequest with 2 retries exhausted", func(t *testing.T) {
 		testLogger := installTestLogger(t)
 		backoff := retryTestBackoff{}
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusBadGateway)
 		}), http.RetryOptions{MaxRetries: 2, Backoff: &backoff})
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
@@ -119,7 +119,7 @@ func TestHttpClient(t *testing.T) {
 
 	t.Run("DoRequest with context cancelled during backoff", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusBadGateway)
 			cancel() // cancel context so the backoff wait is interrupted
 		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
@@ -129,7 +129,7 @@ func TestHttpClient(t *testing.T) {
 
 	t.Run("DoRequest with PATCH (not retried)", func(t *testing.T) {
 		attempts := 0
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			attempts++
 			resp.WriteHeader(gohttp.StatusBadGateway)
 		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
@@ -144,7 +144,7 @@ func TestHttpClient(t *testing.T) {
 	t.Run("DoRequest with POST", func(t *testing.T) {
 		t.Run("is not retried by default", func(t *testing.T) {
 			attempts := 0
-			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusServiceUnavailable)
 			}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
@@ -155,7 +155,7 @@ func TestHttpClient(t *testing.T) {
 
 		t.Run("is retried when the caller marked it Retryable", func(t *testing.T) {
 			attempts := 0
-			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				attempts++
 				if attempts == 1 {
 					resp.WriteHeader(gohttp.StatusServiceUnavailable)
@@ -174,7 +174,7 @@ func TestHttpClient(t *testing.T) {
 	// only method the client replays unasked. MeshObjectClient marks both with Retryable.
 	t.Run("DoRequest with DELETE marked Retryable", func(t *testing.T) {
 		attempts := 0
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			attempts++
 			if attempts == 1 {
 				resp.WriteHeader(gohttp.StatusServiceUnavailable)
@@ -236,7 +236,7 @@ func TestHttpClient(t *testing.T) {
 		t.Run("reports the 401 when the re-mint changes nothing", func(t *testing.T) {
 			auth := &refreshableAuthorization{token: "stale", keepToken: true}
 			attempts := 0
-			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
@@ -250,7 +250,7 @@ func TestHttpClient(t *testing.T) {
 		t.Run("reports both errors when the re-mint fails", func(t *testing.T) {
 			auth := &refreshableAuthorization{token: "stale", refreshErr: errors.New("the login expired")}
 			attempts := 0
-			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})
@@ -264,7 +264,7 @@ func TestHttpClient(t *testing.T) {
 
 		t.Run("leaves an authorization that cannot re-mint alone", func(t *testing.T) {
 			attempts := 0
-			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				attempts++
 				resp.WriteHeader(gohttp.StatusUnauthorized)
 			})

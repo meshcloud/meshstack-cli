@@ -47,7 +47,7 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 		return Session{}, err
 	}
 
-	endpoint, err := opts.ResolveSetting(meshstack.EndpointSetting, currentProfile.EndpointSource())
+	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting, currentProfile.EndpointSource())
 	if err != nil {
 		return Session{}, err
 	} else if currentProfile.Endpoint != nil && !endpoint.Equal(*currentProfile.Endpoint) {
@@ -55,7 +55,7 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 		return Session{}, fmt.Errorf("endpoint from profile '%s' does not match endpoint '%s' configured for session", currentProfile.Endpoint, endpoint)
 	}
 
-	workspace, err := opts.ResolveSetting(meshstack.WorkspaceSetting, currentProfile.WorkspaceSource())
+	workspace, err := opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, currentProfile.WorkspaceSource())
 	if err != nil && !errors.Is(err, setting.ErrNoSourceProvidedValue) {
 		return Session{}, err
 	}
@@ -106,7 +106,7 @@ func getAndCheckMeshInfo(ctx context.Context, httpClient http.Client, endpoint x
 	if err != nil {
 		return client.MeshInfo{}, err
 	}
-	if skipVersionCheck, err := opts.ResolveSetting(meshstack.SkipVersionCheckSetting); err != nil {
+	if skipVersionCheck, err := opts.ResolveSetting(ctx, meshstack.SkipVersionCheckSetting); err != nil {
 		return client.MeshInfo{}, err
 	} else if skipVersionCheck {
 		return meshInfo, nil

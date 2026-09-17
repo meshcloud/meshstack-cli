@@ -5,33 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
-type credentialResolver struct {
-	// stored is read for its type alone, which names the field and thus the ForceAuthWith value
-	stored  credential.Credential
-	resolve func(context.Context, ResolveSessionOptions) (credential.Credential, error)
-}
-
-// credentialResolvers is what may mint a credential, in the order they are tried. A resolver that
-// needs a person — the browser login — is in the list only when forced names it, so that an
-// unforced resolution cannot reach one: the Terraform provider resolves a session on every plan
-// and must never open a browser.
-func (s Session) credentialResolvers(forced credential.Name) []credentialResolver {
-	resolvers := []credentialResolver{
-		{new(credential.Manual), s.resolveManualCredential},
-		{new(credential.ApiKey), s.resolveApiKeyCredential},
-	}
-	if forced == "" {
-		return resolvers
-	}
-	return append(resolvers, credentialResolver{new(credential.OidcLogin), s.resolveOidcLoginCredential})
-}
+// credentialResolver mints one kind of credential from the settings, or says why it cannot.
+type credentialResolver func(context.Context, ResolveSessionOptions) (credential.Credential, error)
 
 func (s Session) resolveCredentials(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (profile.Credentials, credential.Credential, error) {
 	creds, err := currentProfile.Credentials(ctx)
@@ -39,34 +20,50 @@ func (s Session) resolveCredentials(ctx context.Context, currentProfile *profile
 		return profile.Credentials{}, nil, err
 	}
 
-	var errs, noSourceErrs []error
-	var resolvedCredentials []credential.Credential
-	setResolvedCredential := func(resolved credential.Credential, err error) {
-		if opts.ForceAuthWith == "" && errors.Is(err, setting.ErrNoSourceProvidedValue) {
-			noSourceErrs = append(noSourceErrs, err)
-			return
-		} else if err != nil {
-			errs = append(errs, err)
-			return
-		}
-		creds.SetIdentity(resolved)
-		resolvedCredentials = append(resolvedCredentials, resolved)
+	resolvers := map[credential.Name]credentialResolver{
+		credential.ApiKeyName:    s.resolveApiKeyCredential,
+		credential.ManualName:    s.resolveManualCredential,
+		credential.OidcLoginName: s.resolveOidcLoginCredential,
 	}
 
-	if opts.ForceAuthWith != "" && !slices.Contains(credential.Names, opts.ForceAuthWith) {
-		return profile.Credentials{}, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", opts.ForceAuthWith, credential.Names)
+	if forced := opts.ForceAuthWith; forced != "" {
+		resolve, found := resolvers[forced]
+		if !found {
+			return profile.Credentials{}, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", forced, credential.Names)
+		}
+		resolved, err := resolve(ctx, opts)
+		if err != nil {
+			return profile.Credentials{}, nil, err
+		}
+		creds.SetIdentity(resolved)
+		currentProfile.Credential = forced
+		slog.DebugContext(ctx, fmt.Sprintf("Using credential %s, which was asked for by name", forced))
+		return creds, resolved, nil
 	}
-	for _, resolver := range s.credentialResolvers(opts.ForceAuthWith) {
-		if opts.ForceAuthWith != "" && opts.ForceAuthWith != creds.NameOf(resolver.stored) {
+
+	var errs, noSourceErrs []error
+	var resolvedNames []credential.Name
+	for _, name := range credential.Names {
+		// A resolver that needs a person — the browser login — is reached only by the forced path
+		// above: the Terraform provider resolves a session on every plan and must never open a browser.
+		if name == credential.OidcLoginName {
 			continue
 		}
-		setResolvedCredential(resolver.resolve(ctx, opts))
+		switch resolved, err := resolvers[name](ctx, opts); {
+		case errors.Is(err, setting.ErrNoSourceProvidedValue):
+			noSourceErrs = append(noSourceErrs, err)
+		case err != nil:
+			errs = append(errs, err)
+		default:
+			creds.SetIdentity(resolved)
+			resolvedNames = append(resolvedNames, name)
+		}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return profile.Credentials{}, nil, err
 	}
 
-	switch len(resolvedCredentials) {
+	switch len(resolvedNames) {
 	case 0:
 		if currentProfile.Credential == "" {
 			return creds, nil, errors.Join(append([]error{
@@ -80,14 +77,10 @@ func (s Session) resolveCredentials(ctx context.Context, currentProfile *profile
 		slog.DebugContext(ctx, fmt.Sprintf("Using credential %s of profile %s", currentProfile.Credential, currentProfile))
 		return creds, current, nil
 	case 1:
-		currentProfile.Credential = creds.NameOf(resolvedCredentials[0])
+		currentProfile.Credential = resolvedNames[0]
 		slog.DebugContext(ctx, fmt.Sprintf("Using uniquely resolved credential %s from environment MESHSTACK_* and/or explicit config", currentProfile.Credential))
-		return creds, resolvedCredentials[0], nil
+		return creds, creds.ByName(resolvedNames[0]), nil
 	default:
-		resolvedNames := make([]credential.Name, 0, len(resolvedCredentials))
-		for _, resolved := range resolvedCredentials {
-			resolvedNames = append(resolvedNames, creds.NameOf(resolved))
-		}
 		return creds, nil, fmt.Errorf("resolved more than one credential %v; please check environment MESHSTACK_* and/or explicit config", resolvedNames)
 	}
 }

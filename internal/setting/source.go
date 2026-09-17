@@ -1,9 +1,11 @@
 package setting
 
+import "context"
+
 type Source interface {
 	// Lookup returns empty string, no error if nothing can be provided, handled in Resolve.
 	// An error can be returned if a fatal condition is detected, usually used for low-priority sources such as DefaultSource.
-	Lookup(key string) (string, error)
+	Lookup(ctx context.Context, key string) (string, error)
 	// Describe returns a string representation of the Lookup for logging or error handling/hinting.
 	Describe(key string) string
 }
@@ -14,7 +16,7 @@ type DefaultSource func() (string, error)
 
 var _ Source = DefaultSource(nil)
 
-func (d DefaultSource) Lookup(string) (string, error) {
+func (d DefaultSource) Lookup(_ context.Context, _ string) (string, error) {
 	return d()
 }
 
@@ -34,14 +36,14 @@ func StaticDefault(v string) DefaultSource {
 type LookupSource struct {
 	MatchingKey string
 	Description string
-	Func        func() (string, error)
+	Func        func(ctx context.Context) (string, error)
 }
 
-func (s LookupSource) Lookup(key string) (string, error) {
+func (s LookupSource) Lookup(ctx context.Context, key string) (string, error) {
 	if s.MatchingKey != "" && s.MatchingKey != key {
 		return "", nil
 	}
-	return s.Func()
+	return s.Func(ctx)
 }
 
 func (s LookupSource) Describe(key string) string {
@@ -63,12 +65,12 @@ type ExplicitSourcesOption struct {
 }
 
 // ResolveSetting ensures the explicitly configured sources are resolved alongside the given ones.
-func (o ExplicitSourcesOption) ResolveSetting[T any](setting Setting[T], sources ...Source) (T, error) {
+func (o ExplicitSourcesOption) ResolveSetting[T any](ctx context.Context, setting Setting[T], sources ...Source) (T, error) {
 	for _, explicitSource := range o.UseSettingsFrom {
 		// this nil check is important if "NoSource" is passed (default constructed ExplicitSource).
 		if explicitSource.Source != nil {
 			sources = append(sources, explicitSource)
 		}
 	}
-	return setting.Resolve(sources...)
+	return setting.Resolve(ctx, sources...)
 }

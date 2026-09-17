@@ -27,7 +27,7 @@ type Profiles struct {
 
 func LoadProfiles(ctx context.Context, opts ResolveProfileOptions) (profiles Profiles, err error) {
 	// config dir always resolves, as ConfigDirectorySetting has a default.
-	profiles.configDir, err = opts.ResolveSetting(config.DirectorySetting)
+	profiles.configDir, err = opts.ResolveSetting(ctx, config.DirectorySetting)
 	if err != nil {
 		return
 	}
@@ -52,7 +52,7 @@ func (ps Profiles) Store(ctx context.Context) error {
 func initEmptyProfiles(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles) error {
 	profiles.Version = version
 	// Profile name always resolves, as NameSetting has a (static) default.
-	if name, err := opts.ResolveSetting(NameSetting); err != nil {
+	if name, err := opts.ResolveSetting(ctx, NameSetting); err != nil {
 		return err
 	} else {
 		slog.InfoContext(ctx, fmt.Sprintf("Initializing first-time use profile '%s'", name))
@@ -63,7 +63,7 @@ func initEmptyProfiles(ctx context.Context, opts ResolveProfileOptions, profiles
 	currentProfile.init(profiles.CurrentProfile, profiles.configDir)
 	profiles.Profiles = map[Name]*Profile{profiles.CurrentProfile: currentProfile}
 
-	if endpoint, err := opts.ResolveSetting(meshstack.EndpointSetting); err == nil {
+	if endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting); err == nil {
 		currentProfile.Endpoint = &endpoint
 	} else if !errors.Is(err, setting.ErrNoSourceProvidedValue) {
 		return err

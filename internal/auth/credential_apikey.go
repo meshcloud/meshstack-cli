@@ -34,8 +34,8 @@ var ApiKeyClientSecretSetting = setting.Setting[string]{
 }
 
 func (s Session) resolveApiKeyCredential(ctx context.Context, opts ResolveSessionOptions) (credential.Credential, error) {
-	apiKeyClientId, idErr := opts.ResolveSetting(ApiKeyClientIdSetting)
-	apiKeyClientSecret, secretErr := opts.ResolveSetting(ApiKeyClientSecretSetting)
+	apiKeyClientId, idErr := opts.ResolveSetting(ctx, ApiKeyClientIdSetting)
+	apiKeyClientSecret, secretErr := opts.ResolveSetting(ctx, ApiKeyClientSecretSetting)
 	idMissing := errors.Is(idErr, setting.ErrNoSourceProvidedValue)
 	secretMissing := errors.Is(secretErr, setting.ErrNoSourceProvidedValue)
 	switch {

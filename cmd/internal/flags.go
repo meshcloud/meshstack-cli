@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/pflag"
@@ -50,7 +51,7 @@ func (flag *Flag[T]) Register(flags *pflag.FlagSet) (flagName string) {
 }
 
 func (flag *Flag[T]) AsSource() setting.ExplicitSource {
-	return setting.ExplicitLookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func() (string, error) {
+	return setting.ExplicitLookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func(_ context.Context) (string, error) {
 		return fmt.Sprintf("%v", flag.Value), nil
 	})
 }
@@ -58,7 +59,7 @@ func (flag *Flag[T]) AsSource() setting.ExplicitSource {
 // AsSourceUnless contributes nothing but its own name while the flag still carries placeholder.
 // We still add the source so setting resolution can build a proper error hint.
 func (flag *Flag[T]) AsSourceUnless(predicate func(T) bool) setting.ExplicitSource {
-	return setting.ExplicitLookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func() (string, error) {
+	return setting.ExplicitLookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func(_ context.Context) (string, error) {
 		if predicate(flag.Value) {
 			return "", nil
 		}

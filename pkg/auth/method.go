@@ -1,34 +1,17 @@
 package auth
 
 import (
-	"fmt"
-	"slices"
-
-	"github.com/meshcloud/meshstack-cli/client/types/enum"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 )
 
 // Method names one way of authenticating, as [ResolveSessionOptions.ForceAuthWith] takes it.
 type Method = credential.Name
 
-var (
-	methods = enum.Enum[Method]{}
-
+const (
 	// ApiKeyMethod mints a token from an API key id and secret.
-	ApiKeyMethod = methods.Entry("apiKey").Unwrap()
+	ApiKeyMethod = credential.ApiKeyName
 	// ManualMethod sends an access token as it is.
-	ManualMethod = methods.Entry("manual").Unwrap()
+	ManualMethod = credential.ManualName
 	// OidcLoginMethod logs a person in through a browser, so it resolves only when asked for by name.
-	OidcLoginMethod = methods.Entry("oidcLogin").Unwrap()
+	OidcLoginMethod = credential.OidcLoginName
 )
-
-func init() {
-	var ms []Method
-	for _, method := range methods {
-		ms = append(ms, method.Unwrap())
-	}
-	slices.Sort(ms)
-	if slices.Compare(ms, credential.Names) != 0 {
-		panic(fmt.Sprintf("method enums %s do not match credential names %s", ms, credential.Names))
-	}
-}

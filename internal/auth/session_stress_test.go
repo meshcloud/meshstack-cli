@@ -226,7 +226,7 @@ func staticSetting(envKey, value string) setting.Source {
 	return setting.LookupSource{
 		MatchingKey: envKey,
 		Description: "the stress test",
-		Func: func() (string, error) {
+		Func: func(_ context.Context) (string, error) {
 			return value, nil
 		},
 	}

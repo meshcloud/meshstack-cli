@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
@@ -56,7 +57,9 @@ func NewLogin() *cobra.Command {
 					apiKeyFlag.AsSourceUnless(func(value string) bool {
 						return value == apiKeyIdDefault
 					}),
-					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), cmd, &openStdinFlag, "API Client Secret"),
+					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), cmd, &openStdinFlag, func(_ context.Context) string {
+						return "API Client Secret"
+					}),
 				)
 			case apiTokenFlag.Value:
 				forceAuthWith = auth.ManualMethod
@@ -65,7 +68,9 @@ func NewLogin() *cobra.Command {
 				// This is OIDC Login (by default)...
 				timeout = 5 * time.Minute // ...and give the user more time to finish the Browser login flow
 				forceAuthWith = auth.OidcLoginMethod
-				sources = append(sources)
+				sources = append(sources, newPromptingSource(meshstack.WorkspaceSetting.EnvKey(), cmd, &openStdinFlag, func(ctx context.Context) string {
+
+				}))
 			}
 			return internal.RunWith(cmd.Context(), timeout, func(ctx context.Context) error {
 				session, err := internal.ResolveSession(ctx, func(opts *auth.ResolveSessionOptions) {
@@ -111,16 +116,18 @@ func newFlagWithPrompt(name internal.FlagName, s setting.Setting) FlagWithPrompt
 }
 
 func (flag *FlagWithPrompt) AsSource(cmd *cobra.Command, stdinFlag *internal.Flag[bool], prompt string) (source setting.ExplicitSource) {
-	return newPromptingSource(flag.SettingEnvKey, cmd, stdinFlag, prompt)
+	return newPromptingSource(flag.SettingEnvKey, cmd, stdinFlag, func(_ context.Context) string {
+		return prompt
+	})
 }
 
-func newPromptingSource(settingEnvKey string, cmd *cobra.Command, openStdinFlag *internal.Flag[bool], prompt string) setting.ExplicitSource {
+func newPromptingSource(settingEnvKey string, cmd *cobra.Command, openStdinFlag *internal.Flag[bool], prompt func(context.Context) string) setting.ExplicitSource {
 	description := fmt.Sprintf("%s to read the %s from stdin", openStdinFlag.Name.SourceDescription(), prompt)
-	return setting.ExplicitLookupSource(settingEnvKey, description, func() (string, error) {
+	return setting.ExplicitLookupSource(settingEnvKey, description, func(ctx context.Context) (string, error) {
 		if !openStdinFlag.Value {
 			return "", nil
 		}
-		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "%s (finish with Enter or Ctrl-D): ", prompt); err != nil {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "%s (finish with Enter or Ctrl-D): ", prompt(ctx)); err != nil {
 			return "", err
 		}
 		text, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')

@@ -1,6 +1,8 @@
 package setting
 
 import (
+	"context"
+
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
@@ -29,7 +31,7 @@ func SingleExplicitSource(source setting.Source) []setting.ExplicitSource {
 
 // ExplicitLookupSource builds an ExplicitSource for a matching Setting.EnvKey() using a lookup func,
 // which is lazily called when needed during resolution.
-func ExplicitLookupSource(matchingEnvKey, description string, lookup func() (string, error)) setting.ExplicitSource {
+func ExplicitLookupSource(matchingEnvKey, description string, lookup func(ctx context.Context) (string, error)) setting.ExplicitSource {
 	return setting.ExplicitSource{Source: setting.LookupSource{
 		MatchingKey: matchingEnvKey,
 		Description: description,

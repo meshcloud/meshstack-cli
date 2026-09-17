@@ -24,7 +24,7 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 
 	endpointMatchingSource := setting.LookupSource{
 		Description: "unique match by endpoint",
-		Func: func() (string, error) {
+		Func: func(ctx context.Context) (string, error) {
 			profiles, err := loadProfiles()
 			if err != nil {
 				return "", err
@@ -35,7 +35,7 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 
 	currentProfileSource := setting.LookupSource{
 		Description: "current profile",
-		Func: func() (string, error) {
+		Func: func(_ context.Context) (string, error) {
 			profiles, err := loadProfiles()
 			return string(profiles.CurrentProfile), err
 		},
@@ -43,7 +43,7 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 
 	// Profile name always resolves (unless parsing error),
 	// as NameSetting has a (static) 'default'.
-	name, err := opts.ResolveSetting(NameSetting,
+	name, err := opts.ResolveSetting(ctx, NameSetting,
 		// prefer profile matching an endpoint over the current profile stored on disk for convenience
 		endpointMatchingSource,
 		currentProfileSource,
@@ -62,7 +62,7 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 }
 
 func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts ResolveProfileOptions) (string, error) {
-	endpoint, err := opts.ResolveSetting(meshstack.EndpointSetting)
+	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)
 	if errors.Is(err, setting.ErrNoSourceProvidedValue) {
 		slog.DebugContext(ctx, "No endpoint known at this point, cannot search for matching profile")
 		return "", nil
