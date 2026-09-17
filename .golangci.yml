@@ -193,10 +193,11 @@ linters:
           deny:
             - pkg: log # as $gostd is allowed
               desc: Use log/slog instead
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
-            - json
             # no direct access to internal/
             - github.com/meshcloud/meshstack-cli/pkg
             - github.com/meshcloud/meshstack-cli/cmd/internal
@@ -212,12 +213,12 @@ linters:
           deny:
             - pkg: log # as $gostd is allowed
               desc: Use log/slog instead
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
-            # the root command registers every subcommand package explicitly, so it reaches all of cmd/
             - github.com/meshcloud/meshstack-cli/cmd
-            # the root command stamps its stderr into the context every command runs with
             - github.com/meshcloud/meshstack-cli/pkg/io
             # Keep this list short
             - github.com/spf13/cobra
@@ -231,6 +232,8 @@ linters:
           deny:
             - pkg: log # as $gostd is allowed
               desc: Use log/slog instead
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
@@ -252,11 +255,20 @@ linters:
           deny:
             - pkg: log # as $gostd is allowed
               desc: Use log/slog instead
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
+            # the v1 deny above is a prefix match, so the two v2 paths are re-allowed by name
+            - encoding/json/v2
+            - encoding/json/jsontext
             - log/slog
             - github.com/meshcloud/meshstack-cli/client
             - github.com/meshcloud/meshstack-cli/internal/http
+            # every request body this package builds has to keep v1's wire shape, and
+            # internal/json is the only place that bundle lives
+            - github.com/meshcloud/meshstack-cli/internal/json
+            - github.com/meshcloud/meshstack-cli/internal/version
 
         pkg:
           files:
@@ -266,6 +278,8 @@ linters:
           deny:
             - pkg: log # as $gostd is allowed
               desc: Use log/slog instead
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
@@ -273,12 +287,36 @@ linters:
             - github.com/meshcloud/meshstack-cli/pkg
             - github.com/meshcloud/meshstack-cli/internal
 
-        # as client depends on internal/http, also do not leak anything else than $gostd into it
+        # as client depends on internal/http, also do not leak anything else than $gostd into it.
+        # internal/json shares this rule because internal/http does its JSON through it, so
+        # whatever internal/json may import, client gets: one constraint, one list to widen.
         internal-http:
           files:
             - "**/internal/http/*.go"
+            - "**/internal/json/*.go"
             - "!$test"
           list-mode: strict
+          deny:
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            # the v1 deny above is a prefix match, so the two v2 paths are re-allowed by name
+            - encoding/json/v2
+            - encoding/json/jsontext
+            - github.com/meshcloud/meshstack-cli/internal/json
+
+        # client depends on internal/version too, so the same rule holds: anything that needs
+        # more than $gostd to work with a version belongs in internal/update instead. No JSON
+        # either: a Version goes on the wire through MarshalText, so encoding alone is enough.
+        internal-version:
+          files:
+            - "**/internal/version/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: encoding/json # every version of it, `encoding` alone carries a Version
+              desc: Marshal a Version through its MarshalText, and keep JSON out of here
           allow:
             - $gostd
 
@@ -291,8 +329,13 @@ linters:
           deny:
             - pkg: log # as $gostd is allowed
               desc: Use log/slog instead
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
+            # the v1 deny above is a prefix match, so the two v2 paths are re-allowed by name
+            - encoding/json/v2
+            - encoding/json/jsontext
             - log/slog
             - github.com/meshcloud/meshstack-cli/internal
             # internal/auth builds a client, and the types a profile stores are client/types ones
@@ -305,20 +348,33 @@ linters:
           files:
             - "**/internal/testutil/**/*.go"
           list-mode: strict
+          deny:
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
+            # the v1 deny above is a prefix match, so the two v2 paths are re-allowed by name
+            - encoding/json/v2
+            - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli
             # Using testify is ok in testutil
             - github.com/stretchr/testify
 
         # Tests may additionally use testify, which is what the client's moved tests
-        # are written against.
+        # are written against. The v1 deny is here as well as on every rule above, because a test
+        # that pins a wire format with v1 pins a format this module no longer produces.
         tests:
           files:
             - "$test"
           list-mode: strict
+          deny:
+            - pkg: encoding/json # v1, which $gostd's `encoding` entry would otherwise allow
+              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
+            # the v1 deny above is a prefix match, so the two v2 paths are re-allowed by name
+            - encoding/json/v2
+            - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli
             # more a less the union of hand-picked external libs
             - github.com/spf13/cobra

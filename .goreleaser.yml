@@ -21,10 +21,13 @@ builds:
     flags:
       - -trimpath
     # The Dockerfile (from its VERSION build arg) and flake.nix set the same ldflag, and
-    # all three have to agree. Nothing fails when one is missing: that binary reports `dev`.
-    # TODO fix path to Version (moved to internal)
+    # all three have to agree. The linker ignores an -X whose path does not resolve, and
+    # says nothing, so a stale path here silently ships the version cmd/internal stamps
+    # from the VCS instead of the release tag.
     ldflags:
-      - '-s -w -X main.Version={{ .Version }}'
+      # .Tag, not .Version: the latter strips the leading v, and every version this binary
+      # reports carries it, including the one Go stamps from a tag on its own.
+      - '-s -w -X github.com/meshcloud/meshstack-cli/cmd/internal.Version={{ .Tag }}'
     goos:
       - linux
       - darwin

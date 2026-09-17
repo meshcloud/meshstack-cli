@@ -117,7 +117,7 @@ func TestSessionPersistsARefreshedTokenForTheNextRun(t *testing.T) {
 }
 
 var (
-	testSessionOpts = auth.ResolveSessionOptions{UserAgent: "test-client"}
+	testSessionOpts = auth.ResolveSessionOptions{Version: "dev", GitHubRepo: "meshcloud/test-client"}
 	testApiKey1     = testserver.ApiKey{ClientId: "11111111-45bf-42ba-a965-2097b9d0d181", ClientSecret: "super-test-secret-1"}
 	testApiKey2     = testserver.ApiKey{ClientId: "22222222-45bf-42ba-a965-2097b9d0d181", ClientSecret: "super-test-secret-2"}
 )

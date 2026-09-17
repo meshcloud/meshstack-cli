@@ -12,24 +12,22 @@ import (
 )
 
 type (
-	// ResolveSessionOptions carries the setting sources, the user agent and the credential to insist on.
+	// ResolveSessionOptions carries the setting sources, the calling front end and the credential to insist on.
 	ResolveSessionOptions = auth.ResolveSessionOptions
+	// Session is a facade for auth.Session obtained by ResolveSession, exposing mainly an authorized Session.Client.
+	// Consider using ResolveClient instead.
+	Session struct {
+		internal auth.Session
+		// opts are kept so that Client resolves its settings from the same sources the session came from.
+		opts ResolveSessionOptions
+	}
+	// Status is returned by Session.Status().
+	Status struct {
+		client.MeshInfo
+
+		Endpoint xurl.URL
+	}
 )
-
-// Session is a facade for auth.Session obtained by ResolveSession, exposing mainly an authorized Session.Client.
-// Consider using ResolveClient instead.
-type Session struct {
-	internal auth.Session
-	// opts are kept so that Client resolves its settings from the same sources the session came from.
-	opts ResolveSessionOptions
-}
-
-// Status is returned by Session.Status().
-type Status struct {
-	client.MeshInfo
-
-	Endpoint xurl.URL
-}
 
 // ResolveSession resolves the profile (creating a default one if non exists) and a Session from it.
 // It does not check the backend version, so prefer ResolveClient where the Session is not needed.
@@ -51,8 +49,15 @@ func (s Session) Client(ctx context.Context) (client.Client, error) {
 		// which is important for Terraform provider behavior not blocking early on when backend is unreachable.
 		return c, nil
 	}
+	// this checks the meshStack backend version
 	_, err := s.internal.CheckedMeshInfo()
-	return c, err
+	if err != nil {
+		return client.Client{}, err
+	}
+	if err := warnIfNewerReleasePresent(ctx, s.internal.ConfigDir, s.internal.HttpClient, s.opts); err != nil {
+		slog.WarnContext(ctx, "Cannot check for a newer release on GitHub: "+err.Error())
+	}
+	return c, nil
 }
 
 // ResolveClient resolves a session and builds its client, authorized against the meshStack backend.

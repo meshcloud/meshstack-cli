@@ -34,7 +34,7 @@ type cacheLocker struct {
 }
 
 func (p Profile) Credentials(ctx context.Context) (out Credentials, err error) {
-	out.FilePath = p.configDir.CredentialsJsonFor(p.Name)
+	out.FilePath = p.ConfigDir.CredentialsJsonFor(p.Name)
 	err = json.UnmarshalFrom(ctx, out.FilePath, &out)
 	if errors.Is(err, fs.ErrNotExist) {
 		out.Version = credentialsVersion
@@ -48,7 +48,7 @@ func (p Profile) Credentials(ctx context.Context) (out Credentials, err error) {
 
 	out.cacheLockers = make(map[credential.Name]cacheLocker, len(credential.Names))
 	for _, credentialName := range credential.Names {
-		cacheFilePath := p.configDir.CredentialsCacheJsonFor(p.Name, credentialName)
+		cacheFilePath := p.ConfigDir.CredentialsCacheJsonFor(p.Name, credentialName)
 		locker := cacheLocker{lock.New(cacheFilePath), cacheFilePath}
 		out.cacheLockers[credentialName] = locker
 		if cred := out.ByName(credentialName); cred != nil {
@@ -70,9 +70,9 @@ func (p Profile) RemoveCredentials(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("failed to remove %s: %w", f, err))
 		}
 	}
-	removeFileIfPresent(p.configDir.CredentialsJsonFor(p.Name))
+	removeFileIfPresent(p.ConfigDir.CredentialsJsonFor(p.Name))
 	for _, credentialName := range credential.Names {
-		removeFileIfPresent(p.configDir.CredentialsCacheJsonFor(p.Name, credentialName))
+		removeFileIfPresent(p.ConfigDir.CredentialsCacheJsonFor(p.Name, credentialName))
 	}
 	return errors.Join(errs...)
 }

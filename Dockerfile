@@ -13,11 +13,12 @@ COPY . .
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
-# .goreleaser.yml and flake.nix set the same -X main.Version ldflag, and all three have
-# to agree. Nothing fails when one is missing: that binary reports `dev`.
+# .goreleaser.yml and flake.nix set the same ldflag, and all three have to agree. The
+# linker ignores an -X whose path does not resolve, without a warning, so a stale path
+# here silently ships the version cmd/internal stamps from the VCS.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
       -trimpath \
-      -ldflags "-s -w -X main.Version=${VERSION}" \
+      -ldflags "-s -w -X github.com/meshcloud/meshstack-cli/cmd/internal.Version=${VERSION}" \
       -o /out/meshstack ./cmd/meshstack
 
 # distroless static: no shell and no package manager, which is all a single static

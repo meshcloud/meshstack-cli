@@ -20,7 +20,8 @@ type ResolveSessionOption func(*auth.ResolveSessionOptions)
 func resolveSessionOptions() auth.ResolveSessionOptions {
 	return auth.ResolveSessionOptions{
 		ExplicitSourcesOption: ExplicitSourcesOption(),
-		UserAgent:             "meshstack-cli/" + Version,
+		Version:               Version,
+		GitHubRepo:            "meshcloud/meshstack-cli",
 	}
 }
 

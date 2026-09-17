@@ -19,6 +19,8 @@ var EndpointSetting = setting.Setting[xurl.URL]{
 	Parse: setting.ParseTextUnmarshaler[xurl.URL],
 }
 
+// SkipVersionCheckSetting skips both the minimum backend version check and the check for a newer
+// release of the front end itself.
 var SkipVersionCheckSetting = setting.Setting[bool]{
 	Env: "MESHSTACK_SKIP_VERSION_CHECK",
 	Short: func(envKey string) string {

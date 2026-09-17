@@ -4,22 +4,39 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
+type Session struct {
+	ConfigDir       config.Directory
+	Credentials     profile.Credentials
+	Credential      credential.Credential
+	Endpoint        xurl.URL
+	Workspace       meshstack.Workspace
+	HttpClient      http.Client
+	Store           func(ctx context.Context) error
+	CheckedMeshInfo func() (client.MeshInfo, error)
+}
+
 type ResolveSessionOptions struct {
 	setting.ExplicitSourcesOption
 
+	// Version of the calling front end and GitHubRepo, as "<org>/<repo>", where its releases live.
+	// Both are required: together they are the User-Agent, and they name the release to check against.
+	Version    string
+	GitHubRepo string
+
 	ForceAuthWith credential.Name
-	UserAgent     string
 }
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {
@@ -43,9 +60,14 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 		return Session{}, err
 	}
 
-	httpClient := http.NewClient(opts.UserAgent)
+	userAgent, err := opts.userAgent()
+	if err != nil {
+		return Session{}, err
+	}
+	httpClient := http.NewClient(userAgent)
 
 	session := Session{
+		ConfigDir:  currentProfile.ConfigDir,
 		Endpoint:   endpoint,
 		Workspace:  workspace,
 		HttpClient: httpClient,
@@ -68,22 +90,15 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	}
 }
 
-type Session struct {
-	Credentials     profile.Credentials
-	Credential      credential.Credential
-	Endpoint        xurl.URL
-	Workspace       meshstack.Workspace
-	HttpClient      http.Client
-	Store           func(ctx context.Context) error
-	CheckedMeshInfo func() (client.MeshInfo, error)
-}
-
-// WithWorkspace is a session acting in another workspace. The copy shares Credentials, so one
-// refresh token and one file lock serve every workspace a run touches.
-func (s Session) WithWorkspace(workspace meshstack.Workspace) Session {
-	inWorkspace := s
-	inWorkspace.Workspace = workspace
-	return inWorkspace
+func (o ResolveSessionOptions) userAgent() (string, error) {
+	org, repo, ok := strings.Cut(o.GitHubRepo, "/")
+	if !ok || org == "" || repo == "" {
+		return "", fmt.Errorf("GitHub repo '%s' is not of <org>/<repo> format", o.GitHubRepo)
+	}
+	if o.Version == "" {
+		return "", fmt.Errorf("no version given for GitHub repo '%s'", o.GitHubRepo)
+	}
+	return repo + "/" + o.Version, nil
 }
 
 func getAndCheckMeshInfo(ctx context.Context, httpClient http.Client, endpoint xurl.URL, opts setting.ExplicitSourcesOption) (client.MeshInfo, error) {

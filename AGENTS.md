@@ -212,9 +212,16 @@ container image for the same tag. The image goes to GHCR only, as
 push to `main` refreshes `:main`, so an image exists before the first release does.
 
 <rules id="release-version">
-The version reaches the binary through an ldflag on `main.Version`, set in **three places that must
-agree**: `.goreleaser.yml`, the `Dockerfile` and `flake.nix`, all of which say so at the ldflag. A
-build without it reports `dev` — check with `meshstack --version` after `task release:snapshot`.
+The version reaches the binary through an ldflag on
+`github.com/meshcloud/meshstack-cli/cmd/internal.Version`, set in **three places that must agree**:
+`.goreleaser.yml`, the `Dockerfile` and `flake.nix`, all of which say so at the ldflag. The linker
+ignores an `-X` whose path does not resolve and warns about nothing, so a stale path is silent.
+
+A build with no ldflag falls back to what the go command stamped itself, which `cmd/internal` reads
+from `debug.ReadBuildInfo`: the module version for `go install <path>@<version>`, and since Go 1.24
+a version derived from the tag and commit for a build inside a git checkout. Only a source tree with
+no VCS, such as an extracted archive or a nix build, reports `dev`. Check with `meshstack --version`
+after `task release:snapshot`.
 </rules>
 
 Pin every GitHub Action by commit SHA with the version in a trailing comment, as the existing

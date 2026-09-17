@@ -48,10 +48,21 @@ func (d Directory) ProfilesJson() string {
 	return d.Join("profiles.json")
 }
 
+func (d Directory) VersionCheckJson() string {
+	return d.Join("versionCheck.json")
+}
+
 func (d Directory) CredentialsJsonFor(profileName fmt.Stringer) string {
 	return d.Join("credentials", fmt.Sprintf("%s.json", profileName))
 }
 
 func (d Directory) CredentialsCacheJsonFor(profileName, credentialName fmt.Stringer) string {
 	return d.Join("credentials-cache", profileName, fmt.Sprintf("%s.json", credentialName))
+}
+
+func (d Directory) Exists() bool {
+	if fileInfo, err := os.Stat(string(d)); err == nil && fileInfo.IsDir() {
+		return true
+	}
+	return false
 }

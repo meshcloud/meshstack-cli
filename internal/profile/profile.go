@@ -15,9 +15,9 @@ type Profile struct {
 	Workspace  string          `json:"workspace,omitzero"`
 	Credential credential.Name `json:"credential,omitzero"`
 
-	// Name and Credentials are initialized after load/create in [Profile.init] below.
-	Name      Name `json:"-"`
-	configDir config.Directory
+	// Name and ConfigDir are initialized after load/create in [Profile.init] below.
+	Name      Name             `json:"-"`
+	ConfigDir config.Directory `json:"-"`
 }
 
 func (p Profile) String() string {
@@ -48,5 +48,5 @@ func (p Profile) WorkspaceSource() setting.Source {
 //goland:noinspection GoMixedReceiverTypes
 func (p *Profile) init(name Name, configDir config.Directory) {
 	p.Name = name
-	p.configDir = configDir
+	p.ConfigDir = configDir
 }

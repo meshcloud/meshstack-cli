@@ -12,9 +12,12 @@
         pkgs = import nixpkgs { inherit system; };
       });
 
-      # Only a release carries a tag, so a flake build reports the commit it was built
-      # from and falls back to `dev` the way a `go build` without the ldflag does.
+      # A flake input carries no tag, only a revision, so a flake build reports the commit
+      # it was built from and falls back to `dev` the way a `go build` without the ldflag
+      # does. Nix derivation versions carry no leading v, so reportedVersion adds one and
+      # says untagged the way Go's own pseudo-versions do.
       version = self.shortRev or self.dirtyShortRev or "dev";
+      reportedVersion = if version == "dev" then version else "v0.0.0-${version}";
 
       # Takes pkgs so overlays.default can build it from the *consumer's* nixpkgs, while
       # packages.<system> below builds it from this flake's locked one.
@@ -38,9 +41,11 @@
         # the value to paste back in.
         vendorHash = "sha256-vvO0VufdztbH0PCXGwJ1yEfB4Xo1Ot/b5JkrVe0YTE0=";
 
-        # The third place setting -X main.Version, after .goreleaser.yml and the
-        # Dockerfile; all three have to agree. A build without it reports `dev`.
-        ldflags = [ "-s" "-w" "-X main.Version=${version}" ];
+        # The third place setting this ldflag, after .goreleaser.yml and the Dockerfile;
+        # all three have to agree. It matters most here: nix builds from a source copy
+        # with no .git, so cmd/internal has no VCS version to fall back on and reports
+        # `dev`.
+        ldflags = [ "-s" "-w" "-X github.com/meshcloud/meshstack-cli/cmd/internal.Version=${reportedVersion}" ];
 
         # The suite passes in the sandbox — every test that wants $HOME, a config file
         # or a credentials directory points itself at a temp dir — so building the

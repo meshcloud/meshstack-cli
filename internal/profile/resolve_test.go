@@ -27,7 +27,7 @@ func TestResolveProfile(t *testing.T) {
 		currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 		require.NoError(t, err)
 		expectedDefaultProfile := &Profile{Name: "default"}
-		assert.EqualExportedValues(t, expectedDefaultProfile, currentProfile)
+		assert.EqualExportedValues(t, expectedDefaultProfile, withoutConfigDir(currentProfile))
 		assertProfiles(t, profiles, expectedDefaultProfile)
 	})
 
@@ -47,7 +47,7 @@ func TestResolveProfile(t *testing.T) {
 			})}},
 		})
 		require.NoError(t, err)
-		assert.EqualExportedValues(t, expectedSomeProfile, profile)
+		assert.EqualExportedValues(t, expectedSomeProfile, withoutConfigDir(profile))
 		assertProfiles(t, profiles, expectedSomeProfile)
 	})
 
@@ -62,7 +62,7 @@ func TestResolveProfile(t *testing.T) {
 
 			profile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 			require.NoError(t, err)
-			assert.EqualExportedValues(t, expectedDevLocalProfile, profile)
+			assert.EqualExportedValues(t, expectedDevLocalProfile, withoutConfigDir(profile))
 			assertProfiles(t, profiles, expectedDevLocalProfile)
 			require.NoError(t, profiles.Store(t.Context()))
 
@@ -91,7 +91,7 @@ func TestResolveProfile(t *testing.T) {
 		t.Run("load again without env", func(t *testing.T) {
 			profile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 			require.NoError(t, err)
-			assert.EqualExportedValues(t, expectedDevLocalProfile, profile)
+			assert.EqualExportedValues(t, expectedDevLocalProfile, withoutConfigDir(profile))
 			assertProfiles(t, profiles, expectedDevLocalProfile)
 			t.Run("load/assert stored apikey cred with cache", func(t *testing.T) {
 				creds, err := profile.Credentials(t.Context())
@@ -112,7 +112,7 @@ func TestResolveProfile(t *testing.T) {
 		currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 		require.NoError(t, err)
 		expectedLoggedInDevLocalProfile := &Profile{Name: "dev-local", Endpoint: expectedDevLocalProfile.Endpoint, Credential: "apiKey"}
-		assert.EqualExportedValues(t, expectedLoggedInDevLocalProfile, currentProfile)
+		assert.EqualExportedValues(t, expectedLoggedInDevLocalProfile, withoutConfigDir(currentProfile))
 		expectedDefaultProfile := &Profile{Name: "default", Endpoint: new(xurl.MustParsef("https://api.dev.meshcloud.io/"))}
 		expectedEmptyProfile := &Profile{Name: "empty"}
 		assertProfiles(t, profiles,
@@ -147,11 +147,19 @@ func assertProfiles(t *testing.T, actual Profiles, expected ...*Profile) {
 	for _, profile := range expected {
 		expectedProfiles.Profiles[profile.Name] = profile
 	}
-	assert.EqualExportedValues(t, expectedProfiles, actual)
-
-	// extra care that unexported configDir is non-empty in actual
-	assert.NotEmpty(t, actual.configDir)
-	for _, actualProfile := range actual.Profiles {
-		assert.NotEmpty(t, actualProfile.configDir)
+	// ConfigDir is whatever directory the run resolved, so it is asserted non-empty rather than compared.
+	actualStripped := actual
+	actualStripped.Profiles = make(map[Name]*Profile, len(actual.Profiles))
+	for name, actualProfile := range actual.Profiles {
+		assert.NotEmpty(t, actualProfile.ConfigDir)
+		actualStripped.Profiles[name] = withoutConfigDir(actualProfile)
 	}
+	assert.EqualExportedValues(t, expectedProfiles, actualStripped)
+	assert.NotEmpty(t, actual.configDir)
+}
+
+func withoutConfigDir(p *Profile) *Profile {
+	stripped := *p
+	stripped.ConfigDir = ""
+	return &stripped
 }
