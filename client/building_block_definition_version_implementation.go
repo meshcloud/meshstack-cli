@@ -1,7 +1,7 @@
 package client
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"reflect"
 
@@ -30,12 +30,12 @@ type MeshBuildingBlockDefinitionTerraformImplementation struct {
 	TerraformVersion           string                                   `json:"terraformVersion" tfsdk:"terraform_version"`
 	RepositoryURL              string                                   `json:"repositoryUrl" tfsdk:"repository_url"`
 	Async                      bool                                     `json:"async" tfsdk:"async"`
-	RepositoryPath             *string                                  `json:"repositoryPath,omitempty" tfsdk:"repository_path"`
-	RefName                    *string                                  `json:"refName,omitempty" tfsdk:"ref_name"`
-	SSHKnownHost               *MeshBuildingBlockDefinitionSshKnownHost `json:"sshKnownHost,omitempty" tfsdk:"ssh_known_host"`
+	RepositoryPath             *string                                  `json:"repositoryPath,omitzero" tfsdk:"repository_path"`
+	RefName                    *string                                  `json:"refName,omitzero" tfsdk:"ref_name"`
+	SSHKnownHost               *MeshBuildingBlockDefinitionSshKnownHost `json:"sshKnownHost,omitzero" tfsdk:"ssh_known_host"`
 	UseMeshHTTPBackendFallback bool                                     `json:"useMeshHttpBackendFallback" tfsdk:"use_mesh_http_backend_fallback"`
-	SSHPrivateKey              *types.Secret                            `json:"sshPrivateKey,omitempty" tfsdk:"ssh_private_key"`
-	PreRunScript               *string                                  `json:"preRunScript,omitempty" tfsdk:"pre_run_script"`
+	SSHPrivateKey              *types.Secret                            `json:"sshPrivateKey,omitzero" tfsdk:"ssh_private_key"`
+	PreRunScript               *string                                  `json:"preRunScript,omitzero" tfsdk:"pre_run_script"`
 }
 
 type MeshBuildingBlockDefinitionGitHubWorkflowsImplementation struct {
@@ -60,18 +60,18 @@ type MeshBuildingBlockDefinitionGitLabPipelineImplementation struct {
 type MeshBuildingBlockDefinitionAzureDevOpsPipelineImplementation struct {
 	Project        string  `json:"project" tfsdk:"project"`
 	PipelineID     string  `json:"pipelineId" tfsdk:"pipeline_id"`
-	RefName        *string `json:"refName,omitempty" tfsdk:"ref_name"`
+	RefName        *string `json:"refName,omitzero" tfsdk:"ref_name"`
 	Async          bool    `json:"async" tfsdk:"async"`
 	IntegrationRef UuidRef `json:"integrationRef" tfsdk:"integration_ref"`
 }
 
 type MeshBuildingBlockDefinitionImplementation struct {
 	Type                enum.Entry[MeshBuildingBlockImplementationType]               `json:"type" tfsdk:"-"`
-	Manual              *MeshBuildingBlockDefinitionManualImplementation              `json:"manual,omitempty" tfsdk:"manual"`
-	GithubWorkflows     *MeshBuildingBlockDefinitionGitHubWorkflowsImplementation     `json:"githubWorkflows,omitempty" tfsdk:"github_workflows"`
-	AzureDevOpsPipeline *MeshBuildingBlockDefinitionAzureDevOpsPipelineImplementation `json:"azureDevOpsPipeline,omitempty" tfsdk:"azure_devops_pipeline"`
-	GitlabPipeline      *MeshBuildingBlockDefinitionGitLabPipelineImplementation      `json:"gitlabPipeline,omitempty" tfsdk:"gitlab_pipeline"`
-	Terraform           *MeshBuildingBlockDefinitionTerraformImplementation           `json:"terraform,omitempty" tfsdk:"terraform"`
+	Manual              *MeshBuildingBlockDefinitionManualImplementation              `json:"manual,omitzero" tfsdk:"manual"`
+	GithubWorkflows     *MeshBuildingBlockDefinitionGitHubWorkflowsImplementation     `json:"githubWorkflows,omitzero" tfsdk:"github_workflows"`
+	AzureDevOpsPipeline *MeshBuildingBlockDefinitionAzureDevOpsPipelineImplementation `json:"azureDevOpsPipeline,omitzero" tfsdk:"azure_devops_pipeline"`
+	GitlabPipeline      *MeshBuildingBlockDefinitionGitLabPipelineImplementation      `json:"gitlabPipeline,omitzero" tfsdk:"gitlab_pipeline"`
+	Terraform           *MeshBuildingBlockDefinitionTerraformImplementation           `json:"terraform,omitzero" tfsdk:"terraform"`
 }
 
 func (m MeshBuildingBlockDefinitionImplementation) InferTypeFromNonNilField() (result enum.Entry[MeshBuildingBlockImplementationType]) {
@@ -101,7 +101,7 @@ func (m MeshBuildingBlockDefinitionImplementation) MarshalJSON() ([]byte, error)
 	if len(w.Type) == 0 {
 		w.Type = m.InferTypeFromNonNilField()
 	}
-	return json.Marshal(w)
+	return json.Marshal(w, wireCompatibility)
 }
 
 func (m *MeshBuildingBlockDefinitionImplementation) UnmarshalJSON(bytes []byte) error {

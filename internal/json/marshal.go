@@ -11,8 +11,20 @@ import (
 	"path/filepath"
 )
 
+// wireCompatibility holds the output to the shape encoding/json v1 produced, which is what every
+// meshStack backend and every Terraform state in the field has seen so far: a nil slice and a nil
+// map go out as null rather than as [] and {}, and object members are sorted. json/v2 writes []
+// and {} and leaves map order to chance, and neither change is ours to make — the meshObject API
+// may read null and an empty collection differently on a PUT, and the Terraform provider hashes
+// this JSON to decide whether a building block definition version changed.
+var wireCompatibility = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+)
+
 func Marshal(payload any) ([]byte, error) {
-	return json.Marshal(payload, json.Deterministic(true))
+	return json.Marshal(payload, wireCompatibility)
 }
 
 // MarshalOption configures MarshalTo. See UserOnlyFilePerms.
@@ -58,6 +70,6 @@ func MarshalTo(ctx context.Context, file string, payload any, options ...Marshal
 			slog.DebugContext(ctx, "Marshaled json to "+file)
 		}
 	}()
-	encoder := jsontext.NewEncoder(out, jsontext.WithIndent("  "), json.Deterministic(true))
-	return json.MarshalEncode(encoder, payload)
+	encoder := jsontext.NewEncoder(out, jsontext.WithIndent("  "))
+	return json.MarshalEncode(encoder, payload, wireCompatibility)
 }

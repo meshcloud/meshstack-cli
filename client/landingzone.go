@@ -28,9 +28,9 @@ type MeshLandingZoneSpec struct {
 	// schema defaults this to false, so the provider always states the value it wants and never
 	// asks the backend to keep whatever is stored.
 	Restricted                   bool                               `json:"restricted" tfsdk:"restricted"`
-	InfoLink                     *string                            `json:"infoLink,omitempty" tfsdk:"info_link"`
+	InfoLink                     *string                            `json:"infoLink,omitzero" tfsdk:"info_link"`
 	PlatformRef                  UuidRef                            `json:"platformRef" tfsdk:"platform_ref"`
-	PlatformProperties           *MeshLandingZonePlatformProperties `json:"platformProperties,omitempty" tfsdk:"platform_properties"`
+	PlatformProperties           *MeshLandingZonePlatformProperties `json:"platformProperties,omitzero" tfsdk:"platform_properties"`
 	Quotas                       []MeshLandingZoneQuota             `json:"quotas" tfsdk:"quotas"`
 	MandatoryBuildingBlockRefs   []UuidRef                          `json:"mandatoryBuildingBlockRefs" tfsdk:"mandatory_building_block_refs"`
 	RecommendedBuildingBlockRefs []UuidRef                          `json:"recommendedBuildingBlockRefs" tfsdk:"recommended_building_block_refs"`

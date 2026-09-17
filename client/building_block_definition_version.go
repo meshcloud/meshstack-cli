@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
@@ -133,14 +133,14 @@ type MeshBuildingBlockDefinitionInput struct {
 	Argument                    types.SecretOrAny `json:"argument" tfsdk:"argument"`
 	DefaultValue                types.SecretOrAny `json:"defaultValue" tfsdk:"default_value"`
 	UpdateableByConsumer        bool              `json:"updateableByConsumer" tfsdk:"updateable_by_consumer"`
-	IsOptional                  bool              `json:"isOptional,omitempty" tfsdk:"is_optional"`
+	IsOptional                  bool              `json:"isOptional,omitzero" tfsdk:"is_optional"`
 	SelectableValues            types.Set[string] `json:"selectableValues,omitempty" tfsdk:"selectable_values"`
-	Description                 *string           `json:"description,omitempty" tfsdk:"description"`
-	ValueValidationRegex        *string           `json:"valueValidationRegex,omitempty" tfsdk:"value_validation_regex"`
-	ValidationRegexErrorMessage *string           `json:"validationRegexErrorMessage,omitempty" tfsdk:"validation_regex_error_message"`
+	Description                 *string           `json:"description,omitzero" tfsdk:"description"`
+	ValueValidationRegex        *string           `json:"valueValidationRegex,omitzero" tfsdk:"value_validation_regex"`
+	ValidationRegexErrorMessage *string           `json:"validationRegexErrorMessage,omitzero" tfsdk:"validation_regex_error_message"`
 	// The form this input is filled in through, as a JSON Schema string. Only for MeshBuildingBlockIOTypeJson.
-	JsonSchema *string `json:"jsonSchema,omitempty" tfsdk:"json_schema"`
-	Condition  *string `json:"condition,omitempty" tfsdk:"condition"`
+	JsonSchema *string `json:"jsonSchema,omitzero" tfsdk:"json_schema"`
+	Condition  *string `json:"condition,omitzero" tfsdk:"condition"`
 	// No omitempty: a 0 (the schema default, and what an unknown plan value collapses to) must be sent so
 	// the backend stores it verbatim. With omitempty the 0 would be dropped and the backend would assign
 	// a position itself, making the applied value differ from the plan.
@@ -199,8 +199,8 @@ type MeshBuildingBlockDefinitionVersionSpec struct {
 	DeletionMode               BuildingBlockDeletionMode                    `json:"deletionMode" tfsdk:"deletion_mode"`
 	Permissions                types.Set[ApiPermission]                     `json:"permissions,omitempty" tfsdk:"permissions"`
 	Outputs                    map[string]MeshBuildingBlockDefinitionOutput `json:"outputs" tfsdk:"outputs"`
-	VersionNumber              *int64                                       `json:"versionNumber,omitempty" tfsdk:"version_number"`
-	State                      *MeshBuildingBlockDefinitionVersionState     `json:"state,omitempty" tfsdk:"state"`
+	VersionNumber              *int64                                       `json:"versionNumber,omitzero" tfsdk:"version_number"`
+	State                      *MeshBuildingBlockDefinitionVersionState     `json:"state,omitzero" tfsdk:"state"`
 	RunnerRef                  *UuidRef                                     `json:"runnerRef" tfsdk:"runner_ref"`
 	// Replaces the deprecated bare-UUID dependencyDefinitionUuids; requires a backend serving it.
 	DependencyDefinitionRefs types.Set[UuidRef]                           `json:"dependencyDefinitionRefs,omitempty" tfsdk:"dependency_refs"`
@@ -216,7 +216,7 @@ type MeshBuildingBlockDefinitionVersionStatus struct {
 type MeshBuildingBlockDefinitionVersion struct {
 	Metadata MeshBuildingBlockDefinitionVersionMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshBuildingBlockDefinitionVersionSpec     `json:"spec" tfsdk:"spec"`
-	Status   *MeshBuildingBlockDefinitionVersionStatus  `json:"status,omitempty" tfsdk:"status"`
+	Status   *MeshBuildingBlockDefinitionVersionStatus  `json:"status,omitzero" tfsdk:"status"`
 }
 
 // MeshBuildingBlockDefinitionVersionClient manages a version of a building block definition.

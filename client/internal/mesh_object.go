@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -99,46 +98,31 @@ func (c MeshObjectClient[M]) GetAtPath[R any](ctx context.Context, id string, ex
 
 // Post creates a new meshObject with the given payload.
 // Automatically injects apiVersion and kind into the JSON payload.
-func (c MeshObjectClient[M]) Post(ctx context.Context, payload any) (*M, error) {
+func (c MeshObjectClient[M]) Post[P any](ctx context.Context, payload P) (*M, error) {
 	return c.PostAtPath[*M](ctx, payload)
 }
 
-// PostAtPath posts to a sub-path of the meshObject, and sends an empty body for a nil payload.
-func (c MeshObjectClient[M]) PostAtPath[R any](ctx context.Context, payload any, extraPath ...string) (R, error) {
-	options := []http.RequestOption{http.WithAccept(c.MeshObjectMimeType())}
-	if payload != nil {
-		options = append(options, c.withMeshObjectPayload(payload))
-	}
-	return c.DoRequest[R](ctx, http.MethodPost, c.ApiUrl.JoinPath(extraPath...), options...)
+// PostAtPath posts to a sub-path of the meshObject.
+func (c MeshObjectClient[M]) PostAtPath[R, P any](ctx context.Context, payload P, extraPath ...string) (R, error) {
+	return c.DoRequest[R](ctx, http.MethodPost, c.ApiUrl.JoinPath(extraPath...),
+		http.WithAccept(c.MeshObjectMimeType()), c.withMeshObjectPayload(payload))
 }
 
 // Put updates an existing meshObject by ID with the given payload.
 // Automatically injects apiVersion and kind into the JSON payload.
-func (c MeshObjectClient[M]) Put(ctx context.Context, id string, payload any) (*M, error) {
+func (c MeshObjectClient[M]) Put[P any](ctx context.Context, id string, payload P) (*M, error) {
 	return c.DoRequest[*M](ctx, http.MethodPut, c.ApiUrl.JoinPath(id), c.withMeshObjectPayload(payload), http.Retryable())
 }
 
-// withMeshObjectPayload returns http.RequestOption that sets the payload with apiVersion and kind injected,
-// using the meshObject MIME type for content negotiation.
-// Panics on marshal errors which indicates a programming error (payload is always a well-typed struct).
-//
-// The double marshal/unmarshal round-trip converts the typed struct to a map[string]any so we can
-// inject the top-level apiVersion and kind fields without coupling the struct type to those fields.
-func (c MeshObjectClient[M]) withMeshObjectPayload(payload any) http.RequestOption {
-	intermediate, err := json.Marshal(payload)
-	if err != nil {
-		panic(fmt.Sprintf("failed to marshal %T: %v", payload, err))
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(intermediate, &m); err != nil {
-		panic(fmt.Sprintf("failed to unmarshal %T to map: %v", payload, err))
-	}
-
-	m["apiVersion"] = c.ApiVersion
-	m["kind"] = c.Kind
-
-	return http.WithJsonPayload(m, c.MeshObjectMimeType())
+// withMeshObjectPayload sends the payload with apiVersion and kind injected as top-level members,
+// using the meshObject MIME type for content negotiation. P carries the payload's own type, which
+// the `,embed` tag needs: it takes a struct, a string-keyed map or a jsontext.Value, never an any.
+func (c MeshObjectClient[M]) withMeshObjectPayload[P any](payload P) http.RequestOption {
+	return http.WithJsonPayload(struct {
+		ApiVersion string `json:"apiVersion"`
+		Kind       string `json:"kind"`
+		Payload    P      `json:",embed"`
+	}{c.ApiVersion, c.Kind, payload}, c.MeshObjectMimeType())
 }
 
 // Delete removes a meshObject by ID.

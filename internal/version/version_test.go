@@ -1,7 +1,7 @@
 package version
 
 import (
-	jsonv2 "encoding/json/v2"
+	"encoding/json/v2"
 	"fmt"
 	"testing"
 
@@ -109,12 +109,12 @@ func TestVersion_Compare(t *testing.T) {
 func TestVersion_JsonIsTheQuotedVersionString(t *testing.T) {
 	version := MustParse("1.2.3-rc1")
 
-	encoded, err := jsonv2.Marshal(version)
+	encoded, err := json.Marshal(version)
 	require.NoError(t, err)
 	assert.Equal(t, `"1.2.3-rc1"`, string(encoded))
 
 	var decoded Version
-	require.NoError(t, jsonv2.Unmarshal(encoded, &decoded))
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
 	assert.Equal(t, version, decoded)
 }
 

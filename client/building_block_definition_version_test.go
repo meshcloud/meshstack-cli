@@ -2,7 +2,7 @@ package client
 
 import (
 	"embed"
-	"encoding/json"
+	"encoding/json/v2"
 	"path"
 	"testing"
 

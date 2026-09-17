@@ -24,13 +24,13 @@ type MeshPlatformTypeLifecycle struct {
 type MeshPlatformTypeMetadata struct {
 	Name             string  `json:"name" tfsdk:"name"`
 	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-	Uuid             *string `json:"uuid,omitempty" tfsdk:"uuid"`
+	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
 }
 
 type MeshPlatformTypeSpec struct {
 	DisplayName     string  `json:"displayName" tfsdk:"display_name"`
 	Category        string  `json:"category" tfsdk:"category"`
-	DefaultEndpoint *string `json:"defaultEndpoint,omitempty" tfsdk:"default_endpoint"`
+	DefaultEndpoint *string `json:"defaultEndpoint,omitzero" tfsdk:"default_endpoint"`
 	Icon            string  `json:"icon" tfsdk:"icon"`
 }
 

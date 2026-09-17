@@ -13,7 +13,7 @@ type MeshIntegration struct {
 }
 
 type MeshIntegrationMetadata struct {
-	Uuid             *string `json:"uuid,omitempty" tfsdk:"uuid"`
+	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
 	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
 }
 

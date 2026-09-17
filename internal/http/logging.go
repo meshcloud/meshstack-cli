@@ -3,7 +3,7 @@ package http
 import (
 	"bytes"
 	"encoding"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"io"
 	"maps"
@@ -93,11 +93,12 @@ func bytesToPrettyJson(data []byte) string {
 	if len(data) == 0 {
 		return "<empty>"
 	}
-	var decoded any
-	if err := json.Unmarshal(data, &decoded); err == nil {
-		if indented, err := json.MarshalIndent(decoded, "", "  "); err == nil {
-			return string(indented)
-		}
+	// Indenting the raw bytes rather than a decoded value keeps every number exactly as it arrived:
+	// decoded into float64, a large integer came back out with lost precision. Indent rewrites the
+	// value in place, so it works on a copy of the body the caller still holds.
+	indented := jsontext.Value(data).Clone()
+	if err := indented.Indent(jsontext.WithIndent("  ")); err == nil {
+		return indented.String()
 	}
 	return fmt.Sprintf("<string,len=%d> %s", len(data), string(data))
 }

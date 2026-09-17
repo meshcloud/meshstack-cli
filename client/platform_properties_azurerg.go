@@ -3,7 +3,7 @@ package client
 type AzureRgPlatformProperties struct {
 	AzureRgLocation     string               `json:"azureRgLocation" tfsdk:"azure_rg_location"`
 	AzureRgRoleMappings []AzureRgRoleMapping `json:"azureRgRoleMappings" tfsdk:"azure_rg_role_mappings"`
-	AzureFunction       *AzureFunction       `json:"azureFunction,omitempty" tfsdk:"azure_function"`
+	AzureFunction       *AzureFunction       `json:"azureFunction,omitzero" tfsdk:"azure_function"`
 }
 
 type AzureRgRoleMapping struct {

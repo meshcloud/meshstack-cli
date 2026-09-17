@@ -2,7 +2,7 @@ package jwt
 
 import (
 	_ "embed"
-	jsonv2 "encoding/json/v2"
+	"encoding/json/v2"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -63,7 +63,7 @@ func TestJWTBroken(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var token JWT
-			test.wantErr(t, jsonv2.Unmarshal(test.payload, &token))
+			test.wantErr(t, json.Unmarshal(test.payload, &token))
 		})
 	}
 }

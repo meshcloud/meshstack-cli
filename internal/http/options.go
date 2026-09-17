@@ -1,14 +1,15 @@
 package http
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"maps"
 	gohttp "net/http"
 	"net/url"
 	"reflect"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 type (
@@ -54,7 +55,8 @@ func isRetryable(ctx context.Context) bool {
 // tag and a zero-value struct adds no params at all. A map[string]string / map[string]any is taken
 // verbatim — every entry is sent, including deliberate zero values such as page=0.
 //
-// Values are stringified with fmt.Sprintf("%v", ...); nested objects or arrays are not supported.
+// A value goes in as the JSON literal it marshalled to, with a string unquoted; nested objects or
+// arrays are not supported.
 func WithUrlQuery(query any) RequestOption {
 	return appendRequestModifier(func(req *gohttp.Request) error {
 		urlValues, err := convertStructOrMapToUrlValues(query)
@@ -76,11 +78,8 @@ func convertStructOrMapToUrlValues(structOrMap any) (url.Values, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot marshal type %T: %w", structOrMap, err)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	// UseNumber keeps integers (e.g. page) from becoming float64 and gaining a ".0" or exponent.
-	decoder.UseNumber()
-	var converted map[string]any
-	if err := decoder.Decode(&converted); err != nil {
+	var converted map[string]jsontext.Value
+	if err := json.Unmarshal(data, &converted); err != nil {
 		return nil, fmt.Errorf("cannot decode type %T into a flat map: %w", structOrMap, err)
 	}
 	// Drop zero-value fields only for a struct (passed by value, not by pointer); a map is
@@ -88,10 +87,22 @@ func convertStructOrMapToUrlValues(structOrMap any) (url.Values, error) {
 	skipZero := reflect.ValueOf(structOrMap).Kind() == reflect.Struct
 	result := url.Values{}
 	for key, value := range converted {
-		if value == nil || (skipZero && reflect.ValueOf(value).IsZero()) {
+		if value.Kind() == 'n' {
 			continue
 		}
-		result[key] = append(result[key], fmt.Sprintf("%v", value))
+		// A number goes in as the literal it marshalled to, never through a Go value: decoded into
+		// float64 and printed again, a large integer (a millisecond timestamp, say) would arrive as
+		// 1.2345678901234568e+18. Only a string has to be unquoted to become its parameter.
+		param := value.String()
+		if value.Kind() == '"' {
+			if err := json.Unmarshal(value, &param); err != nil {
+				return nil, fmt.Errorf("cannot read %s of type %T as a string: %w", key, structOrMap, err)
+			}
+		}
+		if skipZero && (param == "" || value.Kind() == 'f') {
+			continue
+		}
+		result[key] = append(result[key], param)
 	}
 	return result, nil
 }

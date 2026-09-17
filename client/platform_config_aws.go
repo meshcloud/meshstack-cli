@@ -4,23 +4,23 @@ import "github.com/meshcloud/meshstack-cli/client/types"
 
 type AwsPlatformConfig struct {
 	Region      string                `json:"region,omitempty" tfsdk:"region"`
-	Replication *AwsReplicationConfig `json:"replication,omitempty" tfsdk:"replication"`
-	Metering    *AwsMeteringConfig    `json:"metering,omitempty" tfsdk:"metering"`
+	Replication *AwsReplicationConfig `json:"replication,omitzero" tfsdk:"replication"`
+	Metering    *AwsMeteringConfig    `json:"metering,omitzero" tfsdk:"metering"`
 }
 
 type AwsReplicationConfig struct {
 	AccessConfig                                  AwsAccessConfig             `json:"accessConfig" tfsdk:"access_config"`
 	WaitForExternalAvm                            bool                        `json:"waitForExternalAvm" tfsdk:"wait_for_external_avm"`
 	AutomationAccountRole                         string                      `json:"automationAccountRole" tfsdk:"automation_account_role"`
-	AutomationAccountExternalId                   *string                     `json:"automationAccountExternalId,omitempty" tfsdk:"automation_account_external_id"`
+	AutomationAccountExternalId                   *string                     `json:"automationAccountExternalId,omitzero" tfsdk:"automation_account_external_id"`
 	AccountAccessRole                             string                      `json:"accountAccessRole" tfsdk:"account_access_role"`
 	AccountAliasPattern                           string                      `json:"accountAliasPattern" tfsdk:"account_alias_pattern"`
 	EnforceAccountAlias                           bool                        `json:"enforceAccountAlias" tfsdk:"enforce_account_alias"`
 	AccountEmailPattern                           string                      `json:"accountEmailPattern" tfsdk:"account_email_pattern"`
-	TenantTags                                    *MeshTenantTags             `json:"tenantTags,omitempty" tfsdk:"tenant_tags"`
-	AwsSso                                        *AwsSsoConfig               `json:"awsSso,omitempty" tfsdk:"aws_sso"`
-	AwsIdentityStore                              *AwsIdentityStoreConfig     `json:"awsIdentityStore,omitempty" tfsdk:"aws_identity_store"`
-	EnrollmentConfiguration                       *AwsEnrollmentConfiguration `json:"enrollmentConfiguration,omitempty" tfsdk:"enrollment_configuration"`
+	TenantTags                                    *MeshTenantTags             `json:"tenantTags,omitzero" tfsdk:"tenant_tags"`
+	AwsSso                                        *AwsSsoConfig               `json:"awsSso,omitzero" tfsdk:"aws_sso"`
+	AwsIdentityStore                              *AwsIdentityStoreConfig     `json:"awsIdentityStore,omitzero" tfsdk:"aws_identity_store"`
+	EnrollmentConfiguration                       *AwsEnrollmentConfiguration `json:"enrollmentConfiguration,omitzero" tfsdk:"enrollment_configuration"`
 	SelfDowngradeAccessRole                       bool                        `json:"selfDowngradeAccessRole" tfsdk:"self_downgrade_access_role"`
 	SkipUserGroupPermissionCleanup                bool                        `json:"skipUserGroupPermissionCleanup" tfsdk:"skip_user_group_permission_cleanup"`
 	AllowHierarchicalOrganizationalUnitAssignment bool                        `json:"allowHierarchicalOrganizationalUnitAssignment" tfsdk:"allow_hierarchical_organizational_unit_assignment"`
@@ -28,14 +28,14 @@ type AwsReplicationConfig struct {
 
 type AwsAccessConfig struct {
 	OrganizationRootAccountRole       string  `json:"organizationRootAccountRole" tfsdk:"organization_root_account_role"`
-	OrganizationRootAccountExternalId *string `json:"organizationRootAccountExternalId,omitempty" tfsdk:"organization_root_account_external_id"`
+	OrganizationRootAccountExternalId *string `json:"organizationRootAccountExternalId,omitzero" tfsdk:"organization_root_account_external_id"`
 	Auth                              AwsAuth `json:"auth" tfsdk:"auth"`
 }
 
 type AwsAuth struct {
 	Type             string                         `json:"type" tfsdk:"type"`
-	Credential       *AwsServiceUserCredential      `json:"credential,omitempty" tfsdk:"credential"`
-	WorkloadIdentity *AwsWorkloadIdentityCredential `json:"workloadIdentity,omitempty" tfsdk:"workload_identity"`
+	Credential       *AwsServiceUserCredential      `json:"credential,omitzero" tfsdk:"credential"`
+	WorkloadIdentity *AwsWorkloadIdentityCredential `json:"workloadIdentity,omitzero" tfsdk:"workload_identity"`
 }
 
 type AwsServiceUserCredential struct {

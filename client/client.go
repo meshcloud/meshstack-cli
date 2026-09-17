@@ -5,11 +5,15 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/client/version"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 var MinMeshStackVersion = version.MustParse("2026.36.0")
+
+// Version is the major.minor.patch a meshStack and this client report, exposed here because
+// MinMeshStackVersion is one and internal/version is closed to another module.
+type Version = version.Version
 
 // HttpError represents an HTTP error response with status code.
 // This error is returned when an HTTP request fails with a non-2XX status code.

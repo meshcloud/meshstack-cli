@@ -2,7 +2,8 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -95,6 +96,15 @@ func (p *MeshBuildingBlockV2Parent) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// wireCompatibility repeats the options internal/json marshals every request with, because a
+// v1-style MarshalJSON receives none of its caller's. Every MarshalJSON in this package marshals
+// with it, so a nested value keeps the shape the surrounding request has.
+var wireCompatibility = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+)
+
 // MarshalJSON sends the parents under both field names: parentBuildingBlockRefs, and the deprecated
 // parentBuildingBlocks for a backend that does not know the new field yet. A newer backend accepts
 // both as long as they name the same building blocks, and an older one ignores the field it does not
@@ -109,8 +119,8 @@ func (s MeshBuildingBlockV2Spec) MarshalJSON() ([]byte, error) {
 		w.ParentBuildingBlockRefs = parentRefsFromDeprecated(w.ParentBuildingBlocks)
 	}
 
-	var fields map[string]json.RawMessage
-	if encoded, err := json.Marshal(w); err != nil {
+	var fields map[string]jsontext.Value
+	if encoded, err := json.Marshal(w, wireCompatibility); err != nil {
 		return nil, err
 	} else if err := json.Unmarshal(encoded, &fields); err != nil {
 		return nil, err
@@ -131,7 +141,7 @@ func (s MeshBuildingBlockV2Spec) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	return json.Marshal(fields)
+	return json.Marshal(fields, wireCompatibility)
 }
 
 func parentRefsFromDeprecated(parents types.Set[MeshBuildingBlockV2Parent]) types.Set[UuidRef] {
@@ -172,7 +182,7 @@ func (s *MeshBuildingBlockV2Spec) UnmarshalJSON(data []byte) error {
 
 type MeshBuildingBlockInput struct {
 	Value          types.SecretOrAny                                `json:"value" tfsdk:"value"`
-	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitempty" tfsdk:"-"`
+	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitzero" tfsdk:"-"`
 	AssignmentType enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
 
 	// If IsSensitive is true, the [types.Variant] (typedef [types.SecretOrAny]) for Value field
@@ -237,11 +247,13 @@ type MeshBuildingBlockV2Status struct {
 	Outputs    map[string]MeshBuildingBlockOutput `json:"outputs" tfsdk:"outputs"`
 	ForcePurge bool                               `json:"forcePurge" tfsdk:"force_purge"`
 	Lifecycle  MeshBuildingBlockV2Lifecycle       `json:"lifecycle" tfsdk:"-"`
-	// LatestRunUuid is nil if permissions don't allow reading the run (e.g. because run_transparency is false).
-	// It tracks the latest *modifying* (apply/destroy) run and excludes dry runs.
+	// LatestRunUuid tracks the latest *modifying* (apply/destroy) run and excludes dry runs. It is nil only
+	// when no such run exists: a run uuid is an opaque identifier the backend exposes to every principal
+	// authorized to read the building block, and run_transparency gates reading the run and its system
+	// messages rather than this identifier (MeshBuildingBlockV2RepresentationModelAssembler.resolveLatestRunUuid).
 	LatestRunUuid *string `json:"latestRunUuid" tfsdk:"latest_run_uuid"`
 	// LatestDryRunUuid is the latest dry (DETECT) run, but only when it is the newest run; nil otherwise.
-	// Same permission gating and nullability caveat as LatestRunUuid.
+	// Ungated like LatestRunUuid.
 	LatestDryRunUuid *string `json:"latestDryRunUuid" tfsdk:"latest_dry_run_uuid"`
 }
 
@@ -394,6 +406,10 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 }
 
 func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (err error) {
-	_, err = c.meshObject.PostAtPath[any](ctx, nil, bbUuid, "trigger-run")
+	// dryRun is not optional to the endpoint once a body is sent, so it goes out as false rather
+	// than being left away.
+	_, err = c.meshObject.PostAtPath[any](ctx, struct {
+		DryRun bool `json:"dryRun"`
+	}{}, bbUuid, "trigger-run")
 	return
 }

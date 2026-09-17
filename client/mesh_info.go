@@ -6,8 +6,8 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/client/version"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 // MeshFeatureFlag names an optional meshStack capability. /mesh/info reports each one as a

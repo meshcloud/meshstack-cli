@@ -34,27 +34,27 @@ type MeshBuildingBlockRunner struct {
 }
 
 type MeshBuildingBlockRunnerMetadata struct {
-	Uuid             *string `json:"uuid,omitempty" tfsdk:"uuid"`
+	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
 	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-	CreatedOn        *string `json:"createdOn,omitempty" tfsdk:"created_on"`
-	LastSeen         *string `json:"lastSeen,omitempty" tfsdk:"last_seen"`
+	CreatedOn        *string `json:"createdOn,omitzero" tfsdk:"created_on"`
+	LastSeen         *string `json:"lastSeen,omitzero" tfsdk:"last_seen"`
 }
 
 type MeshBuildingBlockRunnerSpec struct {
 	DisplayName                string                         `json:"displayName" tfsdk:"display_name"`
 	PublicKey                  string                         `json:"publicKey" tfsdk:"public_key"`
 	ImplementationType         string                         `json:"implementationType" tfsdk:"implementation_type"`
-	Restriction                *string                        `json:"restriction,omitempty" tfsdk:"restriction"`
-	IsSelfHosted               *bool                          `json:"isSelfHosted,omitempty" tfsdk:"is_self_hosted"`
-	WorkloadIdentityFederation *MeshRunnerWorkloadIdentityFed `json:"workloadIdentityFederation,omitempty" tfsdk:"workload_identity_federation"`
+	Restriction                *string                        `json:"restriction,omitzero" tfsdk:"restriction"`
+	IsSelfHosted               *bool                          `json:"isSelfHosted,omitzero" tfsdk:"is_self_hosted"`
+	WorkloadIdentityFederation *MeshRunnerWorkloadIdentityFed `json:"workloadIdentityFederation,omitzero" tfsdk:"workload_identity_federation"`
 }
 
 type MeshRunnerWorkloadIdentityFed struct {
-	Subject *string                      `json:"subject,omitempty" tfsdk:"subject"`
-	Issuer  *string                      `json:"issuer,omitempty" tfsdk:"issuer"`
-	Gcp     *MeshRunnerWifProviderConfig `json:"gcp,omitempty" tfsdk:"gcp"`
-	Aws     *MeshRunnerWifProviderConfig `json:"aws,omitempty" tfsdk:"aws"`
-	Azure   *MeshRunnerWifProviderConfig `json:"azure,omitempty" tfsdk:"azure"`
+	Subject *string                      `json:"subject,omitzero" tfsdk:"subject"`
+	Issuer  *string                      `json:"issuer,omitzero" tfsdk:"issuer"`
+	Gcp     *MeshRunnerWifProviderConfig `json:"gcp,omitzero" tfsdk:"gcp"`
+	Aws     *MeshRunnerWifProviderConfig `json:"aws,omitzero" tfsdk:"aws"`
+	Azure   *MeshRunnerWifProviderConfig `json:"azure,omitzero" tfsdk:"azure"`
 }
 
 type MeshRunnerWifProviderConfig struct {

@@ -22,7 +22,7 @@ type MeshWorkspaceMetadata struct {
 
 type MeshWorkspaceSpec struct {
 	DisplayName                  string `json:"displayName" tfsdk:"display_name"`
-	PlatformBuilderAccessEnabled *bool  `json:"platformBuilderAccessEnabled,omitempty" tfsdk:"platform_builder_access_enabled"`
+	PlatformBuilderAccessEnabled *bool  `json:"platformBuilderAccessEnabled,omitzero" tfsdk:"platform_builder_access_enabled"`
 }
 
 type MeshWorkspaceCreate struct {

@@ -4,22 +4,22 @@ import "github.com/meshcloud/meshstack-cli/client/types"
 
 type AzurePlatformConfig struct {
 	EntraTenant string                  `json:"entraTenant" tfsdk:"entra_tenant"`
-	Replication *AzureReplicationConfig `json:"replication,omitempty" tfsdk:"replication"`
-	Metering    *AzureMeteringConfig    `json:"metering,omitempty" tfsdk:"metering"`
+	Replication *AzureReplicationConfig `json:"replication,omitzero" tfsdk:"replication"`
+	Metering    *AzureMeteringConfig    `json:"metering,omitzero" tfsdk:"metering"`
 }
 
 type AzureReplicationConfig struct {
 	ServicePrincipal                           AzureServicePrincipalConfig          `json:"servicePrincipal" tfsdk:"service_principal"`
 	UpdateSubscriptionName                     bool                                 `json:"updateSubscriptionName" tfsdk:"update_subscription_name"`
-	Provisioning                               *AzureSubscriptionProvisioningConfig `json:"provisioning,omitempty" tfsdk:"provisioning"`
-	B2bUserInvitation                          *AzureInviteB2BUserConfig            `json:"b2bUserInvitation,omitempty" tfsdk:"b2b_user_invitation"`
+	Provisioning                               *AzureSubscriptionProvisioningConfig `json:"provisioning,omitzero" tfsdk:"provisioning"`
+	B2bUserInvitation                          *AzureInviteB2BUserConfig            `json:"b2bUserInvitation,omitzero" tfsdk:"b2b_user_invitation"`
 	SubscriptionNamePattern                    string                               `json:"subscriptionNamePattern" tfsdk:"subscription_name_pattern"`
 	GroupNamePattern                           string                               `json:"groupNamePattern" tfsdk:"group_name_pattern"`
 	AzureRoleMappings                          types.Set[AzureRoleMapping]          `json:"azureRoleMappings" tfsdk:"azure_role_mappings"`
-	TenantTags                                 *MeshTenantTags                      `json:"tenantTags,omitempty" tfsdk:"tenant_tags"`
+	TenantTags                                 *MeshTenantTags                      `json:"tenantTags,omitzero" tfsdk:"tenant_tags"`
 	UserLookUpStrategy                         string                               `json:"userLookUpStrategy" tfsdk:"user_lookup_strategy"`
 	SkipUserGroupPermissionCleanup             bool                                 `json:"skipUserGroupPermissionCleanup" tfsdk:"skip_user_group_permission_cleanup"`
-	AdministrativeUnitId                       *string                              `json:"administrativeUnitId,omitempty" tfsdk:"administrative_unit_id"`
+	AdministrativeUnitId                       *string                              `json:"administrativeUnitId,omitzero" tfsdk:"administrative_unit_id"`
 	AllowHierarchicalManagementGroupAssignment bool                                 `json:"allowHierarchicalManagementGroupAssignment" tfsdk:"allow_hierarchical_management_group_assignment"`
 }
 
@@ -31,7 +31,7 @@ type AzureServicePrincipalConfig struct {
 
 type AzureAuthConfig struct {
 	Type       string        `json:"type" tfsdk:"type"`
-	Credential *types.Secret `json:"credential,omitempty" tfsdk:"credential"`
+	Credential *types.Secret `json:"credential,omitzero" tfsdk:"credential"`
 }
 
 type AzureGraphApiCredentials struct {
@@ -41,16 +41,16 @@ type AzureGraphApiCredentials struct {
 
 type AzureSubscriptionProvisioningConfig struct {
 	SubscriptionOwnerObjectIds types.Set[string]                      `json:"subscriptionOwnerObjectIds" tfsdk:"subscription_owner_object_ids"`
-	EnterpriseEnrollment       *AzureEnterpriseEnrollmentConfig       `json:"enterpriseEnrollment,omitempty" tfsdk:"enterprise_enrollment"`
-	CustomerAgreement          *AzureCustomerAgreementConfig          `json:"customerAgreement,omitempty" tfsdk:"customer_agreement"`
-	PreProvisioned             *AzurePreProvisionedSubscriptionConfig `json:"preProvisioned,omitempty" tfsdk:"pre_provisioned"`
+	EnterpriseEnrollment       *AzureEnterpriseEnrollmentConfig       `json:"enterpriseEnrollment,omitzero" tfsdk:"enterprise_enrollment"`
+	CustomerAgreement          *AzureCustomerAgreementConfig          `json:"customerAgreement,omitzero" tfsdk:"customer_agreement"`
+	PreProvisioned             *AzurePreProvisionedSubscriptionConfig `json:"preProvisioned,omitzero" tfsdk:"pre_provisioned"`
 }
 
 type AzureEnterpriseEnrollmentConfig struct {
 	EnrollmentAccountId                  string `json:"enrollmentAccountId" tfsdk:"enrollment_account_id"`
 	SubscriptionOfferType                string `json:"subscriptionOfferType" tfsdk:"subscription_offer_type"`
 	UseLegacySubscriptionEnrollment      bool   `json:"useLegacySubscriptionEnrollment" tfsdk:"use_legacy_subscription_enrollment"`
-	SubscriptionCreationErrorCooldownSec *int64 `json:"subscriptionCreationErrorCooldownSec,omitempty" tfsdk:"subscription_creation_error_cooldown_sec"`
+	SubscriptionCreationErrorCooldownSec *int64 `json:"subscriptionCreationErrorCooldownSec,omitzero" tfsdk:"subscription_creation_error_cooldown_sec"`
 }
 
 type AzureCustomerAgreementConfig struct {
@@ -58,7 +58,7 @@ type AzureCustomerAgreementConfig struct {
 	DestinationEntraId                   string                   `json:"destinationEntraId" tfsdk:"destination_entra_id"`
 	SourceEntraTenant                    string                   `json:"sourceEntraTenant" tfsdk:"source_entra_tenant"`
 	BillingScope                         string                   `json:"billingScope" tfsdk:"billing_scope"`
-	SubscriptionCreationErrorCooldownSec *int64                   `json:"subscriptionCreationErrorCooldownSec,omitempty" tfsdk:"subscription_creation_error_cooldown_sec"`
+	SubscriptionCreationErrorCooldownSec *int64                   `json:"subscriptionCreationErrorCooldownSec,omitzero" tfsdk:"subscription_creation_error_cooldown_sec"`
 }
 
 type AzurePreProvisionedSubscriptionConfig struct {

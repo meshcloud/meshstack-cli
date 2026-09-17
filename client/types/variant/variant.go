@@ -1,7 +1,7 @@
 package variant
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"reflect"
@@ -21,11 +21,20 @@ var (
 	_ json.Marshaler   = Variant[int, string]{}
 )
 
+// wireCompatibility repeats the options internal/json marshals every request with, because a
+// v1-style MarshalJSON receives none of its caller's. An "any" decoded from JSON is a map, so
+// without them a Y would leave this method in a random member order.
+var wireCompatibility = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+)
+
 func (v Variant[X, Y]) MarshalJSON() ([]byte, error) {
 	if v.HasX() {
-		return json.Marshal(v.X)
+		return json.Marshal(v.X, wireCompatibility)
 	} else if v.HasY() {
-		return json.Marshal(v.Y)
+		return json.Marshal(v.Y, wireCompatibility)
 	}
 	return json.Marshal(nil)
 }

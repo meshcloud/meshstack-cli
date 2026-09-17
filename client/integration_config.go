@@ -1,7 +1,7 @@
 package client
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"reflect"
 
@@ -43,18 +43,18 @@ type MeshIntegrationEntraIdConfig struct {
 	TenantId     string       `json:"tenantId" tfsdk:"tenant_id"`
 	ClientId     string       `json:"clientId" tfsdk:"client_id"`
 	ClientSecret types.Secret `json:"clientSecret" tfsdk:"client_secret"`
-	IdpAlias     *string      `json:"idpAlias,omitempty" tfsdk:"idp_alias"`
+	IdpAlias     *string      `json:"idpAlias,omitzero" tfsdk:"idp_alias"`
 	// meshStack derives this and returns it inside spec, which configuration writes. A computed value
 	// there is unreachable under provider mocks (issue #272), so Terraform reads it from status instead.
-	RedirectUrl *string `json:"redirectUrl,omitempty" tfsdk:"-"`
+	RedirectUrl *string `json:"redirectUrl,omitzero" tfsdk:"-"`
 }
 
 type MeshIntegrationConfig struct {
 	Type        enum.Entry[MeshIntegrationConfigType] `json:"type" tfsdk:"-"`
-	Github      *MeshIntegrationGithubConfig          `json:"github,omitempty" tfsdk:"github"`
-	Gitlab      *MeshIntegrationGitlabConfig          `json:"gitlab,omitempty" tfsdk:"gitlab"`
-	AzureDevops *MeshIntegrationAzureDevopsConfig     `json:"azuredevops,omitempty" tfsdk:"azuredevops"`
-	EntraId     *MeshIntegrationEntraIdConfig         `json:"entraid,omitempty" tfsdk:"entraid"`
+	Github      *MeshIntegrationGithubConfig          `json:"github,omitzero" tfsdk:"github"`
+	Gitlab      *MeshIntegrationGitlabConfig          `json:"gitlab,omitzero" tfsdk:"gitlab"`
+	AzureDevops *MeshIntegrationAzureDevopsConfig     `json:"azuredevops,omitzero" tfsdk:"azuredevops"`
+	EntraId     *MeshIntegrationEntraIdConfig         `json:"entraid,omitzero" tfsdk:"entraid"`
 }
 
 func (m MeshIntegrationConfig) InferTypeFromNonNilField() (result enum.Entry[MeshIntegrationConfigType]) {
@@ -81,7 +81,7 @@ func (m MeshIntegrationConfig) MarshalJSON() ([]byte, error) {
 	type wrapped MeshIntegrationConfig
 	w := wrapped(m)
 	w.Type = m.InferTypeFromNonNilField()
-	return json.Marshal(w)
+	return json.Marshal(w, wireCompatibility)
 }
 
 func (m *MeshIntegrationConfig) UnmarshalJSON(bytes []byte) error {

@@ -3,7 +3,6 @@ package http
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +11,8 @@ import (
 	"reflect"
 	"slices"
 	"time"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // sharedClient is the only place where instance of &gohttp.Client is created, allowing for connection pooling a
