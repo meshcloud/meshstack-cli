@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
@@ -14,11 +16,19 @@ type (
 	ResolveSessionOptions = auth.ResolveSessionOptions
 )
 
-// Session is a resolved endpoint and credential, ready to build a client from or to store.
+// Session is a facade for auth.Session obtained by ResolveSession, exposing mainly an authorized Session.Client.
+// Consider using ResolveClient instead.
 type Session struct {
 	internal auth.Session
 	// opts are kept so that Client resolves its settings from the same sources the session came from.
 	opts ResolveSessionOptions
+}
+
+// Status is returned by Session.Status().
+type Status struct {
+	client.MeshInfo
+
+	Endpoint xurl.URL
 }
 
 // ResolveSession resolves the profile (creating a default one if non exists) and a Session from it.
@@ -29,7 +39,24 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (result Ses
 	return
 }
 
-// ResolveClient resolves a session and builds its client.
+// Client builds the client and checks the backend version, if not skipped using [meshstack.SkipVersionCheckSetting].
+func (s Session) Client(ctx context.Context) (client.Client, error) {
+	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %T",
+		s.internal.Endpoint, s.internal.HttpClient.UserAgent, s.internal.Credential))
+	c := client.New(ctx, s.internal.Endpoint, s.internal.HttpClient.UserAgent, s.internal)
+	if skipVersionCheck, err := s.opts.ResolveSetting(meshstack.SkipVersionCheckSetting); err != nil {
+		return client.Client{}, err
+	} else if skipVersionCheck {
+		// Neither ResolveSession nor this method does any HTTP backend call if version check is skipped
+		// which is important for Terraform provider behavior not blocking early on when backend is unreachable.
+		return c, nil
+	}
+	_, err := s.internal.CheckedMeshInfo()
+	return c, err
+}
+
+// ResolveClient resolves a session and builds its client, authorized against the meshStack backend.
+// Convenient wrapper for ResolveSession(...) -> Session.Client(...).
 func ResolveClient(ctx context.Context, opts ResolveSessionOptions) (client.Client, error) {
 	session, err := ResolveSession(ctx, opts)
 	if err != nil {
@@ -38,26 +65,16 @@ func ResolveClient(ctx context.Context, opts ResolveSessionOptions) (client.Clie
 	return session.Client(ctx)
 }
 
-// Client builds the client and checks the backend version, if not skipped using [meshstack.SkipVersionCheckSetting].
-func (s Session) Client(ctx context.Context) (client.Client, error) {
-	c := s.internal.Client(ctx)
-	skipVersionCheck, err := s.opts.ResolveSetting(meshstack.SkipVersionCheckSetting)
+// Status retrieves info from backend and also mints a bearer token, so that an unusable client fails here.
+// Calling [Session.Store] after it persists the minted token on disk.
+func (s Session) Status(ctx context.Context) (status Status, err error) {
+	status.Endpoint = s.internal.Endpoint
+	status.MeshInfo, err = s.internal.CheckedMeshInfo()
 	if err != nil {
-		return c, err
+		return
 	}
-	if skipVersionCheck {
-		return c, nil
-	}
-	info, err := c.MeshInfo.Read(ctx)
-	if err != nil {
-		return c, err
-	}
-	return c, info.CheckVersion()
-}
-
-// Endpoint is the meshStack this session acts against.
-func (s Session) Endpoint() xurl.URL {
-	return s.internal.Endpoint
+	_, err = s.internal.GetBearerToken(ctx)
+	return
 }
 
 // Store stores the resolved session into the current profile including credentials and cache.

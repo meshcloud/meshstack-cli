@@ -48,7 +48,7 @@ func NewMeshObjectClient[M any](ctx context.Context, httpClient HttpClient, apiV
 	}
 	explicitApiPathElems = slices.Insert(explicitApiPathElems, 0, "/api/meshobjects")
 	apiUrl := httpClient.EndpointUrl.JoinPath(explicitApiPathElems...)
-	slog.InfoContext(ctx, fmt.Sprintf("initialized %s client", reflect.TypeFor[M]().Name()), "url", apiUrl.String(), "kind", kind, "version", apiVersion)
+	slog.DebugContext(ctx, fmt.Sprintf("initialized %s client", reflect.TypeFor[M]().Name()), "url", apiUrl.String(), "kind", kind, "version", apiVersion)
 	return MeshObjectClient[M]{httpClient.AuthorizedClient, kind, apiVersion, apiUrl}
 }
 

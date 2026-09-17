@@ -217,6 +217,8 @@ linters:
             - log/slog
             # the root command registers every subcommand package explicitly, so it reaches all of cmd/
             - github.com/meshcloud/meshstack-cli/cmd
+            # the root command stamps its stderr into the context every command runs with
+            - github.com/meshcloud/meshstack-cli/pkg/io
             # Keep this list short
             - github.com/spf13/cobra
             - github.com/charmbracelet/log

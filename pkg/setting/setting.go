@@ -40,6 +40,7 @@ func ExplicitLookupSource(matchingEnvKey, description string, lookup func() (str
 // The settings a front end (CLI, TF Provider) may read and supply.
 var (
 	Endpoint         Setting = meshstack.EndpointSetting
+	Workspace        Setting = meshstack.WorkspaceSetting
 	SkipVersionCheck Setting = meshstack.SkipVersionCheckSetting
 
 	ApiKeyClientId     Setting = auth.ApiKeyClientIdSetting

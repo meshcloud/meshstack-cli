@@ -8,22 +8,24 @@ import (
 	"strings"
 
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
 type Credential interface {
 	// Identity returns the Identity of a credential, see Credentials.SetIdentity
 	Identity() Identity
-	// CachedToken returns a cached token or found is false if not present.
-	CachedToken(ctx context.Context) (token jwt.JWT, found bool)
-	// RefreshCachedToken ensures that the CachedToken is re-minted and
+	// CachedToken returns a cached token for workspace or found is false if not present.
+	CachedToken(ctx context.Context, workspace meshstack.Workspace) (token jwt.JWT, found bool)
+	// RefreshCachedToken ensures that the CachedToken for workspace is re-minted and
 	// thus subsequent call to CachedToken() is guaranteed to return token (found always true).
-	RefreshCachedToken(ctx context.Context, client http.Client) error
+	RefreshCachedToken(ctx context.Context, client http.Client, workspace meshstack.Workspace) error
 }
 
 type Credentials struct {
-	ApiKey *ApiKey `json:"apiKey,omitempty"`
-	Manual *Manual `json:"manual,omitempty"`
+	ApiKey    *ApiKey    `json:"apiKey,omitempty"`
+	Manual    *Manual    `json:"manual,omitempty"`
+	OidcLogin *OidcLogin `json:"oidcLogin,omitempty"`
 }
 
 func (cs *Credentials) SetIdentity(cred Credential) {

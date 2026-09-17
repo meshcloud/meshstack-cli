@@ -18,6 +18,8 @@ var (
 	ApiKeyMethod = methods.Entry("apiKey").Unwrap()
 	// ManualMethod sends an access token as it is.
 	ManualMethod = methods.Entry("manual").Unwrap()
+	// OidcLoginMethod logs a person in through a browser, so it resolves only when asked for by name.
+	OidcLoginMethod = methods.Entry("oidcLogin").Unwrap()
 )
 
 func init() {

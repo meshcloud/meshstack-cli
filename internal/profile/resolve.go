@@ -77,7 +77,7 @@ func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts R
 	}
 	if len(matchingProfiles) == 1 {
 		profile := matchingProfiles[0]
-		slog.InfoContext(ctx, fmt.Sprintf("Using profile %s by uniquely matching endpoint '%s'", profile, endpoint))
+		slog.DebugContext(ctx, fmt.Sprintf("Using profile %s by uniquely matching endpoint '%s'", profile, endpoint))
 		return string(profile.Name), nil
 	}
 	return "", nil

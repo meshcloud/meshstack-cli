@@ -2,19 +2,11 @@ package auth
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
-
-func (s Session) Client(ctx context.Context) client.Client {
-	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %T", s.Endpoint, s.HttpClient.UserAgent, s.Credential))
-	return client.New(ctx, s.Endpoint, s.HttpClient.UserAgent, s)
-}
 
 // Session implements http.Authorization with concurrent cache/persistence.
 var _ http.Authorization = Session{}
@@ -25,7 +17,7 @@ func (s Session) GetBearerToken(ctx context.Context) (out http.BearerToken, err 
 
 func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerToken) (out http.BearerToken, err error) {
 	usable := func() bool {
-		token, found := s.Credential.CachedToken(ctx)
+		token, found := s.Credential.CachedToken(ctx, s.Workspace)
 		if !found || token.GetClaim(jwt.ExpiryClaim).Expired(30*time.Second) || token.String() == string(rejected) {
 			return false
 		}
@@ -45,11 +37,11 @@ func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerTok
 		if usable() {
 			return nil
 		}
-		if err := s.Credential.RefreshCachedToken(ctx, s.HttpClient); err != nil {
+		if err := s.Credential.RefreshCachedToken(ctx, s.HttpClient, s.Workspace); err != nil {
 			return err
 		}
 		// after refresh, under exclusive lock, we can safely assume that CachedToken is now set (found true)
-		token, _ := s.Credential.CachedToken(ctx)
+		token, _ := s.Credential.CachedToken(ctx, s.Workspace)
 		out = http.BearerToken(token.String())
 		return nil
 	})

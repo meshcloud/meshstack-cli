@@ -11,6 +11,7 @@ import (
 var (
 	SkipVersionCheckFlag = NewFlagForSetting[bool]("skip-version-check", setting.SkipVersionCheck)
 	EndpointFlag         = NewFlagForSetting[string]("endpoint", setting.Endpoint)
+	WorkspaceFlag        = NewFlagForSetting[string]("workspace", setting.Workspace)
 )
 
 type FlagName string
@@ -48,10 +49,19 @@ func (flag *Flag[T]) Register(flags *pflag.FlagSet) (flagName string) {
 	return flag.Name.String()
 }
 
-type FlagWithPrompt struct {
-	Flag[bool]
+func (flag *Flag[T]) AsSource() setting.ExplicitSource {
+	return setting.ExplicitLookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func() (string, error) {
+		return fmt.Sprintf("%v", flag.Value), nil
+	})
 }
 
-func NewFlagWithPrompt(name FlagName, s setting.Setting) FlagWithPrompt {
-	return FlagWithPrompt{Name: name, Help: s.Help(), SettingEnvKey: s.EnvKey()}
+// AsSourceUnless contributes nothing but its own name while the flag still carries placeholder.
+// We still add the source so setting resolution can build a proper error hint.
+func (flag *Flag[T]) AsSourceUnless(predicate func(T) bool) setting.ExplicitSource {
+	return setting.ExplicitLookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func() (string, error) {
+		if predicate(flag.Value) {
+			return "", nil
+		}
+		return fmt.Sprintf("%v", flag.Value), nil
+	})
 }

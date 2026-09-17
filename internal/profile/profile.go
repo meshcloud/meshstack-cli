@@ -12,6 +12,7 @@ import (
 //nolint:recvcheck // only exception is init() to set fields after unmarshalling
 type Profile struct {
 	Endpoint   *xurl.URL       `json:"endpoint,omitzero"`
+	Workspace  string          `json:"workspace,omitzero"`
 	Credential credential.Name `json:"credential,omitzero"`
 
 	// Name and Credentials are initialized after load/create in [Profile.init] below.
@@ -31,6 +32,15 @@ func (p Profile) EndpointSource() setting.Source {
 				return p.Endpoint.String(), nil
 			}
 			return "", nil
+		},
+	}
+}
+
+func (p Profile) WorkspaceSource() setting.Source {
+	return setting.LookupSource{
+		Description: fmt.Sprintf("current profile %s", p.Name),
+		Func: func() (string, error) {
+			return p.Workspace, nil
 		},
 	}
 }

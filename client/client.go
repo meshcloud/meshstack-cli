@@ -64,7 +64,7 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 		Integration:                    newIntegrationClient(ctx, authorizedClient),
 		LandingZone:                    newLandingZoneClient(ctx, authorizedClient),
 		Location:                       newLocationClient(ctx, authorizedClient),
-		MeshInfo:                       newMeshInfoClient(client, endpoint),
+		MeshInfo:                       NewMeshInfoClient(client, endpoint),
 		PaymentMethod:                  newPaymentMethodClient(ctx, authorizedClient),
 		Platform:                       newPlatformClient(ctx, authorizedClient),
 		PlatformType:                   newPlatformTypeClient(ctx, authorizedClient),

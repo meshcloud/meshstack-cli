@@ -28,6 +28,7 @@ func ExplicitSourcesOption() setting.ExplicitSourcesOption {
 	return setting.ExplicitSourcesOption{
 		UseSettingsFrom: []setting.ExplicitSource{
 			EndpointFlag.AsSource(),
+			WorkspaceFlag.AsSource(),
 			SkipVersionCheckFlag.AsSource(),
 		},
 	}

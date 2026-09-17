@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
+	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/http"
@@ -36,7 +38,22 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 		return Session{}, fmt.Errorf("endpoint from profile '%s' does not match endpoint '%s' configured for session", currentProfile.Endpoint, endpoint)
 	}
 
-	session := Session{Endpoint: endpoint, HttpClient: http.NewClient(opts.UserAgent)}
+	workspace, err := opts.ResolveSetting(meshstack.WorkspaceSetting, currentProfile.WorkspaceSource())
+	if err != nil && !errors.Is(err, setting.ErrNoSourceProvidedValue) {
+		return Session{}, err
+	}
+
+	httpClient := http.NewClient(opts.UserAgent)
+
+	session := Session{
+		Endpoint:   endpoint,
+		Workspace:  workspace,
+		HttpClient: httpClient,
+		// OidcLogin needs /mesh/info rather early, so provide it lazily (and checked for version if not skipped)
+		CheckedMeshInfo: sync.OnceValues(func() (client.MeshInfo, error) {
+			return getAndCheckMeshInfo(ctx, httpClient, endpoint, opts.ExplicitSourcesOption)
+		}),
+	}
 
 	if creds, current, err := session.resolveCredentials(ctx, currentProfile, opts); err != nil {
 		return Session{}, err
@@ -52,9 +69,32 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 }
 
 type Session struct {
-	Credentials profile.Credentials
-	Credential  credential.Credential
-	Endpoint    xurl.URL
-	HttpClient  http.Client
-	Store       func(ctx context.Context) error
+	Credentials     profile.Credentials
+	Credential      credential.Credential
+	Endpoint        xurl.URL
+	Workspace       meshstack.Workspace
+	HttpClient      http.Client
+	Store           func(ctx context.Context) error
+	CheckedMeshInfo func() (client.MeshInfo, error)
+}
+
+// WithWorkspace is a session acting in another workspace. The copy shares Credentials, so one
+// refresh token and one file lock serve every workspace a run touches.
+func (s Session) WithWorkspace(workspace meshstack.Workspace) Session {
+	inWorkspace := s
+	inWorkspace.Workspace = workspace
+	return inWorkspace
+}
+
+func getAndCheckMeshInfo(ctx context.Context, httpClient http.Client, endpoint xurl.URL, opts setting.ExplicitSourcesOption) (client.MeshInfo, error) {
+	meshInfo, err := client.NewMeshInfoClient(httpClient, endpoint).Read(ctx)
+	if err != nil {
+		return client.MeshInfo{}, err
+	}
+	if skipVersionCheck, err := opts.ResolveSetting(meshstack.SkipVersionCheckSetting); err != nil {
+		return client.MeshInfo{}, err
+	} else if skipVersionCheck {
+		return meshInfo, nil
+	}
+	return meshInfo, meshInfo.CheckVersion()
 }

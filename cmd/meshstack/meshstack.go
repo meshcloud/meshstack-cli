@@ -5,30 +5,23 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"os/signal"
-	"time"
 
 	clog "github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/pkg/io"
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := internal.RunWith(context.Background(), internal.DefaultTimeout, func(ctx context.Context) error {
+		//nolint:contextcheck // the root's PersistentPreRun derives from cmd.Context(), which cobra sets from this ctx
+		return newRootCommand().ExecuteContext(ctx)
+	}); err != nil {
 		// cobra has already written the error to stderr.
 		os.Exit(1)
 	}
-}
-
-func run() error {
-	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stopSignals()
-	// Ends a run waiting for what never comes, such as a browser login nobody answers.
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	return newRootCommand().ExecuteContext(ctx)
 }
 
 func newRootCommand() *cobra.Command {
@@ -47,14 +40,16 @@ func newRootCommand() *cobra.Command {
 		// A command that fails prints its error, not the whole help text. The user asks
 		// for help explicitly.
 		SilenceUsage: true,
-		PersistentPreRun: func(_ *cobra.Command, _ []string) {
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			setupLogging(debug)
+			cmd.SetContext(io.WithStderr(cmd.Context(), cmd.ErrOrStderr()))
 		},
 	}
 
 	persistentFlags := cmd.PersistentFlags()
 	persistentFlags.BoolVar(&debug, "debug", false, "log at debug level")
 	internal.EndpointFlag.Register(persistentFlags)
+	internal.WorkspaceFlag.Register(persistentFlags)
 	internal.SkipVersionCheckFlag.Register(persistentFlags)
 
 	cmd.AddCommand(auth.New())

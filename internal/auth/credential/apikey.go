@@ -8,6 +8,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
@@ -28,14 +29,14 @@ func (apiKey *ApiKey) Identity() Identity {
 	return identityOf(apiKey)
 }
 
-func (apiKey *ApiKey) CachedToken(_ context.Context) (token jwt.JWT, found bool) {
+func (apiKey *ApiKey) CachedToken(_ context.Context, _ meshstack.Workspace) (token jwt.JWT, found bool) {
 	if apiKey.Cache == nil {
 		return
 	}
 	return apiKey.Cache.Token, true
 }
 
-func (apiKey *ApiKey) RefreshCachedToken(ctx context.Context, client http.Client) error {
+func (apiKey *ApiKey) RefreshCachedToken(ctx context.Context, client http.Client, _ meshstack.Workspace) error {
 	loginEndpoint := apiKey.Endpoint.JoinPath("api", "login")
 
 	payload := struct {

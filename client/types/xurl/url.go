@@ -69,3 +69,7 @@ func (u URL) MarshalText() ([]byte, error) {
 	}
 	return []byte(u.String()), nil
 }
+
+func (u URL) Clone() URL {
+	return URL{u.URL.Clone()}
+}

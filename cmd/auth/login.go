@@ -1,9 +1,14 @@
 package auth
 
 import (
+	"bufio"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -15,9 +20,9 @@ import (
 func NewLogin() *cobra.Command {
 	const apiKeyIdDefault = "<id>"
 	var (
-		stdinFlag    bool
-		apiKeyFlag   = internal.NewFlagForSetting[string]("apikey", setting.ApiKeyClientId)
-		apiTokenFlag = internal.NewFlagWithPrompt("apitoken", setting.ApiToken)
+		openStdinFlag = internal.Flag[bool]{Name: "stdin", Help: "prompt the API key secret or API token from stdin"}
+		apiKeyFlag    = internal.NewFlagForSetting[string]("apikey", setting.ApiKeyClientId)
+		apiTokenFlag  = newFlagWithPrompt("apitoken", setting.ApiToken)
 	)
 
 	cmd := &cobra.Command{
@@ -29,14 +34,15 @@ func NewLogin() *cobra.Command {
 				return nil
 			}
 			if cmd.Flags().Changed(apiKeyFlag.Name.String()) {
-				return fmt.Errorf("an API key id needs an equals sign: write `--%s=%s`. --%s takes an optional value, so %q was read as a positional argument rather than as the id",
-					apiKeyFlag.Name, args[0], apiKeyFlag.Name, args[0])
+				return fmt.Errorf("an API key id needs an equals sign: write `--%s=%s`",
+					apiKeyFlag.Name, args[0])
 			}
-			return fmt.Errorf("this command takes no arguments: `meshstack auth login` does not take %q. Everything it needs comes from flags and the environment", args[0])
+			return fmt.Errorf("the meshstack auth login does not take any arguments such as '%q'; everything comes from flags and the environment", args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			var sources []setting.ExplicitSource
+			timeout := internal.DefaultTimeout
 			var forceAuthWith auth.Method
+			var sources []setting.ExplicitSource
 			switch {
 			case cmd.Flags().Changed(apiKeyFlag.Name.String()):
 				forceAuthWith = auth.ApiKeyMethod
@@ -50,37 +56,37 @@ func NewLogin() *cobra.Command {
 					apiKeyFlag.AsSourceUnless(func(value string) bool {
 						return value == apiKeyIdDefault
 					}),
-					internal.NewPromptingSource(setting.ApiKeyClientSecret, &stdinFlag, cmd, "API Client Secret"),
+					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), cmd, &openStdinFlag, "API Client Secret"),
 				)
 			case apiTokenFlag.Value:
 				forceAuthWith = auth.ManualMethod
-				sources = append(sources, apiTokenFlag.AsSource(cmd, &stdinFlag, "API Token"))
+				sources = append(sources, apiTokenFlag.AsSource(cmd, &openStdinFlag, "API Token"))
 			default:
-				// TODO pick OIDC here
-				return errors.New("no credentials provided for login")
+				// This is OIDC Login (by default)...
+				timeout = 5 * time.Minute // ...and give the user more time to finish the Browser login flow
+				forceAuthWith = auth.OidcLoginMethod
+				sources = append(sources)
 			}
-			session, err := internal.ResolveSession(cmd.Context(), func(opts *auth.ResolveSessionOptions) {
-				opts.UseSettingsFrom = append(opts.UseSettingsFrom, sources...)
-				opts.ForceAuthWith = forceAuthWith
+			return internal.RunWith(cmd.Context(), timeout, func(ctx context.Context) error {
+				session, err := internal.ResolveSession(ctx, func(opts *auth.ResolveSessionOptions) {
+					opts.UseSettingsFrom = append(opts.UseSettingsFrom, sources...)
+					opts.ForceAuthWith = forceAuthWith
+				})
+				if err != nil {
+					return err
+				}
+				sessionStatus, err := session.Status(ctx)
+				if err != nil {
+					return err
+				}
+				if err := session.Store(ctx); err != nil {
+					return err
+				}
+				// TODO render Markdown output from model instead of logging?!
+				slog.InfoContext(ctx, fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s",
+					sessionStatus.CliClientId, internal.Version, sessionStatus.Version, sessionStatus.Endpoint))
+				return nil
 			})
-			if err != nil {
-				return err
-			}
-			c, err := session.Client(cmd.Context())
-			if err != nil {
-				return err
-			}
-			info, err := c.MeshInfo.Read(cmd.Context())
-			if err != nil {
-				return err
-			}
-			if err := session.Store(cmd.Context()); err != nil {
-				return err
-			}
-			// TODO render Markdown output from model instead of logging?!
-			slog.InfoContext(cmd.Context(), fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s",
-				info.CliClientId, internal.Version, info.Version, session.Endpoint()))
-			return nil
 		},
 	}
 
@@ -91,8 +97,40 @@ func NewLogin() *cobra.Command {
 	// This makes a bare --apikey work, see above for dedicated flags handling
 	cmd.Flags().Lookup(apiKeyFlag.Name.String()).NoOptDefVal = apiKeyIdDefault
 
-	cmd.Flags().BoolVar(&stdinFlag, internal.StdinFlag.Name.String(), false,
-		"prompt the API key secret or API token from stdin")
+	openStdinFlag.Register(cmd.Flags())
 
 	return cmd
+}
+
+type FlagWithPrompt struct {
+	internal.Flag[bool]
+}
+
+func newFlagWithPrompt(name internal.FlagName, s setting.Setting) FlagWithPrompt {
+	return FlagWithPrompt{Name: name, Help: s.Help(), SettingEnvKey: s.EnvKey()}
+}
+
+func (flag *FlagWithPrompt) AsSource(cmd *cobra.Command, stdinFlag *internal.Flag[bool], prompt string) (source setting.ExplicitSource) {
+	return newPromptingSource(flag.SettingEnvKey, cmd, stdinFlag, prompt)
+}
+
+func newPromptingSource(settingEnvKey string, cmd *cobra.Command, openStdinFlag *internal.Flag[bool], prompt string) setting.ExplicitSource {
+	description := fmt.Sprintf("%s to read the %s from stdin", openStdinFlag.Name.SourceDescription(), prompt)
+	return setting.ExplicitLookupSource(settingEnvKey, description, func() (string, error) {
+		if !openStdinFlag.Value {
+			return "", nil
+		}
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "%s (finish with Enter or Ctrl-D): ", prompt); err != nil {
+			return "", err
+		}
+		text, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" {
+			return "", errors.New("no non-whitespace input provided in prompt")
+		}
+		return trimmed, nil
+	})
 }

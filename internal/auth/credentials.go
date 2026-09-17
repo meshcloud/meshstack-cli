@@ -12,6 +12,27 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
+type credentialResolver struct {
+	// stored is read for its type alone, which names the field and thus the ForceAuthWith value
+	stored  credential.Credential
+	resolve func(context.Context, ResolveSessionOptions) (credential.Credential, error)
+}
+
+// credentialResolvers is what may mint a credential, in the order they are tried. A resolver that
+// needs a person — the browser login — is in the list only when forced names it, so that an
+// unforced resolution cannot reach one: the Terraform provider resolves a session on every plan
+// and must never open a browser.
+func (s Session) credentialResolvers(forced credential.Name) []credentialResolver {
+	resolvers := []credentialResolver{
+		{new(credential.Manual), s.resolveManualCredential},
+		{new(credential.ApiKey), s.resolveApiKeyCredential},
+	}
+	if forced == "" {
+		return resolvers
+	}
+	return append(resolvers, credentialResolver{new(credential.OidcLogin), s.resolveOidcLoginCredential})
+}
+
 func (s Session) resolveCredentials(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (profile.Credentials, credential.Credential, error) {
 	creds, err := currentProfile.Credentials(ctx)
 	if err != nil {
@@ -35,14 +56,7 @@ func (s Session) resolveCredentials(ctx context.Context, currentProfile *profile
 	if opts.ForceAuthWith != "" && !slices.Contains(credential.Names, opts.ForceAuthWith) {
 		return profile.Credentials{}, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", opts.ForceAuthWith, credential.Names)
 	}
-	for _, resolver := range []struct {
-		// read for its type alone, which names the field and thus the ForceAuthWith value
-		stored  credential.Credential
-		resolve func(context.Context, ResolveSessionOptions) (credential.Credential, error)
-	}{
-		{new(credential.Manual), s.resolveManualCredential},
-		{new(credential.ApiKey), s.resolveApiKeyCredential},
-	} {
+	for _, resolver := range s.credentialResolvers(opts.ForceAuthWith) {
 		if opts.ForceAuthWith != "" && opts.ForceAuthWith != creds.NameOf(resolver.stored) {
 			continue
 		}

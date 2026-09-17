@@ -9,18 +9,21 @@ type Claim[V any] struct {
 	converter func(v any) V
 }
 
-var ExpiryClaim = Claim[Expiry]{
-	key: "exp",
-	converter: func(v any) (expiry Expiry) {
-		// JSON numbers decode as float64, and exp counts seconds since the epoch.
-		seconds, ok := v.(float64)
-		if !ok {
+var (
+	ExpiryClaim = Claim[Expiry]{
+		key: "exp",
+		converter: func(v any) (expiry Expiry) {
+			// JSON numbers decode as float64, and exp counts seconds since the epoch.
+			seconds, ok := v.(float64)
+			if !ok {
+				return
+			}
+			expiry.Time = time.Unix(int64(seconds), 0)
 			return
-		}
-		expiry.Time = time.Unix(int64(seconds), 0)
-		return
-	},
-}
+		},
+	}
+	WorkspaceClaim = Claim[string]{key: "MC_CUSTOMER"}
+)
 
 func (c Claim[V]) getFrom(jwt JWT) V {
 	if c.converter != nil {

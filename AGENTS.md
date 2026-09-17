@@ -190,8 +190,8 @@ half of the lane belongs to `../meshfed-release` and changes without us: read it
 ## Authentication
 
 `MESHSTACK_ENDPOINT`, `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`, with `MESHSTACK_API_TOKEN` as
-an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE`,
-`MESHSTACK_NO_INPUT` and `MESHSTACK_CONFIG_DIR`.
+an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE` and
+`MESHSTACK_CONFIG_DIR`.
 
 **Each one is declared once, in the domain package it belongs to**, as a `setting.Setting[T]` whose
 `EnvKey` is both the variable name and the setting's identity. `internal/setting` resolves it from

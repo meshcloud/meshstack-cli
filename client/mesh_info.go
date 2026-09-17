@@ -42,7 +42,7 @@ type meshInfoClient struct {
 	Endpoint xurl.URL
 }
 
-func newMeshInfoClient(client http.Client, endpoint xurl.URL) MeshInfoClient {
+func NewMeshInfoClient(client http.Client, endpoint xurl.URL) MeshInfoClient {
 	return meshInfoClient{client, endpoint}
 }
 
