@@ -210,14 +210,14 @@ func (f *stressFailures) requireNone(t *testing.T) {
 	require.Zerof(t, f.count, "%d calls failed, the first of them: %v", f.count, errors.Join(f.first...))
 }
 
-// sessionOptsFor supplies the api key as an explicit setting source rather than through the
+// sessionOptsFor supplies the api key as a front end setting source rather than through the
 // environment. The resolvers run at the same time, and one process cannot hold two values of
 // MESHSTACK_API_KEY at once.
 func sessionOptsFor(key testserver.ApiKey) auth.ResolveSessionOptions {
 	opts := testSessionOpts
-	opts.UseSettingsFrom = []setting.ExplicitSource{
-		{Source: staticSetting(auth.ApiKeyClientIdSetting.EnvKey(), key.ClientId)},
-		{Source: staticSetting(auth.ApiKeyClientSecretSetting.EnvKey(), key.ClientSecret)},
+	opts.SettingSources = setting.Sources{
+		setting.FrontendSource{Source: staticSetting(auth.ApiKeyClientIdSetting.EnvKey(), key.ClientId)},
+		setting.FrontendSource{Source: staticSetting(auth.ApiKeyClientSecretSetting.EnvKey(), key.ClientSecret)},
 	}
 	return opts
 }

@@ -28,7 +28,7 @@ const (
 func warnIfNewerReleasePresent(ctx context.Context, configDir config.Directory, client http.Client, opts ResolveSessionOptions) (err error) {
 	currentVersion, err := version.Parse(opts.Version)
 	if err != nil {
-		slog.DebugContext(ctx, fmt.Sprintf("Skipping release check for a build that no release names: %s", err))
+		slog.DebugContext(ctx, fmt.Sprintf("Skipping release check for build with unparsable version: %s", err))
 		return nil
 	}
 	if !configDir.Exists() {

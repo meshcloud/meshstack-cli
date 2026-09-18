@@ -7,14 +7,15 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 //nolint:recvcheck // only exception is init() to set fields after unmarshalling
 type Profile struct {
-	Endpoint   *xurl.URL       `json:"endpoint,omitzero"`
-	Workspace  string          `json:"workspace,omitzero"`
-	Credential credential.Name `json:"credential,omitzero"`
+	Endpoint         *xurl.URL           `json:"endpoint,omitzero"`
+	DefaultWorkspace meshstack.Workspace `json:"default_workspace,omitzero"`
+	Credential       credential.Name     `json:"credential,omitzero"`
 
 	// Name and ConfigDir are initialized after load/create in [Profile.init] below.
 	Name      Name             `json:"-"`
@@ -27,7 +28,7 @@ func (p Profile) String() string {
 
 func (p Profile) EndpointSource() setting.Source {
 	return setting.LookupSource{
-		Description: fmt.Sprintf("current profile %s", p.Name),
+		Description: fmt.Sprintf("endpoint in profile %s", p.Name),
 		Func: func(_ context.Context) (string, error) {
 			if p.Endpoint != nil {
 				return p.Endpoint.String(), nil
@@ -39,9 +40,10 @@ func (p Profile) EndpointSource() setting.Source {
 
 func (p Profile) WorkspaceSource() setting.Source {
 	return setting.LookupSource{
-		Description: fmt.Sprintf("current profile %s", p.Name),
+		Description: fmt.Sprintf("default workspace in profile %s", p.Name),
 		Func: func(_ context.Context) (string, error) {
-			return p.Workspace, nil
+			// Note: if Workspace is empty, resolution will silently skip this source
+			return string(p.DefaultWorkspace), nil
 		},
 	}
 }

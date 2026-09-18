@@ -24,6 +24,13 @@ func (d DefaultSource) Describe(key string) string {
 	return "default value for " + key
 }
 
+func (d DefaultSource) asSourcesIfPresent() Sources {
+	if d == nil {
+		return nil
+	}
+	return Sources{d}
+}
+
 // StaticDefault constructs a default static value. Useful for Setting.Default.
 func StaticDefault(v string) DefaultSource {
 	return func() (string, error) {
@@ -53,24 +60,12 @@ func (s LookupSource) Describe(key string) string {
 	return s.Description
 }
 
-// ExplicitSource gives the sources a higher precedence than EnvKey source, see Resolve.
-type ExplicitSource struct {
+// FallbackSource gives the wrapped source a lower precedence than EnvKey source, see Sources.ResolveSetting.
+type FallbackSource struct {
 	Source
 }
 
-// ExplicitSourcesOption conveniently exposes ExplicitSource as an option,
-// and ensures by ExplicitSourcesOption.ResolveSetting that this explicit source is always used.
-type ExplicitSourcesOption struct {
-	UseSettingsFrom []ExplicitSource
-}
-
-// ResolveSetting ensures the explicitly configured sources are resolved alongside the given ones.
-func (o ExplicitSourcesOption) ResolveSetting[T any](ctx context.Context, setting Setting[T], sources ...Source) (T, error) {
-	for _, explicitSource := range o.UseSettingsFrom {
-		// this nil check is important if "NoSource" is passed (default constructed ExplicitSource).
-		if explicitSource.Source != nil {
-			sources = append(sources, explicitSource)
-		}
-	}
-	return setting.Resolve(ctx, sources...)
+// FrontendSource gives the wrapped source a higher precedence than EnvKey source, see Sources.ResolveSetting.
+type FrontendSource struct {
+	Source
 }

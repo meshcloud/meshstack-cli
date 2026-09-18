@@ -17,7 +17,7 @@ func (s Session) GetBearerToken(ctx context.Context) (out http.BearerToken, err 
 
 func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerToken) (out http.BearerToken, err error) {
 	usable := func() bool {
-		token, found := s.Credential.CachedToken(ctx, s.Workspace)
+		token, found := s.Credential.CachedToken(ctx, s.getWorkspace)
 		if !found || token.GetClaim(jwt.ExpiryClaim).Expired(30*time.Second) || token.String() == string(rejected) {
 			return false
 		}
@@ -37,11 +37,11 @@ func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerTok
 		if usable() {
 			return nil
 		}
-		if err := s.Credential.RefreshCachedToken(ctx, s.HttpClient, s.Workspace); err != nil {
+		if err := s.Credential.RefreshCachedToken(ctx, s.httpClient, s.getWorkspace); err != nil {
 			return err
 		}
 		// after refresh, under exclusive lock, we can safely assume that CachedToken is now set (found true)
-		token, _ := s.Credential.CachedToken(ctx, s.Workspace)
+		token, _ := s.Credential.CachedToken(ctx, s.getWorkspace)
 		out = http.BearerToken(token.String())
 		return nil
 	})

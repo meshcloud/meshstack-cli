@@ -16,11 +16,13 @@ type Credential interface {
 	// Identity returns the Identity of a credential, see Credentials.SetIdentity
 	Identity() Identity
 	// CachedToken returns a cached token for workspace or found is false if not present.
-	CachedToken(ctx context.Context, workspace meshstack.Workspace) (token jwt.JWT, found bool)
+	CachedToken(ctx context.Context, getWorkspace getWorkspaceFunc) (token jwt.JWT, found bool)
 	// RefreshCachedToken ensures that the CachedToken for workspace is re-minted and
 	// thus subsequent call to CachedToken() is guaranteed to return token (found always true).
-	RefreshCachedToken(ctx context.Context, client http.Client, workspace meshstack.Workspace) error
+	RefreshCachedToken(ctx context.Context, client http.Client, getWorkspace getWorkspaceFunc) error
 }
+
+type getWorkspaceFunc func() (meshstack.Workspace, error)
 
 type Credentials struct {
 	ApiKey    *ApiKey    `json:"apiKey,omitempty"`

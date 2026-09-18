@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshWorkspace struct {
@@ -50,11 +48,6 @@ type meshWorkspaceClient struct {
 
 func newWorkspaceClient(ctx context.Context, httpClient internal.HttpClient) meshWorkspaceClient {
 	return meshWorkspaceClient{internal.NewMeshObjectClient[MeshWorkspace](ctx, httpClient, "v2")}
-}
-
-// NewWorkspaceClient additionally exposed to list workspaces with an unscoped bearer token during OIDC Login flow.
-func NewWorkspaceClient(ctx context.Context, httpClient http.AuthorizedClient, endpoint xurl.URL) MeshWorkspaceClient {
-	return newWorkspaceClient(ctx, internal.HttpClient{AuthorizedClient: httpClient, EndpointUrl: endpoint})
 }
 
 func (c meshWorkspaceClient) List(ctx context.Context) ([]MeshWorkspace, error) {

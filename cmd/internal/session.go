@@ -19,18 +19,16 @@ type ResolveSessionOption func(*auth.ResolveSessionOptions)
 
 func resolveSessionOptions() auth.ResolveSessionOptions {
 	return auth.ResolveSessionOptions{
-		ExplicitSourcesOption: ExplicitSourcesOption(),
-		Version:               Version,
-		GitHubRepo:            "meshcloud/meshstack-cli",
+		SettingSources: SettingSources(),
+		Version:        Version,
+		GitHubRepo:     "meshcloud/meshstack-cli",
 	}
 }
 
-func ExplicitSourcesOption() setting.ExplicitSourcesOption {
-	return setting.ExplicitSourcesOption{
-		UseSettingsFrom: []setting.ExplicitSource{
-			EndpointFlag.AsSource(),
-			WorkspaceFlag.AsSource(),
-			SkipVersionCheckFlag.AsSource(),
-		},
+func SettingSources() setting.Sources {
+	return setting.Sources{
+		EndpointFlag.AsSource(),
+		WorkspaceFlag.AsSource(),
+		SkipVersionCheckFlag.AsSource(),
 	}
 }

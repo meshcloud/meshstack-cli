@@ -43,7 +43,7 @@ func NewLogin() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			timeout := internal.DefaultTimeout
 			var forceAuthWith auth.Method
-			var sources []setting.ExplicitSource
+			var sources setting.Sources
 			switch {
 			case cmd.Flags().Changed(apiKeyFlag.Name.String()):
 				forceAuthWith = auth.ApiKeyMethod
@@ -57,9 +57,7 @@ func NewLogin() *cobra.Command {
 					apiKeyFlag.AsSourceUnless(func(value string) bool {
 						return value == apiKeyIdDefault
 					}),
-					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), cmd, &openStdinFlag, func(_ context.Context) string {
-						return "API Client Secret"
-					}),
+					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), cmd, &openStdinFlag, "API Client Secret"),
 				)
 			case apiTokenFlag.Value:
 				forceAuthWith = auth.ManualMethod
@@ -68,13 +66,25 @@ func NewLogin() *cobra.Command {
 				// This is OIDC Login (by default)...
 				timeout = 5 * time.Minute // ...and give the user more time to finish the Browser login flow
 				forceAuthWith = auth.OidcLoginMethod
-				sources = append(sources, newPromptingSource(meshstack.WorkspaceSetting.EnvKey(), cmd, &openStdinFlag, func(ctx context.Context) string {
 
-				}))
 			}
+
+			sources = append(sources, setting.FallbackLookupSource(meshstack.WorkspaceSetting.EnvKey(), "workspace in selection", func(ctx context.Context) (string, error) {
+				workspaces, err := meshstack.WorkspacesFromContext(ctx)
+				if err != nil {
+					return "", err
+				}
+				switch len(workspaces) {
+				case 0:
+					return "", fmt.Errorf("credential does not have access to any workspace")
+				case 1:
+					return "",
+				}
+			}))
+
 			return internal.RunWith(cmd.Context(), timeout, func(ctx context.Context) error {
 				session, err := internal.ResolveSession(ctx, func(opts *auth.ResolveSessionOptions) {
-					opts.UseSettingsFrom = append(opts.UseSettingsFrom, sources...)
+					opts.SettingSources = append(opts.SettingSources, sources...)
 					opts.ForceAuthWith = forceAuthWith
 				})
 				if err != nil {
@@ -115,19 +125,17 @@ func newFlagWithPrompt(name internal.FlagName, s setting.Setting) FlagWithPrompt
 	return FlagWithPrompt{Name: name, Help: s.Help(), SettingEnvKey: s.EnvKey()}
 }
 
-func (flag *FlagWithPrompt) AsSource(cmd *cobra.Command, stdinFlag *internal.Flag[bool], prompt string) (source setting.ExplicitSource) {
-	return newPromptingSource(flag.SettingEnvKey, cmd, stdinFlag, func(_ context.Context) string {
-		return prompt
-	})
+func (flag *FlagWithPrompt) AsSource(cmd *cobra.Command, stdinFlag *internal.Flag[bool], prompt string) (source setting.FrontendSource) {
+	return newPromptingSource(flag.SettingEnvKey, cmd, stdinFlag, prompt)
 }
 
-func newPromptingSource(settingEnvKey string, cmd *cobra.Command, openStdinFlag *internal.Flag[bool], prompt func(context.Context) string) setting.ExplicitSource {
+func newPromptingSource(settingEnvKey string, cmd *cobra.Command, openStdinFlag *internal.Flag[bool], prompt string) setting.FrontendSource {
 	description := fmt.Sprintf("%s to read the %s from stdin", openStdinFlag.Name.SourceDescription(), prompt)
-	return setting.ExplicitLookupSource(settingEnvKey, description, func(ctx context.Context) (string, error) {
+	return setting.LookupSource(settingEnvKey, description, func(_ context.Context) (string, error) {
 		if !openStdinFlag.Value {
 			return "", nil
 		}
-		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "%s (finish with Enter or Ctrl-D): ", prompt(ctx)); err != nil {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "%s (finish with Enter or Ctrl-D): ", prompt); err != nil {
 			return "", err
 		}
 		text, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')

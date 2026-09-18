@@ -1,35 +1,45 @@
 package meshstack
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
-	oidc "github.com/meshcloud/meshstack-cli/internal/oidc/scope"
+	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 // Workspace identifies a workspace as meshPanel shows it.
 type Workspace string
 
-// NoWorkspace is a session acting in no workspace at all.
+// NoWorkspace also nicely aligns with Profile.DefaultWorkspace with JSON omitzero.
+// It is used to indicate that no workspace is known
+// or being in an unscoped authentication.
 const NoWorkspace Workspace = ""
 
-// AsScope is the scope that binds a token to this workspace.
-func (w Workspace) AsScope() oidc.Scope {
-	const (
-		scopePrefix = "c:"
-		// unscoped is used as key in the OidcLogin credentials cache,
-		// so its value can't be easily changed (keep it const)
-		unscoped oidc.Scope = "unscoped"
-	)
+func (w Workspace) String() string {
 	if w == NoWorkspace {
-		return unscoped
+		return "<none>"
 	}
-	return oidc.Scope(scopePrefix + string(w))
+	return string(w)
 }
 
-func WorkspaceFromToken(token jwt.JWT) Workspace {
-	return Workspace(token.GetClaim(jwt.WorkspaceClaim))
+type (
+	workspacesContextKey int
+	WorkspacesFunc       func() ([]client.MeshWorkspace, error)
+)
+
+// WorkspacesFromContext returns no workspaces and no error where SetWorkspacesInContext was not called,
+// which is every credential but an OIDC login.
+func WorkspacesFromContext(ctx context.Context) ([]client.MeshWorkspace, error) {
+	workspaces, found := ctx.Value(workspacesContextKey(0)).(WorkspacesFunc)
+	if !found {
+		return nil, nil
+	}
+	return workspaces()
+}
+
+func SetWorkspacesInContext(ctx context.Context, workspacesFunc WorkspacesFunc) context.Context {
+	return context.WithValue(ctx, workspacesContextKey(0), workspacesFunc)
 }
 
 var WorkspaceSetting = setting.Setting[Workspace]{

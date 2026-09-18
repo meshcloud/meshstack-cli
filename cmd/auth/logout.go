@@ -14,7 +14,7 @@ func newLogout() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			currentProfile, err := profile.ResolveProfile(cmd.Context(), profile.ResolveProfileOptions{
-				ExplicitSourcesOption: internal.ExplicitSourcesOption(),
+				SettingSources: internal.SettingSources(),
 			})
 			if err != nil {
 				return err

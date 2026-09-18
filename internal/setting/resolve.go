@@ -12,26 +12,27 @@ import (
 // so a caller reading errors.Is still matches while the message names what is missing.
 var ErrNoSourceProvidedValue = errors.New("no source provided a value")
 
-// Resolve returns the first value a source carries, the resolution details, and an error if sth went wrong.
-// Given sources are preceded by Setting.Env, succeeded by Setting.Default (if any), unless ExplicitSource is used, so:
-// [Explicit sources..., Env, other sources..., Default].
-// Returns ErrNoSourceProvidedValue iff no source provided a value.
-func (s Setting[T]) Resolve(ctx context.Context, sources ...Source) (value T, err error) {
-	sourcesWithEnvAndDefault := slices.Insert(slices.Clone(sources), 0, Source(s.Env))
-	if s.Default != nil {
-		// a nil DefaultSource in a Source is not a nil Source, so the skip below misses it
-		sourcesWithEnvAndDefault = append(sourcesWithEnvAndDefault, s.Default)
-	}
-	slices.SortStableFunc(sourcesWithEnvAndDefault, byExplicitSourceFirst)
+// Sources implement Sources.ResolveSetting, so this type is useful for embedding in options structs.
+type Sources []Source
 
-	var emptySources []Source
+// ResolveSetting returns the first found value for a setting a source carries.
+// Sources are ordered by FrontendSource first,
+// then other sources (if any),
+// then Setting.Env source,
+// then FallbackSource,
+// then default source (if any).
+// Once a value is found, remaining sources are not queried.
+// Returns ErrNoSourceProvidedValue iff no source provided a value.
+func (sources Sources) ResolveSetting[T any](ctx context.Context, setting Setting[T], extraSources ...Source) (value T, err error) {
+	// Set up tracking empty sources to construct a helpful error when resolution fails.
+	var emptySources Sources
 	defer func() {
 		if err != nil {
 			errs := []error{err}
 			for _, source := range emptySources {
 				if _, isDefault := source.(DefaultSource); isDefault {
 					continue
-				} else if describeSource := source.Describe(s.EnvKey()); describeSource != "" {
+				} else if describeSource := source.Describe(setting.EnvKey()); describeSource != "" {
 					errs = append(errs, fmt.Errorf("try setting %s", describeSource))
 				}
 			}
@@ -39,40 +40,45 @@ func (s Setting[T]) Resolve(ctx context.Context, sources ...Source) (value T, er
 		}
 	}()
 
-	for _, source := range sourcesWithEnvAndDefault {
+	var frontendSources, otherSources, fallbackSources Sources
+	for _, source := range slices.Concat(sources, extraSources) {
+		if _, isFrontend := source.(FrontendSource); isFrontend {
+			frontendSources = append(frontendSources, source)
+		} else if _, isFallback := source.(FallbackSource); isFallback {
+			fallbackSources = append(fallbackSources, source)
+		} else {
+			otherSources = append(otherSources, source)
+		}
+	}
+
+	allSources := slices.Concat(
+		frontendSources,
+		otherSources,
+		Sources{setting.Env},
+		fallbackSources,
+		setting.Default.asSourcesIfPresent(),
+	)
+
+	for _, source := range allSources {
 		if source == nil {
 			// convenient to skip "no default" case, also callers can make use of that
 			continue
 		}
 		var text string
-		text, err = source.Lookup(ctx, s.EnvKey())
+		text, err = source.Lookup(ctx, setting.EnvKey())
 		if err != nil {
-			return value, fmt.Errorf("value from source '%s' could not be looked up: %w", source.Describe(s.EnvKey()), err)
+			return value, fmt.Errorf("value from source '%s' could not be looked up: %w", source.Describe(setting.EnvKey()), err)
 		}
 		text = strings.TrimSpace(text)
 		if text == "" {
 			emptySources = append(emptySources, source)
 			continue
 		}
-		value, err = s.Parse(text)
+		value, err = setting.Parse(text)
 		if err != nil {
-			return value, fmt.Errorf("value from source '%s' could not be parsed: %w", source.Describe(s.EnvKey()), err)
+			return value, fmt.Errorf("value from source '%s' could not be parsed: %w", source.Describe(setting.EnvKey()), err)
 		}
-		return // resolution found
+		return // resolution found, stop querying remaining sources
 	}
-	return value, fmt.Errorf("%w for %s", ErrNoSourceProvidedValue, s.EnvKey())
-}
-
-// byExplicitSourceFirst is used by Resolve. See ExplicitSource.
-func byExplicitSourceFirst(a, b Source) int {
-	_, aIsExplicit := a.(ExplicitSource)
-	_, bIsExplicit := b.(ExplicitSource)
-	switch {
-	case aIsExplicit && !bIsExplicit:
-		return -1
-	case !aIsExplicit && bIsExplicit:
-		return 1
-	default:
-		return 0
-	}
+	return value, fmt.Errorf("%w for %s", ErrNoSourceProvidedValue, setting.EnvKey())
 }

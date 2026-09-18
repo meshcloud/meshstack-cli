@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/jsontest"
 )
 
@@ -17,6 +18,8 @@ var (
 	unscopedToken []byte
 	//go:embed testdata/jwt_unscoped_no_exp.json
 	unscopedTokenNoExp []byte
+	//go:embed testdata/jwt_scoped.json
+	scopedToken []byte
 	//go:embed testdata/jwt_opaque.json
 	opaqueToken []byte
 	//go:embed testdata/jwt_not_base64.json
@@ -42,6 +45,16 @@ func TestJWT(t *testing.T) {
 		expiry := ExpiryClaim.getFrom(token)
 		assert.Equal(t, Expiry{}, expiry)
 		assert.True(t, expiry.Expired(0))
+	})
+	t.Run("a token scoped to a workspace", func(t *testing.T) {
+		token := jsontest.MustUnmarshal[JWT](t, scopedToken)
+		// Verified against a live keycloak: the claim carries the identifier, not the c: scope the
+		// token was asked for.
+		assert.Equal(t, meshstack.Workspace("demo-partner"), WorkspaceClaim.getFrom(token))
+	})
+	t.Run("an unscoped token names no workspace", func(t *testing.T) {
+		token := jsontest.MustUnmarshal[JWT](t, unscopedToken)
+		assert.Equal(t, meshstack.NoWorkspace, WorkspaceClaim.getFrom(token))
 	})
 }
 

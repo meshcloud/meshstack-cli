@@ -12,6 +12,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/config"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
 )
@@ -132,9 +133,11 @@ func newTestServer(t *testing.T) *testserver.Server {
 	return server
 }
 
+// greetingClient brings its own http.Client, as the session keeps its own to itself. What this
+// exercises is the authorization, and the token cache behind it belongs to the session either way.
 func greetingClient(session auth.Session) testserver.GreetingClient {
 	return func(ctx context.Context, url *url.URL) (string, error) {
-		return session.HttpClient.WithAuthorization(session).
+		return http.NewClient("session-test").WithAuthorization(session).
 			DoRequest[string](ctx, gohttp.MethodGet, url)
 	}
 }

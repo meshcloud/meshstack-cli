@@ -11,12 +11,17 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
-type ResolveProfileOptions struct {
-	setting.ExplicitSourcesOption
-}
+type (
+	SettingSources        = setting.Sources
+	ResolveProfileOptions struct {
+		SettingSources
+	}
+)
 
 // ResolveProfile loads the current profile and loads all profiles from disk (if any).
 // It ensures one (default) profile is present and will only fail if unmarshaling fails from disk.
+// The current *Profile points to the entry in Profiles.Profiles map, so changing it via the pointer is persisted when
+// Profiles.Store() is called.
 func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, Profiles, error) {
 	loadProfiles := sync.OnceValues(func() (Profiles, error) {
 		return LoadProfiles(ctx, opts)
@@ -55,7 +60,7 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 	if profiles, err := loadProfiles(); err != nil {
 		return nil, profiles, err
 	} else if profile, ok := profiles.Profiles[name]; !ok {
-		return profile, profiles, fmt.Errorf("no profile found with name %s", name)
+		return nil, profiles, fmt.Errorf("no profile found with name %s", name)
 	} else {
 		return profile, profiles, nil
 	}
