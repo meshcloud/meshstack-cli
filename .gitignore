@@ -1,0 +1,34 @@
+# Binary produced by 'task build'
+/meshstack
+
+# Release artifacts produced by goreleaser
+/dist/
+
+# Go environment created by the Nix dev shell (flake.nix shellHook)
+/.nix-go/
+
+# Store symlink left behind by 'nix build'
+/result
+/result-*
+
+# Local meshStack credentials, read by the Taskfile's dotenv
+.env
+
+# A go.work names other checkouts by path, so it describes one developer's or one CI runner's
+# directory layout and never the repository. meshfed-release's go-satellite plugin writes one when
+# it runs the acceptance suite, and the meshStack Terraform provider writes one to build against a
+# paired branch of this repository.
+go.work
+go.work.sum
+
+# What the CI test command leaves behind when you reproduce it locally.
+covdata/
+junit.xml
+unit.txt
+
+# Editor and IDE directories
+.vscode/
+.idea/
+
+# Per-developer Claude Code settings; .claude/settings.json is shared and committed
+.claude/settings.local.json
