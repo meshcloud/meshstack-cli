@@ -247,9 +247,13 @@ linters:
             - log/slog
             - github.com/meshcloud/meshstack-cli/pkg
             - github.com/meshcloud/meshstack-cli/client
+            # A command writes the same objects the client sends, so it marshals them the same
+            # way: deterministic member order, and a nil slice or map as null.
+            - github.com/meshcloud/meshstack-cli/internal/json
             # Keep this list short
             - github.com/spf13/cobra
             - github.com/spf13/pflag
+            - github.com/goccy/go-yaml
 
         # The package the Terraform provider consumes most directly.
         client:
