@@ -52,25 +52,34 @@ func (ps Profiles) Store(ctx context.Context) error {
 
 func initEmptyProfiles(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles) error {
 	profiles.Version = version
-	if name, err := opts.ResolveSetting(ctx, NameSetting); err != nil {
+	name, err := opts.ResolveSetting(ctx, NameSetting)
+	if err != nil {
 		return err
-	} else {
-		slog.InfoContext(ctx, fmt.Sprintf("Initializing first-time use profile '%s'", name))
-		profiles.CurrentProfile = name
 	}
+	slog.InfoContext(ctx, fmt.Sprintf("Initializing first-time use profile '%s'", name))
+	_, err = addProfile(ctx, opts, profiles, name)
+	return err
+}
 
-	currentProfile := &Profile{}
-	currentProfile.init(profiles.CurrentProfile, profiles.configDir)
-	profiles.Profiles = map[Name]*Profile{profiles.CurrentProfile: currentProfile}
+// addProfile creates the named profile and makes it the current one, with the endpoint of this run
+// where there is one.
+func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles, name Name) (*Profile, error) {
+	added := &Profile{}
+	added.init(name, profiles.configDir)
+	if profiles.Profiles == nil {
+		profiles.Profiles = make(map[Name]*Profile, 1)
+	}
+	profiles.Profiles[name] = added
+	profiles.CurrentProfile = name
 
 	if endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting); err == nil {
-		currentProfile.Endpoint = &endpoint
+		added.Endpoint = &endpoint
 	} else if !errors.Is(err, setting.ErrNoSourceProvidedValue) {
-		return err
+		return nil, err
 	}
 
-	slog.DebugContext(ctx, fmt.Sprintf("Initial profile %s resolved to %+v", profiles.CurrentProfile, *currentProfile))
-	return nil
+	slog.DebugContext(ctx, fmt.Sprintf("Profile %s resolved to %+v", name, *added))
+	return added, nil
 }
 
 func (ps Profiles) validate() (err error) {

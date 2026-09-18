@@ -15,6 +15,11 @@ type (
 	SettingSources        = setting.Sources
 	ResolveProfileOptions struct {
 		SettingSources
+
+		// CreateProfileIfMissing writes the resolved name as a new profile instead of failing on
+		// it. Only a login may ask for that: for every other command an unknown name is a typo,
+		// and an empty profile is no help to it.
+		CreateProfileIfMissing bool
 	}
 )
 
@@ -56,13 +61,19 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 		return nil, Profiles{}, err
 	}
 
-	if profiles, err := loadProfiles(); err != nil {
+	profiles, err := loadProfiles()
+	if err != nil {
 		return nil, profiles, err
-	} else if profile, ok := profiles.Profiles[name]; !ok {
-		return nil, profiles, fmt.Errorf("no profile found with name %s", name)
-	} else {
-		return profile, profiles, nil
 	}
+	if currentProfile, ok := profiles.Profiles[name]; ok {
+		return currentProfile, profiles, nil
+	}
+	if !opts.CreateProfileIfMissing {
+		return nil, profiles, fmt.Errorf("no profile found with name %s", name)
+	}
+	slog.InfoContext(ctx, fmt.Sprintf("Creating profile '%s'", name))
+	created, err := addProfile(ctx, opts, &profiles, name)
+	return created, profiles, err
 }
 
 func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts ResolveProfileOptions) (string, error) {

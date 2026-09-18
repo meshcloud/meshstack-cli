@@ -118,6 +118,34 @@ func TestSessionReusesAStoredTokenUntilTheApiKeyChanges(t *testing.T) {
 	})
 }
 
+func TestSessionOfALoginCreatesAndStoresTheProfileItNames(t *testing.T) {
+	newTestServer(t)
+	testApiKey1.SetEnv(t)
+	// The first session writes profiles.json, so the name below is one missing from a file that
+	// does exist, which is the case every command but a login rejects.
+	firstSession, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	require.NoError(t, err)
+	require.NoError(t, firstSession.Store(t.Context()))
+
+	t.Setenv(profile.NameSetting.EnvKey(), "dev")
+	_, err = auth.ResolveSession(t.Context(), testSessionOpts)
+	require.ErrorContains(t, err, "no profile found with name dev")
+
+	loginOpts := testSessionOpts
+	loginOpts.CreateProfileIfMissing = true
+	login, err := auth.ResolveSession(t.Context(), loginOpts)
+	require.NoError(t, err)
+	require.NoError(t, login.Store(t.Context()))
+
+	_, err = auth.ResolveSession(t.Context(), testSessionOpts)
+	require.NoError(t, err, "the created profile is on disk for every later command")
+
+	t.Setenv(profile.NameSetting.EnvKey(), "")
+	current, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, profile.Name("dev"), current.Name, "the login selected the profile it created")
+}
+
 var (
 	testSessionOpts = auth.ResolveSessionOptions{Version: "dev", GitHubRepo: "meshcloud/test-client"}
 	testApiKey1     = testserver.ApiKey{ClientId: "11111111-45bf-42ba-a965-2097b9d0d181", ClientSecret: "super-test-secret-1"}

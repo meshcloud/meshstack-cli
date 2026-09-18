@@ -41,12 +41,17 @@ type (
 		GitHubRepo string
 
 		ForceAuthWith credential.Name
+
+		// CreateProfileIfMissing writes the profile this run names as a new one instead of failing
+		// on it. A login sets it, and no other command does: an unknown name is a typo there.
+		CreateProfileIfMissing bool
 	}
 )
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {
 	currentProfile, profiles, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{
-		SettingSources: opts.SettingSources,
+		SettingSources:         opts.SettingSources,
+		CreateProfileIfMissing: opts.CreateProfileIfMissing,
 	})
 	if err != nil {
 		return Session{}, err
