@@ -30,7 +30,8 @@ func NewLogin() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in to meshStack",
-		Long: `Log in to meshStack and store the credential in a profile.
+		Long: `Log in to meshStack and store the credential in a profile, creating that profile where it
+does not exist yet.
 
 With no flag this is a browser login, and it asks which workspace to work in unless --workspace or
 MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --apitoken asks nothing.`,
@@ -80,6 +81,7 @@ MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --ap
 				session, err := internal.ResolveSession(ctx, func(opts *auth.ResolveSessionOptions) {
 					opts.SettingSources = append(opts.SettingSources, sources...)
 					opts.ForceAuthWith = forceAuthWith
+					opts.CreateProfileIfMissing = true
 				})
 				if err != nil {
 					return err

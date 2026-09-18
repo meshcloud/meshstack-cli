@@ -98,6 +98,42 @@ func TestResolveProfileReadsTheCurrentProfileAndItsCachedTokenFromDisk(t *testin
 	require.NoError(t, profiles.Store(t.Context()))
 }
 
+func TestResolveProfileFailsOnANameThatIsNotOnDisk(t *testing.T) {
+	givenNoMeshstackEnvironment(t)
+	t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
+	t.Setenv(NameSetting.EnvKey(), "dev-locl")
+
+	_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
+
+	require.ErrorContains(t, err, "no profile found with name dev-locl")
+}
+
+func TestResolveProfileCreatesAMissingProfileForALoginAndUpdatesItOnTheNextOne(t *testing.T) {
+	givenNoMeshstackEnvironment(t)
+	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
+	_, defaultOnly, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
+	require.NoError(t, err)
+	require.NoError(t, defaultOnly.Store(t.Context()))
+
+	t.Setenv(NameSetting.EnvKey(), "dev")
+	created, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{CreateProfileIfMissing: true})
+
+	require.NoError(t, err)
+	dev := &Profile{Name: "dev"}
+	assert.EqualExportedValues(t, dev, withoutConfigDir(created))
+	assertProfiles(t, profiles, dev, &Profile{Name: "default"})
+
+	// What a login stores through the returned pointer has to survive the next one.
+	created.DefaultWorkspace = "my-workspace-ab12c"
+	require.NoError(t, profiles.Store(t.Context()))
+	reloaded, reloadedProfiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{CreateProfileIfMissing: true})
+
+	require.NoError(t, err)
+	dev.DefaultWorkspace = "my-workspace-ab12c"
+	assert.EqualExportedValues(t, dev, withoutConfigDir(reloaded))
+	assertProfiles(t, reloadedProfiles, dev, &Profile{Name: "default"})
+}
+
 func TestLoadProfilesRejectsANullProfile(t *testing.T) {
 	givenNoMeshstackEnvironment(t)
 	configDir := t.TempDir()
