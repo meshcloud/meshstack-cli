@@ -1,0 +1,14 @@
+plugins {
+  id 'io.meshcloud.meshstack.go-satellite'
+}
+
+satellite {
+  acceptance {
+    run = 'TestAcc'
+    environment MESHSTACK_CLI_TEST_ACC: '1',
+                MESHSTACK_CLI_NO_BROWSER: '1',
+                MESHSTACK_API_KEY: fromBackendConfig('auth.openid.apiKeys.terraform-provider-acceptance.clientId'),
+                MESHSTACK_API_SECRET: fromBackendConfig('auth.openid.apiKeys.terraform-provider-acceptance.clientSecret'),
+                MESHSTACK_CLI_TEST_USERS: fromBackendConfig('auth.openid.users')
+  }
+}

@@ -1,0 +1,101 @@
+name: Tests
+
+# No `paths-ignore` on either trigger, deliberately: a workflow skipped that way never reports its
+# checks, so a required check on it stays "expected" forever and blocks the merge. A skipped *job*
+# reports success; a skipped *workflow* does not.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Go Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go mod tidy
+      - run: go build -v ./...
+      - name: git diff
+        run: |
+          git diff --compact-summary --exit-code || \
+            (echo; echo "Unexpected difference in directories after 'go mod tidy'. Run 'go mod tidy' command and commit."; exit 1)
+
+  golangci:
+    needs: [ build ]
+    name: Go Lint and Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      # Built here rather than downloaded by the action below: golangci-lint's formatters use the
+      # go/format compiled into the binary, so the formatting they enforce comes from the Go release
+      # that built the linter. The tool directive in go.mod is the single pin.
+      - name: Build the pinned golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # The step above already installed it; the action is here for the annotations it puts on
+          # the pull request diff, which a bare `run:` does not produce.
+          install-mode: none
+      - name: Suggest fix command on failure
+        if: failure()
+        run: |
+          echo "::error::Linting or formatting issues detected. Run 'task lint -- --fix' locally to automatically fix these issues, then commit the changes."
+
+  test:
+    name: Go Test
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      # Binary coverage data (GOCOVERDIR format) rather than a text profile, because only the
+      # binary form merges with the acceptance run's coverage. `-coverpkg=./...` has to match what
+      # meshfed-release runs the acceptance suite with, or the merged figure is a ratio over two
+      # different denominators.
+      - name: Run unit tests with gotestsum
+        run: |
+          mkdir -p covdata/unit
+          go tool gotestsum --junitfile junit.xml --format testdox -- \
+            -coverpkg=./... ./... -args -test.gocoverdir="$PWD/covdata/unit"
+
+      # meshfed-release finds this by the pull request head sha, so it has to be uploaded from a
+      # `pull_request` job. The contract with that side is the artifact name `covdata-unit` and
+      # covmeta.*/covcounters.* at its root, which naming the directory gives and a glob would nest.
+      - name: Upload unit coverage data
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: covdata-unit
+          path: covdata/unit
+          retention-days: 3
+
+      - name: Report unit coverage
+        if: always()
+        run: |
+          if ! ls covdata/unit/covmeta.* >/dev/null 2>&1; then
+            echo "Unit coverage: no data produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          go tool covdata textfmt -i=covdata/unit -o=unit.txt
+          echo "Unit coverage: $(go tool cover -func=unit.txt | tail -1 | awk '{print $NF}')" >> "$GITHUB_STEP_SUMMARY"

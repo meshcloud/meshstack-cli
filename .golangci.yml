@@ -1,0 +1,366 @@
+# Kept close to terraform-provider-meshstack's configuration, so that code moving between
+# the two repositories does not trip a different linter set.
+version: "2"
+issues:
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard     # Go standard library
+        - default      # All other external dependencies
+        - localmodule  # This repository's modules
+
+linters:
+  # Every linter, minus the list below, so a rejection is a line here with a reason.
+  default: all
+  disable:
+    # Broken or superseded
+    - exhaustruct_v5   # panics on this codebase with exhaustruct v5.0.3
+    - exhaustruct      # deprecated, superseded by exhaustruct_v5
+    - wsl              # deprecated, superseded by wsl_v5
+    - gomodguard       # deprecated, superseded by gomodguard_v2
+
+    # Layout, which gofumpt and gci already settle
+    - wsl_v5
+    - nlreturn
+    - tagalign
+    - lll
+    - decorder
+    - grouper
+    - goheader
+
+    # Styles this repository chose on purpose
+    - nakedret         # a named result returned bare documents itself at the signature
+    - nonamedreturns   # so a named result stays
+    - noinlineerr      # `if err := f(); err != nil` is the house style
+    - varnamelen       # a short receiver or loop name is idiomatic
+    - godox            # a TODO comment is a deliberate marker
+    - gochecknoglobals # a setting is declared once, as a package-level var
+    - gochecknoinits   # credential checks its names against the fields of Credentials at init
+    - ireturn          # a constructor returning an interface is the client's shape
+    - testpackage      # an in-package test is a deliberate choice
+    - dupl             # the binding clients are parallel by design
+    - tagliatelle      # OIDC and OAuth field names are snake_case by spec
+    - paralleltest     # t.Setenv forbids t.Parallel
+
+    # Error plumbing we decide case by case
+    - wrapcheck
+    - err113
+
+    # Measurements, not goals
+    - funlen
+    - cyclop
+    - gocyclo
+    - gocognit
+    - maintidx
+    - nestif
+    - mnd
+    - goconst
+    - prealloc
+    - dogsled
+    - interfacebloat
+
+  exclusions:
+    rules:
+      # A doc comment is required in pkg/, the surface a front end reads, and left to
+      # judgement elsewhere.
+      - linters:
+          - revive
+        text: "^exported:"
+        path-except: (^|/)pkg/
+      - linters:
+          - revive
+        text: "^exported:"
+        path: _test\.go
+      # In test code the testing.T comes first, before a context.
+      - linters:
+          - revive
+        text: "^context-as-argument:"
+        path: (_test\.go|internal/testutil/)
+      # A test api key is a fixture, not a leaked secret.
+      - linters:
+          - gosec
+        text: G101
+        path: _test\.go
+      - path: internal/http/
+        linters:
+          - forbidigo
+      - path: internal/testutil/testserver/
+        linters:
+          - forbidigo
+      # testacc plays the browser: it drives keycloak's HTML login forms with its own cookie
+      # jar, and it launches the binary it built itself.
+      - path: cmd/internal/testacc/
+        linters:
+          - forbidigo
+          - gosec
+
+  settings:
+    # The process has one HTTP client, built in internal/http.
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: \.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
+          pkg: ^net/http$
+          msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
+
+    gocritic:
+      disabled-checks:
+        # an if-else chain that ends in a return per branch reads as it is written here
+        - ifElseChain
+
+    # The Context form, because the provider's handler reads terraform's logger out of the
+    # context and drops a record without one.
+    sloglint:
+      context: all
+      no-mixed-args: true
+
+    importas:
+      alias:
+        - pkg: net/http
+          alias: gohttp
+
+    govet:
+      enable-all: true
+      disable:
+        # field order follows what reads well, not what packs tightest
+        - fieldalignment
+
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+      # Replaces the default list, so that ClientId, BaseUrl and Uuid stand as the meshObject
+      # API spells them. ST1003 still enforces the rest.
+      initialisms: []
+
+    godoclint:
+      default: basic
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    revive:
+      # No default rule set: package-comments wants a comment on every package, and var-naming
+      # wants the API's own field names spelled differently. exported is scoped under exclusions.
+      rules:
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: datarace
+        - name: defer
+        - name: early-return
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: identical-branches
+        - name: modifies-value-receiver
+        - name: range-val-address
+        - name: receiver-naming
+        - name: redundant-import-alias
+        - name: string-of-int
+        - name: superfluous-else
+        - name: time-naming
+        - name: unconditional-recursion
+        - name: unused-parameter
+        - name: unexported-return
+        - name: unnecessary-stmt
+        - name: use-any
+        - name: waitgroup-by-value
+
+    # These rules are the dependency policy, so widening one is a deliberate edit rather than
+    # a lint fix.
+    depguard:
+      rules:
+
+        # cobra is used in cmd/ and nowhere else.
+        cmd:
+          files:
+            - "**/cmd/*.go"
+            - "**/cmd/**/*.go"
+            - "!**/cmd/meshstack/*.go"
+            - "!**/cmd/internal/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - log/slog
+            # no direct access to internal/
+            - github.com/meshcloud/meshstack-cli/pkg
+            - github.com/meshcloud/meshstack-cli/cmd/internal
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/spf13/cobra
+
+        # The only package that may install a log handler.
+        cmd-meshstack:
+          files:
+            - "**/cmd/meshstack/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - log/slog
+            - github.com/meshcloud/meshstack-cli/cmd
+            - github.com/meshcloud/meshstack-cli/pkg/io
+            - github.com/spf13/cobra
+            - github.com/charmbracelet/log
+
+        cmd-internal:
+          files:
+            - "**/cmd/internal/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - log/slog
+            - github.com/meshcloud/meshstack-cli/pkg
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/spf13/cobra
+            - github.com/spf13/pflag
+
+        # The package the Terraform provider consumes most directly, so it reaches nothing
+        # beyond the standard library and the three packages below.
+        client:
+          files:
+            # Both patterns are needed: '**/dir/**/*.go' only matches files in
+            # subdirectories of dir, never files directly inside it.
+            - "**/client/*.go"
+            - "**/client/**/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - encoding/json/v2
+            - encoding/json/jsontext
+            - log/slog
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/meshcloud/meshstack-cli/internal/http
+            - github.com/meshcloud/meshstack-cli/internal/json
+            - github.com/meshcloud/meshstack-cli/internal/version
+
+        pkg:
+          files:
+            - "**/pkg/**/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - log/slog
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/meshcloud/meshstack-cli/pkg
+            - github.com/meshcloud/meshstack-cli/internal
+
+        # client reaches these two, so whatever they may import, client gets.
+        internal-http:
+          files:
+            - "**/internal/http/*.go"
+            - "**/internal/json/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - encoding/json/v2
+            - encoding/json/jsontext
+            - github.com/meshcloud/meshstack-cli/internal/json
+
+        internal-version:
+          files:
+            - "**/internal/version/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: encoding/json
+              desc: Marshal a Version through its MarshalText, and keep JSON out of here
+          allow:
+            - $gostd
+
+        internal:
+          files:
+            - "**/internal/**/*.go"
+            - "!$test"
+            - "!**/internal/testutil/**/*.go"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - encoding/json/v2
+            - encoding/json/jsontext
+            - log/slog
+            - github.com/meshcloud/meshstack-cli/internal
+            # internal/auth builds a client, and the types a profile stores are client/types ones
+            - github.com/meshcloud/meshstack-cli/client
+            # Keep this list of external libraries as small as possible. Never add cobra.
+            - github.com/gofrs/flock
+
+        internal-test:
+          files:
+            - "**/internal/testutil/**/*.go"
+          list-mode: strict
+          deny:
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - encoding/json/v2
+            - encoding/json/jsontext
+            - github.com/meshcloud/meshstack-cli
+            - github.com/stretchr/testify
+
+        # A test that pins a wire format with encoding/json v1 pins a format this module does
+        # not produce, so the deny holds here too.
+        tests:
+          files:
+            - "$test"
+          list-mode: strict
+          deny:
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - encoding/json/v2
+            - encoding/json/jsontext
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+            - github.com/stretchr/testify
+            - github.com/gofrs/flock
