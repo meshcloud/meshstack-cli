@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"net/url"
 	"reflect"
@@ -135,35 +136,56 @@ func (c MeshObjectClient[M]) DeleteAtPath(ctx context.Context, id string, extraP
 	return
 }
 
-// List retrieves all meshObjects with automatic pagination handling.
+// ListSeq retrieves all meshObjects with automatic pagination handling, and yields each one as its
+// page arrives. A page that fails yields the zero M together with the error, and ends the sequence.
 // Accepts optional [http.RequestOption] parameters for filtering and querying.
+func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.RequestOption) iter.Seq2[M, error] {
+	return func(yield func(M, error) bool) {
+		var noItem M
+		embeddedKey := pluralizeKind(c.Kind)
+
+		for pageNumber := 0; ; pageNumber++ {
+			type paginatedResponse struct {
+				Embedded map[string][]M `json:"_embedded"`
+				Page     struct {
+					TotalPages int `json:"totalPages"`
+					Number     int `json:"number"`
+				} `json:"page"`
+			}
+			response, err := c.DoRequest[paginatedResponse](ctx, http.MethodGet, c.ApiUrl, append(options,
+				http.WithAccept(c.MeshObjectMimeType()),
+				http.WithUrlQuery(map[string]any{"page": pageNumber}),
+			)...)
+			if err != nil {
+				yield(noItem, fmt.Errorf("error getting page %d: %w", pageNumber, err))
+				return
+			}
+			items, ok := response.Embedded[embeddedKey]
+			if !ok {
+				yield(noItem, fmt.Errorf("embedded key %s not found in paginated response", embeddedKey))
+				return
+			}
+			for _, item := range items {
+				if !yield(item, nil) {
+					return
+				}
+			}
+			if response.Page.Number >= response.Page.TotalPages-1 {
+				return
+			}
+		}
+	}
+}
+
+// List collects ListSeq, and returns the meshObjects gathered so far together with the error a
+// page failed with.
 func (c MeshObjectClient[M]) List(ctx context.Context, options ...http.RequestOption) ([]M, error) {
 	var result []M
-	embeddedKey := pluralizeKind(c.Kind)
-	pageNumber := 0
-
-	for {
-		type paginatedResponse struct {
-			Embedded map[string][]M `json:"_embedded"`
-			Page     struct {
-				TotalPages int `json:"totalPages"`
-				Number     int `json:"number"`
-			} `json:"page"`
-		}
-		response, err := c.DoRequest[paginatedResponse](ctx, http.MethodGet, c.ApiUrl, append(options,
-			http.WithAccept(c.MeshObjectMimeType()),
-			http.WithUrlQuery(map[string]any{"page": pageNumber}),
-		)...)
+	for item, err := range c.ListSeq(ctx, options...) {
 		if err != nil {
-			return result, fmt.Errorf("error getting page %d: %w", pageNumber, err)
-		} else if items, ok := response.Embedded[embeddedKey]; !ok {
-			return result, fmt.Errorf("embedded key %s not found in paginated response", embeddedKey)
-		} else {
-			result = append(result, items...)
+			return result, err
 		}
-		if response.Page.Number >= response.Page.TotalPages-1 {
-			return result, nil
-		}
-		pageNumber++
+		result = append(result, item)
 	}
+	return result, nil
 }
