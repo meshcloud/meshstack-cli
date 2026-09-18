@@ -5,7 +5,7 @@ type MeshWorkspaceBinding struct {
 	RoleRef    MeshWorkspaceRoleRef         `json:"roleRef" tfsdk:"role_ref"`
 	TargetRef  MeshWorkspaceTargetRef       `json:"targetRef" tfsdk:"target_ref"`
 	Subject    MeshWorkspaceSubject         `json:"subject" tfsdk:"subject"`
-	ExpiryDate *string                      `json:"expiryDate,omitempty" tfsdk:"expiry_date"`
+	ExpiryDate *string                      `json:"expiryDate,omitzero" tfsdk:"expiry_date"`
 }
 
 type MeshWorkspaceBindingMetadata struct {

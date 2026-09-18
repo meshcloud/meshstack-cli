@@ -1,10 +1,10 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type GcpPlatformConfig struct {
-	Replication *GcpReplicationConfig `json:"replication,omitempty" tfsdk:"replication"`
-	Metering    *GcpMeteringConfig    `json:"metering,omitempty" tfsdk:"metering"`
+	Replication *GcpReplicationConfig `json:"replication,omitzero" tfsdk:"replication"`
+	Metering    *GcpMeteringConfig    `json:"metering,omitzero" tfsdk:"metering"`
 }
 
 type GcpReplicationConfig struct {
@@ -16,17 +16,17 @@ type GcpReplicationConfig struct {
 	ProjectIdPattern                  string                            `json:"projectIdPattern" tfsdk:"project_id_pattern"`
 	BillingAccountId                  string                            `json:"billingAccountId" tfsdk:"billing_account_id"`
 	UserLookupStrategy                string                            `json:"userLookupStrategy" tfsdk:"user_lookup_strategy"`
-	UsedExternalIdType                *string                           `json:"usedExternalIdType,omitempty" tfsdk:"used_external_id_type"`
+	UsedExternalIdType                *string                           `json:"usedExternalIdType,omitzero" tfsdk:"used_external_id_type"`
 	GcpRoleMappings                   types.Set[GcpPlatformRoleMapping] `json:"gcpRoleMappings" tfsdk:"gcp_role_mappings"`
 	AllowHierarchicalFolderAssignment bool                              `json:"allowHierarchicalFolderAssignment" tfsdk:"allow_hierarchical_folder_assignment"`
-	TenantTags                        *MeshTenantTags                   `json:"tenantTags,omitempty" tfsdk:"tenant_tags"`
+	TenantTags                        *MeshTenantTags                   `json:"tenantTags,omitzero" tfsdk:"tenant_tags"`
 	SkipUserGroupPermissionCleanup    bool                              `json:"skipUserGroupPermissionCleanup" tfsdk:"skip_user_group_permission_cleanup"`
 }
 
 type GcpServiceAccountConfig struct {
 	Type             string                                   `json:"type" tfsdk:"type"`
-	Credential       *types.Secret                            `json:"credential,omitempty" tfsdk:"credential"`
-	WorkloadIdentity *GcpServiceAccountWorkloadIdentityConfig `json:"workloadIdentity,omitempty" tfsdk:"workload_identity"`
+	Credential       *types.Secret                            `json:"credential,omitzero" tfsdk:"credential"`
+	WorkloadIdentity *GcpServiceAccountWorkloadIdentityConfig `json:"workloadIdentity,omitzero" tfsdk:"workload_identity"`
 }
 
 type GcpServiceAccountWorkloadIdentityConfig struct {
@@ -42,9 +42,9 @@ type GcpPlatformRoleMapping struct {
 type GcpMeteringConfig struct {
 	ServiceAccount                          GcpServiceAccountConfig              `json:"serviceAccount" tfsdk:"service_account"`
 	BigqueryTable                           string                               `json:"bigqueryTable" tfsdk:"bigquery_table"`
-	BigqueryTableForCarbonFootprint         *string                              `json:"bigqueryTableForCarbonFootprint,omitempty" tfsdk:"bigquery_table_for_carbon_footprint"`
-	CarbonFootprintDataCollectionStartMonth *string                              `json:"carbonFootprintDataCollectionStartMonth,omitempty" tfsdk:"carbon_footprint_data_collection_start_month"`
+	BigqueryTableForCarbonFootprint         *string                              `json:"bigqueryTableForCarbonFootprint,omitzero" tfsdk:"bigquery_table_for_carbon_footprint"`
+	CarbonFootprintDataCollectionStartMonth *string                              `json:"carbonFootprintDataCollectionStartMonth,omitzero" tfsdk:"carbon_footprint_data_collection_start_month"`
 	PartitionTimeColumn                     string                               `json:"partitionTimeColumn" tfsdk:"partition_time_column"`
-	AdditionalFilter                        *string                              `json:"additionalFilter,omitempty" tfsdk:"additional_filter"`
+	AdditionalFilter                        *string                              `json:"additionalFilter,omitzero" tfsdk:"additional_filter"`
 	Processing                              MeshPlatformMeteringProcessingConfig `json:"processing" tfsdk:"processing"`
 }

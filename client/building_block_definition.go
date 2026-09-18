@@ -3,9 +3,10 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockType string
@@ -35,26 +36,26 @@ var (
 )
 
 type MeshBuildingBlockDefinitionMetadata struct {
-	Uuid             *string             `json:"uuid,omitempty" tfsdk:"uuid"`
+	Uuid             *string             `json:"uuid,omitzero" tfsdk:"uuid"`
 	OwnedByWorkspace string              `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
 	Tags             map[string][]string `json:"tags" tfsdk:"tags"`
 }
 
 type MeshBuildingBlockDefinitionSpec struct {
 	DisplayName           string                                      `json:"displayName" tfsdk:"display_name"`
-	DisplayNameTemplate   *string                                     `json:"displayNameTemplate,omitempty" tfsdk:"display_name_template"`
+	DisplayNameTemplate   *string                                     `json:"displayNameTemplate,omitzero" tfsdk:"display_name_template"`
 	TargetType            MeshBuildingBlockType                       `json:"targetType" tfsdk:"target_type"`
 	Description           string                                      `json:"description" tfsdk:"description"`
-	Readme                *string                                     `json:"readme,omitempty" tfsdk:"readme"`
+	Readme                *string                                     `json:"readme,omitzero" tfsdk:"readme"`
 	RunTransparency       bool                                        `json:"runTransparency" tfsdk:"run_transparency"`
 	ApprovalPolicies      MeshBuildingBlockDefinitionApprovalPolicies `json:"approvalPolicies" tfsdk:"approval_policies"`
 	Schedule              MeshBuildingBlockDefinitionSchedule         `json:"schedule" tfsdk:"schedule"`
 	UseInLandingZonesOnly bool                                        `json:"useInLandingZonesOnly" tfsdk:"use_in_landing_zones_only"`
-	SupportURL            *string                                     `json:"supportUrl,omitempty" tfsdk:"support_url"`
-	DocumentationURL      *string                                     `json:"documentationUrl,omitempty" tfsdk:"documentation_url"`
+	SupportURL            *string                                     `json:"supportUrl,omitzero" tfsdk:"support_url"`
+	DocumentationURL      *string                                     `json:"documentationUrl,omitzero" tfsdk:"documentation_url"`
 	// NotificationSubscribers can also specify emails with prefix 'email:', so it's not only usernames (as the JSON field name suggests)!
 	NotificationSubscribers types.Set[string]   `json:"notificationSubscriberUsernames,omitempty" tfsdk:"notification_subscribers"`
-	Symbol                  *string             `json:"symbol,omitempty" tfsdk:"symbol"`
+	Symbol                  *string             `json:"symbol,omitzero" tfsdk:"symbol"`
 	SupportedPlatforms      types.Set[NamedRef] `json:"supportedPlatforms" tfsdk:"supported_platforms"`
 }
 
@@ -119,7 +120,7 @@ type MeshBuildingBlockDefinitionStatus struct {
 type MeshBuildingBlockDefinition struct {
 	Metadata MeshBuildingBlockDefinitionMetadata `json:"metadata"`
 	Spec     MeshBuildingBlockDefinitionSpec     `json:"spec"`
-	Status   *MeshBuildingBlockDefinitionStatus  `json:"status,omitempty"`
+	Status   *MeshBuildingBlockDefinitionStatus  `json:"status,omitzero"`
 }
 
 type MeshBuildingBlockDefinitionClient interface {
@@ -149,7 +150,7 @@ type meshBuildingBlockDefinitionListQuery struct {
 }
 
 func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
 		IncludeAllPublished: true,
 		OwnedByWorkspace:    workspaceIdentifier,
 	}))

@@ -3,8 +3,9 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshPlatform struct {
@@ -15,21 +16,21 @@ type MeshPlatform struct {
 type MeshPlatformMetadata struct {
 	Name             string  `json:"name" tfsdk:"name"`
 	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-	Uuid             *string `json:"uuid,omitempty" tfsdk:"uuid"`
+	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
 }
 
 type MeshPlatformSpec struct {
 	DisplayName            string               `json:"displayName" tfsdk:"display_name"`
 	Description            string               `json:"description" tfsdk:"description"`
 	Endpoint               string               `json:"endpoint" tfsdk:"endpoint"`
-	SupportUrl             *string              `json:"supportUrl,omitempty" tfsdk:"support_url"`
-	DocumentationUrl       *string              `json:"documentationUrl,omitempty" tfsdk:"documentation_url"`
-	AccessInformation      *string              `json:"accessInformation,omitempty" tfsdk:"access_information"`
+	SupportUrl             *string              `json:"supportUrl,omitzero" tfsdk:"support_url"`
+	DocumentationUrl       *string              `json:"documentationUrl,omitzero" tfsdk:"documentation_url"`
+	AccessInformation      *string              `json:"accessInformation,omitzero" tfsdk:"access_information"`
 	LocationRef            NamedRef             `json:"locationRef" tfsdk:"location_ref"`
 	ContributingWorkspaces types.Set[string]    `json:"contributingWorkspaces" tfsdk:"contributing_workspaces"`
 	Availability           PlatformAvailability `json:"availability" tfsdk:"availability"`
 	// Config is nullable in responses: redacted (omitted) for marketplace-consumer callers. Required on write.
-	Config           *PlatformConfig            `json:"config,omitempty" tfsdk:"config"`
+	Config           *PlatformConfig            `json:"config,omitzero" tfsdk:"config"`
 	QuotaDefinitions types.Set[QuotaDefinition] `json:"quotaDefinitions" tfsdk:"quota_definitions"`
 }
 
@@ -51,14 +52,14 @@ type PlatformAvailability struct {
 
 type PlatformConfig struct {
 	Type       string                    `json:"type" tfsdk:"type"`
-	Custom     *CustomPlatformConfig     `json:"custom,omitempty" tfsdk:"custom"`
-	Aws        *AwsPlatformConfig        `json:"aws,omitempty" tfsdk:"aws"`
-	Aks        *AksPlatformConfig        `json:"aks,omitempty" tfsdk:"aks"`
-	Azure      *AzurePlatformConfig      `json:"azure,omitempty" tfsdk:"azure"`
-	AzureRg    *AzureRgPlatformConfig    `json:"azurerg,omitempty" tfsdk:"azurerg"`
-	Gcp        *GcpPlatformConfig        `json:"gcp,omitempty" tfsdk:"gcp"`
-	Kubernetes *KubernetesPlatformConfig `json:"kubernetes,omitempty" tfsdk:"kubernetes"`
-	OpenShift  *OpenShiftPlatformConfig  `json:"openshift,omitempty" tfsdk:"openshift"`
+	Custom     *CustomPlatformConfig     `json:"custom,omitzero" tfsdk:"custom"`
+	Aws        *AwsPlatformConfig        `json:"aws,omitzero" tfsdk:"aws"`
+	Aks        *AksPlatformConfig        `json:"aks,omitzero" tfsdk:"aks"`
+	Azure      *AzurePlatformConfig      `json:"azure,omitzero" tfsdk:"azure"`
+	AzureRg    *AzureRgPlatformConfig    `json:"azurerg,omitzero" tfsdk:"azurerg"`
+	Gcp        *GcpPlatformConfig        `json:"gcp,omitzero" tfsdk:"gcp"`
+	Kubernetes *KubernetesPlatformConfig `json:"kubernetes,omitzero" tfsdk:"kubernetes"`
+	OpenShift  *OpenShiftPlatformConfig  `json:"openshift,omitzero" tfsdk:"openshift"`
 }
 
 type MeshPlatformMeteringProcessingConfig struct {
@@ -112,7 +113,7 @@ func (c meshPlatformClient) Read(ctx context.Context, uuid string) (*MeshPlatfor
 }
 
 func (c meshPlatformClient) List(ctx context.Context, query MeshPlatformListQuery) ([]MeshPlatform, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshPlatformClient) Create(ctx context.Context, platform MeshPlatform) (*MeshPlatform, error) {

@@ -1,12 +1,12 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type KubernetesPlatformConfig struct {
 	BaseUrl              string                       `json:"baseUrl" tfsdk:"base_url"`
 	DisableSslValidation bool                         `json:"disableSslValidation" tfsdk:"disable_ssl_validation"`
 	Replication          *KubernetesReplicationConfig `json:"replication" tfsdk:"replication"`
-	Metering             *KubernetesMeteringConfig    `json:"metering,omitempty" tfsdk:"metering"`
+	Metering             *KubernetesMeteringConfig    `json:"metering,omitzero" tfsdk:"metering"`
 }
 
 type KubernetesReplicationConfig struct {

@@ -11,6 +11,8 @@ type MeshProjectBindingMetadata struct {
 	Name string `json:"name" tfsdk:"name"`
 }
 
+// MeshProjectRoleRef names a role by its name alone.
+//
 // Deprecated: Use NamedRef if possible. The convention is to also provide the `kind`,
 // so this struct should only be used for meshobjects that violate our API conventions.
 type MeshProjectRoleRef struct {

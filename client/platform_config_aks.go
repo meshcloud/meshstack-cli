@@ -1,12 +1,12 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type AksPlatformConfig struct {
 	BaseUrl              string                `json:"baseUrl" tfsdk:"base_url"`
 	DisableSslValidation bool                  `json:"disableSslValidation" tfsdk:"disable_ssl_validation"`
 	Replication          *AksReplicationConfig `json:"replication" tfsdk:"replication"`
-	Metering             *AksMeteringConfig    `json:"metering,omitempty" tfsdk:"metering"`
+	Metering             *AksMeteringConfig    `json:"metering,omitzero" tfsdk:"metering"`
 }
 
 type AksReplicationConfig struct {
@@ -17,10 +17,10 @@ type AksReplicationConfig struct {
 	AksSubscriptionId       string                    `json:"aksSubscriptionId" tfsdk:"aks_subscription_id"`
 	AksClusterName          string                    `json:"aksClusterName" tfsdk:"aks_cluster_name"`
 	AksResourceGroup        string                    `json:"aksResourceGroup" tfsdk:"aks_resource_group"`
-	RedirectUrl             *string                   `json:"redirectUrl,omitempty" tfsdk:"redirect_url"`
+	RedirectUrl             *string                   `json:"redirectUrl,omitzero" tfsdk:"redirect_url"`
 	SendAzureInvitationMail bool                      `json:"sendAzureInvitationMail" tfsdk:"send_azure_invitation_mail"`
 	UserLookupStrategy      string                    `json:"userLookUpStrategy" tfsdk:"user_lookup_strategy"`
-	AdministrativeUnitId    *string                   `json:"administrativeUnitId,omitempty" tfsdk:"administrative_unit_id"`
+	AdministrativeUnitId    *string                   `json:"administrativeUnitId,omitzero" tfsdk:"administrative_unit_id"`
 }
 
 type AksServicePrincipalConfig struct {

@@ -2,14 +2,16 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type BuildingBlockLifecycleState string
@@ -94,6 +96,15 @@ func (p *MeshBuildingBlockV2Parent) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// wireCompatibility repeats the options internal/json marshals every request with: a v1-style
+// MarshalJSON receives none of its caller's, so without it a nested value would go out in a
+// different shape than the request around it.
+var wireCompatibility = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+)
+
 // MarshalJSON sends the parents under both field names: parentBuildingBlockRefs, and the deprecated
 // parentBuildingBlocks for a backend that does not know the new field yet. A newer backend accepts
 // both as long as they name the same building blocks, and an older one ignores the field it does not
@@ -103,17 +114,15 @@ func (p *MeshBuildingBlockV2Parent) UnmarshalJSON(data []byte) error {
 // knows parentBuildingBlockRefs, both methods can go.
 func (s MeshBuildingBlockV2Spec) MarshalJSON() ([]byte, error) {
 	type wire MeshBuildingBlockV2Spec
-	if len(s.ParentBuildingBlockRefs) == 0 {
-		s.ParentBuildingBlockRefs = parentRefsFromDeprecated(s.ParentBuildingBlocks)
+	w := wire(s)
+	if len(w.ParentBuildingBlockRefs) == 0 {
+		w.ParentBuildingBlockRefs = parentRefsFromDeprecated(w.ParentBuildingBlocks)
 	}
 
-	encoded, err := json.Marshal(wire(s))
-	if err != nil {
+	var fields map[string]jsontext.Value
+	if encoded, err := json.Marshal(w, wireCompatibility); err != nil {
 		return nil, err
-	}
-
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &fields); err != nil {
+	} else if err := json.Unmarshal(encoded, &fields); err != nil {
 		return nil, err
 	}
 
@@ -127,11 +136,12 @@ func (s MeshBuildingBlockV2Spec) MarshalJSON() ([]byte, error) {
 			BuildingBlockUuid string `json:"buildingBlockUuid"`
 		}{BuildingBlockUuid: ref.Uuid})
 	}
+	var err error
 	if fields["parentBuildingBlocks"], err = json.Marshal(parents); err != nil {
 		return nil, err
 	}
 
-	return json.Marshal(fields)
+	return json.Marshal(fields, wireCompatibility)
 }
 
 func parentRefsFromDeprecated(parents types.Set[MeshBuildingBlockV2Parent]) types.Set[UuidRef] {
@@ -149,6 +159,7 @@ func (s *MeshBuildingBlockV2Spec) UnmarshalJSON(data []byte) error {
 	type wire MeshBuildingBlockV2Spec
 	var target struct {
 		wire
+
 		ParentBuildingBlocks types.Set[MeshBuildingBlockV2Parent] `json:"parentBuildingBlocks"`
 	}
 	if err := json.Unmarshal(data, &target); err != nil {
@@ -171,7 +182,7 @@ func (s *MeshBuildingBlockV2Spec) UnmarshalJSON(data []byte) error {
 
 type MeshBuildingBlockInput struct {
 	Value          types.SecretOrAny                                `json:"value" tfsdk:"value"`
-	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitempty" tfsdk:"-"`
+	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitzero" tfsdk:"-"`
 	AssignmentType enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
 
 	// If IsSensitive is true, the [types.Variant] (typedef [types.SecretOrAny]) for Value field
@@ -205,7 +216,7 @@ func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
 		moveXtoYIfPresent(&m.Value)
 		return errors.Join(errs...)
 	case m.Value.HasY():
-		return fmt.Errorf("got sensitive argument or default_value but variant Y is set instead")
+		return errors.New("got sensitive argument or default_value but variant Y is set instead")
 	default:
 		return nil
 	}
@@ -213,6 +224,7 @@ func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
 
 type MeshBuildingBlockV2DefinitionVersionRef struct {
 	UuidRef
+
 	// ContentHash is a Terraform-only field (json:"-", never sent to or returned by the backend).
 	// It lets a config signal that the referenced version's content changed so a rerun is triggered
 	// even though the version uuid is unchanged. The building_block (v3) resource honors it via the
@@ -235,11 +247,12 @@ type MeshBuildingBlockV2Status struct {
 	Outputs    map[string]MeshBuildingBlockOutput `json:"outputs" tfsdk:"outputs"`
 	ForcePurge bool                               `json:"forcePurge" tfsdk:"force_purge"`
 	Lifecycle  MeshBuildingBlockV2Lifecycle       `json:"lifecycle" tfsdk:"-"`
-	// LatestRunUuid is nil if permissions don't allow reading the run (e.g. because run_transparency is false).
-	// It tracks the latest *modifying* (apply/destroy) run and excludes dry runs.
+	// LatestRunUuid tracks the latest *modifying* (apply/destroy) run and excludes dry runs. It is nil
+	// only when no such run exists: run_transparency gates reading the run and its system messages, not
+	// this identifier (MeshBuildingBlockV2RepresentationModelAssembler.resolveLatestRunUuid).
 	LatestRunUuid *string `json:"latestRunUuid" tfsdk:"latest_run_uuid"`
 	// LatestDryRunUuid is the latest dry (DETECT) run, but only when it is the newest run; nil otherwise.
-	// Same permission gating and nullability caveat as LatestRunUuid.
+	// Ungated like LatestRunUuid.
 	LatestDryRunUuid *string `json:"latestDryRunUuid" tfsdk:"latest_dry_run_uuid"`
 }
 
@@ -307,7 +320,7 @@ func (c meshBuildingBlockV2Client) ReadFunc(uuid string) func(ctx context.Contex
 }
 
 func (c meshBuildingBlockV2Client) List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(filter))
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
@@ -316,17 +329,16 @@ func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingB
 
 func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
 	if bb.Metadata.Uuid == nil {
-		return nil, fmt.Errorf("cannot update building block without UUID")
+		return nil, errors.New("cannot update building block without UUID")
 	}
 	return c.meshObject.Put(ctx, *bb.Metadata.Uuid, bb)
 }
 
 func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purge bool) error {
-	var options []internal.RequestOption
 	if purge {
-		options = append(options, internal.WithPathElems("purge"))
+		return c.meshObject.DeleteAtPath(ctx, uuid, "purge")
 	}
-	return c.meshObject.Delete(ctx, uuid, options...)
+	return c.meshObject.Delete(ctx, uuid)
 }
 
 // IsWaitingForInput reports whether the building block run is paused awaiting
@@ -351,7 +363,7 @@ func bbUuidOrUnknown(bb *MeshBuildingBlockV2) string {
 func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
 	switch {
 	case bb == nil:
-		err = fmt.Errorf("building block not found after creation")
+		err = errors.New("building block not found after creation")
 	case bb.Status == nil:
 		// no status yet — keep polling
 	case bb.Status.Status == BuildingBlockStatusFailed,
@@ -392,15 +404,11 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 	return
 }
 
-func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) error {
-	// trigger-run returns an empty 2xx body; use DoAuthorizedRequest[any] to signal no body expected.
-	// No body is sent, so the backend triggers a normal (non-dry) apply run.
-	_, err := internal.DoAuthorizedRequest[any](
-		ctx,
-		c.meshObject.HttpClient,
-		"POST",
-		c.meshObject.ApiUrl.JoinPath(bbUuid, "trigger-run"),
-		internal.WithAccept(c.meshObject.MeshObjectMimeType()),
-	)
-	return err
+func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (err error) {
+	// dryRun is not optional to the endpoint once a body is sent, so it goes out as false rather
+	// than being omitted.
+	_, err = c.meshObject.PostAtPath[any](ctx, struct {
+		DryRun bool `json:"dryRun"`
+	}{}, bbUuid, "trigger-run")
+	return
 }

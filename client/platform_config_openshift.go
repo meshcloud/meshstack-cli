@@ -1,21 +1,21 @@
 package client
 
-import "github.com/meshcloud/terraform-provider-meshstack/client/types"
+import "github.com/meshcloud/meshstack-cli/client/types"
 
 type OpenShiftPlatformConfig struct {
 	BaseUrl              string                      `json:"baseUrl" tfsdk:"base_url"`
 	DisableSslValidation bool                        `json:"disableSslValidation" tfsdk:"disable_ssl_validation"`
 	Replication          *OpenShiftReplicationConfig `json:"replication" tfsdk:"replication"`
-	Metering             *OpenShiftMeteringConfig    `json:"metering,omitempty" tfsdk:"metering"`
+	Metering             *OpenShiftMeteringConfig    `json:"metering,omitzero" tfsdk:"metering"`
 }
 
 type OpenShiftReplicationConfig struct {
 	ClientConfig          KubernetesClientConfig                  `json:"clientConfig" tfsdk:"client_config"`
-	WebConsoleUrl         *string                                 `json:"webConsoleUrl,omitempty" tfsdk:"web_console_url"`
+	WebConsoleUrl         *string                                 `json:"webConsoleUrl,omitzero" tfsdk:"web_console_url"`
 	ProjectNamePattern    string                                  `json:"projectNamePattern" tfsdk:"project_name_pattern"`
 	OpenshiftRoleMappings types.Set[OpenShiftPlatformRoleMapping] `json:"openshiftRoleMappings" tfsdk:"openshift_role_mappings"`
 	IdentityProviderName  string                                  `json:"identityProviderName" tfsdk:"identity_provider_name"`
-	TenantTags            *MeshTenantTags                         `json:"tenantTags,omitempty" tfsdk:"tenant_tags"`
+	TenantTags            *MeshTenantTags                         `json:"tenantTags,omitzero" tfsdk:"tenant_tags"`
 }
 
 type OpenShiftMeteringConfig struct {

@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
 type MeshWorkspace struct {
@@ -20,7 +20,7 @@ type MeshWorkspaceMetadata struct {
 
 type MeshWorkspaceSpec struct {
 	DisplayName                  string `json:"displayName" tfsdk:"display_name"`
-	PlatformBuilderAccessEnabled *bool  `json:"platformBuilderAccessEnabled,omitempty" tfsdk:"platform_builder_access_enabled"`
+	PlatformBuilderAccessEnabled *bool  `json:"platformBuilderAccessEnabled,omitzero" tfsdk:"platform_builder_access_enabled"`
 }
 
 type MeshWorkspaceCreate struct {
@@ -33,6 +33,9 @@ type MeshWorkspaceCreateMetadata struct {
 }
 
 type MeshWorkspaceClient interface {
+	// List returns every workspace the credential can see. An unscoped user token reaches this and
+	// almost nothing else, which is why `meshstack auth login` prompts for a workspace from it.
+	List(ctx context.Context) ([]MeshWorkspace, error)
 	Read(ctx context.Context, name string) (*MeshWorkspace, error)
 	Create(ctx context.Context, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)
 	Update(ctx context.Context, name string, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)
@@ -45,6 +48,10 @@ type meshWorkspaceClient struct {
 
 func newWorkspaceClient(ctx context.Context, httpClient internal.HttpClient) meshWorkspaceClient {
 	return meshWorkspaceClient{internal.NewMeshObjectClient[MeshWorkspace](ctx, httpClient, "v2")}
+}
+
+func (c meshWorkspaceClient) List(ctx context.Context) ([]MeshWorkspace, error) {
+	return c.meshObject.List(ctx)
 }
 
 func (c meshWorkspaceClient) Read(ctx context.Context, name string) (*MeshWorkspace, error) {

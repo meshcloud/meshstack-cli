@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/variant"
+	"github.com/meshcloud/meshstack-cli/client/types/variant"
 )
 
 type (
@@ -12,9 +12,9 @@ type (
 
 	Secret struct {
 		// Plaintext is optionally set if secret is initially created (or rotated later)
-		Plaintext *string `json:"plaintext,omitempty" tfsdk:"plaintext"`
+		Plaintext *string `json:"plaintext,omitzero" tfsdk:"plaintext"`
 		// Hash is always present in responses (Plaintext is never returned) and set in requests if secret is supposed to be kept.
-		Hash *string `json:"hash,omitempty" tfsdk:"-"`
+		Hash *string `json:"hash,omitzero" tfsdk:"-"`
 	}
 
 	SecretOrAny = variant.Variant[Secret, any]
@@ -24,9 +24,7 @@ type (
 
 // IsSet returns true if the given type uses the generic Set type, ignoring the concrete container type T.
 func IsSet(other reflect.Type) bool {
-	var (
-		setType = reflect.TypeFor[Set[any]]()
-	)
+	setType := reflect.TypeFor[Set[any]]()
 	if other.PkgPath() == setType.PkgPath() {
 		stripGenerics := func(s string) string {
 			if startIdx := strings.Index(s, "["); startIdx > 0 {

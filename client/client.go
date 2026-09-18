@@ -2,20 +2,24 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"net/url"
-	"os"
-	"time"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/version"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 var MinMeshStackVersion = version.MustParse("2026.36.0")
 
+// Version is re-exported because MinMeshStackVersion is one and internal/version is closed to
+// another module.
+type Version = version.Version
+
 // HttpError represents an HTTP error response with status code.
 // This error is returned when an HTTP request fails with a non-2XX status code.
-type HttpError = internal.HttpError
+type HttpError = http.Error
+
+type Authorization = http.Authorization
 
 type Client struct {
 	ApiKey                         MeshApiKeyClient
@@ -41,84 +45,42 @@ type Client struct {
 	Workspace                      MeshWorkspaceClient
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
+
+	// Endpoint is read by the Terraform provider's meshstack_instance data source.
+	Endpoint xurl.URL
 }
 
-type Authorization = internal.Authorization
-
-func NewApiTokenAuthorization(apiToken string) Authorization {
-	return internal.BearerTokenAuthorization{Token: apiToken}
-}
-
-const apiLoginPath = "/api/login"
-
-func NewApiKeyAuthorization(apiKey, apiSecret string) Authorization {
-	return internal.NewClientSecretAuthorization(apiLoginPath, apiKey, apiSecret)
-}
-
-func New(ctx context.Context, rootUrl *url.URL, userAgent string, auth Authorization) (Client, error) {
-	httpClient := internal.WithRetry(
-		internal.NewHttpClient(rootUrl, userAgent, auth),
-		internal.RetryOptions{
-			// Sized to ride out a full meshStack backend restart (e.g. an OOMKill followed by a
-			// Spring Boot cold start), which can leave the gateway returning 503 for ~2-3 minutes —
-			// well beyond the previous ~75s budget. This backoff sequence sums to ~4 minutes:
-			// 1+2+4+8+16+30*7 seconds.
-			MaxRetries:       12,
-			Backoff:          internal.ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
-			WhitelistedPaths: map[string][]string{"POST": {apiLoginPath}},
-		},
-	)
-
-	meshInfoClient := newMeshInfoClient(httpClient)
-	if err := checkMeshVersion(ctx, meshInfoClient); err != nil {
-		return Client{}, err
+func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authorization) Client {
+	client := http.NewClient(userAgent)
+	authorizedClient := internal.HttpClient{
+		AuthorizedClient: client.WithAuthorization(auth),
+		EndpointUrl:      endpoint,
 	}
-
 	return Client{
-		ApiKey:                         newApiKeyClient(ctx, httpClient),
-		BuildingBlock:                  newBuildingBlockClient(ctx, httpClient),
-		BuildingBlockV2:                newBuildingBlockV2Client(ctx, httpClient),
-		BuildingBlockRun:               newBuildingBlockRunClient(ctx, httpClient),
-		BuildingBlockDefinition:        newBuildingBlockDefinitionClient(ctx, httpClient),
-		BuildingBlockDefinitionVersion: newBuildingBlockDefinitionVersionClient(ctx, httpClient),
-		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, httpClient),
-		Integration:                    newIntegrationClient(ctx, httpClient),
-		LandingZone:                    newLandingZoneClient(ctx, httpClient),
-		Location:                       newLocationClient(ctx, httpClient),
-		MeshInfo:                       meshInfoClient,
-		PaymentMethod:                  newPaymentMethodClient(ctx, httpClient),
-		Platform:                       newPlatformClient(ctx, httpClient),
-		PlatformType:                   newPlatformTypeClient(ctx, httpClient),
-		Project:                        newProjectClient(ctx, httpClient),
-		ProjectGroupBinding:            newProjectGroupBindingClient(ctx, httpClient),
-		ProjectUserBinding:             newProjectUserBindingClient(ctx, httpClient),
-		ServiceInstance:                newServiceInstanceClient(ctx, httpClient),
-		TagDefinition:                  newTagDefinitionClient(ctx, httpClient),
-		Tenant:                         newTenantClient(ctx, httpClient),
-		Workspace:                      newWorkspaceClient(ctx, httpClient),
-		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, httpClient),
-		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, httpClient),
-	}, nil
-}
+		ApiKey:                         newApiKeyClient(ctx, authorizedClient),
+		BuildingBlock:                  newBuildingBlockClient(ctx, authorizedClient),
+		BuildingBlockV2:                newBuildingBlockV2Client(ctx, authorizedClient),
+		BuildingBlockRun:               newBuildingBlockRunClient(ctx, authorizedClient),
+		BuildingBlockDefinition:        newBuildingBlockDefinitionClient(ctx, authorizedClient),
+		BuildingBlockDefinitionVersion: newBuildingBlockDefinitionVersionClient(ctx, authorizedClient),
+		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, authorizedClient),
+		Integration:                    newIntegrationClient(ctx, authorizedClient),
+		LandingZone:                    newLandingZoneClient(ctx, authorizedClient),
+		Location:                       newLocationClient(ctx, authorizedClient),
+		MeshInfo:                       NewMeshInfoClient(client, endpoint),
+		PaymentMethod:                  newPaymentMethodClient(ctx, authorizedClient),
+		Platform:                       newPlatformClient(ctx, authorizedClient),
+		PlatformType:                   newPlatformTypeClient(ctx, authorizedClient),
+		Project:                        newProjectClient(ctx, authorizedClient),
+		ProjectGroupBinding:            newProjectGroupBindingClient(ctx, authorizedClient),
+		ProjectUserBinding:             newProjectUserBindingClient(ctx, authorizedClient),
+		ServiceInstance:                newServiceInstanceClient(ctx, authorizedClient),
+		TagDefinition:                  newTagDefinitionClient(ctx, authorizedClient),
+		Tenant:                         newTenantClient(ctx, authorizedClient),
+		Workspace:                      newWorkspaceClient(ctx, authorizedClient),
+		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, authorizedClient),
+		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, authorizedClient),
 
-func checkMeshVersion(ctx context.Context, meshInfoClient MeshInfoClient) error {
-	// Skip before the request, not just before the comparison: /mesh/info is a GET on the retrying
-	// client, so an unavailable backend blocks provider configuration for the whole retry budget
-	// (~4 minutes) and then fails it. Opting out of the check has to opt out of that too.
-	if os.Getenv("MESHSTACK_SKIP_VERSION_CHECK") == "true" {
-		return nil
+		Endpoint: endpoint,
 	}
-
-	info, err := meshInfoClient.Read(ctx)
-	if err != nil {
-		return err
-	}
-	meshVersion, err := version.Parse(info.Version)
-	if err != nil {
-		return fmt.Errorf("failed to parse meshStack version %q: %w", info.Version, err)
-	}
-	if meshVersion.Less(MinMeshStackVersion) {
-		return fmt.Errorf("unsupported meshStack version: meshStack is running version %s, but this client requires version %s or higher", meshVersion, MinMeshStackVersion)
-	}
-	return nil
 }

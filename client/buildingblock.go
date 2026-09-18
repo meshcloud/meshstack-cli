@@ -3,9 +3,10 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
+//nolint:staticcheck // ST1003: deprecated names, kept as published; the v2 building block client and the IO type enum supersede them
 const (
 	MESH_BUILDING_BLOCK_IO_TYPE_STRING        = "STRING"
 	MESH_BUILDING_BLOCK_IO_TYPE_INTEGER       = "INTEGER"

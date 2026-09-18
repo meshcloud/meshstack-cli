@@ -2,13 +2,13 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
-	"fmt"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 // Enums
@@ -42,14 +42,13 @@ var (
 	MeshBuildingBlockIOTypeSingleSelect = MeshBuildingBlockIOTypes.Entry("SINGLE_SELECT")
 	MeshBuildingBlockIOTypeMultiSelect  = MeshBuildingBlockIOTypes.Entry("MULTI_SELECT")
 
-	// A definition input declaring this type describes a form of its own, through the accompanying
-	// JsonSchema. That makes it a declaration-side type only, so deliberately not an entry of
-	// MeshBuildingBlockIOTypes: what the form produces is JSON text, which a building block's own inputs
-	// report as CODE.
+	// MeshBuildingBlockIOTypeJson is deliberately not an entry of MeshBuildingBlockIOTypes: a
+	// definition input declaring it describes a form of its own, through the accompanying JsonSchema.
+	// What that form produces is JSON text, which a building block's own inputs report as CODE.
 	MeshBuildingBlockIOTypeJson = enum.Entry[MeshBuildingBlockIOType]("JSON")
 )
 
-// The types a definition input may declare.
+// MeshBuildingBlockDefinitionInputTypes are the types a definition input may declare.
 var MeshBuildingBlockDefinitionInputTypes = MeshBuildingBlockIOTypes.With(MeshBuildingBlockIOTypeJson)
 
 var MeshBuildingBlockOutputIOTypes = enum.Of(
@@ -133,14 +132,14 @@ type MeshBuildingBlockDefinitionInput struct {
 	Argument                    types.SecretOrAny `json:"argument" tfsdk:"argument"`
 	DefaultValue                types.SecretOrAny `json:"defaultValue" tfsdk:"default_value"`
 	UpdateableByConsumer        bool              `json:"updateableByConsumer" tfsdk:"updateable_by_consumer"`
-	IsOptional                  bool              `json:"isOptional,omitempty" tfsdk:"is_optional"`
+	IsOptional                  bool              `json:"isOptional,omitzero" tfsdk:"is_optional"`
 	SelectableValues            types.Set[string] `json:"selectableValues,omitempty" tfsdk:"selectable_values"`
-	Description                 *string           `json:"description,omitempty" tfsdk:"description"`
-	ValueValidationRegex        *string           `json:"valueValidationRegex,omitempty" tfsdk:"value_validation_regex"`
-	ValidationRegexErrorMessage *string           `json:"validationRegexErrorMessage,omitempty" tfsdk:"validation_regex_error_message"`
+	Description                 *string           `json:"description,omitzero" tfsdk:"description"`
+	ValueValidationRegex        *string           `json:"valueValidationRegex,omitzero" tfsdk:"value_validation_regex"`
+	ValidationRegexErrorMessage *string           `json:"validationRegexErrorMessage,omitzero" tfsdk:"validation_regex_error_message"`
 	// The form this input is filled in through, as a JSON Schema string. Only for MeshBuildingBlockIOTypeJson.
-	JsonSchema *string `json:"jsonSchema,omitempty" tfsdk:"json_schema"`
-	Condition  *string `json:"condition,omitempty" tfsdk:"condition"`
+	JsonSchema *string `json:"jsonSchema,omitzero" tfsdk:"json_schema"`
+	Condition  *string `json:"condition,omitzero" tfsdk:"condition"`
 	// No omitempty: a 0 (the schema default, and what an unknown plan value collapses to) must be sent so
 	// the backend stores it verbatim. With omitempty the 0 would be dropped and the backend would assign
 	// a position itself, making the applied value differ from the plan.
@@ -171,7 +170,7 @@ func (m *MeshBuildingBlockDefinitionInput) UnmarshalJSON(bytes []byte) error {
 		moveXtoYIfPresent(&m.DefaultValue)
 		return errors.Join(errs...)
 	case m.Argument.HasY(), m.DefaultValue.HasY():
-		return fmt.Errorf("got sensitive argument or default_value but variant Y is set instead")
+		return errors.New("got sensitive argument or default_value but variant Y is set instead")
 	default:
 		return nil
 	}
@@ -199,8 +198,8 @@ type MeshBuildingBlockDefinitionVersionSpec struct {
 	DeletionMode               BuildingBlockDeletionMode                    `json:"deletionMode" tfsdk:"deletion_mode"`
 	Permissions                types.Set[ApiPermission]                     `json:"permissions,omitempty" tfsdk:"permissions"`
 	Outputs                    map[string]MeshBuildingBlockDefinitionOutput `json:"outputs" tfsdk:"outputs"`
-	VersionNumber              *int64                                       `json:"versionNumber,omitempty" tfsdk:"version_number"`
-	State                      *MeshBuildingBlockDefinitionVersionState     `json:"state,omitempty" tfsdk:"state"`
+	VersionNumber              *int64                                       `json:"versionNumber,omitzero" tfsdk:"version_number"`
+	State                      *MeshBuildingBlockDefinitionVersionState     `json:"state,omitzero" tfsdk:"state"`
 	RunnerRef                  *UuidRef                                     `json:"runnerRef" tfsdk:"runner_ref"`
 	// Replaces the deprecated bare-UUID dependencyDefinitionUuids; requires a backend serving it.
 	DependencyDefinitionRefs types.Set[UuidRef]                           `json:"dependencyDefinitionRefs,omitempty" tfsdk:"dependency_refs"`
@@ -216,7 +215,7 @@ type MeshBuildingBlockDefinitionVersionStatus struct {
 type MeshBuildingBlockDefinitionVersion struct {
 	Metadata MeshBuildingBlockDefinitionVersionMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshBuildingBlockDefinitionVersionSpec     `json:"spec" tfsdk:"spec"`
-	Status   *MeshBuildingBlockDefinitionVersionStatus  `json:"status,omitempty" tfsdk:"status"`
+	Status   *MeshBuildingBlockDefinitionVersionStatus  `json:"status,omitzero" tfsdk:"status"`
 }
 
 // MeshBuildingBlockDefinitionVersionClient manages a version of a building block definition.
@@ -243,7 +242,7 @@ type meshBuildingBlockDefinitionVersionListQuery struct {
 }
 
 func (c meshBuildingBlockDefinitionVersionClient) List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
 		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
 	}))
 }

@@ -3,7 +3,8 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshProject struct {
@@ -51,10 +52,6 @@ func newProjectClient(ctx context.Context, httpClient internal.HttpClient) MeshP
 	return meshProjectClient{internal.NewMeshObjectClient[MeshProject](ctx, httpClient, "v2")}
 }
 
-func (c meshProjectClient) projectId(workspace string, name string) string {
-	return workspace + "." + name
-}
-
 func (c meshProjectClient) Read(ctx context.Context, workspace string, name string) (*MeshProject, error) {
 	return c.meshObject.Get(ctx, c.projectId(workspace, name))
 }
@@ -65,7 +62,7 @@ type meshProjectListQuery struct {
 }
 
 func (c meshProjectClient) List(ctx context.Context, workspaceIdentifier string, paymentMethodIdentifier *string) ([]MeshProject, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(meshProjectListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(meshProjectListQuery{
 		WorkspaceIdentifier: workspaceIdentifier,
 		PaymentIdentifier:   paymentMethodIdentifier,
 	}))
@@ -81,4 +78,8 @@ func (c meshProjectClient) Update(ctx context.Context, project *MeshProjectCreat
 
 func (c meshProjectClient) Delete(ctx context.Context, workspace string, name string) error {
 	return c.meshObject.Delete(ctx, c.projectId(workspace, name))
+}
+
+func (c meshProjectClient) projectId(workspace string, name string) string {
+	return workspace + "." + name
 }

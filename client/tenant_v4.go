@@ -2,10 +2,12 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type TenantLifecycleState string
@@ -142,7 +144,7 @@ func (c meshTenantClient) Create(ctx context.Context, tenant *MeshTenantCreate) 
 }
 
 func (c meshTenantClient) List(ctx context.Context, query MeshTenantQuery) ([]MeshTenant, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshTenantClient) Delete(ctx context.Context, uuid string) error {
@@ -152,7 +154,7 @@ func (c meshTenantClient) Delete(ctx context.Context, uuid string) error {
 func (tenant *MeshTenant) CreationSuccessful() (done bool, err error) {
 	switch {
 	case tenant == nil:
-		err = fmt.Errorf("tenant not found after creation")
+		err = errors.New("tenant not found after creation")
 	case tenant.Spec.PlatformTenantId != nil && *tenant.Spec.PlatformTenantId != "":
 		// Creation is complete (platformTenantId is set and not empty)
 		done = true

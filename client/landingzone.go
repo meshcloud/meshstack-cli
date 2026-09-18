@@ -3,7 +3,8 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshLandingZone struct {
@@ -27,9 +28,9 @@ type MeshLandingZoneSpec struct {
 	// schema defaults this to false, so the provider always states the value it wants and never
 	// asks the backend to keep whatever is stored.
 	Restricted                   bool                               `json:"restricted" tfsdk:"restricted"`
-	InfoLink                     *string                            `json:"infoLink,omitempty" tfsdk:"info_link"`
+	InfoLink                     *string                            `json:"infoLink,omitzero" tfsdk:"info_link"`
 	PlatformRef                  UuidRef                            `json:"platformRef" tfsdk:"platform_ref"`
-	PlatformProperties           *MeshLandingZonePlatformProperties `json:"platformProperties,omitempty" tfsdk:"platform_properties"`
+	PlatformProperties           *MeshLandingZonePlatformProperties `json:"platformProperties,omitzero" tfsdk:"platform_properties"`
 	Quotas                       []MeshLandingZoneQuota             `json:"quotas" tfsdk:"quotas"`
 	MandatoryBuildingBlockRefs   []UuidRef                          `json:"mandatoryBuildingBlockRefs" tfsdk:"mandatory_building_block_refs"`
 	RecommendedBuildingBlockRefs []UuidRef                          `json:"recommendedBuildingBlockRefs" tfsdk:"recommended_building_block_refs"`
@@ -93,7 +94,7 @@ func (c meshLandingZoneClient) Read(ctx context.Context, name string) (*MeshLand
 }
 
 func (c meshLandingZoneClient) List(ctx context.Context, query MeshLandingZoneListQuery) ([]MeshLandingZone, error) {
-	return c.meshObject.List(ctx, internal.WithUrlQuery(query))
+	return c.meshObject.List(ctx, http.WithUrlQuery(query))
 }
 
 func (c meshLandingZoneClient) Create(ctx context.Context, landingZone *MeshLandingZoneCreate) (*MeshLandingZone, error) {

@@ -3,30 +3,30 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
-	"github.com/meshcloud/terraform-provider-meshstack/client/types"
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
 )
 
 type MeshApiKey struct {
 	Metadata MeshApiKeyMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshApiKeySpec     `json:"spec" tfsdk:"spec"`
-	Status   *MeshApiKeyStatus  `json:"status,omitempty" tfsdk:"status"`
+	Status   *MeshApiKeyStatus  `json:"status,omitzero" tfsdk:"status"`
 }
 
 type MeshApiKeyMetadata struct {
-	Uuid             *string `json:"uuid,omitempty" tfsdk:"uuid"`
+	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
 	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
 }
 
 type MeshApiKeySpec struct {
 	DisplayName string                   `json:"displayName" tfsdk:"display_name"`
 	Permissions types.Set[ApiPermission] `json:"permissions" tfsdk:"permissions"`
-	ExpiresAt   *string                  `json:"expiresAt,omitempty" tfsdk:"expires_at"`
+	ExpiresAt   *string                  `json:"expiresAt,omitzero" tfsdk:"expires_at"`
 }
 
 type MeshApiKeyStatus struct {
 	ClientId     string  `json:"clientId" tfsdk:"client_id"`
-	ClientSecret *string `json:"clientSecret,omitempty" tfsdk:"client_secret"`
+	ClientSecret *string `json:"clientSecret,omitzero" tfsdk:"client_secret"`
 }
 
 type MeshApiKeyClient interface {

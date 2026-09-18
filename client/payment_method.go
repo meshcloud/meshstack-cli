@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/terraform-provider-meshstack/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
 type MeshPaymentMethod struct {
@@ -20,8 +20,8 @@ type MeshPaymentMethodMetadata struct {
 
 type MeshPaymentMethodSpec struct {
 	DisplayName    string              `json:"displayName" tfsdk:"display_name"`
-	ExpirationDate *string             `json:"expirationDate,omitempty" tfsdk:"expiration_date"`
-	Amount         *int64              `json:"amount,omitempty" tfsdk:"amount"`
+	ExpirationDate *string             `json:"expirationDate,omitzero" tfsdk:"expiration_date"`
+	Amount         *int64              `json:"amount,omitzero" tfsdk:"amount"`
 	Tags           map[string][]string `json:"tags,omitempty" tfsdk:"tags"`
 }
 
@@ -36,7 +36,7 @@ type MeshPaymentMethodCreateMetadata struct {
 }
 
 type MeshPaymentMethodClient interface {
-	Read(ctx context.Context, workspace string, identifier string) (*MeshPaymentMethod, error)
+	Read(ctx context.Context, identifier string) (*MeshPaymentMethod, error)
 	Create(ctx context.Context, paymentMethod *MeshPaymentMethodCreate) (*MeshPaymentMethod, error)
 	Update(ctx context.Context, identifier string, paymentMethod *MeshPaymentMethodCreate) (*MeshPaymentMethod, error)
 	Delete(ctx context.Context, identifier string) error
@@ -50,7 +50,7 @@ func newPaymentMethodClient(ctx context.Context, httpClient internal.HttpClient)
 	return meshPaymentMethodClient{internal.NewMeshObjectClient[MeshPaymentMethod](ctx, httpClient, "v2")}
 }
 
-func (c meshPaymentMethodClient) Read(ctx context.Context, workspace string, identifier string) (*MeshPaymentMethod, error) {
+func (c meshPaymentMethodClient) Read(ctx context.Context, identifier string) (*MeshPaymentMethod, error) {
 	return c.meshObject.Get(ctx, identifier)
 }
 
