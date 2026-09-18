@@ -13,6 +13,7 @@ var (
 	SkipVersionCheckFlag = NewFlagForSetting[bool]("skip-version-check", setting.SkipVersionCheck)
 	EndpointFlag         = NewFlagForSetting[string]("endpoint", setting.Endpoint)
 	WorkspaceFlag        = NewFlagForSetting[string]("workspace", setting.Workspace)
+	ProfileFlag          = NewFlagForSetting[string]("profile", setting.Profile)
 )
 
 type FlagName string

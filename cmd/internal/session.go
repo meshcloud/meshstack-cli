@@ -32,5 +32,6 @@ func SettingSources() setting.Sources {
 		// An unset bool flag reads false, and a frontend source outranks the environment, so
 		// contributing that false would mask MESHSTACK_SKIP_VERSION_CHECK.
 		SkipVersionCheckFlag.AsSourceUnless(func(skip bool) bool { return !skip }),
+		ProfileFlag.AsSource(),
 	}
 }

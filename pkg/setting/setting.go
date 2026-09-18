@@ -3,6 +3,7 @@ package setting
 import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
 type (
@@ -19,6 +20,7 @@ var (
 	Endpoint         Setting = meshstack.EndpointSetting
 	Workspace        Setting = meshstack.WorkspaceSetting
 	SkipVersionCheck Setting = meshstack.SkipVersionCheckSetting
+	Profile          Setting = profile.NameSetting
 
 	ApiKeyClientId     Setting = auth.ApiKeyClientIdSetting
 	ApiKeyClientSecret Setting = auth.ApiKeyClientSecretSetting
