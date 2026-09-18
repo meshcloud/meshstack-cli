@@ -183,7 +183,8 @@ func (s Session) resolveWorkspace(ctx context.Context, currentProfile profile.Pr
 		}
 		return
 	}))
-	return opts.ResolveSetting(ctxWithWorkspaces, meshstack.WorkspaceSetting, currentProfile.WorkspaceSource())
+	ctxWithCredential := credential.SetNameInContext(ctxWithWorkspaces, s.Credentials.NameOf(s.Credential))
+	return opts.ResolveSetting(ctxWithCredential, meshstack.WorkspaceSetting, currentProfile.WorkspaceSource())
 }
 
 // withNoWorkspace is the session the workspace resolution itself can use: it names no workspace, so

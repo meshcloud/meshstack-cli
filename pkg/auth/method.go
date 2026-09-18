@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"context"
+
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 )
 
@@ -15,3 +17,9 @@ const (
 	// OidcLoginMethod logs a person in through a browser, so it resolves only when asked for by name.
 	OidcLoginMethod = credential.OidcLoginName
 )
+
+// MethodFromContext returns how this session authenticates. The method is only in the context
+// while MESHSTACK_WORKSPACE is being resolved, so a lookup for any other setting gets an error.
+func MethodFromContext(ctx context.Context) (Method, error) {
+	return credential.NameFromContext(ctx)
+}

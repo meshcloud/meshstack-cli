@@ -1,10 +1,13 @@
 package credential
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"reflect"
 	"slices"
+
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 )
 
 type Name string
@@ -24,6 +27,22 @@ const (
 
 // Names lists every credential, in the order a resolution tries and reports them.
 var Names = []Name{ApiKeyName, ManualName, OidcLoginName}
+
+type nameContextKey int
+
+func NameFromContext(ctx context.Context) (Name, error) {
+	name, found := ctx.Value(nameContextKey(0)).(Name)
+	if !found {
+		// An error rather than a panic, because a front end reaches this through pkg/auth and a
+		// panic there takes its process down.
+		return "", fmt.Errorf("no credential available in this context; it is only provided while resolving %s", meshstack.WorkspaceSetting.EnvKey())
+	}
+	return name, nil
+}
+
+func SetNameInContext(ctx context.Context, name Name) context.Context {
+	return context.WithValue(ctx, nameContextKey(0), name)
+}
 
 // A name that no field of Credentials carries resolves to nothing and stores to nowhere, without
 // saying so, which is why the two lists are checked against each other at startup.
