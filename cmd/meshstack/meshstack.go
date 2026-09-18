@@ -49,6 +49,7 @@ func newRootCommand() *cobra.Command {
 	internal.EndpointFlag.Register(persistentFlags)
 	internal.WorkspaceFlag.Register(persistentFlags)
 	internal.SkipVersionCheckFlag.Register(persistentFlags)
+	internal.ProfileFlag.Register(persistentFlags)
 
 	cmd.AddCommand(auth.New())
 	// `meshstack login` is a shortcut for `meshstack auth login`. Calling the constructor a second
