@@ -10,7 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblock"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
 )
 
@@ -55,6 +57,8 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(auth.New())
 	// `meshstack login` is a shortcut for `meshstack auth login`.
 	cmd.AddCommand(auth.NewLogin())
+	cmd.AddCommand(buildingblock.New())
+	cmd.AddCommand(workspace.New())
 
 	return cmd
 }
