@@ -153,6 +153,9 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 	if _, err := s.checkedMeshInfo(); err != nil {
 		return client.Client{}, err
 	}
+	if err := warnIfNewerReleasePresent(ctx, s.ConfigDir, s.httpClient, opts); err != nil {
+		slog.WarnContext(ctx, "Cannot check for a newer release on GitHub: "+err.Error())
+	}
 	return c, nil
 }
 
