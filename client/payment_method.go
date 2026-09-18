@@ -36,7 +36,7 @@ type MeshPaymentMethodCreateMetadata struct {
 }
 
 type MeshPaymentMethodClient interface {
-	Read(ctx context.Context, workspace string, identifier string) (*MeshPaymentMethod, error)
+	Read(ctx context.Context, identifier string) (*MeshPaymentMethod, error)
 	Create(ctx context.Context, paymentMethod *MeshPaymentMethodCreate) (*MeshPaymentMethod, error)
 	Update(ctx context.Context, identifier string, paymentMethod *MeshPaymentMethodCreate) (*MeshPaymentMethod, error)
 	Delete(ctx context.Context, identifier string) error
@@ -50,7 +50,7 @@ func newPaymentMethodClient(ctx context.Context, httpClient internal.HttpClient)
 	return meshPaymentMethodClient{internal.NewMeshObjectClient[MeshPaymentMethod](ctx, httpClient, "v2")}
 }
 
-func (c meshPaymentMethodClient) Read(ctx context.Context, workspace string, identifier string) (*MeshPaymentMethod, error) {
+func (c meshPaymentMethodClient) Read(ctx context.Context, identifier string) (*MeshPaymentMethod, error) {
 	return c.meshObject.Get(ctx, identifier)
 }
 
