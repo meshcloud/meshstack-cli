@@ -80,12 +80,13 @@ Four rules hold the tree together:
 
 ## Dependency policy
 
-The CLI runs on **four external dependencies**: `cobra` and `pflag`, `charmbracelet/log`, and
-`gofrs/flock`. Everything else is the standard library, with `testify` in tests.
+The CLI runs on the standard library and a short list of external dependencies, with `testify` in
+tests. `go.mod` is that list.
 
 **The `depguard` rules in `.golangci.yml` are the policy**, not only its enforcement: each rule
 confines a dependency to a smaller area than the module, so widening a boundary is a deliberate edit
-rather than a lint fix.
+rather than a lint fix. Adding a dependency therefore means editing both files, and the second edit
+is where you argue for it.
 
 <rules id="client-package">
 `client/` is a **git subtree** of
