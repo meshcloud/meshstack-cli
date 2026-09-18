@@ -201,7 +201,8 @@ linters:
             - log/slog
             # no direct access to internal/
             - github.com/meshcloud/meshstack-cli/pkg
-            - github.com/meshcloud/meshstack-cli/cmd/internal
+            # a parent command calls its children's New, the same way cmd/meshstack calls its own
+            - github.com/meshcloud/meshstack-cli/cmd
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
 

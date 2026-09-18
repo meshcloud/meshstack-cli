@@ -48,7 +48,7 @@ The binary gets its name from its directory, `cmd/meshstack`, which is what `tas
 | Path | Holds |
 |---|---|
 | `cmd/meshstack/` | `package main`: `main()` and the root command. The only main package. |
-| `cmd/<subcommand>/` | One package per subcommand of the cobra command tree. `cmd/auth` is the only one so far. |
+| `cmd/<subcommand>/` | One package per subcommand of the cobra command tree. |
 | `cmd/internal/` | What the command tree shares: flags, the session it resolves, the version. |
 | `cmd/internal/testacc/` | The suite that drives the built binary against a live meshStack. |
 | `pkg/` | `auth`, `io`, `profile` and `setting`, each wrapping the `internal/` package of the same name. |
