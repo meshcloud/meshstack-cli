@@ -16,7 +16,11 @@ var ApiTokenSetting = setting.Setting[jwt.JWT]{
 		return fmt.Sprintf("A meshStack access token to send as it is. Also read from %s.", envKey)
 	},
 	Long: func(envKey string) string {
-		return fmt.Sprintf("A meshStack access token to send as it is, also read from `%s`.", envKey)
+		return fmt.Sprintf("A meshStack access token to send as it is, also read from `%s`.\n\n"+
+			"The token is minted elsewhere, so nothing renews it and nothing asks for a workspace: it "+
+			"already carries the one it was minted for. A building block runner's token is the usual "+
+			"one to bring here, to see what a run sees, and such a token may not be allowed to list "+
+			"workspaces at all.", envKey)
 	},
 	Parse: setting.ParseTextUnmarshaler[jwt.JWT],
 }

@@ -171,12 +171,20 @@ func (s Session) resolveWorkspace(ctx context.Context, currentProfile profile.Pr
 	// Note that a session-authenticated Session.Client is build also lazily when fetching workspaces,
 	// which is possibly now thanks to Session.Credential(s) being set/resolved before.
 	// A deadlock is avoided by listing through a session that names no workspace, see withNoWorkspace.
-	ctxWithWorkspaces := meshstack.SetWorkspacesInContext(ctx, sync.OnceValues(func() ([]client.MeshWorkspace, error) {
-		c, err := s.withNoWorkspace(ctx, opts).Client()
+	ctxWithWorkspaces := meshstack.SetWorkspacesInContext(ctx, sync.OnceValues(func() (r meshstack.Workspaces, err error) {
+		var c client.Client
+		c, err = s.withNoWorkspace(ctx, opts).Client()
 		if err != nil {
-			return nil, err
+			return r, err
 		}
-		return c.Workspace.List(ctx)
+		r.ProfileDefaultWorkspace = currentProfile.DefaultWorkspace
+		r.Items, err = c.Workspace.List(ctx)
+		if httpError, ok := errors.AsType[http.Error](err); ok && httpError.IsForbidden() {
+			err = fmt.Errorf("cannot list workspaces; try logging into meshPanel UI first, got: %w", httpError)
+		} else if err == nil && len(r.Items) == 0 {
+			err = errors.New("no workspaces found; try logging into meshPanel UI first and/or become member of a workspace")
+		}
+		return
 	}))
 	return opts.ResolveSetting(ctxWithWorkspaces, meshstack.WorkspaceSetting, currentProfile.WorkspaceSource())
 }

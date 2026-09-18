@@ -13,7 +13,7 @@ on:
       # TEMPORARY, delete before merge. A pull_request_target run takes this file from the base
       # branch, where it does not exist yet, so the dispatcher cannot try itself out on its own pull
       # request. A push event takes the pushed branch's own file, and is the only trigger that can.
-      - feature/cli-satellite
+      - feature/scaffold-cli
 
 permissions:
   contents: read

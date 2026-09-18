@@ -3,6 +3,7 @@ package setting
 import (
 	"context"
 
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
@@ -13,6 +14,11 @@ type (
 	FrontendSource = setting.FrontendSource
 	// FallbackSource ranks below the environment, as a prompt does.
 	FallbackSource = setting.FallbackSource
+
+	// Workspaces are the workspaces reachable while resolving Workspace, see WorkspacesFromContext.
+	Workspaces = meshstack.Workspaces
+	// MeshWorkspace is one of them, and renders itself for a person to pick from.
+	MeshWorkspace = meshstack.MeshWorkspace
 )
 
 // SingleSource marks the given source as highest precedence during [setting.Sources.ResolveSetting],
@@ -40,4 +46,10 @@ func FallbackLookupSource(matchingEnvKey, description string, lookup func(ctx co
 		Description: description,
 		Func:        lookup,
 	}}
+}
+
+// WorkspacesFromContext retrieves workspaces available during resolution in [setting.Source.Lookup],
+// only call this during resolution for WorkspaceSetting.
+func WorkspacesFromContext(ctx context.Context) (meshstack.Workspaces, error) {
+	return meshstack.WorkspacesFromContext(ctx)
 }

@@ -26,8 +26,11 @@ func (p Profile) String() string {
 	return string(p.Name)
 }
 
-func (p Profile) EndpointSource() setting.Source {
-	return setting.LookupSource{
+// EndpointSource is a fallback source, so it ranks below the environment. That is what lets
+// ResolveSession catch an endpoint that does not match the profile, rather than quietly using the
+// profile's own.
+func (p Profile) EndpointSource() setting.FallbackSource {
+	return setting.FallbackSource{Source: setting.LookupSource{
 		Description: fmt.Sprintf("endpoint in profile %s", p.Name),
 		Func: func(_ context.Context) (string, error) {
 			if p.Endpoint != nil {
@@ -35,17 +38,19 @@ func (p Profile) EndpointSource() setting.Source {
 			}
 			return "", nil
 		},
-	}
+	}}
 }
 
-func (p Profile) WorkspaceSource() setting.Source {
-	return setting.LookupSource{
+// WorkspaceSource is a fallback source, so it ranks below the environment and below an interactive
+// prompt: it is what a login remembered, never an override of what this run asks for.
+func (p Profile) WorkspaceSource() setting.FallbackSource {
+	return setting.FallbackSource{Source: setting.LookupSource{
 		Description: fmt.Sprintf("default workspace in profile %s", p.Name),
 		Func: func(_ context.Context) (string, error) {
 			// Note: if Workspace is empty, resolution will silently skip this source
 			return string(p.DefaultWorkspace), nil
 		},
-	}
+	}}
 }
 
 //goland:noinspection GoMixedReceiverTypes

@@ -69,6 +69,26 @@ func TestResolveSettingPrecedence(t *testing.T) {
 			name: "the default is last",
 			want: "from the default",
 		},
+		// Two of the same kind keep the order they were given in, which is what lets an interactive
+		// prompt outrank the profile default: the prompt is a source of the front end, and the
+		// profile is an extra source of the resolution that asks for it.
+		{
+			name:    "the first of two front end sources wins",
+			sources: setting.Sources{frontend, setting.FrontendSource{Source: staticSource("from a second front end source")}},
+			want:    "from the front end",
+		},
+		{
+			name:    "a front end source outranks one given as an extra source",
+			sources: setting.Sources{frontend},
+			extra:   setting.Sources{setting.FrontendSource{Source: staticSource("from a second front end source")}},
+			want:    "from the front end",
+		},
+		{
+			name:    "a fallback source outranks one given as an extra source",
+			sources: setting.Sources{fallback},
+			extra:   setting.Sources{setting.FallbackSource{Source: staticSource("from a second fallback source")}},
+			want:    "from the fallback",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

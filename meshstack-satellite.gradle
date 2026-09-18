@@ -5,10 +5,12 @@ plugins {
 satellite {
   acceptance {
     run = 'TestAcc'
-    // Without MESHSTACK_TESTACC every test in cmd/internal/testacc skips, and the suite passes
-    // without a backend. The second one keeps the browser login from launching a browser on the
-    // agent; internal/oidc/browser reads it straight from the environment.
-    environment MESHSTACK_TESTACC: '1',
-                MESHSTACK_CLI_NO_BROWSER: '1'
+    // The API key is the Terraform provider's acceptance key on purpose: every satellite shares one
+    // .env next to go.work, so a second key would only conflict with it.
+    environment MESHSTACK_CLI_TEST_ACC: '1',
+                MESHSTACK_CLI_NO_BROWSER: '1',
+                MESHSTACK_API_KEY: fromBackendConfig('auth.openid.apiKeys.terraform-provider-acceptance.clientId'),
+                MESHSTACK_API_SECRET: fromBackendConfig('auth.openid.apiKeys.terraform-provider-acceptance.clientSecret'),
+                MESHSTACK_CLI_TEST_USERS: fromBackendConfig('auth.openid.users')
   }
 }

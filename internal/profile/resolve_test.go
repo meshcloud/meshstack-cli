@@ -23,6 +23,18 @@ import (
 var jwtJson []byte
 
 func TestResolveProfile(t *testing.T) {
+	// A shell that exports any of these would otherwise reach the resolutions under test, and put
+	// its own endpoint into every profile created here. An empty value is skipped as no value at
+	// all, see Setting.Resolve, and the subtests below set what they need after this.
+	for _, envKey := range []string{
+		config.DirectorySetting.EnvKey(),
+		NameSetting.EnvKey(),
+		meshstack.EndpointSetting.EnvKey(),
+		meshstack.WorkspaceSetting.EnvKey(),
+	} {
+		t.Setenv(envKey, "")
+	}
+
 	t.Run("init from non-existing config dir", func(t *testing.T) {
 		t.Setenv(config.DirectorySetting.EnvKey(), "really-does-not-exists/and-should-never-exist/so-thats-a-unique-path")
 		currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})

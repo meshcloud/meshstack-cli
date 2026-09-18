@@ -1,10 +1,8 @@
 package meshstack
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
@@ -21,25 +19,6 @@ func (w Workspace) String() string {
 		return "<none>"
 	}
 	return string(w)
-}
-
-type (
-	workspacesContextKey int
-	WorkspacesFunc       func() ([]client.MeshWorkspace, error)
-)
-
-// WorkspacesFromContext returns no workspaces and no error where SetWorkspacesInContext was not called,
-// which is every credential but an OIDC login.
-func WorkspacesFromContext(ctx context.Context) ([]client.MeshWorkspace, error) {
-	workspaces, found := ctx.Value(workspacesContextKey(0)).(WorkspacesFunc)
-	if !found {
-		return nil, nil
-	}
-	return workspaces()
-}
-
-func SetWorkspacesInContext(ctx context.Context, workspacesFunc WorkspacesFunc) context.Context {
-	return context.WithValue(ctx, workspacesContextKey(0), workspacesFunc)
 }
 
 var WorkspaceSetting = setting.Setting[Workspace]{

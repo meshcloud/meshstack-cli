@@ -14,6 +14,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
 )
 
@@ -127,6 +128,19 @@ var (
 // directory and the endpoint setting at it.
 func newTestServer(t *testing.T) *testserver.Server {
 	t.Helper()
+	// A shell that exports any of these would otherwise reach the resolutions under test, and a
+	// MESHSTACK_API_TOKEN of its own resolves a credential no test here asked for. An empty value
+	// is skipped as no value at all, see Setting.Resolve.
+	for _, envKey := range []string{
+		profile.NameSetting.EnvKey(),
+		meshstack.WorkspaceSetting.EnvKey(),
+		meshstack.SkipVersionCheckSetting.EnvKey(),
+		auth.ApiKeyClientIdSetting.EnvKey(),
+		auth.ApiKeyClientSecretSetting.EnvKey(),
+		auth.ApiTokenSetting.EnvKey(),
+	} {
+		t.Setenv(envKey, "")
+	}
 	server := testserver.New(t, testApiKey1, testApiKey2)
 	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 	t.Setenv(meshstack.EndpointSetting.EnvKey(), server.Url(t).String())

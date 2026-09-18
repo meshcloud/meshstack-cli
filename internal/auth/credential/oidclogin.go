@@ -64,7 +64,7 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 	workspace, err := getWorkspace()
 	if err != nil {
 		// TODO profile default workspace can't set otherwise as long as 'meshstack profile edit' is missing (there's no profile CRUD in CLI at all right now)
-		return fmt.Errorf("a workspace is required for %T; configure one or run 'meshstack login --endpoint %s' and pick one as profile default", oidcLogin, oidcLogin.Endpoint)
+		return fmt.Errorf("a workspace is required for %T; configure one or run 'meshstack login --endpoint %s' and pick one as profile default: %w", oidcLogin, oidcLogin.Endpoint, err)
 	}
 	oidcClient, err := oidc.NewClient(ctx, client, oidcLogin.Issuer, oidcLogin.ClientId)
 	if err != nil {

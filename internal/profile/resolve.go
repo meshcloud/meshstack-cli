@@ -27,7 +27,9 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 		return LoadProfiles(ctx, opts)
 	})
 
-	endpointMatchingSource := setting.LookupSource{
+	// Both are fallback sources, so a name given in MESHSTACK_PROFILE wins over what is on disk,
+	// as NameSetting's own help text says it does.
+	endpointMatchingSource := setting.FallbackSource{Source: setting.LookupSource{
 		Description: "unique match by endpoint",
 		Func: func(ctx context.Context) (string, error) {
 			profiles, err := loadProfiles()
@@ -36,15 +38,15 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 			}
 			return profiles.findProfileNameByMatchingEndpoint(ctx, opts)
 		},
-	}
+	}}
 
-	currentProfileSource := setting.LookupSource{
+	currentProfileSource := setting.FallbackSource{Source: setting.LookupSource{
 		Description: "current profile",
 		Func: func(_ context.Context) (string, error) {
 			profiles, err := loadProfiles()
 			return string(profiles.CurrentProfile), err
 		},
-	}
+	}}
 
 	// Profile name always resolves (unless parsing error),
 	// as NameSetting has a (static) 'default'.

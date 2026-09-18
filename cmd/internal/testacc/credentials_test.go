@@ -9,11 +9,10 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// The credential resolution's three refusals, resolved in-process because no invocation of the
-// binary reaches them: `meshstack login` always names the credential it wants, and naming one
-// takes the forced path, which neither tries the others nor counts them.
+// The credential resolution's three refusals run in-process, because no invocation of the binary
+// reaches them: `meshstack login` always names the credential it wants.
 //
-// A dummy unsigned JWT with an empty payload, which is all MESHSTACK_API_TOKEN needs to parse.
+// An unsigned JWT with an empty payload, which is all MESHSTACK_API_TOKEN needs to parse.
 const unsignedEmptyJwt = "eyJhbGciOiJub25lIn0.e30."
 
 func TestAccCredentialResolutionRefusesAnUnknownForcedCredential(t *testing.T) {
@@ -43,8 +42,7 @@ func TestAccCredentialResolutionNamesEveryCredentialItLooksFor(t *testing.T) {
 	require.ErrorContains(t, err, setting.ApiToken.EnvKey())
 }
 
-// newInProcessCLI is newCLI's counterpart for a resolution that runs in this process: the same
-// gating and the same blanked environment, set on this process rather than on a child's.
+// newInProcessCLI is newCLI's counterpart for a resolution that runs in this process.
 func newInProcessCLI(t *testing.T) {
 	t.Helper()
 	endpoint := requireLocalStack(t)
