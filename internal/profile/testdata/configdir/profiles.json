@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "currentProfile": "dev-local",
+  "profiles": {
+    "default": {
+      "endpoint": "https://api.dev.meshcloud.io"
+    },
+    "dev-local": {
+      "endpoint": "https://localhost:1337",
+      "credential": "apiKey"
+    },
+    "empty": {}
+  }
+}
