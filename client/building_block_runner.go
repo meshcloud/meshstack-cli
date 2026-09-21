@@ -50,11 +50,12 @@ type MeshBuildingBlockRunnerSpec struct {
 }
 
 type MeshRunnerWorkloadIdentityFed struct {
-	Subject *string                      `json:"subject,omitzero" tfsdk:"subject"`
-	Issuer  *string                      `json:"issuer,omitzero" tfsdk:"issuer"`
-	Gcp     *MeshRunnerWifProviderConfig `json:"gcp,omitzero" tfsdk:"gcp"`
-	Aws     *MeshRunnerWifProviderConfig `json:"aws,omitzero" tfsdk:"aws"`
-	Azure   *MeshRunnerWifProviderConfig `json:"azure,omitzero" tfsdk:"azure"`
+	// SubjectTemplate holds {{ workspaceIdentifier }} and {{ buildingBlockDefinitionUuid }}, which meshStack renders per building block definition version.
+	SubjectTemplate *string                      `json:"subjectTemplate,omitzero" tfsdk:"subject_template"`
+	Issuer          *string                      `json:"issuer,omitzero" tfsdk:"issuer"`
+	Gcp             *MeshRunnerWifProviderConfig `json:"gcp,omitzero" tfsdk:"gcp"`
+	Aws             *MeshRunnerWifProviderConfig `json:"aws,omitzero" tfsdk:"aws"`
+	Azure           *MeshRunnerWifProviderConfig `json:"azure,omitzero" tfsdk:"azure"`
 }
 
 type MeshRunnerWifProviderConfig struct {
