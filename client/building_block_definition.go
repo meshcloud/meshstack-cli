@@ -106,6 +106,21 @@ type MeshBuildingBlockDefinitionStatusVersion struct {
 	VersionUuid   string                                  `json:"versionUuid"`
 	VersionNumber int64                                   `json:"versionNumber"`
 	State         MeshBuildingBlockDefinitionVersionState `json:"state"`
+	// WorkloadIdentityFederation is the identity a run of this version presents to a cloud provider, rendered from the runner's template, absent when the runner declares none.
+	WorkloadIdentityFederation *MeshBuildingBlockDefinitionWif `json:"workloadIdentityFederation,omitzero"`
+}
+
+type MeshBuildingBlockDefinitionWif struct {
+	Issuer  string                               `json:"issuer" tfsdk:"issuer"`
+	Subject string                               `json:"subject" tfsdk:"subject"`
+	Gcp     *MeshBuildingBlockDefinitionCloudWif `json:"gcp,omitzero" tfsdk:"gcp"`
+	Aws     *MeshBuildingBlockDefinitionCloudWif `json:"aws,omitzero" tfsdk:"aws"`
+	Azure   *MeshBuildingBlockDefinitionCloudWif `json:"azure,omitzero" tfsdk:"azure"`
+}
+
+type MeshBuildingBlockDefinitionCloudWif struct {
+	Audience  string `json:"audience" tfsdk:"audience"`
+	TokenPath string `json:"tokenPath" tfsdk:"token_path"`
 }
 
 type MeshBuildingBlockDefinitionStatus struct {
