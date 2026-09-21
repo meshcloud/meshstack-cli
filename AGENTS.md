@@ -51,7 +51,7 @@ The binary gets its name from its directory, `cmd/meshstack`, which is what `tas
 | `cmd/<subcommand>/` | One package per subcommand of the cobra command tree. |
 | `cmd/internal/` | What the command tree shares: flags, the session it resolves, the version. |
 | `cmd/internal/testacc/` | The suite that drives the built binary against a live meshStack. |
-| `pkg/` | `auth`, `io`, `profile` and `setting`, each wrapping the `internal/` package of the same name. |
+| `pkg/` | Each package here wraps the `internal/` package of the same name, and nothing else. |
 | `client/` | The meshStack API client, imported as a git subtree. |
 | `internal/` | Everything else. The `depguard` rules in `.golangci.yml` say which package may import which. |
 
@@ -67,14 +67,14 @@ function returning its `*cobra.Command`, and the parent's constructor wires it i
 `cmd/meshstack` is the one exception, and is not a subcommand: it is the binary's `package main`,
 holding `main()` and the root command together.
 
-Four rules hold the tree together:
+These rules hold the tree together:
 
 - Register a command **explicitly in its parent's constructor, never from `init()`**.
 - A command with a **top-level shortcut** — `meshstack login` for `meshstack auth login` — is
   registered twice by calling its constructor twice. `Aliases` cannot do this.
-- A constructor keeps its own flag targets in **locals captured by the closure**. The four
-  persistent flags in `cmd/internal` are the exception: `SettingSources` reads their values back,
-  so they are package-level vars.
+- A constructor keeps its own flag targets in **locals captured by the closure**. The persistent
+  flags in `cmd/internal` are the exception: `SettingSources` reads their values back, so they are
+  package-level vars.
 - A **parent command sets `RunE` as well as `Args`**.
 </rules>
 
@@ -134,7 +134,7 @@ type rather than on the written name, so it catches `gohttp.Client` and leaves `
 
 **Logging goes through `slog`'s default logger**, on which each front end installs its own handler:
 `cmd/meshstack` a `charmbracelet/log` one, the Terraform provider a `tflog` bridge. A handler
-installed that late imposes two rules on every log call, and `internal/http/logging.go` states them.
+installed that late constrains every log call, and `internal/http/logging.go` states how.
 </rules>
 
 ## Always-on rules
@@ -161,9 +161,9 @@ installed that late imposes two rules on every log call, and `internal/http/logg
 
 Everything runs through the Taskfile, inside `nix develop`. **`task --list` is the list.**
 
-The Go version is pinned in **three** places that must agree — `go.mod`, `flake.nix` and the
-`Dockerfile`'s base image, each of which says so at the pin — and is held in lock-step with the
-Terraform provider's own pin.
+The Go version is pinned in `go.mod`, in `flake.nix` and in the `Dockerfile`'s base image. **They
+must agree**, each says so at the pin, and all three are held in lock-step with the Terraform
+provider's own pin.
 
 `flake.nix` also builds the binary — `nix build .#meshstack` — and exports it as
 `packages.<system>.meshstack` and as `overlays.default`, so another flake can put it in a dev shell.
@@ -180,9 +180,8 @@ rather than trusting a copy here.
 
 ## Authentication
 
-`MESHSTACK_ENDPOINT`, `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`, with `MESHSTACK_API_TOKEN` as
-an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE`,
-`MESHSTACK_CONFIG_DIR` and `MESHSTACK_SKIP_VERSION_CHECK`.
+Every setting the CLI reads is a `MESHSTACK_`-prefixed environment variable. `grep -rn 'setting\.Setting\['`
+finds them all, each next to the code that uses it.
 
 **Each one is declared once, in the domain package it belongs to**, as a `setting.Setting[T]` whose
 `EnvKey` is both the variable name and the setting's identity. `internal/setting` resolves it from
@@ -201,8 +200,8 @@ before the first release does.
 
 <rules id="release-version">
 The version reaches the binary through an ldflag on
-`github.com/meshcloud/meshstack-cli/cmd/internal.Version`, set in **three places that must agree**:
-`.goreleaser.yml`, the `Dockerfile` and `flake.nix`, all of which say so at the ldflag. The linker
+`github.com/meshcloud/meshstack-cli/cmd/internal.Version`, set in `.goreleaser.yml`, in the
+`Dockerfile` and in `flake.nix`. **They must agree**, and all three say so at the ldflag. The linker
 ignores an `-X` whose path does not resolve and warns about nothing, so a stale path is silent.
 
 A build with no ldflag falls back to what the go command stamped itself, which `cmd/internal` reads
