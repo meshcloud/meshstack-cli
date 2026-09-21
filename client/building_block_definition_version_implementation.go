@@ -2,9 +2,7 @@ package client
 
 import (
 	"encoding/json/v2"
-	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
@@ -75,38 +73,18 @@ type MeshBuildingBlockDefinitionImplementation struct {
 	Terraform           *MeshBuildingBlockDefinitionTerraformImplementation           `json:"terraform,omitzero" tfsdk:"terraform"`
 }
 
-// InferTypeFromNonNilField panics when no variant is set. Callers hold a plan or state, where the schema
-// guarantees exactly one variant; a response from the API goes through MarshalJSON, which reports the
-// error instead.
-func (m MeshBuildingBlockDefinitionImplementation) InferTypeFromNonNilField() enum.Entry[MeshBuildingBlockImplementationType] {
-	result, err := m.inferType()
+// InferType derives the implementation type from the one variant that is set. A version without any variant
+// is what meshStack answers a workspace that may only consume the definition.
+func (m MeshBuildingBlockDefinitionImplementation) InferType() (enum.Entry[MeshBuildingBlockImplementationType], error) {
+	result, err := inferVariantType(
+		variant(MeshBuildingBlockImplementationTypeManual, m.Manual),
+		variant(MeshBuildingBlockImplementationTypeTerraform, m.Terraform),
+		variant(MeshBuildingBlockImplementationTypeGithubWorkflows, m.GithubWorkflows),
+		variant(MeshBuildingBlockImplementationTypeGitlabPipeline, m.GitlabPipeline),
+		variant(MeshBuildingBlockImplementationTypeAzureDevOpsPipeline, m.AzureDevOpsPipeline),
+	)
 	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
-func (m MeshBuildingBlockDefinitionImplementation) inferType() (result enum.Entry[MeshBuildingBlockImplementationType], err error) {
-	setResultIfNotNil := func(implType enum.Entry[MeshBuildingBlockImplementationType], v any) {
-		// Manual implementation is an empty struct, so carefully check v for nilness using reflection!
-		if !reflect.ValueOf(v).IsZero() {
-			if len(result) > 0 && result != implType {
-				err = fmt.Errorf("inferred implementation type %s but already set to %s", implType, result)
-			}
-			result = implType
-		}
-	}
-	setResultIfNotNil(MeshBuildingBlockImplementationTypeManual, m.Manual)
-	setResultIfNotNil(MeshBuildingBlockImplementationTypeTerraform, m.Terraform)
-	setResultIfNotNil(MeshBuildingBlockImplementationTypeGithubWorkflows, m.GithubWorkflows)
-	setResultIfNotNil(MeshBuildingBlockImplementationTypeGitlabPipeline, m.GitlabPipeline)
-	setResultIfNotNil(MeshBuildingBlockImplementationTypeAzureDevOpsPipeline, m.AzureDevOpsPipeline)
-	if err != nil {
-		return "", err
-	}
-	if len(result) == 0 {
-		// meshStack answers a workspace that may only consume a definition with versions that carry no implementation.
-		return "", errors.New("cannot infer implementation type: no implementation variant is set")
+		return "", fmt.Errorf("cannot infer implementation type: %w", err)
 	}
 	return result, nil
 }
@@ -115,7 +93,7 @@ func (m MeshBuildingBlockDefinitionImplementation) MarshalJSON() ([]byte, error)
 	type wrapped MeshBuildingBlockDefinitionImplementation
 	w := wrapped(m)
 	if len(w.Type) == 0 {
-		inferred, err := m.inferType()
+		inferred, err := m.InferType()
 		if err != nil {
 			return nil, err
 		}

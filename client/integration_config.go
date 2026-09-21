@@ -3,7 +3,6 @@ package client
 import (
 	"encoding/json/v2"
 	"fmt"
-	"reflect"
 
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
@@ -57,30 +56,32 @@ type MeshIntegrationConfig struct {
 	EntraId     *MeshIntegrationEntraIdConfig         `json:"entraid,omitzero" tfsdk:"entraid"`
 }
 
-func (m MeshIntegrationConfig) InferTypeFromNonNilField() (result enum.Entry[MeshIntegrationConfigType]) {
-	setResultIfNotNil := func(implType enum.Entry[MeshIntegrationConfigType], v any) {
-		if !reflect.ValueOf(v).IsZero() {
-			if len(result) > 0 && result != implType {
-				panic(fmt.Errorf("inferred config type %s but already set to %s", implType, result))
-			}
-			result = implType
-		}
+func (m MeshIntegrationConfig) InferType() (enum.Entry[MeshIntegrationConfigType], error) {
+	result, err := inferVariantType(
+		variant(MeshIntegrationConfigTypeGithub, m.Github),
+		variant(MeshIntegrationConfigTypeGitlab, m.Gitlab),
+		variant(MeshIntegrationConfigTypeAzureDevops, m.AzureDevops),
+		variant(MeshIntegrationConfigTypeEntraId, m.EntraId),
+	)
+	if err != nil {
+		return "", fmt.Errorf("cannot infer integration config type: %w", err)
 	}
-	setResultIfNotNil(MeshIntegrationConfigTypeGithub, m.Github)
-	setResultIfNotNil(MeshIntegrationConfigTypeGitlab, m.Gitlab)
-	setResultIfNotNil(MeshIntegrationConfigTypeAzureDevops, m.AzureDevops)
-	setResultIfNotNil(MeshIntegrationConfigTypeEntraId, m.EntraId)
-	if len(result) == 0 {
-		panic("cannot infer config type")
-	}
-	return
+	return result, nil
 }
 
 func (m MeshIntegrationConfig) MarshalJSON() ([]byte, error) {
 	// Using wrapped type avoids calling MarshalJSON recursively!
 	type wrapped MeshIntegrationConfig
 	w := wrapped(m)
-	w.Type = m.InferTypeFromNonNilField()
+	// Built-in integrations (replicator, metering) come with a type but no variant, so the type is only
+	// inferred when it is missing.
+	if len(w.Type) == 0 {
+		inferred, err := m.InferType()
+		if err != nil {
+			return nil, err
+		}
+		w.Type = inferred
+	}
 	return json.Marshal(w, wireCompatibility)
 }
 
