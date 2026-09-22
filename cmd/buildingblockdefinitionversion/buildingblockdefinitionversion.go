@@ -1,4 +1,4 @@
-package buildingblock
+package buildingblockdefinitionversion
 
 import (
 	"github.com/spf13/cobra"
@@ -6,9 +6,9 @@ import (
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "buildingblock",
-		Aliases: []string{"bb"},
-		Short:   "Work with meshStack building blocks",
+		Use:     "buildingblockdefinitionversion",
+		Aliases: []string{"bbdv"},
+		Short:   "Work with building block definition versions",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
