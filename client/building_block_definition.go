@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
@@ -125,6 +126,7 @@ type MeshBuildingBlockDefinition struct {
 
 type MeshBuildingBlockDefinitionClient interface {
 	List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error)
+	ListSeq(ctx context.Context, workspaceIdentifier *string) iter.Seq2[MeshBuildingBlockDefinition, error]
 	Read(ctx context.Context, uuid string) (*MeshBuildingBlockDefinition, error)
 	Create(ctx context.Context, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error)
 	Update(ctx context.Context, uuid string, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error)
@@ -151,6 +153,13 @@ type meshBuildingBlockDefinitionListQuery struct {
 
 func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
 	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
+		IncludeAllPublished: true,
+		OwnedByWorkspace:    workspaceIdentifier,
+	}))
+}
+
+func (c meshBuildingBlockDefinitionClient) ListSeq(ctx context.Context, workspaceIdentifier *string) iter.Seq2[MeshBuildingBlockDefinition, error] {
+	return c.meshObject.ListSeq(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
 		IncludeAllPublished: true,
 		OwnedByWorkspace:    workspaceIdentifier,
 	}))

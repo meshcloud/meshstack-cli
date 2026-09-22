@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
@@ -223,6 +224,7 @@ type MeshBuildingBlockDefinitionVersion struct {
 // A Get is not required as we always expose all versions of a definition anyway, and a Delete happens together when the definition is deleted.
 type MeshBuildingBlockDefinitionVersionClient interface {
 	List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error)
+	ListSeq(ctx context.Context, buildingBlockDefinitionUuid string) iter.Seq2[MeshBuildingBlockDefinitionVersion, error]
 	Create(ctx context.Context, ownedByWorkspace string, versionSpec MeshBuildingBlockDefinitionVersionSpec) (*MeshBuildingBlockDefinitionVersion, error)
 	Update(ctx context.Context, uuid, ownedByWorkspace string, versionSpec MeshBuildingBlockDefinitionVersionSpec) (*MeshBuildingBlockDefinitionVersion, error)
 }
@@ -243,6 +245,12 @@ type meshBuildingBlockDefinitionVersionListQuery struct {
 
 func (c meshBuildingBlockDefinitionVersionClient) List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error) {
 	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
+		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
+	}))
+}
+
+func (c meshBuildingBlockDefinitionVersionClient) ListSeq(ctx context.Context, buildingBlockDefinitionUuid string) iter.Seq2[MeshBuildingBlockDefinitionVersion, error] {
+	return c.meshObject.ListSeq(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
 		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
 	}))
 }
