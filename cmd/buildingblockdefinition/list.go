@@ -1,4 +1,4 @@
-package definition
+package buildingblockdefinition
 
 import (
 	"github.com/spf13/cobra"

@@ -1,4 +1,4 @@
-package buildingblock
+package buildingblockrun
 
 import (
 	"github.com/spf13/cobra"
@@ -6,9 +6,9 @@ import (
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "buildingblock",
-		Aliases: []string{"bb"},
-		Short:   "Work with meshStack building blocks",
+		Use:     "buildingblockrun",
+		Aliases: []string{"bbrun"},
+		Short:   "Work with building block runs",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -16,6 +16,7 @@ func New() *cobra.Command {
 	}
 
 	cmd.AddCommand(newList())
+	cmd.AddCommand(newLogs())
 
 	return cmd
 }

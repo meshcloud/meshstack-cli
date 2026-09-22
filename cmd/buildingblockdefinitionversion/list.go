@@ -1,4 +1,4 @@
-package version
+package buildingblockdefinitionversion
 
 import (
 	"github.com/spf13/cobra"
@@ -19,7 +19,7 @@ func newList() *cobra.Command {
 
 Experimental: the output shape may still change.
 
-The definition is named by its uuid, which "meshstack buildingblock definition list" reports as
+The definition is named by its uuid, which "meshstack buildingblockdefinition list" reports as
 metadata.uuid. It is required: the backend serves the versions of one definition at a time, and
 reading them takes a permission on the workspace that owns it.`,
 		Args: cobra.NoArgs,

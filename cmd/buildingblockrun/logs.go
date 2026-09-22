@@ -1,4 +1,4 @@
-package run
+package buildingblockrun
 
 import (
 	"github.com/spf13/cobra"
@@ -16,7 +16,7 @@ func newLogs() *cobra.Command {
 
 Experimental: the output shape may still change.
 
-The run is named by its uuid, which "meshstack buildingblock run list" reports as metadata.uuid.
+The run is named by its uuid, which "meshstack buildingblockrun list" reports as metadata.uuid.
 Each step of the run carries its own status and messages: systemMessage holds what the runner
 produced, userMessage what the run reported back to the user.`,
 		Args: cobra.ExactArgs(1),
