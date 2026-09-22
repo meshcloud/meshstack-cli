@@ -16,6 +16,7 @@ func New() *cobra.Command {
 	}
 
 	cmd.AddCommand(newList())
+	cmd.AddCommand(newTriggerRun())
 
 	return cmd
 }

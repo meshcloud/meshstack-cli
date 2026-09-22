@@ -301,6 +301,7 @@ type MeshBuildingBlockV2Client interface {
 	Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
 	Delete(ctx context.Context, uuid string, purge bool) error
 	TriggerRun(ctx context.Context, uuid string) error
+	TriggerRunWith(ctx context.Context, uuid string, request MeshBuildingBlockV2TriggerRunRequest) (*MeshBuildingBlockV2, error)
 }
 
 type meshBuildingBlockV2Client struct {
@@ -410,11 +411,21 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 	return
 }
 
-func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (err error) {
+// MeshBuildingBlockV2TriggerRunRequest is the body of a trigger-run. DryRun asks for a DETECT run,
+// which plans the block without changing it.
+type MeshBuildingBlockV2TriggerRunRequest struct {
 	// dryRun is not optional to the endpoint once a body is sent, so it goes out as false rather
 	// than being omitted.
-	_, err = c.meshObject.PostAtPath[any](ctx, struct {
-		DryRun bool `json:"dryRun"`
-	}{}, bbUuid, "trigger-run")
-	return
+	DryRun bool `json:"dryRun"`
+}
+
+func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) error {
+	_, err := c.TriggerRunWith(ctx, bbUuid, MeshBuildingBlockV2TriggerRunRequest{})
+	return err
+}
+
+// TriggerRunWith returns the building block as meshStack answers the trigger. The run itself starts
+// asynchronously, so its status.latestRunUuid and status.latestDryRunUuid may still name an older run.
+func (c meshBuildingBlockV2Client) TriggerRunWith(ctx context.Context, bbUuid string, request MeshBuildingBlockV2TriggerRunRequest) (*MeshBuildingBlockV2, error) {
+	return c.meshObject.PostAtPath[*MeshBuildingBlockV2](ctx, request, bbUuid, "trigger-run")
 }
