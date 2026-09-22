@@ -115,6 +115,30 @@ func WithAccept(accept string) RequestOption {
 	return withHeader("Accept", accept)
 }
 
+func WithHeaders(header gohttp.Header) RequestOption {
+	return appendRequestModifier(func(req *gohttp.Request) error {
+		for key, values := range header {
+			req.Header.Del(key)
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+		return nil
+	})
+}
+
+// WithBody sends the bytes as they are, so the caller names their type in a Content-Type header.
+func WithBody(body []byte) RequestOption {
+	return func(opts *requestOptions) {
+		if body == nil {
+			return
+		}
+		opts.requestPayload = func() ([]byte, error) {
+			return body, nil
+		}
+	}
+}
+
 func withHeader(key, value string) RequestOption {
 	return appendRequestModifier(func(req *gohttp.Request) error {
 		req.Header.Set(key, value)
