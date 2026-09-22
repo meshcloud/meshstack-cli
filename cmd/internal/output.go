@@ -87,7 +87,7 @@ func itemWriter[T any](format OutputFormat) (func(w io.Writer, item T) error, er
 			if err != nil {
 				return err
 			}
-			document, err := yaml.JSONToYAML(encoded)
+			document, err := jsonToYaml(encoded)
 			if err != nil {
 				return err
 			}
@@ -100,4 +100,17 @@ func itemWriter[T any](format OutputFormat) (func(w io.Writer, item T) error, er
 	default:
 		return nil, fmt.Errorf("%q is no output format, write %s or %s", format, OutputYaml, OutputNdjson)
 	}
+}
+
+// jsonToYaml is [yaml.JSONToYAML] with the literal style switched on, which the exported function
+// takes no options for. Without it a multi-line string whose first line opens with an indicator
+// character — a building block run step's log starts with terraform's `{` banner — is written as
+// one escaped line rather than as a block scalar. UseOrderedMap keeps the members in the order the
+// json carries them, as yaml.JSONToYAML does.
+func jsonToYaml(encoded []byte) ([]byte, error) {
+	var document any
+	if err := yaml.UnmarshalWithOptions(encoded, &document, yaml.UseOrderedMap()); err != nil {
+		return nil, err
+	}
+	return yaml.MarshalWithOptions(document, yaml.UseLiteralStyleIfMultiline(true))
 }
