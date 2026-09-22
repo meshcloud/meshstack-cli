@@ -60,3 +60,17 @@ func (c meshListingClient) BuildingBlockDefinitionVersions(ctx context.Context, 
 func (c meshListingClient) BuildingBlockRunLogs(ctx context.Context, runUuid string) (jsontext.Value, error) {
 	return c.buildingBlockRun.GetLogsRaw(ctx, runUuid)
 }
+
+// MeshRunTriggerClient is a client of the CLI alone: it stays off [MeshBuildingBlockV2Client], whose
+// every method the Terraform provider's mocks implement.
+type MeshRunTriggerClient interface {
+	TriggerBuildingBlockRun(ctx context.Context, buildingBlockUuid string, request MeshBuildingBlockV2TriggerRunRequest) (jsontext.Value, error)
+}
+
+type meshRunTriggerClient struct {
+	buildingBlockV2 meshBuildingBlockV2Client
+}
+
+func (c meshRunTriggerClient) TriggerBuildingBlockRun(ctx context.Context, buildingBlockUuid string, request MeshBuildingBlockV2TriggerRunRequest) (jsontext.Value, error) {
+	return c.buildingBlockV2.TriggerRunWith(ctx, buildingBlockUuid, request)
+}

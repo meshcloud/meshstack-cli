@@ -46,6 +46,7 @@ type Client struct {
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 	Listing                        MeshListingClient
+	RunTrigger                     MeshRunTriggerClient
 
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
 	Endpoint xurl.URL
@@ -93,6 +94,8 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 			buildingBlockDefinition:        buildingBlockDefinition,
 			buildingBlockDefinitionVersion: buildingBlockDefinitionVersion,
 		},
+
+		RunTrigger: meshRunTriggerClient{buildingBlockV2: buildingBlockV2},
 
 		Endpoint: endpoint,
 	}
