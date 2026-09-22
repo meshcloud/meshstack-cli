@@ -107,6 +107,15 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	return session, nil
 }
 
+// ApiClient is the authorized HTTP client under Client, for a caller that speaks the API itself.
+// It builds Client first, so it passes the same version check.
+func (s Session) ApiClient() (http.AuthorizedClient, error) {
+	if _, err := s.Client(); err != nil {
+		return http.AuthorizedClient{}, err
+	}
+	return s.httpClient.WithAuthorization(s), nil
+}
+
 func getAndCheckMeshInfo(ctx context.Context, httpClient http.Client, endpoint xurl.URL, settingSources SettingSources) (client.MeshInfo, error) {
 	meshInfo, err := client.NewMeshInfoClient(httpClient, endpoint).Read(ctx)
 	if err != nil {
