@@ -47,6 +47,15 @@ func (f *OutputFlag) Type() string {
 	return "format"
 }
 
+// WriteItem writes a single item, for a command whose result is one object rather than a listing.
+func WriteItem[T any](w io.Writer, format OutputFormat, item T) error {
+	writeItem, err := itemWriter[T](format)
+	if err != nil {
+		return err
+	}
+	return writeItem(w, item)
+}
+
 // WriteList writes every item the sequence yields, each one as it arrives, and stops at the first
 // error. An empty sequence writes nothing at all.
 func WriteList[T any](w io.Writer, format OutputFormat, items iter.Seq2[T, error]) error {
