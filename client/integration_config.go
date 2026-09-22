@@ -58,10 +58,10 @@ type MeshIntegrationConfig struct {
 
 func (m MeshIntegrationConfig) InferType() (enum.Entry[MeshIntegrationConfigType], error) {
 	result, err := inferVariantType(
-		variant(MeshIntegrationConfigTypeGithub, m.Github),
-		variant(MeshIntegrationConfigTypeGitlab, m.Gitlab),
-		variant(MeshIntegrationConfigTypeAzureDevops, m.AzureDevops),
-		variant(MeshIntegrationConfigTypeEntraId, m.EntraId),
+		variant(MeshIntegrationConfigTypeGithub, m.Github != nil),
+		variant(MeshIntegrationConfigTypeGitlab, m.Gitlab != nil),
+		variant(MeshIntegrationConfigTypeAzureDevops, m.AzureDevops != nil),
+		variant(MeshIntegrationConfigTypeEntraId, m.EntraId != nil),
 	)
 	if err != nil {
 		return "", fmt.Errorf("cannot infer integration config type: %w", err)

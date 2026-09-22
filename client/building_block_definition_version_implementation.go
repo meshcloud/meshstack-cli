@@ -77,11 +77,11 @@ type MeshBuildingBlockDefinitionImplementation struct {
 // is what meshStack answers a workspace that may only consume the definition.
 func (m MeshBuildingBlockDefinitionImplementation) InferType() (enum.Entry[MeshBuildingBlockImplementationType], error) {
 	result, err := inferVariantType(
-		variant(MeshBuildingBlockImplementationTypeManual, m.Manual),
-		variant(MeshBuildingBlockImplementationTypeTerraform, m.Terraform),
-		variant(MeshBuildingBlockImplementationTypeGithubWorkflows, m.GithubWorkflows),
-		variant(MeshBuildingBlockImplementationTypeGitlabPipeline, m.GitlabPipeline),
-		variant(MeshBuildingBlockImplementationTypeAzureDevOpsPipeline, m.AzureDevOpsPipeline),
+		variant(MeshBuildingBlockImplementationTypeManual, m.Manual != nil),
+		variant(MeshBuildingBlockImplementationTypeTerraform, m.Terraform != nil),
+		variant(MeshBuildingBlockImplementationTypeGithubWorkflows, m.GithubWorkflows != nil),
+		variant(MeshBuildingBlockImplementationTypeGitlabPipeline, m.GitlabPipeline != nil),
+		variant(MeshBuildingBlockImplementationTypeAzureDevOpsPipeline, m.AzureDevOpsPipeline != nil),
 	)
 	if err != nil {
 		return "", fmt.Errorf("cannot infer implementation type: %w", err)
