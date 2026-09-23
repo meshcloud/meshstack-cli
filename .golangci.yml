@@ -201,6 +201,8 @@ linters:
             - log/slog
             # the deny on encoding/json matches its subpackages too; a listing yields raw items
             - encoding/json/jsontext
+            # and reads a field out of a raw item, such as the uuid a run listing needs per block
+            - encoding/json/v2
             # no direct access to internal/
             - github.com/meshcloud/meshstack-cli/pkg
             # a parent command calls its children's New, the same way cmd/meshstack calls its own
