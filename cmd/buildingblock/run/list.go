@@ -13,7 +13,7 @@ import (
 
 func newList() *cobra.Command {
 	var (
-		output            internal.OutputFlag
+		flags             internal.ListFlags
 		buildingBlockUuid string
 	)
 
@@ -26,20 +26,19 @@ func newList() *cobra.Command {
 credential can see are listed, one block after the other.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return internal.RunPaged(cmd.Context(), func(ctx context.Context, meshStack client.Client) error {
-				runs := allRuns(ctx, meshStack)
+			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
 				if buildingBlockUuid != "" {
-					runs = meshStack.BuildingBlockRun.ListRawSeq(ctx, client.MeshBuildingBlockRunListFilter{
+					return meshStack.BuildingBlockRun.ListRawSeq(ctx, client.MeshBuildingBlockRunListFilter{
 						BuildingBlockUuid: buildingBlockUuid,
 					})
 				}
-				return internal.WriteList(cmd.OutOrStdout(), output.Format, runs)
+				return allRuns(ctx, meshStack)
 			})
 		},
 	}
 
 	cmd.Flags().StringVar(&buildingBlockUuid, "building-block", "", "list the runs of the building block with this uuid")
-	output.Register(cmd.Flags())
+	flags.Register(cmd.Flags())
 
 	return cmd
 }
@@ -48,7 +47,12 @@ credential can see are listed, one block after the other.`,
 // endpoint takes one building block at a time and has no list of every run.
 func allRuns(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
-		for buildingBlock, err := range meshStack.BuildingBlockV2.ListSeq(ctx, client.MeshBuildingBlockV2ListFilter{}) {
+		runOptions := client.ListOptionsFrom(ctx)
+		runOptions.OnPage = nil
+		blockOptions := runOptions
+		blockOptions.PageSize = 0
+		runsCtx := client.WithListOptions(ctx, runOptions)
+		for buildingBlock, err := range meshStack.BuildingBlockV2.ListSeq(client.WithListOptions(ctx, blockOptions), client.MeshBuildingBlockV2ListFilter{}) {
 			if err != nil {
 				yield(nil, err)
 				return
@@ -57,7 +61,7 @@ func allRuns(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Va
 				continue
 			}
 			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: *buildingBlock.Metadata.Uuid}
-			for blockRun, runErr := range meshStack.BuildingBlockRun.ListRawSeq(ctx, filter) {
+			for blockRun, runErr := range meshStack.BuildingBlockRun.ListRawSeq(runsCtx, filter) {
 				if !yield(blockRun, runErr) || runErr != nil {
 					return
 				}
