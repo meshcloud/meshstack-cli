@@ -68,9 +68,6 @@ type MeshBuildingBlockRunStepLog struct {
 }
 
 type MeshBuildingBlockRunClient interface {
-	List(ctx context.Context, filter MeshBuildingBlockRunListFilter) ([]MeshBuildingBlockRun, error)
-	// ListRawSeq yields each item as the server sent it, which is what a listing prints.
-	ListRawSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error]
 	GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error)
 }
 
@@ -78,14 +75,10 @@ type meshBuildingBlockRunClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockRun]
 }
 
-func newBuildingBlockRunClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockRunClient {
+func newBuildingBlockRunClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockRunClient {
 	return meshBuildingBlockRunClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockRun](ctx, httpClient, "v1"),
 	}
-}
-
-func (c meshBuildingBlockRunClient) List(ctx context.Context, filter MeshBuildingBlockRunListFilter) ([]MeshBuildingBlockRun, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockRunClient) ListRawSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error] {

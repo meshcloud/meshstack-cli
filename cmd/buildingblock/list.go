@@ -31,7 +31,7 @@ backend lists what the credential can see, whatever default workspace the profil
 				return err
 			}
 			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
-				return meshStack.BuildingBlockV2.ListRawSeq(ctx, filter)
+				return meshStack.Listing.BuildingBlocksV2(ctx, filter)
 			})
 		},
 	}

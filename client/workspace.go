@@ -38,8 +38,6 @@ type MeshWorkspaceClient interface {
 	// List returns every workspace the credential can see. An unscoped user token reaches this and
 	// almost nothing else, which is why `meshstack auth login` prompts for a workspace from it.
 	List(ctx context.Context) ([]MeshWorkspace, error)
-	// ListRawSeq yields each item as the server sent it, which is what a listing prints.
-	ListRawSeq(ctx context.Context) iter.Seq2[jsontext.Value, error]
 	Read(ctx context.Context, name string) (*MeshWorkspace, error)
 	Create(ctx context.Context, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)
 	Update(ctx context.Context, name string, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)

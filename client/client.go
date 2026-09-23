@@ -45,6 +45,7 @@ type Client struct {
 	Workspace                      MeshWorkspaceClient
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
+	Listing                        MeshListingClient
 
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
 	Endpoint xurl.URL
@@ -56,11 +57,14 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 		AuthorizedClient: client.WithAuthorization(auth),
 		EndpointUrl:      endpoint,
 	}
+	buildingBlockV2 := newBuildingBlockV2Client(ctx, authorizedClient)
+	buildingBlockRun := newBuildingBlockRunClient(ctx, authorizedClient)
+	workspace := newWorkspaceClient(ctx, authorizedClient)
 	return Client{
 		ApiKey:                         newApiKeyClient(ctx, authorizedClient),
 		BuildingBlock:                  newBuildingBlockClient(ctx, authorizedClient),
-		BuildingBlockV2:                newBuildingBlockV2Client(ctx, authorizedClient),
-		BuildingBlockRun:               newBuildingBlockRunClient(ctx, authorizedClient),
+		BuildingBlockV2:                buildingBlockV2,
+		BuildingBlockRun:               buildingBlockRun,
 		BuildingBlockDefinition:        newBuildingBlockDefinitionClient(ctx, authorizedClient),
 		BuildingBlockDefinitionVersion: newBuildingBlockDefinitionVersionClient(ctx, authorizedClient),
 		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, authorizedClient),
@@ -77,9 +81,14 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 		ServiceInstance:                newServiceInstanceClient(ctx, authorizedClient),
 		TagDefinition:                  newTagDefinitionClient(ctx, authorizedClient),
 		Tenant:                         newTenantClient(ctx, authorizedClient),
-		Workspace:                      newWorkspaceClient(ctx, authorizedClient),
+		Workspace:                      workspace,
 		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, authorizedClient),
 		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, authorizedClient),
+		Listing: meshListingClient{
+			workspace:        workspace,
+			buildingBlockV2:  buildingBlockV2,
+			buildingBlockRun: buildingBlockRun,
+		},
 
 		Endpoint: endpoint,
 	}

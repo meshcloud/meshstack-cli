@@ -296,9 +296,6 @@ type MeshBuildingBlockV2Client interface {
 	Read(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
 	ReadFunc(uuid string) func(ctx context.Context) (*MeshBuildingBlockV2, error)
 	List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error)
-	ListSeq(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[MeshBuildingBlockV2, error]
-	// ListRawSeq yields each item as the server sent it, which is what a listing prints.
-	ListRawSeq(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error]
 	Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
 	Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
 	Delete(ctx context.Context, uuid string, purge bool) error
@@ -309,7 +306,7 @@ type meshBuildingBlockV2Client struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockV2]
 }
 
-func newBuildingBlockV2Client(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockV2Client {
+func newBuildingBlockV2Client(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockV2Client {
 	return meshBuildingBlockV2Client{internal.NewMeshObjectClient[MeshBuildingBlockV2](ctx, httpClient, "v2-preview")}
 }
 
@@ -325,10 +322,6 @@ func (c meshBuildingBlockV2Client) ReadFunc(uuid string) func(ctx context.Contex
 
 func (c meshBuildingBlockV2Client) List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error) {
 	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
-}
-
-func (c meshBuildingBlockV2Client) ListSeq(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[MeshBuildingBlockV2, error] {
-	return c.meshObject.ListSeq(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockV2Client) ListRawSeq(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error] {
