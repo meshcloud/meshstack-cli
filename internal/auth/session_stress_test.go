@@ -47,7 +47,8 @@ func TestConcurrentSessionsShareOneMintedToken(t *testing.T) {
 		{name: "only-key-2", apiKey: testApiKey2, every: 300 * time.Millisecond},
 	}
 
-	// A round workCtx cuts off is not a failure, which is what the ctx.Err() checks below allow for.
+	// A round workCtx cuts off is not a failure, which is what the ctx.Err() checks below allow for,
+	// and it does not count as completed either.
 	workCtx, endWork := context.WithTimeout(t.Context(), stressDuration(t))
 	defer endWork()
 
@@ -69,21 +70,22 @@ func TestConcurrentSessionsShareOneMintedToken(t *testing.T) {
 
 	failures.requireNone(t)
 
-	var rounds int64
+	var started, completed int64
 	for _, resolver := range resolvers {
-		assert.Positive(t, resolver.rounds.Load(), "%s never completed a round", resolver.name)
-		rounds += resolver.rounds.Load()
+		assert.Positive(t, resolver.completed.Load(), "%s never completed a round", resolver.name)
+		started += resolver.started.Load()
+		completed += resolver.completed.Load()
 	}
 
 	counts := server.Counts(t)
-	t.Logf("%d rounds, %+v", rounds, counts)
+	t.Logf("%d rounds started, %d completed, %+v", started, completed, counts)
 
 	assert.Zero(t, counts.UnknownTokens, "every request carried a token this server had minted")
 	assert.Positive(t, counts.RevokedTokens, "no revocation reached a session still using the token")
-	assert.GreaterOrEqual(t, counts.Greetings, rounds*workersPerSession*greetingsPerRound,
+	assert.GreaterOrEqual(t, counts.Greetings, completed*workersPerSession*greetingsPerRound,
 		"every worker of every completed round got its greetings")
-	// One mint for the warm-up, one per session at most, and one per rejected request at most.
-	assert.LessOrEqual(t, counts.Logins, 1+rounds+counts.RevokedTokens,
+	// One mint for the warm-up, one per started session at most, and one per rejected request at most.
+	assert.LessOrEqual(t, counts.Logins, 1+started+counts.RevokedTokens,
 		"a session minted more than once without having been rejected")
 	// The bound above still allows one mint per round, so this is the tighter check: five
 	// concurrent callers share one token, and so do the sessions that follow them.
@@ -98,7 +100,8 @@ type stressResolver struct {
 	apiKey testserver.ApiKey
 	every  time.Duration
 
-	rounds atomic.Int64
+	started   atomic.Int64
+	completed atomic.Int64
 }
 
 func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserver.Server, storing *sync.Mutex, inFlight *atomic.Int64, failures *stressFailures) {
@@ -114,10 +117,12 @@ func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserv
 
 		// The count covers resolution and store as well, because revoking anywhere in that
 		// span would defeat the one retry. See revokeTokens.
+		r.started.Add(1)
 		inFlight.Add(1)
 		session, err := auth.ResolveSession(ctx, sessionOptsFor(r.apiKey))
+		greeted := false
 		if err == nil {
-			r.greetConcurrently(t, ctx, server, session, failures)
+			greeted = r.greetConcurrently(t, ctx, server, session, failures)
 
 			// Storing is serialized across resolvers because concurrent writers of one profile
 			// are not something the CLI has to support, while concurrent authorization is.
@@ -129,20 +134,25 @@ func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserv
 
 		if err != nil {
 			if ctx.Err() == nil {
-				failures.add(fmt.Errorf("%s round %d: %w", r.name, r.rounds.Load()+1, err))
+				failures.add(fmt.Errorf("%s round %d: %w", r.name, r.started.Load(), err))
 			}
 			return
 		}
-		r.rounds.Add(1)
+		if !greeted {
+			return
+		}
+		r.completed.Add(1)
 	}
 }
 
-func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, server *testserver.Server, session auth.Session, failures *stressFailures) {
+// greetConcurrently reports whether every worker got all its greetings.
+func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, server *testserver.Server, session auth.Session, failures *stressFailures) bool {
 	t.Helper()
 	greet := greetingClient(session)
 	// Closing the channel releases every worker in the same instant, so they all reach the
 	// freshly resolved session's empty cache together.
 	release := make(chan struct{})
+	var cutShort atomic.Bool
 	var workers sync.WaitGroup
 	for worker := range workersPerSession {
 		workers.Go(func() {
@@ -152,6 +162,7 @@ func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, se
 					if ctx.Err() == nil {
 						failures.add(fmt.Errorf("%s worker %d: %w", r.name, worker, err))
 					}
+					cutShort.Store(true)
 					return
 				}
 			}
@@ -159,6 +170,7 @@ func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, se
 	}
 	close(release)
 	workers.Wait()
+	return !cutShort.Load()
 }
 
 // revokeTokens stops honoring the token the next session will find in the cache file, so that
