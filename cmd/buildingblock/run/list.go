@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"iter"
 
 	"github.com/spf13/cobra"
@@ -57,15 +58,26 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 		blockOptions := runOptions
 		blockOptions.PageSize = 0
 		runsCtx := client.WithListOptions(ctx, runOptions)
-		for buildingBlock, err := range meshStack.BuildingBlockV2.ListSeq(client.WithListOptions(ctx, blockOptions), blockFilter) {
+		// The blocks are read raw because only their uuid is needed, and a block the client cannot
+		// fully decode still has runs to list.
+		for rawBlock, err := range meshStack.BuildingBlockV2.ListRawSeq(client.WithListOptions(ctx, blockOptions), blockFilter) {
 			if err != nil {
 				yield(nil, err)
 				return
 			}
-			if buildingBlock.Metadata.Uuid == nil {
+			var buildingBlock struct {
+				Metadata struct {
+					Uuid string `json:"uuid"`
+				} `json:"metadata"`
+			}
+			if err := json.Unmarshal(rawBlock, &buildingBlock); err != nil {
+				yield(nil, err)
+				return
+			}
+			if buildingBlock.Metadata.Uuid == "" {
 				continue
 			}
-			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: *buildingBlock.Metadata.Uuid}
+			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlock.Metadata.Uuid}
 			for blockRun, runErr := range meshStack.BuildingBlockRun.ListRawSeq(runsCtx, filter) {
 				if !yield(blockRun, runErr) || runErr != nil {
 					return
