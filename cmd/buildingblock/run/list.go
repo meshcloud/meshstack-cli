@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
+	"fmt"
 	"iter"
+	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -23,9 +26,9 @@ func newList() *cobra.Command {
 		Short: "List building block runs",
 		Long: `List building block runs.
 
---building-block lists that block's runs. Without it the runs of every building block the
-credential can see are listed, one block after the other, and --workspace, or
-MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
+--building-block lists that block's runs, and cannot be combined with --workspace. Without it
+the runs of every building block the credential can see are listed, one block after the other,
+and --workspace, or MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (
@@ -35,6 +38,14 @@ MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
 			if buildingBlockUuid == "" {
 				if blockFilter.WorkspaceIdentifier, err = internal.ListWorkspace(cmd.Context()); err != nil {
 					return err
+				}
+			} else {
+				if cmd.Flags().Changed(internal.WorkspaceFlag.Name.String()) {
+					return errors.New("--workspace cannot narrow --building-block, which names one building block")
+				}
+				// The backend answers a uuid it does not know, or no uuid at all, with an empty list.
+				if _, err := uuid.Parse(buildingBlockUuid); err != nil {
+					return fmt.Errorf("--building-block %q is no uuid", buildingBlockUuid)
 				}
 			}
 			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
@@ -84,7 +95,11 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 			}
 			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlock.Metadata.Uuid}
 			for blockRun, runErr := range meshStack.Listing.BuildingBlockRuns(runsCtx, filter) {
-				if !yield(blockRun, runErr) || runErr != nil {
+				if runErr != nil {
+					yield(nil, fmt.Errorf("listing the runs of building block %s: %w", filter.BuildingBlockUuid, runErr))
+					return
+				}
+				if !yield(blockRun, nil) {
 					return
 				}
 			}
