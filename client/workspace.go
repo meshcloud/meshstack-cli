@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
@@ -37,7 +38,8 @@ type MeshWorkspaceClient interface {
 	// List returns every workspace the credential can see. An unscoped user token reaches this and
 	// almost nothing else, which is why `meshstack auth login` prompts for a workspace from it.
 	List(ctx context.Context) ([]MeshWorkspace, error)
-	ListSeq(ctx context.Context) iter.Seq2[MeshWorkspace, error]
+	// ListRawSeq yields each item as the server sent it, which is what a listing prints.
+	ListRawSeq(ctx context.Context) iter.Seq2[jsontext.Value, error]
 	Read(ctx context.Context, name string) (*MeshWorkspace, error)
 	Create(ctx context.Context, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)
 	Update(ctx context.Context, name string, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)
@@ -56,8 +58,8 @@ func (c meshWorkspaceClient) List(ctx context.Context) ([]MeshWorkspace, error) 
 	return c.meshObject.List(ctx)
 }
 
-func (c meshWorkspaceClient) ListSeq(ctx context.Context) iter.Seq2[MeshWorkspace, error] {
-	return c.meshObject.ListSeq(ctx)
+func (c meshWorkspaceClient) ListRawSeq(ctx context.Context) iter.Seq2[jsontext.Value, error] {
+	return c.meshObject.ListSeqAs[jsontext.Value](ctx)
 }
 
 func (c meshWorkspaceClient) Read(ctx context.Context, name string) (*MeshWorkspace, error) {

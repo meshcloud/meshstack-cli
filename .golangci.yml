@@ -199,6 +199,8 @@ linters:
           allow:
             - $gostd
             - log/slog
+            # the deny on encoding/json matches its subpackages too; a listing yields raw items
+            - encoding/json/jsontext
             # no direct access to internal/
             - github.com/meshcloud/meshstack-cli/pkg
             # a parent command calls its children's New, the same way cmd/meshstack calls its own
@@ -238,11 +240,10 @@ linters:
           allow:
             - $gostd
             - log/slog
+            # the deny on encoding/json matches its subpackages too; a listing writes raw items
+            - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli/pkg
             - github.com/meshcloud/meshstack-cli/client
-            # A command writes the same objects the client sends, so it marshals them the same
-            # way: deterministic member order, and a nil slice or map as null.
-            - github.com/meshcloud/meshstack-cli/internal/json
             - github.com/spf13/cobra
             - github.com/spf13/pflag
             - github.com/goccy/go-yaml

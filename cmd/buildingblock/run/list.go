@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"iter"
 
 	"github.com/spf13/cobra"
@@ -32,7 +33,7 @@ credential can see are listed, one block after the other.`,
 			}
 			runs := allRuns(ctx, meshStack)
 			if buildingBlockUuid != "" {
-				runs = meshStack.BuildingBlockRun.ListSeq(ctx, client.MeshBuildingBlockRunListFilter{
+				runs = meshStack.BuildingBlockRun.ListRawSeq(ctx, client.MeshBuildingBlockRunListFilter{
 					BuildingBlockUuid: buildingBlockUuid,
 				})
 			}
@@ -48,19 +49,18 @@ credential can see are listed, one block after the other.`,
 
 // allRuns flattens the runs of every building block into one sequence, because the run list
 // endpoint takes one building block at a time and has no list of every run.
-func allRuns(ctx context.Context, meshStack client.Client) iter.Seq2[client.MeshBuildingBlockRun, error] {
-	return func(yield func(client.MeshBuildingBlockRun, error) bool) {
-		var noRun client.MeshBuildingBlockRun
+func allRuns(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
+	return func(yield func(jsontext.Value, error) bool) {
 		for buildingBlock, err := range meshStack.BuildingBlockV2.ListSeq(ctx, client.MeshBuildingBlockV2ListFilter{}) {
 			if err != nil {
-				yield(noRun, err)
+				yield(nil, err)
 				return
 			}
 			if buildingBlock.Metadata.Uuid == nil {
 				continue
 			}
 			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: *buildingBlock.Metadata.Uuid}
-			for blockRun, runErr := range meshStack.BuildingBlockRun.ListSeq(ctx, filter) {
+			for blockRun, runErr := range meshStack.BuildingBlockRun.ListRawSeq(ctx, filter) {
 				if !yield(blockRun, runErr) || runErr != nil {
 					return
 				}
