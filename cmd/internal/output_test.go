@@ -23,44 +23,56 @@ func items(values ...string) iter.Seq2[jsontext.Value, error] {
 	}
 }
 
-// We fetch JSON from the server which we then convert to YAML. The YAML conversion must not re-order, remove or add any properties.
-func TestYamlWritesEachItemAsTheServerSentIt(t *testing.T) {
+func TestJsonWritesOneArrayOfTheItemsAsTheServerSentThem(t *testing.T) {
 	platformTeam := `
 	{
 		"kind": "meshWorkspace",
 		"apiVersion": "v2",
-		"metadata": {"name": "platform-team"},
-		"spec": {"displayName": "Platform Team"},
+		"metadata": {"name": "platform-team", "deletedOn": null},
+		"spec": {"displayName": "\u001b[31mPlatform Team", "tags": {"budget": [18446744073709551616, 1.5e300, ".inf"]}},
 		"_links": {
 			"self": {"href": "http://localhost:8080/api/meshobjects/meshworkspaces/platform-team"}
 		}
 	}`
-	appTeam := `
-	{
-		"kind": "meshWorkspace",
-		"apiVersion": "v2",
-		"metadata": {"name": "app-team"}
-	}`
+	appTeam := `{"kind": "meshWorkspace", "apiVersion": "v2", "metadata": {"name": "app-team"}}`
 	var out strings.Builder
 
-	err := internal.WriteList(&out, internal.OutputYaml, items(platformTeam, appTeam))
+	err := internal.WriteList(&out, internal.OutputJson, items(platformTeam, appTeam))
 
 	require.NoError(t, err)
 	want := strings.TrimPrefix(`
-kind: meshWorkspace
-apiVersion: v2
-metadata:
-  name: platform-team
-spec:
-  displayName: Platform Team
-_links:
-  self:
-    href: http://localhost:8080/api/meshobjects/meshworkspaces/platform-team
----
-kind: meshWorkspace
-apiVersion: v2
-metadata:
-  name: app-team
+[
+  {
+    "kind": "meshWorkspace",
+    "apiVersion": "v2",
+    "metadata": {
+      "name": "platform-team",
+      "deletedOn": null
+    },
+    "spec": {
+      "displayName": "\u001b[31mPlatform Team",
+      "tags": {
+        "budget": [
+          18446744073709551616,
+          1.5e300,
+          ".inf"
+        ]
+      }
+    },
+    "_links": {
+      "self": {
+        "href": "http://localhost:8080/api/meshobjects/meshworkspaces/platform-team"
+      }
+    }
+  },
+  {
+    "kind": "meshWorkspace",
+    "apiVersion": "v2",
+    "metadata": {
+      "name": "app-team"
+    }
+  }
+]
 `, "\n")
 	assert.Equal(t, want, out.String())
 }
@@ -88,6 +100,22 @@ func TestNdjsonWritesEachItemOnALineOfItsOwn(t *testing.T) {
 	}, strings.Split(out.String(), "\n"))
 }
 
+func TestAnEmptyListing(t *testing.T) {
+	for format, want := range map[internal.OutputFormat]string{
+		internal.OutputJson:   "[]\n",
+		internal.OutputNdjson: "",
+	} {
+		t.Run(string(format), func(t *testing.T) {
+			var out strings.Builder
+
+			err := internal.WriteList(&out, format, items())
+
+			require.NoError(t, err)
+			assert.Equal(t, want, out.String())
+		})
+	}
+}
+
 func TestAFailingPageStopsTheListing(t *testing.T) {
 	pageErr := errors.New("page 1 failed")
 	failing := func(yield func(jsontext.Value, error) bool) {
@@ -101,4 +129,20 @@ func TestAFailingPageStopsTheListing(t *testing.T) {
 
 	require.ErrorIs(t, err, pageErr)
 	assert.Equal(t, []string{`{"kind":"meshWorkspace"}`, ""}, strings.Split(out.String(), "\n"))
+}
+
+func TestAFailingPageLeavesTheJsonArrayOpen(t *testing.T) {
+	pageErr := errors.New("page 1 failed")
+	failing := func(yield func(jsontext.Value, error) bool) {
+		if yield(jsontext.Value(`{"kind":"meshWorkspace"}`), nil) {
+			yield(nil, pageErr)
+		}
+	}
+	var out strings.Builder
+
+	err := internal.WriteList(&out, internal.OutputJson, failing)
+
+	require.ErrorIs(t, err, pageErr)
+	assert.Equal(t, []string{"[", "  {", `    "kind": "meshWorkspace"`, "  }"}, strings.Split(out.String(), "\n"))
+	assert.False(t, jsontext.Value(out.String()).IsValid(), "a listing cut short by an error must not parse as complete")
 }

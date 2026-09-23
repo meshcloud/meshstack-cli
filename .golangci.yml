@@ -246,7 +246,6 @@ linters:
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
             - github.com/spf13/pflag
-            - github.com/goccy/go-yaml
 
         # The package the Terraform provider consumes most directly, so it reaches nothing
         # beyond the standard library and the three packages below.

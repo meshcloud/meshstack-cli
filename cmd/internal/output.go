@@ -6,7 +6,6 @@ import (
 	"io"
 	"iter"
 
-	"github.com/goccy/go-yaml"
 	"github.com/spf13/pflag"
 )
 
@@ -14,7 +13,7 @@ import (
 type OutputFormat string
 
 const (
-	OutputYaml   OutputFormat = "yaml"
+	OutputJson   OutputFormat = "json"
 	OutputNdjson OutputFormat = "ndjson"
 )
 
@@ -23,8 +22,8 @@ const (
 type OutputFlag struct{ Format OutputFormat }
 
 func (f *OutputFlag) Register(flags *pflag.FlagSet) {
-	f.Format = OutputYaml
-	flags.VarP(f, "output", "o", fmt.Sprintf("output format, %s or %s", OutputYaml, OutputNdjson))
+	f.Format = OutputJson
+	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for one array, %s for one item per line", OutputJson, OutputNdjson))
 }
 
 func (f *OutputFlag) String() string {
@@ -34,11 +33,11 @@ func (f *OutputFlag) String() string {
 func (f *OutputFlag) Set(value string) error {
 	format := OutputFormat(value)
 	switch format {
-	case OutputYaml, OutputNdjson:
+	case OutputJson, OutputNdjson:
 		f.Format = format
 		return nil
 	default:
-		return fmt.Errorf("%q is no output format, write %s or %s", value, OutputYaml, OutputNdjson)
+		return fmt.Errorf("%q is no output format, write %s or %s", value, OutputJson, OutputNdjson)
 	}
 }
 
@@ -47,24 +46,46 @@ func (f *OutputFlag) Type() string {
 }
 
 // WriteList writes every item the sequence yields, each one as it arrives, and stops at the first
-// error. An empty sequence writes nothing at all.
+// error. A listing that fails part way through is left unterminated, so that json output which
+// stopped early does not parse as a complete array.
 func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value, error]) error {
-	writeItem, err := itemWriter(format)
+	list, err := listFormatOf(format)
 	if err != nil {
 		return err
 	}
+	written := 0
 	for item, itemErr := range items {
 		if itemErr != nil {
 			return itemErr
 		}
-		if err := writeItem(w, item); err != nil {
+		separator := list.between
+		if written == 0 {
+			separator = list.begin
+		}
+		if err = list.format(&item); err != nil {
 			return err
 		}
+		if _, err = fmt.Fprintf(w, "%s%s%s", separator, item, list.after); err != nil {
+			return err
+		}
+		written++
 	}
-	return nil
+	end := list.end
+	if written == 0 {
+		end = list.empty
+	}
+	_, err = io.WriteString(w, end)
+	return err
 }
 
-// itemWriter writes each item as the server sent it rather than as the client's types decode it.
+// listFormat is what a format writes around and between the items of a listing. What follows an
+// item is written with it, so that an ndjson line is complete as soon as its item arrived.
+type listFormat struct {
+	begin, between, after, end, empty string
+	format                            func(item *jsontext.Value) error
+}
+
+// listFormatOf writes each item as the server sent it rather than as the client's types decode it.
 // A round trip through those types drops every member they do not model, apiVersion and kind
 // included, writes a nil pointer as a null the server never sent, and loses a variant of a union
 // the client does not know yet.
@@ -72,30 +93,24 @@ func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value,
 // _links stays in as well: it names relations the object's own members do not carry, such as the
 // building blocks of a definition, which is how an agent reading a listing finds what to look at
 // next.
-func itemWriter(format OutputFormat) (func(w io.Writer, item jsontext.Value) error, error) {
+//
+// Neither format changes an item beyond its whitespace. There is no yaml: a conversion to it re-types the scalars,
+// quoting an integer beyond uint64 and leaving the string ".inf" to be read back as a float.
+func listFormatOf(format OutputFormat) (listFormat, error) {
 	switch format {
 	case OutputNdjson:
-		return func(w io.Writer, item jsontext.Value) error {
-			if err := item.Compact(); err != nil {
-				return err
-			}
-			_, err := fmt.Fprintf(w, "%s\n", item)
-			return err
+		return listFormat{
+			after:  "\n",
+			format: func(item *jsontext.Value) error { return item.Compact() },
 		}, nil
-	case OutputYaml:
-		separator := ""
-		return func(w io.Writer, item jsontext.Value) error {
-			document, err := yaml.JSONToYAML(item)
-			if err != nil {
-				return err
-			}
-			if _, err := fmt.Fprintf(w, "%s%s", separator, document); err != nil {
-				return err
-			}
-			separator = "---\n"
-			return nil
+	case OutputJson:
+		return listFormat{
+			begin: "[\n  ", between: ",\n  ", end: "\n]\n", empty: "[]\n",
+			format: func(item *jsontext.Value) error {
+				return item.Indent(jsontext.WithIndentPrefix("  "), jsontext.WithIndent("  "))
+			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("%q is no output format, write %s or %s", format, OutputYaml, OutputNdjson)
+		return listFormat{}, fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
 	}
 }
