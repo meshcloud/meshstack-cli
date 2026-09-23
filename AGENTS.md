@@ -52,7 +52,7 @@ The binary gets its name from its directory, `cmd/meshstack`, which is what `tas
 | `cmd/internal/` | What the command tree shares: flags, the session it resolves, the version. |
 | `cmd/internal/testacc/` | The suite that drives the built binary against a live meshStack. |
 | `pkg/` | Each package here wraps the `internal/` package of the same name, and nothing else. |
-| `client/` | The meshStack API client, imported as a git subtree. |
+| `client/` | The meshStack API client, which the Terraform provider imports. |
 | `internal/` | Everything else. The `depguard` rules in `.golangci.yml` say which package may import which. |
 
 `pkg/` and `client/` are the two import paths the Terraform provider's own `depguard` rule allows,
@@ -89,26 +89,21 @@ rather than a lint fix. Adding a dependency therefore means editing both files, 
 is where you argue for it.
 
 <rules id="client-package">
-`client/` is a **git subtree** of
-[terraform-provider-meshstack](https://github.com/meshcloud/terraform-provider-meshstack). Carry
-changes across with `git subtree`, not by copying files.
+**This repository is the client's only home.** `client/` moved here from
+[terraform-provider-meshstack](https://github.com/meshcloud/terraform-provider-meshstack) as a
+one-time `git subtree` import, and the provider deleted its copy and requires this module at a
+released version instead. Change the client here; the provider picks the change up when it bumps
+its `meshstack-cli` requirement, so a break surfaces there, later, and not in this repository's CI.
+There is nothing to pull or push.
 
-**A pull takes a split, not a branch.** The subtree's history carries the files at the *repository
-root*, while in the provider the same files sit under `client/`, so pulling the provider's `main`
-directly fails with *"refusing to merge unrelated histories"*. Split first, in a checkout of the
-provider:
+**The provider implements the client's interfaces.** Its tests plug the mocks of its
+`internal/clientmock` into `client.Client`, so a method added to a `Mesh…Client` interface stops
+the provider compiling at its next bump. Put a method only the CLI calls behind an interface of its
+own on a new `client.Client` field, as `Listing` does: the provider fills the struct by field name
+and leaves a new field nil.
 
-```shell
-cd ../terraform-provider-meshstack
-git subtree split --prefix=client -b client-split main
-
-cd ../meshstack-cli
-git subtree pull --prefix=client ../terraform-provider-meshstack client-split
-git subtree push --prefix=client ../terraform-provider-meshstack <branch>
-```
-
-Reading the pre-import history takes both paths, since the split history carries the files at the
-repository root and the import merge re-roots them under `client/`:
+Reading the pre-import history takes both paths, since the imported history carries the files at
+the repository root and the import merge re-roots them under `client/`:
 
 ```shell
 git log -- client/client.go client.go   # a path-limited log from client/ alone stops at the merge
