@@ -24,19 +24,24 @@ func newList() *cobra.Command {
 		Long: `List building block runs.
 
 --building-block lists that block's runs. Without it the runs of every building block the
-credential can see are listed, one block after the other, and --workspace narrows those to the
-building blocks of that workspace.`,
+credential can see are listed, one block after the other, and --workspace, or
+MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			var (
+				blockFilter client.MeshBuildingBlockV2ListFilter
+				err         error
+			)
+			if buildingBlockUuid == "" {
+				if blockFilter.WorkspaceIdentifier, err = internal.ListWorkspace(cmd.Context()); err != nil {
+					return err
+				}
+			}
 			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
 				if buildingBlockUuid != "" {
 					return meshStack.BuildingBlockRun.ListRawSeq(ctx, client.MeshBuildingBlockRunListFilter{
 						BuildingBlockUuid: buildingBlockUuid,
 					})
-				}
-				var blockFilter client.MeshBuildingBlockV2ListFilter
-				if workspace := internal.WorkspaceFlag.Value; workspace != "" {
-					blockFilter.WorkspaceIdentifier = &workspace
 				}
 				return allRuns(ctx, meshStack, blockFilter)
 			})

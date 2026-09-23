@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
 // ListFlags are the flags every list command takes, and Run is how each one lists.
@@ -23,6 +24,17 @@ type ListFlags struct {
 func (f *ListFlags) Register(flags *pflag.FlagSet) {
 	f.output.Register(flags)
 	flags.Var(&f.limit, "limit", "list at most this many items, 0 lists all of them")
+}
+
+// ListWorkspace is the workspace a listing is narrowed to, or nil for none. It leaves out the
+// profile's default workspace, so that a listing asked for no workspace shows what the credential
+// can see.
+func ListWorkspace(ctx context.Context) (*string, error) {
+	workspace, err := setting.ResolveWorkspace(ctx, SettingSources())
+	if err != nil || workspace == "" {
+		return nil, err
+	}
+	return &workspace, nil
 }
 
 func (f *ListFlags) Run(cmd *cobra.Command, list func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error]) error {
