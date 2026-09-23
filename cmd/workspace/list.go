@@ -20,7 +20,7 @@ func newList() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
-				return meshStack.Workspace.ListRawSeq(ctx)
+				return meshStack.Listing.Workspaces(ctx)
 			})
 		},
 	}

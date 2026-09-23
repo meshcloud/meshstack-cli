@@ -39,7 +39,7 @@ MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
 			}
 			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
 				if buildingBlockUuid != "" {
-					return meshStack.BuildingBlockRun.ListRawSeq(ctx, client.MeshBuildingBlockRunListFilter{
+					return meshStack.Listing.BuildingBlockRuns(ctx, client.MeshBuildingBlockRunListFilter{
 						BuildingBlockUuid: buildingBlockUuid,
 					})
 				}
@@ -65,7 +65,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 		runsCtx := client.WithListOptions(ctx, runOptions)
 		// The blocks are read raw because only their uuid is needed, and a block the client cannot
 		// fully decode still has runs to list.
-		for rawBlock, err := range meshStack.BuildingBlockV2.ListRawSeq(client.WithListOptions(ctx, blockOptions), blockFilter) {
+		for rawBlock, err := range meshStack.Listing.BuildingBlocksV2(client.WithListOptions(ctx, blockOptions), blockFilter) {
 			if err != nil {
 				yield(nil, err)
 				return
@@ -83,7 +83,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 				continue
 			}
 			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlock.Metadata.Uuid}
-			for blockRun, runErr := range meshStack.BuildingBlockRun.ListRawSeq(runsCtx, filter) {
+			for blockRun, runErr := range meshStack.Listing.BuildingBlockRuns(runsCtx, filter) {
 				if !yield(blockRun, runErr) || runErr != nil {
 					return
 				}
