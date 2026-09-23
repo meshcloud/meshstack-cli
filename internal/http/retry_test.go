@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	gohttp "net/http"
 	"testing"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExponentialBackoff_Calculate(t *testing.T) {
@@ -61,4 +64,33 @@ func TestRetryAfterBackoff(t *testing.T) {
 			})
 		})
 	}
+}
+
+type roundTripperFunc func(*gohttp.Request) (*gohttp.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
+	return f(req)
+}
+
+func TestRetryStopsOnceTheContextIsDone(t *testing.T) {
+	interrupted := errors.New("interrupt signal received")
+	ctx, cancel := context.WithCancelCause(t.Context())
+	cancel(interrupted)
+	req, err := gohttp.NewRequestWithContext(ctx, MethodGet, "http://meshstack.invalid", nil)
+	require.NoError(t, err)
+
+	calls := 0
+	retrying := &retryRoundTripper{
+		Next: roundTripperFunc(func(req *gohttp.Request) (*gohttp.Response, error) {
+			calls++
+			return nil, context.Cause(req.Context())
+		}),
+		MaxRetries:          3,
+		ShouldRetryRequest:  func(*gohttp.Request) bool { return true },
+		ShouldRetryResponse: func(*gohttp.Response, error) RetryBackoff { return ExponentialBackoff{} },
+	}
+
+	_, err = retrying.RoundTrip(req) //nolint:bodyclose // no response comes back
+	require.ErrorIs(t, err, interrupted)
+	assert.Equal(t, 1, calls)
 }
