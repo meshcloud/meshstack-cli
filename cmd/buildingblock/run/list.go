@@ -23,7 +23,8 @@ func newList() *cobra.Command {
 		Long: `List building block runs.
 
 --building-block lists that block's runs. Without it the runs of every building block the
-credential can see are listed, one block after the other.`,
+credential can see are listed, one block after the other, and --workspace narrows those to the
+building blocks of that workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
@@ -32,7 +33,11 @@ credential can see are listed, one block after the other.`,
 						BuildingBlockUuid: buildingBlockUuid,
 					})
 				}
-				return allRuns(ctx, meshStack)
+				var blockFilter client.MeshBuildingBlockV2ListFilter
+				if workspace := internal.WorkspaceFlag.Value; workspace != "" {
+					blockFilter.WorkspaceIdentifier = &workspace
+				}
+				return allRuns(ctx, meshStack, blockFilter)
 			})
 		},
 	}
@@ -45,14 +50,14 @@ credential can see are listed, one block after the other.`,
 
 // allRuns flattens the runs of every building block into one sequence, because the run list
 // endpoint takes one building block at a time and has no list of every run.
-func allRuns(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
+func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
 		runOptions := client.ListOptionsFrom(ctx)
 		runOptions.OnPage = nil
 		blockOptions := runOptions
 		blockOptions.PageSize = 0
 		runsCtx := client.WithListOptions(ctx, runOptions)
-		for buildingBlock, err := range meshStack.BuildingBlockV2.ListSeq(client.WithListOptions(ctx, blockOptions), client.MeshBuildingBlockV2ListFilter{}) {
+		for buildingBlock, err := range meshStack.BuildingBlockV2.ListSeq(client.WithListOptions(ctx, blockOptions), blockFilter) {
 			if err != nil {
 				yield(nil, err)
 				return
