@@ -138,13 +138,19 @@ func (c MeshObjectClient[M]) DeleteAtPath(ctx context.Context, id string, extraP
 // page arrives. A page that fails yields the zero M together with the error, and ends the sequence.
 // Accepts optional [http.RequestOption] parameters for filtering and querying.
 func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.RequestOption) iter.Seq2[M, error] {
-	return func(yield func(M, error) bool) {
-		var noItem M
+	return c.ListSeqAs[M](ctx, options...)
+}
+
+// ListSeqAs is [MeshObjectClient.ListSeq] decoding each item as T. A jsontext.Value yields every
+// item as the server sent it, members M does not model included.
+func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...http.RequestOption) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		var noItem T
 		embeddedKey := pluralizeKind(c.Kind)
 
 		for pageNumber := 0; ; pageNumber++ {
 			type paginatedResponse struct {
-				Embedded map[string][]M `json:"_embedded"`
+				Embedded map[string][]T `json:"_embedded"`
 				Page     struct {
 					TotalPages int `json:"totalPages"`
 					Number     int `json:"number"`

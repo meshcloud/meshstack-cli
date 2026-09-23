@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
@@ -68,7 +69,8 @@ type MeshBuildingBlockRunStepLog struct {
 
 type MeshBuildingBlockRunClient interface {
 	List(ctx context.Context, filter MeshBuildingBlockRunListFilter) ([]MeshBuildingBlockRun, error)
-	ListSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[MeshBuildingBlockRun, error]
+	// ListRawSeq yields each item as the server sent it, which is what a listing prints.
+	ListRawSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error]
 	GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error)
 }
 
@@ -86,8 +88,8 @@ func (c meshBuildingBlockRunClient) List(ctx context.Context, filter MeshBuildin
 	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
-func (c meshBuildingBlockRunClient) ListSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[MeshBuildingBlockRun, error] {
-	return c.meshObject.ListSeq(ctx, http.WithUrlQuery(filter))
+func (c meshBuildingBlockRunClient) ListRawSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error] {
+	return c.meshObject.ListSeqAs[jsontext.Value](ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockRunClient) GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error) {

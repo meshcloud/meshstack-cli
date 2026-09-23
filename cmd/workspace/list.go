@@ -19,7 +19,7 @@ func newList() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.Workspace.ListSeq(ctx))
+			return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.Workspace.ListRawSeq(ctx))
 		},
 	}
 

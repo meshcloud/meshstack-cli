@@ -28,7 +28,7 @@ credential can see.`,
 			if workspace := internal.WorkspaceFlag.Value; workspace != "" {
 				filter.WorkspaceIdentifier = &workspace
 			}
-			return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2.ListSeq(ctx, filter))
+			return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2.ListRawSeq(ctx, filter))
 		},
 	}
 
