@@ -18,3 +18,26 @@ func TestTheEnvironmentDecidesWhileTheBoolFlagIsUnset(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, skip)
 }
+
+func TestListWorkspaceTakesTheFlagOverTheEnvironment(t *testing.T) {
+	for _, tc := range []struct {
+		name, flag, env string
+		want            *string
+	}{
+		{name: "flag", flag: "from-flag", want: new("from-flag")},
+		{name: "environment", env: "from-env", want: new("from-env")},
+		{name: "both", flag: "from-flag", env: "from-env", want: new("from-flag")},
+		{name: "neither"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(meshstack.WorkspaceSetting.EnvKey(), tc.env)
+			internal.WorkspaceFlag.Value = tc.flag
+			t.Cleanup(func() { internal.WorkspaceFlag.Value = "" })
+
+			workspace, err := internal.ListWorkspace(t.Context())
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, workspace)
+		})
+	}
+}
