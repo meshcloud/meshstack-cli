@@ -1,6 +1,8 @@
 package buildingblock
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
@@ -19,16 +21,13 @@ func newList() *cobra.Command {
 credential can see.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			meshStack, err := internal.ResolveClient(ctx)
-			if err != nil {
-				return err
-			}
 			var filter client.MeshBuildingBlockV2ListFilter
 			if workspace := internal.WorkspaceFlag.Value; workspace != "" {
 				filter.WorkspaceIdentifier = &workspace
 			}
-			return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2.ListRawSeq(ctx, filter))
+			return internal.RunPaged(cmd.Context(), func(ctx context.Context, meshStack client.Client) error {
+				return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2.ListRawSeq(ctx, filter))
+			})
 		},
 	}
 

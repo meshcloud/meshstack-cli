@@ -26,18 +26,15 @@ func newList() *cobra.Command {
 credential can see are listed, one block after the other.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			meshStack, err := internal.ResolveClient(ctx)
-			if err != nil {
-				return err
-			}
-			runs := allRuns(ctx, meshStack)
-			if buildingBlockUuid != "" {
-				runs = meshStack.BuildingBlockRun.ListRawSeq(ctx, client.MeshBuildingBlockRunListFilter{
-					BuildingBlockUuid: buildingBlockUuid,
-				})
-			}
-			return internal.WriteList(cmd.OutOrStdout(), output.Format, runs)
+			return internal.RunPaged(cmd.Context(), func(ctx context.Context, meshStack client.Client) error {
+				runs := allRuns(ctx, meshStack)
+				if buildingBlockUuid != "" {
+					runs = meshStack.BuildingBlockRun.ListRawSeq(ctx, client.MeshBuildingBlockRunListFilter{
+						BuildingBlockUuid: buildingBlockUuid,
+					})
+				}
+				return internal.WriteList(cmd.OutOrStdout(), output.Format, runs)
+			})
 		},
 	}
 

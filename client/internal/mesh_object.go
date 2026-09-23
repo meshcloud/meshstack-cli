@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
@@ -149,19 +150,9 @@ func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...ht
 		embeddedKey := pluralizeKind(c.Kind)
 
 		for pageNumber := 0; ; pageNumber++ {
-			type paginatedResponse struct {
-				Embedded map[string][]T `json:"_embedded"`
-				Page     struct {
-					TotalPages int `json:"totalPages"`
-					Number     int `json:"number"`
-				} `json:"page"`
-			}
-			response, err := c.DoRequest[paginatedResponse](ctx, http.MethodGet, c.ApiUrl, append(options,
-				http.WithAccept(c.MeshObjectMimeType()),
-				http.WithUrlQuery(map[string]any{"page": pageNumber}),
-			)...)
+			response, err := c.getPage[T](ctx, pageNumber, options)
 			if err != nil {
-				yield(noItem, fmt.Errorf("error getting page %d: %w", pageNumber, err))
+				yield(noItem, err)
 				return
 			}
 			items, ok := response.Embedded[embeddedKey]
@@ -179,6 +170,48 @@ func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...ht
 			}
 		}
 	}
+}
+
+type paginatedResponse[T any] struct {
+	Embedded map[string][]T `json:"_embedded"`
+	Page     struct {
+		TotalPages int `json:"totalPages"`
+		Number     int `json:"number"`
+	} `json:"page"`
+}
+
+// getPage is a method of its own so that the deadline [WithPageTimeout] sets ends with the page,
+// before its items are yielded.
+func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
+	pageTimeout, bounded := ctx.Value(pageTimeoutKey{}).(time.Duration)
+	pageCtx := ctx
+	if bounded {
+		var cancel context.CancelFunc
+		pageCtx, cancel = context.WithTimeout(ctx, pageTimeout)
+		defer cancel()
+	}
+	response, err := c.DoRequest[paginatedResponse[T]](pageCtx, http.MethodGet, c.ApiUrl, append(options,
+		http.WithAccept(c.MeshObjectMimeType()),
+		http.WithUrlQuery(map[string]any{"page": pageNumber}),
+	)...)
+	switch {
+	case err == nil:
+		return response, nil
+	case bounded && ctx.Err() == nil && errors.Is(pageCtx.Err(), context.DeadlineExceeded):
+		return response, fmt.Errorf("page %d did not arrive within %s: %w", pageNumber, pageTimeout, err)
+	default:
+		return response, fmt.Errorf("error getting page %d: %w", pageNumber, err)
+	}
+}
+
+type pageTimeoutKey struct{}
+
+// WithPageTimeout bounds each page a listing on ctx fetches, its retries and token renewal
+// included, rather than the listing as a whole. It is for a caller whose listing may run longer
+// than any fixed deadline it could set, and still has to give up on a server that stopped
+// answering. Without it, a page is bounded only by ctx.
+func WithPageTimeout(ctx context.Context, timeout time.Duration) context.Context {
+	return context.WithValue(ctx, pageTimeoutKey{}, timeout)
 }
 
 // List collects ListSeq, and returns the meshObjects gathered so far together with the error a

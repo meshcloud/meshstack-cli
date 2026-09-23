@@ -1,8 +1,11 @@
 package workspace
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
+	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -14,12 +17,9 @@ func newList() *cobra.Command {
 		Short: "List the workspaces this login can see",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			meshStack, err := internal.ResolveClient(ctx)
-			if err != nil {
-				return err
-			}
-			return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.Workspace.ListRawSeq(ctx))
+			return internal.RunPaged(cmd.Context(), func(ctx context.Context, meshStack client.Client) error {
+				return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.Workspace.ListRawSeq(ctx))
+			})
 		},
 	}
 
