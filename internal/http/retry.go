@@ -125,7 +125,10 @@ func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, er
 	req = makeRequestBodyRetryable(req)
 	for attempt := 1; ; attempt++ {
 		resp, err := r.Next.RoundTrip(req)
-		if errors.Is(err, errRetryableBodyClose) {
+		// A request the context ended is not retried. The context is checked rather than the error,
+		// since the transport returns the context's cause, which for Ctrl-C is a signal error that
+		// wraps no context.Canceled.
+		if errors.Is(err, errRetryableBodyClose) || err != nil && req.Context().Err() != nil {
 			return resp, err
 		}
 		backoff := r.ShouldRetryResponse(resp, err)
