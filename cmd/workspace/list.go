@@ -2,6 +2,8 @@ package workspace
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"iter"
 
 	"github.com/spf13/cobra"
 
@@ -10,20 +12,20 @@ import (
 )
 
 func newList() *cobra.Command {
-	var output internal.OutputFlag
+	var flags internal.ListFlags
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the workspaces this login can see",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return internal.RunPaged(cmd.Context(), func(ctx context.Context, meshStack client.Client) error {
-				return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.Workspace.ListRawSeq(ctx))
+			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
+				return meshStack.Workspace.ListRawSeq(ctx)
 			})
 		},
 	}
 
-	output.Register(cmd.Flags())
+	flags.Register(cmd.Flags())
 
 	return cmd
 }

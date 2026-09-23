@@ -2,13 +2,21 @@ package client
 
 import (
 	"context"
-	"time"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
 
-// WithPageTimeout bounds each page a listing on ctx fetches, its retries and token renewal
-// included, rather than the listing as a whole. See [internal.WithPageTimeout].
-func WithPageTimeout(ctx context.Context, timeout time.Duration) context.Context {
-	return internal.WithPageTimeout(ctx, timeout)
+// ListOptions shape how every listing on a context fetches its pages.
+type ListOptions = internal.ListOptions
+
+// Page is what a page of a listing says about the listing as a whole.
+type Page = internal.Page
+
+func WithListOptions(ctx context.Context, options ListOptions) context.Context {
+	return internal.WithListOptions(ctx, options)
+}
+
+// ListOptionsFrom returns the options [WithListOptions] put on ctx, and the zero value without.
+func ListOptionsFrom(ctx context.Context) ListOptions {
+	return internal.ListOptionsFrom(ctx)
 }

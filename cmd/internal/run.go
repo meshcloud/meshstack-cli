@@ -30,7 +30,7 @@ func RunPaged(ctx context.Context, action func(ctx context.Context, meshStack cl
 	if err != nil {
 		return err
 	}
-	return action(client.WithPageTimeout(ctx, DefaultTimeout), meshStack)
+	return action(client.WithListOptions(ctx, client.ListOptions{PageTimeout: DefaultTimeout}), meshStack)
 }
 
 func resolveClientWithin(ctx context.Context, timeout time.Duration) (client.Client, error) {

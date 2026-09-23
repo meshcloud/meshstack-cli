@@ -143,14 +143,16 @@ func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.Reques
 }
 
 // ListSeqAs is [MeshObjectClient.ListSeq] decoding each item as T. A jsontext.Value yields every
-// item as the server sent it, members M does not model included.
+// item as the server sent it, members M does not model included. The [ListOptions] on ctx shape
+// how the pages are fetched.
 func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...http.RequestOption) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var noItem T
 		embeddedKey := pluralizeKind(c.Kind)
+		listOptions := ListOptionsFrom(ctx)
 
 		for pageNumber := 0; ; pageNumber++ {
-			response, err := c.getPage[T](ctx, pageNumber, options)
+			response, err := c.getPage[T](ctx, listOptions, pageNumber, options)
 			if err != nil {
 				yield(noItem, err)
 				return
@@ -159,6 +161,9 @@ func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...ht
 			if !ok {
 				yield(noItem, fmt.Errorf("embedded key %s not found in paginated response", embeddedKey))
 				return
+			}
+			if listOptions.OnPage != nil {
+				listOptions.OnPage(response.Page)
 			}
 			for _, item := range items {
 				if !yield(item, nil) {
@@ -172,46 +177,76 @@ func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...ht
 	}
 }
 
-type paginatedResponse[T any] struct {
-	Embedded map[string][]T `json:"_embedded"`
-	Page     struct {
-		TotalPages int `json:"totalPages"`
-		Number     int `json:"number"`
-	} `json:"page"`
+// Page is what a page of a listing says about the listing as a whole.
+type Page struct {
+	Size          int `json:"size"`
+	TotalElements int `json:"totalElements"`
+	TotalPages    int `json:"totalPages"`
+	Number        int `json:"number"`
 }
 
-// getPage is a method of its own so that the deadline [WithPageTimeout] sets ends with the page,
-// before its items are yielded.
-func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
-	pageTimeout, bounded := ctx.Value(pageTimeoutKey{}).(time.Duration)
+type paginatedResponse[T any] struct {
+	Embedded map[string][]T `json:"_embedded"`
+	Page     Page           `json:"page"`
+}
+
+// getPage is a method of its own so that the deadline of [ListOptions.PageTimeout] ends with the
+// page, before its items are yielded.
+func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, listOptions ListOptions, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
+	bounded := listOptions.PageTimeout > 0
 	pageCtx := ctx
 	if bounded {
 		var cancel context.CancelFunc
-		pageCtx, cancel = context.WithTimeout(ctx, pageTimeout)
+		pageCtx, cancel = context.WithTimeout(ctx, listOptions.PageTimeout)
 		defer cancel()
+	}
+	query := map[string]any{"page": pageNumber}
+	if listOptions.PageSize > 0 {
+		query["size"] = listOptions.PageSize
 	}
 	response, err := c.DoRequest[paginatedResponse[T]](pageCtx, http.MethodGet, c.ApiUrl, append(options,
 		http.WithAccept(c.MeshObjectMimeType()),
-		http.WithUrlQuery(map[string]any{"page": pageNumber}),
+		http.WithUrlQuery(query),
 	)...)
 	switch {
 	case err == nil:
 		return response, nil
 	case bounded && ctx.Err() == nil && errors.Is(pageCtx.Err(), context.DeadlineExceeded):
-		return response, fmt.Errorf("page %d did not arrive within %s: %w", pageNumber, pageTimeout, err)
+		return response, fmt.Errorf("page %d did not arrive within %s: %w", pageNumber, listOptions.PageTimeout, err)
 	default:
 		return response, fmt.Errorf("error getting page %d: %w", pageNumber, err)
 	}
 }
 
-type pageTimeoutKey struct{}
+// ListOptions shape how every listing on a context fetches its pages. They travel in the context
+// rather than in a parameter so that the Terraform provider, which sets none of them, keeps the
+// signatures it calls and the server's defaults. The zero value is exactly that.
+type ListOptions struct {
+	// PageSize asks for pages of that many items, and 0 for the server's default. The size is a
+	// request, not a guarantee: meshStack caps it (at 350 in 2026.34) and answers a size it cannot
+	// read with its default of 50. A listing pages by the page numbers the server reports, so a
+	// smaller page than asked for loses no items; a caller that needs a number of items has to count
+	// them itself.
+	PageSize int
+	// PageTimeout bounds each page, its retries and token renewal included, rather than the
+	// listing as a whole. It is for a caller whose listing may run longer than any fixed deadline
+	// it could set, and still has to give up on a server that stopped answering. With 0, a page is
+	// bounded only by its context.
+	PageTimeout time.Duration
+	// OnPage is called with each page that arrived, before its items are yielded.
+	OnPage func(Page)
+}
 
-// WithPageTimeout bounds each page a listing on ctx fetches, its retries and token renewal
-// included, rather than the listing as a whole. It is for a caller whose listing may run longer
-// than any fixed deadline it could set, and still has to give up on a server that stopped
-// answering. Without it, a page is bounded only by ctx.
-func WithPageTimeout(ctx context.Context, timeout time.Duration) context.Context {
-	return context.WithValue(ctx, pageTimeoutKey{}, timeout)
+type listOptionsKey struct{}
+
+func WithListOptions(ctx context.Context, options ListOptions) context.Context {
+	return context.WithValue(ctx, listOptionsKey{}, options)
+}
+
+// ListOptionsFrom returns the options [WithListOptions] put on ctx, and the zero value without.
+func ListOptionsFrom(ctx context.Context) ListOptions {
+	options, _ := ctx.Value(listOptionsKey{}).(ListOptions)
+	return options
 }
 
 // List collects ListSeq, and returns the meshObjects gathered so far together with the error a

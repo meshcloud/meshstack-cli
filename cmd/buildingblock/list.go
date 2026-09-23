@@ -2,6 +2,8 @@ package buildingblock
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"iter"
 
 	"github.com/spf13/cobra"
 
@@ -10,7 +12,7 @@ import (
 )
 
 func newList() *cobra.Command {
-	var output internal.OutputFlag
+	var flags internal.ListFlags
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -25,13 +27,13 @@ credential can see.`,
 			if workspace := internal.WorkspaceFlag.Value; workspace != "" {
 				filter.WorkspaceIdentifier = &workspace
 			}
-			return internal.RunPaged(cmd.Context(), func(ctx context.Context, meshStack client.Client) error {
-				return internal.WriteList(cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2.ListRawSeq(ctx, filter))
+			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
+				return meshStack.BuildingBlockV2.ListRawSeq(ctx, filter)
 			})
 		},
 	}
 
-	output.Register(cmd.Flags())
+	flags.Register(cmd.Flags())
 
 	return cmd
 }

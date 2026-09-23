@@ -8,6 +8,7 @@ import (
 	gohttp "net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,20 +71,20 @@ func collect(t *testing.T, items iter.Seq2[jsontext.Value, error]) (names []stri
 	return names, nil
 }
 
-func TestWithPageTimeoutBoundsEachPageRatherThanTheListing(t *testing.T) {
+func TestPageTimeoutBoundsEachPageRatherThanTheListing(t *testing.T) {
 	const pageTimeout = 200 * time.Millisecond
 	workspaceClient, sentWithDeadline := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {
 		time.Sleep(pageTimeout / 2)
 	})
 
-	names, err := collect(t, workspaceClient.ListRawSeq(WithPageTimeout(t.Context(), pageTimeout)))
+	names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
 
 	require.NoError(t, err, "every page arrives within the timeout, though all of them together take longer")
 	assert.Equal(t, []string{"workspace-0", "workspace-1", "workspace-2"}, names)
 	assert.Equal(t, []bool{true, true, true}, *sentWithDeadline)
 }
 
-func TestWithPageTimeoutGivesUpOnAPageThatDoesNotArrive(t *testing.T) {
+func TestPageTimeoutGivesUpOnAPageThatDoesNotArrive(t *testing.T) {
 	const pageTimeout = 100 * time.Millisecond
 	workspaceClient, _ := newPagedWorkspaceClient(t, func(r *gohttp.Request, page int) {
 		if page == 1 {
@@ -91,7 +92,7 @@ func TestWithPageTimeoutGivesUpOnAPageThatDoesNotArrive(t *testing.T) {
 		}
 	})
 
-	names, err := collect(t, workspaceClient.ListRawSeq(WithPageTimeout(t.Context(), pageTimeout)))
+	names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
 
 	assert.Equal(t, []string{"workspace-0"}, names)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -106,4 +107,70 @@ func TestWithoutPageTimeoutAPageIsBoundOnlyByItsContext(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []bool{false, false, false}, *sentWithDeadline)
+}
+
+// meshStack caps the page size it is asked for, so pages smaller than asked must lose no items.
+func TestPageSizeAsksForPagesOfThatSizeAndTakesSmallerOnes(t *testing.T) {
+	const serverCap, askedFor = 2, 3
+	names := []string{"workspace-0", "workspace-1", "workspace-2", "workspace-3", "workspace-4"}
+	var sizesAskedFor []string
+	server := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		sizesAskedFor = append(sizesAskedFor, r.URL.Query().Get("size"))
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if !assert.NoError(t, err) {
+			w.WriteHeader(gohttp.StatusBadRequest)
+			return
+		}
+		var items []string
+		for _, name := range names[min(page*serverCap, len(names)):min((page+1)*serverCap, len(names))] {
+			items = append(items, fmt.Sprintf(`{"metadata":{"name":%q}}`, name))
+		}
+		totalPages := (len(names) + serverCap - 1) / serverCap
+		_, _ = fmt.Fprintf(w, `{"_embedded":{"meshWorkspaces":[%s]},"page":{"size":%d,"totalPages":%d,"number":%d}}`,
+			strings.Join(items, ","), serverCap, totalPages, page)
+	}))
+	t.Cleanup(server.Close)
+	workspaceClient := newWorkspaceClient(t.Context(), internal.HttpClient{
+		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(http.BearerToken("token")),
+		EndpointUrl:      xurl.MustParsef("%s", server.URL),
+	})
+
+	got, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageSize: askedFor})))
+
+	require.NoError(t, err)
+	assert.Equal(t, names, got)
+	assert.Equal(t, []string{"3", "3", "3"}, sizesAskedFor)
+}
+
+func TestWithoutPageSizeTheServerPicksIt(t *testing.T) {
+	var sizesAskedFor []string
+	workspaceClient, _ := newPagedWorkspaceClient(t, func(r *gohttp.Request, _ int) {
+		sizesAskedFor = append(sizesAskedFor, r.URL.Query().Get("size"))
+	})
+
+	_, err := collect(t, workspaceClient.ListRawSeq(t.Context()))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"", "", ""}, sizesAskedFor)
+}
+
+func TestOnPageSeesEachPageBeforeItsItems(t *testing.T) {
+	workspaceClient, _ := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {})
+	var events []string
+	ctx := WithListOptions(t.Context(), ListOptions{OnPage: func(page Page) {
+		events = append(events, fmt.Sprintf("page %d of %d", page.Number, page.TotalPages))
+	}})
+
+	for item, err := range workspaceClient.ListRawSeq(ctx) {
+		require.NoError(t, err)
+		var workspace MeshWorkspace
+		require.NoError(t, json.Unmarshal(item, &workspace))
+		events = append(events, workspace.Metadata.Name)
+	}
+
+	assert.Equal(t, []string{
+		"page 0 of 3", "workspace-0",
+		"page 1 of 3", "workspace-1",
+		"page 2 of 3", "workspace-2",
+	}, events)
 }
