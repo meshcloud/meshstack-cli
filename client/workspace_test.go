@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
@@ -45,7 +44,7 @@ func TestListRawSeqYieldsEveryWorkspaceOfEveryPageAsSent(t *testing.T) {
 		}
 	}`
 	workspaces := []string{platformTeam, appTeam}
-	server := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+	server := httptest.NewTestServer(t, gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		page, err := strconv.Atoi(r.URL.Query().Get("page"))
 		if !assert.Equal(t, "/api/meshobjects/meshworkspaces", r.URL.Path) || !assert.NoError(t, err) || !assert.Less(t, page, len(workspaces)) {
 			w.WriteHeader(gohttp.StatusBadRequest)
@@ -53,10 +52,9 @@ func TestListRawSeqYieldsEveryWorkspaceOfEveryPageAsSent(t *testing.T) {
 		}
 		_, _ = fmt.Fprintf(w, `{"_embedded":{"meshWorkspaces":[%s]},"page":{"totalPages":%d,"number":%d}}`, workspaces[page], len(workspaces), page)
 	}))
-	t.Cleanup(server.Close)
 	workspaceClient := newWorkspaceClient(t.Context(), internal.HttpClient{
 		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(http.BearerToken("token")),
-		EndpointUrl:      xurl.MustParsef("%s", server.URL),
+		EndpointUrl:      inMemoryServerUrl,
 	})
 
 	var got []string

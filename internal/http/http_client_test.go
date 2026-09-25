@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -63,35 +64,40 @@ func TestHttpClient(t *testing.T) {
 	t.Run("DoRequest with successful retry", func(t *testing.T) {
 		for _, retryableStatusCode := range []int{429, 502, 503, 504} {
 			t.Run(fmt.Sprintf("after code %d", retryableStatusCode), func(t *testing.T) {
-				testLogger := installTestLogger(t)
-				retryTestBackoff := retryTestBackoff{WaitTime: 1 * time.Second}
-				retried := false
-				client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-					if !retried {
-						if retryableStatusCode == 429 {
-							// Delay-seconds form. The HTTP-date form needs a mocked clock, which
-							// only a test inside the package can install, so TestRetryAfterBackoff
-							// covers it.
-							resp.Header().Set("Retry-After", "1")
+				synctest.Test(t, func(t *testing.T) {
+					testLogger := installTestLogger(t)
+					retryTestBackoff := retryTestBackoff{WaitTime: 1 * time.Second}
+					retried := false
+					client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+						if !retried {
+							if retryableStatusCode == 429 {
+								// Delay-seconds form. The HTTP-date form needs a mocked clock, which
+								// only a test inside the package can install, so TestRetryAfterBackoff
+								// covers it.
+								resp.Header().Set("Retry-After", "1")
+							}
+							resp.WriteHeader(retryableStatusCode)
+							retried = true
+							return
 						}
-						resp.WriteHeader(retryableStatusCode)
-						retried = true
-						return
-					}
-					resp.WriteHeader(gohttp.StatusOK)
-					_, _ = resp.Write([]byte(`{}`))
-				}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff})
+						resp.WriteHeader(gohttp.StatusOK)
+						_, _ = resp.Write([]byte(`{}`))
+					}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff})
+					start := time.Now()
 
-				_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
-				require.NoError(t, err)
-				if retryableStatusCode == 429 {
-					assert.Equal(t, 0, retryTestBackoff.Called)
-				} else {
-					assert.Equal(t, 1, retryTestBackoff.Called)
-				}
-				assert.Equal(t, []string{
-					fmt.Sprintf("retrying request [status %d method GET path /get attempt 1/3 waitTime 1s]", retryableStatusCode),
-				}, testLogger.Warns)
+					_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
+
+					require.NoError(t, err)
+					assert.Equal(t, time.Second, time.Since(start), "the retry waited as long as it logged")
+					if retryableStatusCode == 429 {
+						assert.Equal(t, 0, retryTestBackoff.Called)
+					} else {
+						assert.Equal(t, 1, retryTestBackoff.Called)
+					}
+					assert.Equal(t, []string{
+						fmt.Sprintf("retrying request [status %d method GET path /get attempt 1/3 waitTime 1s]", retryableStatusCode),
+					}, testLogger.Warns)
+				})
 			})
 		}
 	})
@@ -118,13 +124,24 @@ func TestHttpClient(t *testing.T) {
 	})
 
 	t.Run("DoRequest with context cancelled during backoff", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-			resp.WriteHeader(gohttp.StatusBadGateway)
-			cancel() // cancel context so the backoff wait is interrupted
-		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
-		_, err := client.DoRequest[any](ctx, gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
-		require.ErrorIs(t, err, context.Canceled)
+		synctest.Test(t, func(t *testing.T) {
+			const cancelAfter = 1 * time.Second
+			backoff := retryTestBackoff{WaitTime: 10 * time.Second}
+			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+				resp.WriteHeader(gohttp.StatusBadGateway)
+			}), http.RetryOptions{MaxRetries: 3, Backoff: &backoff})
+			// The bubble's clock only moves once the 502 has arrived and the backoff waits, so this
+			// cancels inside the wait. Cancelling from the handler raced the 502 back to the client.
+			ctx, cancel := context.WithCancel(t.Context())
+			time.AfterFunc(cancelAfter, cancel)
+			start := time.Now()
+
+			_, err := client.DoRequest[any](ctx, gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
+
+			require.ErrorIs(t, err, context.Canceled)
+			assert.Equal(t, 1, backoff.Called)
+			assert.Equal(t, cancelAfter, time.Since(start), "the cancellation ended the backoff rather than waiting it out")
+		})
 	})
 
 	t.Run("DoRequest with PATCH (not retried)", func(t *testing.T) {
@@ -487,11 +504,11 @@ type TestClient struct {
 
 func newTestClientWithServer(t *testing.T, handlerFunc gohttp.HandlerFunc) TestClient {
 	t.Helper()
-	server := httptest.NewServer(handlerFunc)
-	t.Cleanup(server.Close)
+	// In memory, so that a test can run inside a synctest bubble. Client sets URL, so it comes first.
+	server := httptest.NewTestServer(t, handlerFunc)
+	client := server.Client()
 	serverUrl, err := url.Parse(server.URL)
 	require.NoError(t, err)
-	client := server.Client()
 	return TestClient{http.Client{Client: client, UserAgent: "test-agent"}, serverUrl}
 }
 
