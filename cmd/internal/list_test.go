@@ -86,16 +86,15 @@ func TestTheLimitFlagTakesACountOfItems(t *testing.T) {
 }
 
 func TestCutShortNote(t *testing.T) {
-	total := func(n int) *int { return &n }
 	for name, tt := range map[string]struct {
 		limit, listed int
 		total         *int
 		want          string
 	}{
-		"no limit":                        {limit: 0, listed: 1011, total: total(1011)},
-		"fewer items than the limit":      {limit: 5000, listed: 1011, total: total(1011)},
-		"as many items as the limit":      {limit: 50, listed: 50, total: total(50)},
-		"more items than the limit":       {limit: 50, listed: 50, total: total(1011), want: "listed the first 50 of 1011; raise --limit, or set it to 0 to list all of them"},
+		"no limit":                        {limit: 0, listed: 1011, total: new(1011)},
+		"fewer items than the limit":      {limit: 5000, listed: 1011, total: new(1011)},
+		"as many items as the limit":      {limit: 50, listed: 50, total: new(50)},
+		"more items than the limit":       {limit: 50, listed: 50, total: new(1011), want: "listed the first 50 of 1011; raise --limit, or set it to 0 to list all of them"},
 		"no total to tell there are more": {limit: 50, listed: 50, want: "stopped at the limit of 50, there may be more; raise --limit, or set it to 0 to list all of them"},
 	} {
 		t.Run(name, func(t *testing.T) {
