@@ -75,6 +75,7 @@ var (
 	MeshBuildingBlockInputAssignmentTypeStatic                      = MeshBuildingBlockInputAssignmentTypes.Entry("STATIC")
 	MeshBuildingBlockInputAssignmentTypeUserPermissions             = MeshBuildingBlockInputAssignmentTypes.Entry("USER_PERMISSIONS")
 	MeshBuildingBlockInputAssignmentTypeTag                         = MeshBuildingBlockInputAssignmentTypes.Entry("TAG")
+	MeshBuildingBlockInputAssignmentTypePaymentMethod               = MeshBuildingBlockInputAssignmentTypes.Entry("PAYMENT_METHOD")
 )
 
 // MeshBuildingBlockTagInputTarget names the meshObject a tag input reads its tag from. It is the first
