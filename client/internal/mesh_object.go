@@ -136,15 +136,11 @@ func (c MeshObjectClient[M]) DeleteAtPath(ctx context.Context, id string, extraP
 }
 
 // ListSeq retrieves all meshObjects with automatic pagination handling, and yields each one as its
-// page arrives. A page that fails yields the zero M together with the error, and ends the sequence.
-// Accepts optional [http.RequestOption] parameters for filtering and querying.
+// page arrives.
 func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.RequestOption) iter.Seq2[M, error] {
 	return c.ListSeqAs[M](ctx, options...)
 }
 
-// ListSeqAs is [MeshObjectClient.ListSeq] decoding each item as T. A jsontext.Value yields every
-// item as the server sent it, members M does not model included. The [ListOptions] on ctx shape
-// how the pages are fetched.
 func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...http.RequestOption) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var noItem T
@@ -177,7 +173,6 @@ func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...ht
 	}
 }
 
-// Page is what a page of a listing says about the listing as a whole.
 type Page struct {
 	Size          int `json:"size"`
 	TotalElements int `json:"totalElements"`
@@ -218,23 +213,10 @@ func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, listOptions Lis
 	}
 }
 
-// ListOptions shape how every listing on a context fetches its pages. They travel in the context
-// rather than in a parameter so that the Terraform provider, which sets none of them, keeps the
-// signatures it calls and the server's defaults. The zero value is exactly that.
 type ListOptions struct {
-	// PageSize asks for pages of that many items, and 0 for the server's default. The size is a
-	// request, not a guarantee: meshStack caps it (at 350 in 2026.34) and answers a size it cannot
-	// read with its default of 50. A listing pages by the page numbers the server reports, so a
-	// smaller page than asked for loses no items; a caller that needs a number of items has to count
-	// them itself.
-	PageSize int
-	// PageTimeout bounds each page, its retries and token renewal included, rather than the
-	// listing as a whole. It is for a caller whose listing may run longer than any fixed deadline
-	// it could set, and still has to give up on a server that stopped answering. With 0, a page is
-	// bounded only by its context.
+	PageSize    int
 	PageTimeout time.Duration
-	// OnPage is called with each page that arrived, before its items are yielded.
-	OnPage func(Page)
+	OnPage      func(Page)
 }
 
 type listOptionsKey struct{}
@@ -243,14 +225,11 @@ func WithListOptions(ctx context.Context, options ListOptions) context.Context {
 	return context.WithValue(ctx, listOptionsKey{}, options)
 }
 
-// ListOptionsFrom returns the options [WithListOptions] put on ctx, and the zero value without.
 func ListOptionsFrom(ctx context.Context) ListOptions {
 	options, _ := ctx.Value(listOptionsKey{}).(ListOptions)
 	return options
 }
 
-// List collects ListSeq, and returns the meshObjects gathered so far together with the error a
-// page failed with.
 func (c MeshObjectClient[M]) List(ctx context.Context, options ...http.RequestOption) ([]M, error) {
 	var result []M
 	for item, err := range c.ListSeq(ctx, options...) {
