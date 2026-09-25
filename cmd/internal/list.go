@@ -38,26 +38,30 @@ func ListWorkspace(ctx context.Context) (*string, error) {
 }
 
 func (f *ListFlags) Run(cmd *cobra.Command, list func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error]) error {
-	return RunPaged(cmd.Context(), func(ctx context.Context, meshStack client.Client) error {
-		limit := int(f.limit)
-		var total *int
-		listOptions := client.ListOptionsFrom(ctx)
-		listOptions.PageSize = limit
-		listOptions.OnPage = func(page client.Page) {
+	ctx := cmd.Context()
+	meshStack, err := ResolveClient(ctx)
+	if err != nil {
+		return err
+	}
+	limit := int(f.limit)
+	var total *int
+	listOptions := client.ListOptions{
+		PageSize: limit,
+		OnPage: func(page client.Page) {
 			if total == nil {
 				total = &page.TotalElements
 			}
-		}
-		listed := 0
-		items := counted(First(list(client.WithListOptions(ctx, listOptions), meshStack), limit), &listed)
-		if err := WriteList(cmd.OutOrStdout(), f.output.Format, items); err != nil {
-			return err
-		}
-		if note := CutShortNote(limit, listed, total); note != "" {
-			slog.InfoContext(ctx, note)
-		}
-		return nil
-	})
+		},
+	}
+	listed := 0
+	items := counted(First(list(client.WithListOptions(ctx, listOptions), meshStack), limit), &listed)
+	if err := WriteList(cmd.OutOrStdout(), f.output.Format, items); err != nil {
+		return err
+	}
+	if note := CutShortNote(limit, listed, total); note != "" {
+		slog.InfoContext(ctx, note)
+	}
+	return nil
 }
 
 // CutShortNote says that a listing stopped at its limit before the end, and is empty for a listing

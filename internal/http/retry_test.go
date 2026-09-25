@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	gohttp "net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -93,4 +95,20 @@ func TestRetryStopsOnceTheContextIsDone(t *testing.T) {
 	_, err = retrying.RoundTrip(req) //nolint:bodyclose // no response comes back
 	require.ErrorIs(t, err, interrupted)
 	assert.Equal(t, 1, calls)
+}
+
+func TestRetryGivesUpOnAServerThatDoesNotAnswer(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(gohttp.HandlerFunc(func(_ gohttp.ResponseWriter, r *gohttp.Request) {
+		calls.Add(1)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	client := &gohttp.Client{Transport: newTransport(10 * time.Millisecond)}
+	RetryOptions{MaxRetries: 3, Backoff: ExponentialBackoff{}}.ApplyTo(client)
+
+	_, err := client.Get(server.URL) //nolint:bodyclose,noctx // no response comes back
+
+	require.ErrorContains(t, err, "timeout awaiting response headers")
+	assert.Equal(t, int32(1), calls.Load())
 }
