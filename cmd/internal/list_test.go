@@ -36,21 +36,23 @@ func collectValues(t *testing.T, items iter.Seq2[jsontext.Value, error]) []strin
 
 // A listing fetches its next page only when an item of it is asked for, so asking for no item past
 // the limit is what keeps a small limit to a single request.
-func TestFirstStopsAskingOnceItHasTheLimit(t *testing.T) {
-	pulled := 0
+func TestFirstYieldsTheFirstNAndStopsAsking(t *testing.T) {
+	for name, tt := range map[string]struct {
+		limit, wantPulled int
+		want              []string
+	}{
+		"limit":    {limit: 2, wantPulled: 2, want: []string{`"a"`, `"b"`}},
+		"no limit": {limit: 0, wantPulled: 4, want: []string{`"a"`, `"b"`, `"c"`, `"d"`}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pulled := 0
 
-	got := collectValues(t, internal.First(countingItems(&pulled), 2))
+			got := collectValues(t, internal.First(countingItems(&pulled), tt.limit))
 
-	assert.Equal(t, []string{`"a"`, `"b"`}, got)
-	assert.Equal(t, 2, pulled)
-}
-
-func TestFirstWithoutALimitYieldsEveryItem(t *testing.T) {
-	pulled := 0
-
-	got := collectValues(t, internal.First(countingItems(&pulled), 0))
-
-	assert.Equal(t, []string{`"a"`, `"b"`, `"c"`, `"d"`}, got)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantPulled, pulled)
+		})
+	}
 }
 
 func TestFirstPassesAnErrorOnAndStops(t *testing.T) {

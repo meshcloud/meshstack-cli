@@ -99,13 +99,18 @@ func TestPageTimeoutGivesUpOnAPageThatDoesNotArrive(t *testing.T) {
 	assert.ErrorContains(t, err, "page 1 did not arrive within 100ms")
 }
 
-// The Terraform provider never sets a page timeout, and must not get one it did not ask for.
-func TestWithoutPageTimeoutAPageIsBoundOnlyByItsContext(t *testing.T) {
-	workspaceClient, sentWithDeadline := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {})
+// The Terraform provider sets no list options, and must get no page size or timeout it did not ask
+// for.
+func TestWithoutListOptionsAPageCarriesNoSizeAndNoDeadline(t *testing.T) {
+	var sizesAskedFor []string
+	workspaceClient, sentWithDeadline := newPagedWorkspaceClient(t, func(r *gohttp.Request, _ int) {
+		sizesAskedFor = append(sizesAskedFor, r.URL.Query().Get("size"))
+	})
 
 	_, err := collect(t, workspaceClient.ListRawSeq(t.Context()))
 
 	require.NoError(t, err)
+	assert.Equal(t, []string{"", "", ""}, sizesAskedFor)
 	assert.Equal(t, []bool{false, false, false}, *sentWithDeadline)
 }
 
@@ -140,18 +145,6 @@ func TestPageSizeAsksForPagesOfThatSizeAndTakesSmallerOnes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, names, got)
 	assert.Equal(t, []string{"3", "3", "3"}, sizesAskedFor)
-}
-
-func TestWithoutPageSizeTheServerPicksIt(t *testing.T) {
-	var sizesAskedFor []string
-	workspaceClient, _ := newPagedWorkspaceClient(t, func(r *gohttp.Request, _ int) {
-		sizesAskedFor = append(sizesAskedFor, r.URL.Query().Get("size"))
-	})
-
-	_, err := collect(t, workspaceClient.ListRawSeq(t.Context()))
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{"", "", ""}, sizesAskedFor)
 }
 
 func TestOnPageSeesEachPageBeforeItsItems(t *testing.T) {
