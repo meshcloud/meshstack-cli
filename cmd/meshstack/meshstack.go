@@ -12,6 +12,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
@@ -61,6 +62,7 @@ func newRootCommand() *cobra.Command {
 	// time is the only way to get one: cobra's Aliases rename a command inside its own parent.
 	cmd.AddCommand(auth.NewLogin())
 	cmd.AddCommand(buildingblock.New())
+	cmd.AddCommand(buildingblockrun.New())
 	cmd.AddCommand(workspace.New())
 
 	return cmd

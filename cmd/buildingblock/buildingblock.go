@@ -2,8 +2,6 @@ package buildingblock
 
 import (
 	"github.com/spf13/cobra"
-
-	"github.com/meshcloud/meshstack-cli/cmd/buildingblock/run"
 )
 
 func New() *cobra.Command {
@@ -17,7 +15,6 @@ func New() *cobra.Command {
 	}
 
 	cmd.AddCommand(newList())
-	cmd.AddCommand(run.New())
 
 	return cmd
 }
