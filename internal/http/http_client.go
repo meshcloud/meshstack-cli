@@ -27,10 +27,10 @@ var sharedClient = func() (client *gohttp.Client) {
 	return
 }()
 
-func newTransport(responseHeaderTimeout time.Duration) *gohttp.Transport {
+func newTransport(silenceTimeout time.Duration) gohttp.RoundTripper {
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone() //nolint:forcetypeassert // net/http declares it a *Transport
-	transport.ResponseHeaderTimeout = responseHeaderTimeout
-	return transport
+	transport.ResponseHeaderTimeout = silenceTimeout
+	return stallGuard{Next: transport, Timeout: silenceTimeout}
 }
 
 type Client struct {

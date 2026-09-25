@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	gohttp "net/http"
 	"net/http/httptest"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -111,4 +113,52 @@ func TestRetryGivesUpOnAServerThatDoesNotAnswer(t *testing.T) {
 
 	require.ErrorContains(t, err, "timeout awaiting response headers")
 	assert.Equal(t, int32(1), calls.Load())
+}
+
+func TestRetryGivesUpOnARefusedConnection(t *testing.T) {
+	server := httptest.NewServer(gohttp.NotFoundHandler())
+	server.Close()
+	var calls atomic.Int32
+	client := &gohttp.Client{Transport: roundTripperFunc(func(req *gohttp.Request) (*gohttp.Response, error) {
+		calls.Add(1)
+		return gohttp.DefaultTransport.RoundTrip(req)
+	})}
+	RetryOptions{MaxRetries: 3, Backoff: ExponentialBackoff{}}.ApplyTo(client)
+
+	_, err := client.Get(server.URL) //nolint:bodyclose,noctx // no response comes back
+
+	require.ErrorIs(t, err, syscall.ECONNREFUSED)
+	assert.Equal(t, int32(1), calls.Load())
+}
+
+func TestRetryRecoversFromABrokenConnection(t *testing.T) {
+	for name, breakConnection := range map[string]func(*net.TCPConn){
+		"closed": func(*net.TCPConn) {},
+		"reset":  func(conn *net.TCPConn) { _ = conn.SetLinger(0) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls atomic.Int32
+			server := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+				if calls.Add(1) > 1 {
+					return
+				}
+				conn, _, err := gohttp.NewResponseController(w).Hijack()
+				if !assert.NoError(t, err) {
+					return
+				}
+				breakConnection(conn.(*net.TCPConn)) //nolint:forcetypeassert // httptest serves plain TCP
+				_ = conn.Close()
+			}))
+			defer server.Close()
+			client := &gohttp.Client{Transport: newTransport(time.Minute)}
+			RetryOptions{MaxRetries: 3, Backoff: ExponentialBackoff{}}.ApplyTo(client)
+
+			resp, err := client.Get(server.URL) //nolint:noctx // the test server answers at once
+
+			require.NoError(t, err)
+			_ = resp.Body.Close()
+			assert.Equal(t, gohttp.StatusOK, resp.StatusCode)
+			assert.Equal(t, int32(2), calls.Load())
+		})
+	}
 }
