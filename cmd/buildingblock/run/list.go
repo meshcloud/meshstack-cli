@@ -91,7 +91,8 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 				return
 			}
 			if buildingBlock.Metadata.Uuid == "" {
-				continue
+				yield(nil, errors.New("building block has no metadata.uuid: this must be a bug in the meshStack CLI or meshStack"))
+				return
 			}
 			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlock.Metadata.Uuid}
 			for blockRun, runErr := range meshStack.Listing.BuildingBlockRuns(runsCtx, filter) {
