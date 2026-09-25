@@ -21,35 +21,27 @@ type MeshBuildingBlockRunMetadata struct {
 }
 
 type MeshBuildingBlockRunSpec struct {
-	RunNumber int64  `json:"runNumber"`
-	Behavior  string `json:"behavior"`
-	// BuildingBlock is the block this run belongs to. A listing that spans several blocks says
-	// which one a run came from through this field alone.
+	RunNumber     int64                             `json:"runNumber"`
+	Behavior      string                            `json:"behavior"`
 	BuildingBlock MeshBuildingBlockRunBuildingBlock `json:"buildingBlock"`
 }
 
 // MeshBuildingBlockRunBuildingBlock is spec.buildingBlock of a meshBuildingBlockRun. The wire also
 // carries spec.buildingBlock.spec.inputs, which holds the run's input values and is left out here
-// because a sensitive one goes out encrypted for the runner alone
-// (MeshBuildingBlockRunRepresentationModelAssembler.getSpecEnrichedWithInputsFromRun).
+// because a sensitive one goes out encrypted for the runner alone.
 type MeshBuildingBlockRunBuildingBlock struct {
 	Uuid string                                `json:"uuid"`
 	Spec MeshBuildingBlockRunBuildingBlockSpec `json:"spec"`
 }
 
 type MeshBuildingBlockRunBuildingBlockSpec struct {
-	DisplayName string `json:"displayName"`
-	// TargetRef names a meshTenant by uuid or a meshWorkspace by name, the same shape the
-	// building block itself carries.
+	DisplayName            string                       `json:"displayName"`
 	TargetRef              MeshBuildingBlockV2TargetRef `json:"targetRef"`
 	WorkspaceIdentifier    string                       `json:"workspaceIdentifier"`
 	ProjectIdentifier      *string                      `json:"projectIdentifier"`
 	FullPlatformIdentifier *string                      `json:"fullPlatformIdentifier"`
 }
 
-// MeshBuildingBlockRunListFilter holds the filters for the building block run list endpoint. The
-// backend requires buildingBlockUuid, because MeshBuildingBlockRunReadController implements no
-// plain list of every run.
 type MeshBuildingBlockRunListFilter struct {
 	BuildingBlockUuid string `json:"buildingBlockUuid"`
 }

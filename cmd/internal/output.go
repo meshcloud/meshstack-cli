@@ -45,8 +45,7 @@ func (f *OutputFlag) Type() string {
 	return "format"
 }
 
-// WriteList writes every item the sequence yields, each one as it arrives, and stops at the first
-// error. A listing that fails part way through is left unterminated, so that json output which
+// WriteList leaves a listing that fails part way through unterminated, so that json output which
 // stopped early does not parse as a complete array.
 func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value, error]) error {
 	list, err := listFormatOf(format)
@@ -78,24 +77,11 @@ func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value,
 	return err
 }
 
-// listFormat is what a format writes around and between the items of a listing. What follows an
-// item is written with it, so that an ndjson line is complete as soon as its item arrived.
 type listFormat struct {
 	begin, between, after, end, empty string
 	format                            func(item *jsontext.Value) error
 }
 
-// listFormatOf writes each item as the server sent it rather than as the client's types decode it.
-// A round trip through those types drops every member they do not model, apiVersion and kind
-// included, writes a nil pointer as a null the server never sent, and loses a variant of a union
-// the client does not know yet.
-//
-// _links stays in as well: it names relations the object's own members do not carry, such as the
-// building blocks of a definition, which is how an agent reading a listing finds what to look at
-// next.
-//
-// Neither format changes an item beyond its whitespace. There is no yaml: a conversion to it re-types the scalars,
-// quoting an integer beyond uint64 and leaving the string ".inf" to be read back as a float.
 func listFormatOf(format OutputFormat) (listFormat, error) {
 	switch format {
 	case OutputNdjson:
