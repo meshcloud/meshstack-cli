@@ -6,6 +6,7 @@ import (
 	"iter"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -69,8 +70,8 @@ func TestFirstPassesAnErrorOnAndStops(t *testing.T) {
 	assert.Equal(t, []error{nil, pageErr}, got)
 }
 
-func TestTheLimitFlagTakesACountOfItems(t *testing.T) {
-	for value, wantErr := range map[string]bool{"0": false, "50": false, "-1": true, "fifty": true} {
+func TestTheLimitFlagTakesACountOfItemsOrAll(t *testing.T) {
+	for value, wantErr := range map[string]bool{"50": false, "unlimited": false, "0": true, "-1": true, "fifty": true, "all": true} {
 		t.Run(value, func(t *testing.T) {
 			var limit internal.LimitFlag
 
@@ -79,26 +80,39 @@ func TestTheLimitFlagTakesACountOfItems(t *testing.T) {
 			if wantErr {
 				assert.ErrorContains(t, err, "is no limit")
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
+				assert.Equal(t, value, limit.String())
 			}
 		})
 	}
+}
+
+func TestAListingIsLimitedByDefault(t *testing.T) {
+	cmd := &cobra.Command{}
+	var listFlags internal.ListFlags
+
+	listFlags.Register(cmd.Flags())
+
+	assert.Equal(t, "100", cmd.Flags().Lookup("limit").DefValue)
 }
 
 func TestCutShortNote(t *testing.T) {
 	for name, tt := range map[string]struct {
 		limit, listed int
 		total         *int
+		defaulted     bool
 		want          string
 	}{
-		"no limit":                        {limit: 0, listed: 1011, total: new(1011)},
-		"fewer items than the limit":      {limit: 5000, listed: 1011, total: new(1011)},
-		"as many items as the limit":      {limit: 50, listed: 50, total: new(50)},
-		"more items than the limit":       {limit: 50, listed: 50, total: new(1011), want: "listed the first 50 of 1011; raise --limit, or set it to 0 to list all of them"},
-		"no total to tell there are more": {limit: 50, listed: 50, want: "stopped at the limit of 50, there may be more; raise --limit, or set it to 0 to list all of them"},
+		"no limit":                                   {limit: 0, listed: 1011, total: new(1011)},
+		"fewer items than the limit":                 {limit: 5000, listed: 1011, total: new(1011)},
+		"as many items as the limit":                 {limit: 50, listed: 50, total: new(50)},
+		"more items than the limit":                  {limit: 50, listed: 50, total: new(1011), want: "listed the first 50 of 1011; raise --limit, or pass --limit unlimited to list all of them"},
+		"no total to tell there are more":            {limit: 50, listed: 50, want: "stopped at the limit of 50, there may be more; raise --limit, or pass --limit unlimited to list all of them"},
+		"more items than the default limit":          {limit: 100, listed: 100, total: new(1011), defaulted: true, want: "listed the first 100 of 1011, the default limit; raise --limit, or pass --limit unlimited to list all of them"},
+		"no total to tell there are more by default": {limit: 100, listed: 100, defaulted: true, want: "stopped at the default limit of 100, there may be more; raise --limit, or pass --limit unlimited to list all of them"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tt.want, internal.CutShortNote(tt.limit, tt.listed, tt.total))
+			assert.Equal(t, tt.want, internal.CutShortNote(tt.limit, tt.listed, tt.total, tt.defaulted))
 		})
 	}
 }

@@ -21,9 +21,13 @@ type ListFlags struct {
 	limit  LimitFlag
 }
 
+// defaultLimit keeps a listing nobody limited from flooding a terminal.
+const defaultLimit = 100
+
 func (f *ListFlags) Register(flags *pflag.FlagSet) {
 	f.output.Register(flags)
-	flags.Var(&f.limit, "limit", "list at most this many items, 0 lists all of them")
+	f.limit = defaultLimit
+	flags.Var(&f.limit, limitFlagName, "list at most this many items, or unlimited for all of them")
 }
 
 // ListWorkspace is the workspace a listing is narrowed to, or nil for none. It leaves out the
@@ -58,7 +62,7 @@ func (f *ListFlags) Run(cmd *cobra.Command, list func(ctx context.Context, meshS
 	if err := WriteList(cmd.OutOrStdout(), f.output.Format, items); err != nil {
 		return err
 	}
-	if note := CutShortNote(limit, listed, total); note != "" {
+	if note := CutShortNote(limit, listed, total, !cmd.Flags().Changed(limitFlagName)); note != "" {
 		slog.InfoContext(ctx, note)
 	}
 	return nil
@@ -66,13 +70,17 @@ func (f *ListFlags) Run(cmd *cobra.Command, list func(ctx context.Context, meshS
 
 // CutShortNote says that a listing stopped at its limit before the end, and is empty for a listing
 // that is complete.
-func CutShortNote(limit, listed int, total *int) string {
-	const howToListMore = "raise --limit, or set it to 0 to list all of them"
+func CutShortNote(limit, listed int, total *int, defaulted bool) string {
+	const howToListMore = "raise --limit, or pass --limit unlimited to list all of them"
 	switch {
 	case limit == 0 || listed < limit:
 		return ""
+	case total == nil && defaulted:
+		return fmt.Sprintf("stopped at the default limit of %d, there may be more; %s", limit, howToListMore)
 	case total == nil:
 		return fmt.Sprintf("stopped at the limit of %d, there may be more; %s", limit, howToListMore)
+	case *total > limit && defaulted:
+		return fmt.Sprintf("listed the first %d of %d, the default limit; %s", limit, *total, howToListMore)
 	case *total > limit:
 		return fmt.Sprintf("listed the first %d of %d; %s", limit, *total, howToListMore)
 	default:
@@ -93,16 +101,27 @@ func counted[T any](items iter.Seq2[T, error], count *int) iter.Seq2[T, error] {
 	}
 }
 
+const limitFlagName = "limit"
+
 type LimitFlag int
 
+const unlimited = "unlimited"
+
 func (f *LimitFlag) String() string {
+	if *f == 0 {
+		return unlimited
+	}
 	return strconv.Itoa(int(*f))
 }
 
 func (f *LimitFlag) Set(value string) error {
+	if value == unlimited {
+		*f = 0
+		return nil
+	}
 	limit, err := strconv.Atoi(value)
-	if err != nil || limit < 0 {
-		return fmt.Errorf("%q is no limit, write a number of items, or 0 for all of them", value)
+	if err != nil || limit <= 0 {
+		return fmt.Errorf("%q is no limit, write a number of items, or unlimited for all of them", value)
 	}
 	*f = LimitFlag(limit)
 	return nil
