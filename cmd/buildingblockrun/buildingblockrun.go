@@ -1,4 +1,4 @@
-package run
+package buildingblockrun
 
 import (
 	"github.com/spf13/cobra"
@@ -6,7 +6,7 @@ import (
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run",
+		Use:   "buildingblockrun",
 		Short: "Work with building block runs",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
