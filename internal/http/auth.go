@@ -29,17 +29,29 @@ type AuthorizedClient struct {
 	Authorization Authorization
 }
 
-func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (result R, err error) {
-	token, tokenErr := c.Authorization.GetBearerToken(ctx)
+func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (R, error) {
+	return withBearerToken(ctx, c.Authorization, method, url, func(token RequestOption) (R, error) {
+		return c.Client.DoRequest[R](ctx, method, url, append(options, token)...)
+	})
+}
+
+func (c AuthorizedClient) DoRawRequest(ctx context.Context, method string, url *url.URL, options ...RequestOption) ([]byte, error) {
+	return withBearerToken(ctx, c.Authorization, method, url, func(token RequestOption) ([]byte, error) {
+		return c.Client.DoRawRequest(ctx, method, url, append(options, token)...)
+	})
+}
+
+func withBearerToken[R any](ctx context.Context, auth Authorization, method string, url *url.URL, send func(token RequestOption) (R, error)) (result R, err error) {
+	token, tokenErr := auth.GetBearerToken(ctx)
 	if tokenErr != nil {
 		return result, tokenErr
 	}
-	result, err = c.Client.DoRequest[R](ctx, method, url, append(options, token.asRequestOption())...)
+	result, err = send(token.asRequestOption())
 
 	if httpErr, ok := errors.AsType[Error](err); ok && httpErr.IsUnauthorized() {
 		// Clock skew between this machine and the server can make a token look valid here and
 		// expired there, so one 401 earns one retry with a freshly minted token.
-		refreshedToken, refreshErr := c.Authorization.RefreshBearerToken(ctx, token)
+		refreshedToken, refreshErr := auth.RefreshBearerToken(ctx, token)
 		switch {
 		case refreshErr != nil:
 			return result, errors.Join(err, fmt.Errorf("cannot renew the rejected token: %w", refreshErr))
@@ -47,7 +59,7 @@ func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, u
 			return result, err
 		}
 		slog.DebugContext(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
-		return c.Client.DoRequest[R](ctx, method, url, append(options, refreshedToken.asRequestOption())...)
+		return send(refreshedToken.asRequestOption())
 	}
 	return result, err
 }

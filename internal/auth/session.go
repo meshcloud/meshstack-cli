@@ -120,6 +120,15 @@ func (o ResolveSessionOptions) userAgent() (string, error) {
 	return repo + "/" + o.Version, nil
 }
 
+// ApiClient is the authorized HTTP client under Client, for a caller that speaks the API itself.
+// It builds Client first, so it passes the same version check.
+func (s Session) ApiClient() (http.AuthorizedClient, error) {
+	if _, err := s.Client(); err != nil {
+		return http.AuthorizedClient{}, err
+	}
+	return s.httpClient.WithAuthorization(s), nil
+}
+
 func (s Session) MeshInfo() (client.MeshInfo, error) {
 	return s.checkedMeshInfo()
 }

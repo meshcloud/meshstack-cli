@@ -65,6 +65,12 @@ func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.UR
 	return
 }
 
+// DoRawRequest is DoRequest without parsing the answer, for a caller that passes the API through.
+// A non-2xx status returns the body together with the Error.
+func (c Client) DoRawRequest(ctx context.Context, method string, url *url.URL, options ...RequestOption) ([]byte, error) {
+	return c.doRequest(ctx, method, url, options)
+}
+
 func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {
 	if c.UserAgent != "" {
 		options = slices.Insert(options, 0,

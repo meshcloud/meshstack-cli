@@ -9,6 +9,7 @@ import (
 	clog "github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
+	"github.com/meshcloud/meshstack-cli/cmd/api"
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
@@ -51,6 +52,7 @@ func newRootCommand() *cobra.Command {
 	internal.SkipVersionCheckFlag.Register(persistentFlags)
 	internal.ProfileFlag.Register(persistentFlags)
 
+	cmd.AddCommand(api.New())
 	cmd.AddCommand(auth.New())
 	// `meshstack login` is a shortcut for `meshstack auth login`. Calling the constructor a second
 	// time is the only way to get one: cobra's Aliases rename a command inside its own parent.
