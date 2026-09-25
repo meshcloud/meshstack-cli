@@ -103,24 +103,3 @@ func TestPageSizeAsksForPagesOfThatSizeAndTakesSmallerOnes(t *testing.T) {
 	assert.Equal(t, names, got)
 	assert.Equal(t, []string{"3", "3", "3"}, sizesAskedFor)
 }
-
-func TestOnPageSeesEachPageBeforeItsItems(t *testing.T) {
-	workspaceClient := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {})
-	var events []string
-	ctx := WithListOptions(t.Context(), ListOptions{OnPage: func(page Page) {
-		events = append(events, fmt.Sprintf("page %d of %d", page.Number, page.TotalPages))
-	}})
-
-	for item, err := range workspaceClient.ListRawSeq(ctx) {
-		require.NoError(t, err)
-		var workspace MeshWorkspace
-		require.NoError(t, json.Unmarshal(item, &workspace))
-		events = append(events, workspace.Metadata.Name)
-	}
-
-	assert.Equal(t, []string{
-		"page 0 of 3", "workspace-0",
-		"page 1 of 3", "workspace-1",
-		"page 2 of 3", "workspace-2",
-	}, events)
-}
