@@ -46,7 +46,7 @@ MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --ap
 			return fmt.Errorf("the meshstack auth login does not take any arguments such as '%q'; everything comes from flags and the environment", args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			timeout := internal.DefaultTimeout
+			ctx := cmd.Context()
 			var forceAuthWith auth.Method
 			var sources setting.Sources
 			promptedFrom := newPrompt(cmd)
@@ -67,7 +67,10 @@ MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --ap
 				forceAuthWith = auth.ManualMethod
 				sources = append(sources, apiTokenFlag.AsSource(&openStdinFlag, promptedFrom, "API Token"))
 			default:
-				timeout = 5 * time.Minute // a browser login waits for the person to finish it
+				// A browser login waits for the person to finish it, and gives up on one who never does.
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
+				defer cancel()
 				forceAuthWith = auth.OidcLoginMethod
 			}
 
@@ -77,27 +80,25 @@ MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --ap
 				sources = append(sources, newWorkspaceSelectionSource(promptedFrom))
 			}
 
-			return internal.RunWith(cmd.Context(), timeout, func(ctx context.Context) error {
-				session, err := internal.ResolveSession(ctx, func(opts *auth.ResolveSessionOptions) {
-					opts.SettingSources = append(opts.SettingSources, sources...)
-					opts.ForceAuthWith = forceAuthWith
-					opts.CreateProfileIfMissing = true
-				})
-				if err != nil {
-					return err
-				}
-				sessionStatus, err := session.Status(ctx)
-				if err != nil {
-					return err
-				}
-				if err := session.Store(ctx); err != nil {
-					return err
-				}
-				// TODO render Markdown output from model instead of logging?!
-				slog.InfoContext(ctx, fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s",
-					sessionStatus.CliClientId, internal.Version, sessionStatus.Version, sessionStatus.Endpoint))
-				return nil
+			session, err := internal.ResolveSession(ctx, func(opts *auth.ResolveSessionOptions) {
+				opts.SettingSources = append(opts.SettingSources, sources...)
+				opts.ForceAuthWith = forceAuthWith
+				opts.CreateProfileIfMissing = true
 			})
+			if err != nil {
+				return err
+			}
+			sessionStatus, err := session.Status(ctx)
+			if err != nil {
+				return err
+			}
+			if err := session.Store(ctx); err != nil {
+				return err
+			}
+			// TODO render Markdown output from model instead of logging?!
+			slog.InfoContext(ctx, fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s",
+				sessionStatus.CliClientId, internal.Version, sessionStatus.Version, sessionStatus.Endpoint))
+			return nil
 		},
 	}
 

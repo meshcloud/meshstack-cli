@@ -1,7 +1,6 @@
 package client
 
 import (
-	"context"
 	"encoding/json/jsontext"
 	"fmt"
 	"iter"
@@ -10,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,9 +27,8 @@ const pageCount = 3
 var inMemoryServerUrl = xurl.MustParsef("http://localhost")
 
 // newPagedWorkspaceClient serves pageCount pages of one workspace each, answering each page after
-// servePage returns, and records for each page request whether the client sent it with a deadline.
-// The server is in memory, so a test can run it inside a [synctest.Test] bubble.
-func newPagedWorkspaceClient(t *testing.T, servePage func(r *gohttp.Request, page int)) (_ meshWorkspaceClient, sentWithDeadline *[]bool) {
+// servePage returns.
+func newPagedWorkspaceClient(t *testing.T, servePage func(r *gohttp.Request, page int)) meshWorkspaceClient {
 	t.Helper()
 	server := httptest.NewTestServer(t, gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		page, err := strconv.Atoi(r.URL.Query().Get("page"))
@@ -44,24 +40,10 @@ func newPagedWorkspaceClient(t *testing.T, servePage func(r *gohttp.Request, pag
 		_, _ = fmt.Fprintf(w, `{"_embedded":{"meshWorkspaces":[{"metadata":{"name":"workspace-%d"}}]},"page":{"totalPages":%d,"number":%d}}`,
 			page, pageCount, page)
 	}))
-	authorization := &deadlineRecordingToken{BearerToken: "token"}
 	return newWorkspaceClient(t.Context(), internal.HttpClient{
-		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(authorization),
+		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(http.BearerToken("token")),
 		EndpointUrl:      inMemoryServerUrl,
-	}), &authorization.sentWithDeadline
-}
-
-// deadlineRecordingToken sees the context of every request, because the token is fetched with it.
-type deadlineRecordingToken struct {
-	http.BearerToken
-
-	sentWithDeadline []bool
-}
-
-func (a *deadlineRecordingToken) GetBearerToken(ctx context.Context) (http.BearerToken, error) {
-	_, hasDeadline := ctx.Deadline()
-	a.sentWithDeadline = append(a.sentWithDeadline, hasDeadline)
-	return a.BearerToken, nil
+	})
 }
 
 func collect(t *testing.T, items iter.Seq2[jsontext.Value, error]) (names []string, err error) {
@@ -77,47 +59,10 @@ func collect(t *testing.T, items iter.Seq2[jsontext.Value, error]) (names []stri
 	return names, nil
 }
 
-func TestPageTimeoutBoundsEachPageRatherThanTheListing(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		const pageTimeout = 45 * time.Second
-		workspaceClient, sentWithDeadline := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {
-			synctest.Sleep(pageTimeout / 2)
-		})
-		start := time.Now()
-
-		names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
-
-		require.NoError(t, err, "every page arrives within the timeout, though all of them together take longer")
-		assert.Equal(t, pageCount*pageTimeout/2, time.Since(start))
-		assert.Equal(t, []string{"workspace-0", "workspace-1", "workspace-2"}, names)
-		assert.Equal(t, []bool{true, true, true}, *sentWithDeadline)
-	})
-}
-
-func TestPageTimeoutGivesUpOnAPageThatDoesNotArrive(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		const pageTimeout = 45 * time.Second
-		workspaceClient, _ := newPagedWorkspaceClient(t, func(r *gohttp.Request, page int) {
-			if page == 1 {
-				<-r.Context().Done()
-			}
-		})
-		start := time.Now()
-
-		names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
-
-		assert.Equal(t, pageTimeout, time.Since(start))
-		assert.Equal(t, []string{"workspace-0"}, names)
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-		assert.ErrorContains(t, err, "page 1 did not arrive within 45s")
-	})
-}
-
-// The Terraform provider sets no list options, and must get no page size or timeout it did not ask
-// for.
-func TestWithoutListOptionsAPageCarriesNoSizeAndNoDeadline(t *testing.T) {
+// The Terraform provider sets no list options, and must get no page size it did not ask for.
+func TestWithoutListOptionsAPageCarriesNoSize(t *testing.T) {
 	var sizesAskedFor []string
-	workspaceClient, sentWithDeadline := newPagedWorkspaceClient(t, func(r *gohttp.Request, _ int) {
+	workspaceClient := newPagedWorkspaceClient(t, func(r *gohttp.Request, _ int) {
 		sizesAskedFor = append(sizesAskedFor, r.URL.Query().Get("size"))
 	})
 
@@ -125,7 +70,6 @@ func TestWithoutListOptionsAPageCarriesNoSizeAndNoDeadline(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"", "", ""}, sizesAskedFor)
-	assert.Equal(t, []bool{false, false, false}, *sentWithDeadline)
 }
 
 // meshStack caps the page size it is asked for, so pages smaller than asked must lose no items.
@@ -161,7 +105,7 @@ func TestPageSizeAsksForPagesOfThatSizeAndTakesSmallerOnes(t *testing.T) {
 }
 
 func TestOnPageSeesEachPageBeforeItsItems(t *testing.T) {
-	workspaceClient, _ := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {})
+	workspaceClient := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {})
 	var events []string
 	ctx := WithListOptions(t.Context(), ListOptions{OnPage: func(page Page) {
 		events = append(events, fmt.Sprintf("page %d of %d", page.Number, page.TotalPages))

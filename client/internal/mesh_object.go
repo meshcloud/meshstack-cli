@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
@@ -185,38 +184,24 @@ type paginatedResponse[T any] struct {
 	Page     Page           `json:"page"`
 }
 
-// getPage is a method of its own so that the deadline of [ListOptions.PageTimeout] ends with the
-// page, before its items are yielded.
 func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, listOptions ListOptions, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
-	bounded := listOptions.PageTimeout > 0
-	pageCtx := ctx
-	if bounded {
-		var cancel context.CancelFunc
-		pageCtx, cancel = context.WithTimeout(ctx, listOptions.PageTimeout)
-		defer cancel()
-	}
 	query := map[string]any{"page": pageNumber}
 	if listOptions.PageSize > 0 {
 		query["size"] = listOptions.PageSize
 	}
-	response, err := c.DoRequest[paginatedResponse[T]](pageCtx, http.MethodGet, c.ApiUrl, append(options,
+	response, err := c.DoRequest[paginatedResponse[T]](ctx, http.MethodGet, c.ApiUrl, append(options,
 		http.WithAccept(c.MeshObjectMimeType()),
 		http.WithUrlQuery(query),
 	)...)
-	switch {
-	case err == nil:
-		return response, nil
-	case bounded && ctx.Err() == nil && errors.Is(pageCtx.Err(), context.DeadlineExceeded):
-		return response, fmt.Errorf("page %d did not arrive within %s: %w", pageNumber, listOptions.PageTimeout, err)
-	default:
+	if err != nil {
 		return response, fmt.Errorf("error getting page %d: %w", pageNumber, err)
 	}
+	return response, nil
 }
 
 type ListOptions struct {
-	PageSize    int
-	PageTimeout time.Duration
-	OnPage      func(Page)
+	PageSize int
+	OnPage   func(Page)
 }
 
 type listOptionsKey struct{}

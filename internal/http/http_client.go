@@ -16,9 +16,7 @@ import (
 )
 
 var sharedClient = func() (client *gohttp.Client) {
-	client = &gohttp.Client{
-		Timeout: 1 * time.Minute,
-	}
+	client = &gohttp.Client{Transport: newTransport(1 * time.Minute)}
 	RetryOptions{
 		// Sized to ride out a full meshStack backend restart, which can leave the gateway
 		// returning 503 for two to three minutes. This backoff sequence sums to about four
@@ -28,6 +26,12 @@ var sharedClient = func() (client *gohttp.Client) {
 	}.ApplyTo(client)
 	return
 }()
+
+func newTransport(responseHeaderTimeout time.Duration) *gohttp.Transport {
+	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone() //nolint:forcetypeassert // net/http declares it a *Transport
+	transport.ResponseHeaderTimeout = responseHeaderTimeout
+	return transport
+}
 
 type Client struct {
 	*gohttp.Client

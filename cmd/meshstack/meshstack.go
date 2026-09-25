@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
 
 	clog "github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
@@ -17,10 +18,12 @@ import (
 )
 
 func main() {
-	if err := internal.RunWith(context.Background(), internal.DefaultTimeout, func(ctx context.Context) error {
-		//nolint:contextcheck // the root's PersistentPreRun derives from cmd.Context(), which cobra sets from this ctx
-		return newRootCommand().ExecuteContext(ctx)
-	}); err != nil {
+	// No deadline bounds a command as a whole, since a listing takes as long as it is long. The
+	// HTTP client gives up on a server that stopped answering, see internal/http.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	err := newRootCommand().ExecuteContext(ctx)
+	stop()
+	if err != nil {
 		// cobra has already written the error to stderr.
 		os.Exit(1)
 	}
