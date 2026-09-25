@@ -8,9 +8,9 @@ import (
 	"io"
 	"log/slog"
 	"math"
-	"net"
 	gohttp "net/http"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -41,12 +41,13 @@ func (options RetryOptions) ApplyTo(c *gohttp.Client) {
 		// otherwise nil is returned to indicate no retry.
 		ShouldRetryResponse: func(resp *gohttp.Response, err error) RetryBackoff {
 			if err != nil {
-				// A server that timed out once is likely to time out again, and retrying it would
-				// multiply the timeout by the retries.
-				if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
-					return nil
+				// Only a connection that broke once it was up clears on a retry, as one an ingress drops
+				// during a rolling deploy does. An unknown host, a refused connection or a TLS error
+				// repeats on every attempt, and a timeout would multiply by the retries.
+				if isBrokenConnection(err) {
+					return options.Backoff
 				}
-				return options.Backoff
+				return nil
 			}
 			switch resp.StatusCode {
 			case gohttp.StatusTooManyRequests, gohttp.StatusServiceUnavailable:
@@ -58,6 +59,11 @@ func (options RetryOptions) ApplyTo(c *gohttp.Client) {
 			}
 		},
 	}
+}
+
+func isBrokenConnection(err error) bool {
+	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 // RetryBackoff calculates the duration to wait before the next retry attempt.
