@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -37,6 +38,7 @@ func fileLockIsFree(t *testing.T, path string) bool {
 	return taken
 }
 
+// lockBlocked waits settle for l, on the clock of the [synctest.Test] bubble it is called in.
 func lockBlocked(t *testing.T, l lock.Locker) bool {
 	t.Helper()
 
@@ -103,17 +105,19 @@ func TestAPermissionErrorBubblesInsteadOfFallingBack(t *testing.T) {
 }
 
 func TestFallbackLockerOnlyProtectsItsOwnValue(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "absent", "credentials")
+	synctest.Test(t, func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "absent", "credentials")
 
-	a := lock.New(path)
-	b := lock.New(path)
+		a := lock.New(path)
+		b := lock.New(path)
 
-	require.NoError(t, a.WithLock(t.Context(), func() error {
-		require.False(t, lockBlocked(t, b),
-			"with no file to lock the guarantee is process-local, so callers have to share one Locker")
+		require.NoError(t, a.WithLock(t.Context(), func() error {
+			require.False(t, lockBlocked(t, b),
+				"with no file to lock the guarantee is process-local, so callers have to share one Locker")
 
-		return nil
-	}))
+			return nil
+		}))
+	})
 }
 
 func TestTheCallbackErrorReachesTheCaller(t *testing.T) {
@@ -181,105 +185,111 @@ func TestTheLastReaderReleasesTheFileLock(t *testing.T) {
 }
 
 func TestOnlyOneWriterRunsAtATime(t *testing.T) {
-	l := lock.New(filepath.Join(t.TempDir(), "credentials"))
+	synctest.Test(t, func(t *testing.T) {
+		l := lock.New(filepath.Join(t.TempDir(), "credentials"))
 
-	var live, peak atomic.Int64
+		var live, peak atomic.Int64
 
-	var wg sync.WaitGroup
+		var wg sync.WaitGroup
 
-	for range 8 {
-		wg.Go(func() {
-			assert.NoError(t, l.WithLock(t.Context(), func() error {
-				if n := live.Add(1); n > peak.Load() {
-					peak.Store(n)
-				}
+		for range 8 {
+			wg.Go(func() {
+				assert.NoError(t, l.WithLock(t.Context(), func() error {
+					if n := live.Add(1); n > peak.Load() {
+						peak.Store(n)
+					}
 
-				time.Sleep(time.Millisecond)
-				live.Add(-1)
+					// Not synctest.Sleep: with a broken lock several writers sleep at once, and their
+					// concurrent Waits panic before peak can show it.
+					time.Sleep(time.Millisecond) //nolint:forbidigo // advances the bubble's clock only
+					live.Add(-1)
 
-				return nil
-			}))
-		})
-	}
+					return nil
+				}))
+			})
+		}
 
-	wg.Wait()
-	require.Equal(t, int64(1), peak.Load())
+		wg.Wait()
+		require.Equal(t, int64(1), peak.Load())
+	})
 }
 
 func TestSeparateLockersExcludeEachOther(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "credentials")
+	synctest.Test(t, func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "credentials")
 
-	a := lock.New(path)
-	b := lock.New(path)
+		a := lock.New(path)
+		b := lock.New(path)
 
-	require.NoError(t, a.WithLock(t.Context(), func() error {
-		require.True(t, lockBlocked(t, b))
+		require.NoError(t, a.WithLock(t.Context(), func() error {
+			require.True(t, lockBlocked(t, b))
 
-		return nil
-	}))
+			return nil
+		}))
 
-	require.False(t, lockBlocked(t, b))
+		require.False(t, lockBlocked(t, b))
+	})
 }
 
 func TestAFailedFileLockReleasesTheMutex(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "credentials")
+	synctest.Test(t, func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "credentials")
 
-	a := lock.New(path)
-	b := lock.New(path)
+		a := lock.New(path)
+		b := lock.New(path)
 
-	require.NoError(t, a.WithLock(t.Context(), func() error {
-		require.True(t, lockBlocked(t, b))
+		require.NoError(t, a.WithLock(t.Context(), func() error {
+			require.True(t, lockBlocked(t, b))
 
-		return nil
-	}))
+			return nil
+		}))
 
-	require.NoError(t, b.WithLock(t.Context(), noop),
-		"b's own mutex must not still be held by the attempt that timed out")
+		require.NoError(t, b.WithLock(t.Context(), noop),
+			"b's own mutex must not still be held by the attempt that timed out")
+	})
 }
 
 func TestWaitingForTheMutexIsCancellable(t *testing.T) {
-	l := lock.New(filepath.Join(t.TempDir(), "absent", "credentials"))
+	synctest.Test(t, func(t *testing.T) {
+		l := lock.New(filepath.Join(t.TempDir(), "absent", "credentials"))
 
-	require.NoError(t, l.WithLock(t.Context(), func() error {
-		ctx, cancel := context.WithCancel(t.Context())
-		go func() {
-			time.Sleep(settle)
-			cancel()
-		}()
+		require.NoError(t, l.WithLock(t.Context(), func() error {
+			ctx, cancel := context.WithCancel(t.Context())
+			time.AfterFunc(settle, cancel)
 
-		err := l.WithLock(ctx, func() error {
-			require.Fail(t, "the callback must not run")
+			err := l.WithLock(ctx, func() error {
+				require.Fail(t, "the callback must not run")
+
+				return nil
+			})
+			require.ErrorIs(t, err, context.Canceled)
 
 			return nil
-		})
-		require.ErrorIs(t, err, context.Canceled)
-
-		return nil
-	}))
+		}))
+	})
 }
 
 func TestWaitingForTheFileIsCancellable(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "credentials")
+	synctest.Test(t, func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "credentials")
 
-	a := lock.New(path)
-	b := lock.New(path)
+		a := lock.New(path)
+		b := lock.New(path)
 
-	require.NoError(t, a.WithLock(t.Context(), func() error {
-		ctx, cancel := context.WithCancel(t.Context())
-		go func() {
-			time.Sleep(settle)
-			cancel()
-		}()
+		require.NoError(t, a.WithLock(t.Context(), func() error {
+			ctx, cancel := context.WithCancel(t.Context())
+			time.AfterFunc(settle, cancel)
 
-		err := b.WithLock(ctx, func() error {
-			require.Fail(t, "the callback must not run")
+			err := b.WithLock(ctx, func() error {
+				require.Fail(t, "the callback must not run")
+
+				return nil
+			})
+			require.ErrorIs(t, err, context.Canceled)
 
 			return nil
-		})
-		require.ErrorIs(t, err, context.Canceled)
-
-		return nil
-	}))
+		}))
+	})
 }
 
 func TestAnExpiredContextTakesNoLock(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -23,11 +24,17 @@ import (
 
 const pageCount = 3
 
+// inMemoryServerUrl is any URL the client accepts: the client of an [httptest.NewTestServer] sends
+// every request to that server, and its own URL is http://example.com, which the client refuses
+// for not being https.
+var inMemoryServerUrl = xurl.MustParsef("http://localhost")
+
 // newPagedWorkspaceClient serves pageCount pages of one workspace each, answering each page after
 // servePage returns, and records for each page request whether the client sent it with a deadline.
+// The server is in memory, so a test can run it inside a [synctest.Test] bubble.
 func newPagedWorkspaceClient(t *testing.T, servePage func(r *gohttp.Request, page int)) (_ meshWorkspaceClient, sentWithDeadline *[]bool) {
 	t.Helper()
-	server := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+	server := httptest.NewTestServer(t, gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		page, err := strconv.Atoi(r.URL.Query().Get("page"))
 		if !assert.NoError(t, err) {
 			w.WriteHeader(gohttp.StatusBadRequest)
@@ -37,11 +44,10 @@ func newPagedWorkspaceClient(t *testing.T, servePage func(r *gohttp.Request, pag
 		_, _ = fmt.Fprintf(w, `{"_embedded":{"meshWorkspaces":[{"metadata":{"name":"workspace-%d"}}]},"page":{"totalPages":%d,"number":%d}}`,
 			page, pageCount, page)
 	}))
-	t.Cleanup(server.Close)
 	authorization := &deadlineRecordingToken{BearerToken: "token"}
 	return newWorkspaceClient(t.Context(), internal.HttpClient{
 		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(authorization),
-		EndpointUrl:      xurl.MustParsef("%s", server.URL),
+		EndpointUrl:      inMemoryServerUrl,
 	}), &authorization.sentWithDeadline
 }
 
@@ -72,31 +78,39 @@ func collect(t *testing.T, items iter.Seq2[jsontext.Value, error]) (names []stri
 }
 
 func TestPageTimeoutBoundsEachPageRatherThanTheListing(t *testing.T) {
-	const pageTimeout = 200 * time.Millisecond
-	workspaceClient, sentWithDeadline := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {
-		time.Sleep(pageTimeout / 2)
+	synctest.Test(t, func(t *testing.T) {
+		const pageTimeout = 45 * time.Second
+		workspaceClient, sentWithDeadline := newPagedWorkspaceClient(t, func(*gohttp.Request, int) {
+			synctest.Sleep(pageTimeout / 2)
+		})
+		start := time.Now()
+
+		names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
+
+		require.NoError(t, err, "every page arrives within the timeout, though all of them together take longer")
+		assert.Equal(t, pageCount*pageTimeout/2, time.Since(start))
+		assert.Equal(t, []string{"workspace-0", "workspace-1", "workspace-2"}, names)
+		assert.Equal(t, []bool{true, true, true}, *sentWithDeadline)
 	})
-
-	names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
-
-	require.NoError(t, err, "every page arrives within the timeout, though all of them together take longer")
-	assert.Equal(t, []string{"workspace-0", "workspace-1", "workspace-2"}, names)
-	assert.Equal(t, []bool{true, true, true}, *sentWithDeadline)
 }
 
 func TestPageTimeoutGivesUpOnAPageThatDoesNotArrive(t *testing.T) {
-	const pageTimeout = 100 * time.Millisecond
-	workspaceClient, _ := newPagedWorkspaceClient(t, func(r *gohttp.Request, page int) {
-		if page == 1 {
-			<-r.Context().Done()
-		}
+	synctest.Test(t, func(t *testing.T) {
+		const pageTimeout = 45 * time.Second
+		workspaceClient, _ := newPagedWorkspaceClient(t, func(r *gohttp.Request, page int) {
+			if page == 1 {
+				<-r.Context().Done()
+			}
+		})
+		start := time.Now()
+
+		names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
+
+		assert.Equal(t, pageTimeout, time.Since(start))
+		assert.Equal(t, []string{"workspace-0"}, names)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.ErrorContains(t, err, "page 1 did not arrive within 45s")
 	})
-
-	names, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageTimeout: pageTimeout})))
-
-	assert.Equal(t, []string{"workspace-0"}, names)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.ErrorContains(t, err, "page 1 did not arrive within 100ms")
 }
 
 // The Terraform provider sets no list options, and must get no page size or timeout it did not ask
@@ -119,7 +133,7 @@ func TestPageSizeAsksForPagesOfThatSizeAndTakesSmallerOnes(t *testing.T) {
 	const serverCap, askedFor = 2, 3
 	names := []string{"workspace-0", "workspace-1", "workspace-2", "workspace-3", "workspace-4"}
 	var sizesAskedFor []string
-	server := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+	server := httptest.NewTestServer(t, gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		sizesAskedFor = append(sizesAskedFor, r.URL.Query().Get("size"))
 		page, err := strconv.Atoi(r.URL.Query().Get("page"))
 		if !assert.NoError(t, err) {
@@ -134,10 +148,9 @@ func TestPageSizeAsksForPagesOfThatSizeAndTakesSmallerOnes(t *testing.T) {
 		_, _ = fmt.Fprintf(w, `{"_embedded":{"meshWorkspaces":[%s]},"page":{"size":%d,"totalPages":%d,"number":%d}}`,
 			strings.Join(items, ","), serverCap, totalPages, page)
 	}))
-	t.Cleanup(server.Close)
 	workspaceClient := newWorkspaceClient(t.Context(), internal.HttpClient{
 		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(http.BearerToken("token")),
-		EndpointUrl:      xurl.MustParsef("%s", server.URL),
+		EndpointUrl:      inMemoryServerUrl,
 	})
 
 	got, err := collect(t, workspaceClient.ListRawSeq(WithListOptions(t.Context(), ListOptions{PageSize: askedFor})))
