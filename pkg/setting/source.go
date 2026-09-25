@@ -2,6 +2,7 @@ package setting
 
 import (
 	"context"
+	"errors"
 
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
@@ -50,4 +51,14 @@ func FallbackLookupSource(matchingEnvKey, description string, lookup func(ctx co
 // context while Workspace is being resolved, so a lookup for any other setting gets an error.
 func WorkspacesFromContext(ctx context.Context) (meshstack.Workspaces, error) {
 	return meshstack.WorkspacesFromContext(ctx)
+}
+
+// ResolveWorkspace resolves Workspace from sources and the environment, and is empty when neither
+// names one. A profile's default workspace is no source here, unlike in a session.
+func ResolveWorkspace(ctx context.Context, sources Sources) (string, error) {
+	workspace, err := sources.ResolveSetting(ctx, meshstack.WorkspaceSetting)
+	if errors.Is(err, setting.ErrNoSourceProvidedValue) {
+		return "", nil
+	}
+	return string(workspace), err
 }

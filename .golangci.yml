@@ -90,9 +90,16 @@ linters:
       - path: internal/http/
         linters:
           - forbidigo
+        text: one HTTP client
       - path: internal/testutil/testserver/
         linters:
           - forbidigo
+        text: one HTTP client
+      # The fake clock is a test's; production code waits on the real one.
+      - path-except: _test\.go
+        linters:
+          - forbidigo
+        text: synctest
       # testacc plays the browser: it drives keycloak's HTML login forms with its own cookie
       # jar, and it launches the binary it built itself.
       - path: cmd/internal/testacc/
@@ -108,6 +115,11 @@ linters:
         - pattern: \.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
           pkg: ^net/http$
           msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
+        # A test that sleeps for real is slow, and flaky once the machine is slower than the
+        # sleep assumed. synctest.Sleep panics outside a bubble, so it cannot be used the same way.
+        - pattern: ^time\.Sleep$
+          pkg: ^time$
+          msg: a test waits on synctest's fake clock; run it inside synctest.Test and call synctest.Sleep
 
     gocritic:
       disabled-checks:
@@ -199,9 +211,14 @@ linters:
           allow:
             - $gostd
             - log/slog
+            # the deny on encoding/json matches its subpackages too; a listing yields raw items
+            - encoding/json/jsontext
+            # and reads a field out of a raw item, such as the uuid a run listing needs per block
+            - encoding/json/v2
             # no direct access to internal/
             - github.com/meshcloud/meshstack-cli/pkg
-            - github.com/meshcloud/meshstack-cli/cmd/internal
+            # a parent command calls its children's New, the same way cmd/meshstack calls its own
+            - github.com/meshcloud/meshstack-cli/cmd
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
 
@@ -237,6 +254,8 @@ linters:
           allow:
             - $gostd
             - log/slog
+            # the deny on encoding/json matches its subpackages too; a listing writes raw items
+            - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli/pkg
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra

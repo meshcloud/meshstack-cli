@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
@@ -52,6 +54,10 @@ func newWorkspaceClient(ctx context.Context, httpClient internal.HttpClient) mes
 
 func (c meshWorkspaceClient) List(ctx context.Context) ([]MeshWorkspace, error) {
 	return c.meshObject.List(ctx)
+}
+
+func (c meshWorkspaceClient) ListRawSeq(ctx context.Context) iter.Seq2[jsontext.Value, error] {
+	return c.meshObject.ListSeqAs[jsontext.Value](ctx)
 }
 
 func (c meshWorkspaceClient) Read(ctx context.Context, name string) (*MeshWorkspace, error) {

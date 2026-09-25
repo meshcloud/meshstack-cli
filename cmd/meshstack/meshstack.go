@@ -5,20 +5,26 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
 
 	clog "github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblock"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
 )
 
 func main() {
-	if err := internal.RunWith(context.Background(), internal.DefaultTimeout, func(ctx context.Context) error {
-		//nolint:contextcheck // the root's PersistentPreRun derives from cmd.Context(), which cobra sets from this ctx
-		return newRootCommand().ExecuteContext(ctx)
-	}); err != nil {
+	// No deadline bounds a command as a whole, since a listing takes as long as it is long. The
+	// HTTP client gives up on a server that stopped answering, see internal/http.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	err := newRootCommand().ExecuteContext(ctx)
+	stop()
+	if err != nil {
 		// cobra has already written the error to stderr.
 		os.Exit(1)
 	}
@@ -55,6 +61,9 @@ func newRootCommand() *cobra.Command {
 	// `meshstack login` is a shortcut for `meshstack auth login`. Calling the constructor a second
 	// time is the only way to get one: cobra's Aliases rename a command inside its own parent.
 	cmd.AddCommand(auth.NewLogin())
+	cmd.AddCommand(buildingblock.New())
+	cmd.AddCommand(buildingblockrun.New())
+	cmd.AddCommand(workspace.New())
 
 	return cmd
 }

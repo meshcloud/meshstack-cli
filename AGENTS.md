@@ -48,11 +48,11 @@ The binary gets its name from its directory, `cmd/meshstack`, which is what `tas
 | Path | Holds |
 |---|---|
 | `cmd/meshstack/` | `package main`: `main()` and the root command. The only main package. |
-| `cmd/<subcommand>/` | One package per subcommand of the cobra command tree. `cmd/auth` is the only one so far. |
+| `cmd/<subcommand>/` | One package per subcommand of the cobra command tree. |
 | `cmd/internal/` | What the command tree shares: flags, the session it resolves, the version. |
 | `cmd/internal/testacc/` | The suite that drives the built binary against a live meshStack. |
-| `pkg/` | `auth`, `io`, `profile` and `setting`, each wrapping the `internal/` package of the same name. |
-| `client/` | The meshStack API client, imported as a git subtree. |
+| `pkg/` | Each package here wraps the `internal/` package of the same name, and nothing else. |
+| `client/` | The meshStack API client, which the Terraform provider imports. |
 | `internal/` | Everything else. The `depguard` rules in `.golangci.yml` say which package may import which. |
 
 `pkg/` and `client/` are the two import paths the Terraform provider's own `depguard` rule allows,
@@ -67,47 +67,43 @@ function returning its `*cobra.Command`, and the parent's constructor wires it i
 `cmd/meshstack` is the one exception, and is not a subcommand: it is the binary's `package main`,
 holding `main()` and the root command together.
 
-Four rules hold the tree together:
+These rules hold the tree together:
 
 - Register a command **explicitly in its parent's constructor, never from `init()`**.
 - A command with a **top-level shortcut** — `meshstack login` for `meshstack auth login` — is
   registered twice by calling its constructor twice. `Aliases` cannot do this.
-- A constructor keeps its own flag targets in **locals captured by the closure**. The four
-  persistent flags in `cmd/internal` are the exception: `SettingSources` reads their values back,
-  so they are package-level vars.
+- A constructor keeps its own flag targets in **locals captured by the closure**. The persistent
+  flags in `cmd/internal` are the exception: `SettingSources` reads their values back, so they are
+  package-level vars.
 - A **parent command sets `RunE` as well as `Args`**.
 </rules>
 
 ## Dependency policy
 
-The CLI runs on **four external dependencies**: `cobra` and `pflag`, `charmbracelet/log`, and
-`gofrs/flock`. Everything else is the standard library, with `testify` in tests.
+The CLI runs on the standard library and a short list of external dependencies, with `testify` in
+tests. `go.mod` is that list.
 
 **The `depguard` rules in `.golangci.yml` are the policy**, not only its enforcement: each rule
 confines a dependency to a smaller area than the module, so widening a boundary is a deliberate edit
-rather than a lint fix.
+rather than a lint fix. Adding a dependency therefore means editing both files, and the second edit
+is where you argue for it.
 
 <rules id="client-package">
-`client/` is a **git subtree** of
-[terraform-provider-meshstack](https://github.com/meshcloud/terraform-provider-meshstack). Carry
-changes across with `git subtree`, not by copying files.
+**This repository is the client's only home.** `client/` moved here from
+[terraform-provider-meshstack](https://github.com/meshcloud/terraform-provider-meshstack) as a
+one-time `git subtree` import, and the provider deleted its copy and requires this module at a
+released version instead. Change the client here; the provider picks the change up when it bumps
+its `meshstack-cli` requirement, so a break surfaces there, later, and not in this repository's CI.
+There is nothing to pull or push.
 
-**A pull takes a split, not a branch.** The subtree's history carries the files at the *repository
-root*, while in the provider the same files sit under `client/`, so pulling the provider's `main`
-directly fails with *"refusing to merge unrelated histories"*. Split first, in a checkout of the
-provider:
+**The provider implements the client's interfaces.** Its tests plug the mocks of its
+`internal/clientmock` into `client.Client`, so a method added to a `Mesh…Client` interface stops
+the provider compiling at its next bump. Put a method only the CLI calls behind an interface of its
+own on a new `client.Client` field, as `Listing` does: the provider fills the struct by field name
+and leaves a new field nil.
 
-```shell
-cd ../terraform-provider-meshstack
-git subtree split --prefix=client -b client-split main
-
-cd ../meshstack-cli
-git subtree pull --prefix=client ../terraform-provider-meshstack client-split
-git subtree push --prefix=client ../terraform-provider-meshstack <branch>
-```
-
-Reading the pre-import history takes both paths, since the split history carries the files at the
-repository root and the import merge re-roots them under `client/`:
+Reading the pre-import history takes both paths, since the imported history carries the files at
+the repository root and the import merge re-roots them under `client/`:
 
 ```shell
 git log -- client/client.go client.go   # a path-limited log from client/ alone stops at the merge
@@ -133,7 +129,7 @@ type rather than on the written name, so it catches `gohttp.Client` and leaves `
 
 **Logging goes through `slog`'s default logger**, on which each front end installs its own handler:
 `cmd/meshstack` a `charmbracelet/log` one, the Terraform provider a `tflog` bridge. A handler
-installed that late imposes two rules on every log call, and `internal/http/logging.go` states them.
+installed that late constrains every log call, and `internal/http/logging.go` states how.
 </rules>
 
 ## Always-on rules
@@ -160,9 +156,9 @@ installed that late imposes two rules on every log call, and `internal/http/logg
 
 Everything runs through the Taskfile, inside `nix develop`. **`task --list` is the list.**
 
-The Go version is pinned in **three** places that must agree — `go.mod`, `flake.nix` and the
-`Dockerfile`'s base image, each of which says so at the pin — and is held in lock-step with the
-Terraform provider's own pin.
+The Go version is pinned in `go.mod`, in `flake.nix` and in the `Dockerfile`'s base image. **They
+must agree**, each says so at the pin, and all three are held in lock-step with the Terraform
+provider's own pin.
 
 `flake.nix` also builds the binary — `nix build .#meshstack` — and exports it as
 `packages.<system>.meshstack` and as `overlays.default`, so another flake can put it in a dev shell.
@@ -179,9 +175,8 @@ rather than trusting a copy here.
 
 ## Authentication
 
-`MESHSTACK_ENDPOINT`, `MESHSTACK_API_KEY` and `MESHSTACK_API_SECRET`, with `MESHSTACK_API_TOKEN` as
-an alternative to the key and secret pair, plus `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE`,
-`MESHSTACK_CONFIG_DIR` and `MESHSTACK_SKIP_VERSION_CHECK`.
+Every setting the CLI reads is a `MESHSTACK_`-prefixed environment variable. `grep -rn 'setting\.Setting\['`
+finds them all, each next to the code that uses it.
 
 **Each one is declared once, in the domain package it belongs to**, as a `setting.Setting[T]` whose
 `EnvKey` is both the variable name and the setting's identity. `internal/setting` resolves it from
@@ -200,8 +195,8 @@ before the first release does.
 
 <rules id="release-version">
 The version reaches the binary through an ldflag on
-`github.com/meshcloud/meshstack-cli/cmd/internal.Version`, set in **three places that must agree**:
-`.goreleaser.yml`, the `Dockerfile` and `flake.nix`, all of which say so at the ldflag. The linker
+`github.com/meshcloud/meshstack-cli/cmd/internal.Version`, set in `.goreleaser.yml`, in the
+`Dockerfile` and in `flake.nix`. **They must agree**, and all three say so at the ldflag. The linker
 ignores an `-X` whose path does not resolve and warns about nothing, so a stale path is silent.
 
 A build with no ldflag falls back to what the go command stamped itself, which `cmd/internal` reads

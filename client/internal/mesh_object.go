@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"net/url"
 	"reflect"
@@ -133,35 +134,94 @@ func (c MeshObjectClient[M]) DeleteAtPath(ctx context.Context, id string, extraP
 	return
 }
 
-// List retrieves all meshObjects with automatic pagination handling.
-// Accepts optional [http.RequestOption] parameters for filtering and querying.
+// ListSeq retrieves all meshObjects with automatic pagination handling, and yields each one as its
+// page arrives.
+func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.RequestOption) iter.Seq2[M, error] {
+	return c.ListSeqAs[M](ctx, options...)
+}
+
+func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...http.RequestOption) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		var noItem T
+		embeddedKey := pluralizeKind(c.Kind)
+		listOptions := ListOptionsFrom(ctx)
+
+		for pageNumber := 0; ; pageNumber++ {
+			response, err := c.getPage[T](ctx, listOptions, pageNumber, options)
+			if err != nil {
+				yield(noItem, err)
+				return
+			}
+			items, ok := response.Embedded[embeddedKey]
+			if !ok {
+				yield(noItem, fmt.Errorf("embedded key %s not found in paginated response", embeddedKey))
+				return
+			}
+			if listOptions.OnPage != nil {
+				listOptions.OnPage(response.Page)
+			}
+			for _, item := range items {
+				if !yield(item, nil) {
+					return
+				}
+			}
+			if response.Page.Number >= response.Page.TotalPages-1 {
+				return
+			}
+		}
+	}
+}
+
+type Page struct {
+	Size          int `json:"size"`
+	TotalElements int `json:"totalElements"`
+	TotalPages    int `json:"totalPages"`
+	Number        int `json:"number"`
+}
+
+type paginatedResponse[T any] struct {
+	Embedded map[string][]T `json:"_embedded"`
+	Page     Page           `json:"page"`
+}
+
+func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, listOptions ListOptions, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
+	query := map[string]any{"page": pageNumber}
+	if listOptions.PageSize > 0 {
+		query["size"] = listOptions.PageSize
+	}
+	response, err := c.DoRequest[paginatedResponse[T]](ctx, http.MethodGet, c.ApiUrl, append(options,
+		http.WithAccept(c.MeshObjectMimeType()),
+		http.WithUrlQuery(query),
+	)...)
+	if err != nil {
+		return response, fmt.Errorf("error getting page %d: %w", pageNumber, err)
+	}
+	return response, nil
+}
+
+type ListOptions struct {
+	PageSize int
+	OnPage   func(Page)
+}
+
+type listOptionsKey struct{}
+
+func WithListOptions(ctx context.Context, options ListOptions) context.Context {
+	return context.WithValue(ctx, listOptionsKey{}, options)
+}
+
+func ListOptionsFrom(ctx context.Context) ListOptions {
+	options, _ := ctx.Value(listOptionsKey{}).(ListOptions)
+	return options
+}
+
 func (c MeshObjectClient[M]) List(ctx context.Context, options ...http.RequestOption) ([]M, error) {
 	var result []M
-	embeddedKey := pluralizeKind(c.Kind)
-	pageNumber := 0
-
-	for {
-		type paginatedResponse struct {
-			Embedded map[string][]M `json:"_embedded"`
-			Page     struct {
-				TotalPages int `json:"totalPages"`
-				Number     int `json:"number"`
-			} `json:"page"`
-		}
-		response, err := c.DoRequest[paginatedResponse](ctx, http.MethodGet, c.ApiUrl, append(options,
-			http.WithAccept(c.MeshObjectMimeType()),
-			http.WithUrlQuery(map[string]any{"page": pageNumber}),
-		)...)
+	for item, err := range c.ListSeq(ctx, options...) {
 		if err != nil {
-			return result, fmt.Errorf("error getting page %d: %w", pageNumber, err)
-		} else if items, ok := response.Embedded[embeddedKey]; !ok {
-			return result, fmt.Errorf("embedded key %s not found in paginated response", embeddedKey)
-		} else {
-			result = append(result, items...)
+			return result, err
 		}
-		if response.Page.Number >= response.Page.TotalPages-1 {
-			return result, nil
-		}
-		pageNumber++
+		result = append(result, item)
 	}
+	return result, nil
 }

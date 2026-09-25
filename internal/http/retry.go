@@ -10,6 +10,7 @@ import (
 	"math"
 	gohttp "net/http"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -40,7 +41,13 @@ func (options RetryOptions) ApplyTo(c *gohttp.Client) {
 		// otherwise nil is returned to indicate no retry.
 		ShouldRetryResponse: func(resp *gohttp.Response, err error) RetryBackoff {
 			if err != nil {
-				return options.Backoff
+				// Only a connection that broke once it was up clears on a retry, as one an ingress drops
+				// during a rolling deploy does. An unknown host, a refused connection or a TLS error
+				// repeats on every attempt, and a timeout would multiply by the retries.
+				if isBrokenConnection(err) {
+					return options.Backoff
+				}
+				return nil
 			}
 			switch resp.StatusCode {
 			case gohttp.StatusTooManyRequests, gohttp.StatusServiceUnavailable:
@@ -52,6 +59,11 @@ func (options RetryOptions) ApplyTo(c *gohttp.Client) {
 			}
 		},
 	}
+}
+
+func isBrokenConnection(err error) bool {
+	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 // RetryBackoff calculates the duration to wait before the next retry attempt.
@@ -125,7 +137,10 @@ func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, er
 	req = makeRequestBodyRetryable(req)
 	for attempt := 1; ; attempt++ {
 		resp, err := r.Next.RoundTrip(req)
-		if errors.Is(err, errRetryableBodyClose) {
+		// A request the context ended is not retried. The context is checked rather than the error,
+		// since the transport returns the context's cause, which for Ctrl-C is a signal error that
+		// wraps no context.Canceled.
+		if errors.Is(err, errRetryableBodyClose) || err != nil && req.Context().Err() != nil {
 			return resp, err
 		}
 		backoff := r.ShouldRetryResponse(resp, err)

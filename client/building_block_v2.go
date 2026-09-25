@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
@@ -305,7 +306,7 @@ type meshBuildingBlockV2Client struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockV2]
 }
 
-func newBuildingBlockV2Client(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockV2Client {
+func newBuildingBlockV2Client(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockV2Client {
 	return meshBuildingBlockV2Client{internal.NewMeshObjectClient[MeshBuildingBlockV2](ctx, httpClient, "v2-preview")}
 }
 
@@ -321,6 +322,10 @@ func (c meshBuildingBlockV2Client) ReadFunc(uuid string) func(ctx context.Contex
 
 func (c meshBuildingBlockV2Client) List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error) {
 	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
+}
+
+func (c meshBuildingBlockV2Client) ListRawSeq(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error] {
+	return c.meshObject.ListSeqAs[jsontext.Value](ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {

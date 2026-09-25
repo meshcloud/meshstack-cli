@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockRun struct {
@@ -18,8 +21,29 @@ type MeshBuildingBlockRunMetadata struct {
 }
 
 type MeshBuildingBlockRunSpec struct {
-	RunNumber int64  `json:"runNumber"`
-	Behavior  string `json:"behavior"`
+	RunNumber     int64                             `json:"runNumber"`
+	Behavior      string                            `json:"behavior"`
+	BuildingBlock MeshBuildingBlockRunBuildingBlock `json:"buildingBlock"`
+}
+
+// MeshBuildingBlockRunBuildingBlock is spec.buildingBlock of a meshBuildingBlockRun. The wire also
+// carries spec.buildingBlock.spec.inputs, which holds the run's input values and is left out here
+// because a sensitive one goes out encrypted for the runner alone.
+type MeshBuildingBlockRunBuildingBlock struct {
+	Uuid string                                `json:"uuid"`
+	Spec MeshBuildingBlockRunBuildingBlockSpec `json:"spec"`
+}
+
+type MeshBuildingBlockRunBuildingBlockSpec struct {
+	DisplayName            string                       `json:"displayName"`
+	TargetRef              MeshBuildingBlockV2TargetRef `json:"targetRef"`
+	WorkspaceIdentifier    string                       `json:"workspaceIdentifier"`
+	ProjectIdentifier      *string                      `json:"projectIdentifier"`
+	FullPlatformIdentifier *string                      `json:"fullPlatformIdentifier"`
+}
+
+type MeshBuildingBlockRunListFilter struct {
+	BuildingBlockUuid string `json:"buildingBlockUuid"`
 }
 
 // MeshBuildingBlockRunLogs is the response from the download-logs actions endpoint.
@@ -43,10 +67,14 @@ type meshBuildingBlockRunClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockRun]
 }
 
-func newBuildingBlockRunClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockRunClient {
+func newBuildingBlockRunClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockRunClient {
 	return meshBuildingBlockRunClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockRun](ctx, httpClient, "v1"),
 	}
+}
+
+func (c meshBuildingBlockRunClient) ListRawSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error] {
+	return c.meshObject.ListSeqAs[jsontext.Value](ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockRunClient) GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error) {
