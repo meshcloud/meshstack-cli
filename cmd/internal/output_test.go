@@ -123,26 +123,20 @@ func TestAFailingPageStopsTheListing(t *testing.T) {
 			yield(nil, pageErr)
 		}
 	}
-	var out strings.Builder
+	for format, want := range map[internal.OutputFormat][]string{
+		internal.OutputJson:   {"[", "  {", `    "kind": "meshWorkspace"`, "  }"},
+		internal.OutputNdjson: {`{"kind":"meshWorkspace"}`, ""},
+	} {
+		t.Run(string(format), func(t *testing.T) {
+			var out strings.Builder
 
-	err := internal.WriteList(&out, internal.OutputNdjson, failing)
+			err := internal.WriteList(&out, format, failing)
 
-	require.ErrorIs(t, err, pageErr)
-	assert.Equal(t, []string{`{"kind":"meshWorkspace"}`, ""}, strings.Split(out.String(), "\n"))
-}
-
-func TestAFailingPageLeavesTheJsonArrayOpen(t *testing.T) {
-	pageErr := errors.New("page 1 failed")
-	failing := func(yield func(jsontext.Value, error) bool) {
-		if yield(jsontext.Value(`{"kind":"meshWorkspace"}`), nil) {
-			yield(nil, pageErr)
-		}
+			require.ErrorIs(t, err, pageErr)
+			assert.Equal(t, want, strings.Split(out.String(), "\n"))
+			if format == internal.OutputJson {
+				assert.False(t, jsontext.Value(out.String()).IsValid(), "a listing cut short by an error must not parse as complete")
+			}
+		})
 	}
-	var out strings.Builder
-
-	err := internal.WriteList(&out, internal.OutputJson, failing)
-
-	require.ErrorIs(t, err, pageErr)
-	assert.Equal(t, []string{"[", "  {", `    "kind": "meshWorkspace"`, "  }"}, strings.Split(out.String(), "\n"))
-	assert.False(t, jsontext.Value(out.String()).IsValid(), "a listing cut short by an error must not parse as complete")
 }
