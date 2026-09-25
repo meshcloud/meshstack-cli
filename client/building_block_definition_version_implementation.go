@@ -6,6 +6,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/types/variant"
 )
 
 type MeshBuildingBlockImplementationType string
@@ -76,12 +77,12 @@ type MeshBuildingBlockDefinitionImplementation struct {
 // InferType derives the implementation type from the one variant that is set. A version without any variant
 // is what meshStack answers a workspace that may only consume the definition.
 func (m MeshBuildingBlockDefinitionImplementation) InferType() (enum.Entry[MeshBuildingBlockImplementationType], error) {
-	result, err := inferVariantType(
-		variant(MeshBuildingBlockImplementationTypeManual, m.Manual != nil),
-		variant(MeshBuildingBlockImplementationTypeTerraform, m.Terraform != nil),
-		variant(MeshBuildingBlockImplementationTypeGithubWorkflows, m.GithubWorkflows != nil),
-		variant(MeshBuildingBlockImplementationTypeGitlabPipeline, m.GitlabPipeline != nil),
-		variant(MeshBuildingBlockImplementationTypeAzureDevOpsPipeline, m.AzureDevOpsPipeline != nil),
+	result, err := variant.InferType(
+		variant.NewCandidate(MeshBuildingBlockImplementationTypeManual, m.Manual != nil),
+		variant.NewCandidate(MeshBuildingBlockImplementationTypeTerraform, m.Terraform != nil),
+		variant.NewCandidate(MeshBuildingBlockImplementationTypeGithubWorkflows, m.GithubWorkflows != nil),
+		variant.NewCandidate(MeshBuildingBlockImplementationTypeGitlabPipeline, m.GitlabPipeline != nil),
+		variant.NewCandidate(MeshBuildingBlockImplementationTypeAzureDevOpsPipeline, m.AzureDevOpsPipeline != nil),
 	)
 	if err != nil {
 		return "", fmt.Errorf("cannot infer implementation type: %w", err)
