@@ -1,4 +1,4 @@
-package client
+package variant
 
 import (
 	"errors"
@@ -7,16 +7,18 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 )
 
-type variantCandidate[T ~string] struct {
+// A Candidate is one variant of a type that holds exactly one of several variants, one field each.
+type Candidate[T ~string] struct {
 	Type  enum.Entry[T]
 	IsSet bool
 }
 
-func variant[T ~string](typ enum.Entry[T], isSet bool) variantCandidate[T] {
-	return variantCandidate[T]{Type: typ, IsSet: isSet}
+func NewCandidate[T ~string](typ enum.Entry[T], isSet bool) Candidate[T] {
+	return Candidate[T]{Type: typ, IsSet: isSet}
 }
 
-func inferVariantType[T ~string](candidates ...variantCandidate[T]) (enum.Entry[T], error) {
+// InferType returns the type of the one candidate that is set.
+func InferType[T ~string](candidates ...Candidate[T]) (enum.Entry[T], error) {
 	var result enum.Entry[T]
 	for _, candidate := range candidates {
 		if !candidate.IsSet {

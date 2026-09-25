@@ -6,6 +6,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/types/variant"
 )
 
 type MeshIntegrationConfigType string
@@ -57,11 +58,11 @@ type MeshIntegrationConfig struct {
 }
 
 func (m MeshIntegrationConfig) InferType() (enum.Entry[MeshIntegrationConfigType], error) {
-	result, err := inferVariantType(
-		variant(MeshIntegrationConfigTypeGithub, m.Github != nil),
-		variant(MeshIntegrationConfigTypeGitlab, m.Gitlab != nil),
-		variant(MeshIntegrationConfigTypeAzureDevops, m.AzureDevops != nil),
-		variant(MeshIntegrationConfigTypeEntraId, m.EntraId != nil),
+	result, err := variant.InferType(
+		variant.NewCandidate(MeshIntegrationConfigTypeGithub, m.Github != nil),
+		variant.NewCandidate(MeshIntegrationConfigTypeGitlab, m.Gitlab != nil),
+		variant.NewCandidate(MeshIntegrationConfigTypeAzureDevops, m.AzureDevops != nil),
+		variant.NewCandidate(MeshIntegrationConfigTypeEntraId, m.EntraId != nil),
 	)
 	if err != nil {
 		return "", fmt.Errorf("cannot infer integration config type: %w", err)
