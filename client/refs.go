@@ -17,3 +17,9 @@ type UuidRef struct {
 	Uuid string `json:"uuid" tfsdk:"uuid"`
 	Kind string `json:"kind" tfsdk:"kind"`
 }
+
+type SupportedPlatformRef struct {
+	Kind string  `json:"kind" tfsdk:"kind"`
+	Name *string `json:"name,omitzero" tfsdk:"name"`
+	Uuid *string `json:"uuid,omitzero" tfsdk:"uuid"`
+}

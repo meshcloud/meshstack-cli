@@ -54,9 +54,9 @@ type MeshBuildingBlockDefinitionSpec struct {
 	SupportURL            *string                                     `json:"supportUrl,omitzero" tfsdk:"support_url"`
 	DocumentationURL      *string                                     `json:"documentationUrl,omitzero" tfsdk:"documentation_url"`
 	// NotificationSubscribers can also specify emails with prefix 'email:', so it's not only usernames (as the JSON field name suggests)!
-	NotificationSubscribers types.Set[string]   `json:"notificationSubscriberUsernames,omitempty" tfsdk:"notification_subscribers"`
-	Symbol                  *string             `json:"symbol,omitzero" tfsdk:"symbol"`
-	SupportedPlatforms      types.Set[NamedRef] `json:"supportedPlatforms" tfsdk:"supported_platforms"`
+	NotificationSubscribers types.Set[string]               `json:"notificationSubscriberUsernames,omitempty" tfsdk:"notification_subscribers"`
+	Symbol                  *string                         `json:"symbol,omitzero" tfsdk:"symbol"`
+	SupportedPlatforms      types.Set[SupportedPlatformRef] `json:"supportedPlatforms" tfsdk:"supported_platforms"`
 }
 
 type MeshBuildingBlockDefinitionApprovalPolicies struct {
