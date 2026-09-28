@@ -86,7 +86,7 @@ func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts R
 	}
 	var matchingProfiles []*Profile
 	for _, profile := range ps.Profiles {
-		if profile.Endpoint != nil && profile.Endpoint.Equal(endpoint) {
+		if profile.Endpoint.Equal(endpoint) {
 			matchingProfiles = append(matchingProfiles, profile)
 		}
 	}

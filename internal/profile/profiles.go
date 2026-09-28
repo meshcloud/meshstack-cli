@@ -10,7 +10,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
-	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 const (
@@ -61,8 +60,8 @@ func initEmptyProfiles(ctx context.Context, opts ResolveProfileOptions, profiles
 	return err
 }
 
-// addProfile creates the named profile and makes it the current one, with the endpoint of this run
-// where there is one.
+// addProfile creates the named profile and makes it the current one, with the endpoint of this run,
+// which a profile cannot do without.
 func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles, name Name) (*Profile, error) {
 	added := &Profile{}
 	added.init(name, profiles.configDir)
@@ -72,11 +71,11 @@ func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profi
 	profiles.Profiles[name] = added
 	profiles.CurrentProfile = name
 
-	if endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting); err == nil {
-		added.Endpoint = &endpoint
-	} else if !errors.Is(err, setting.ErrNoSourceProvidedValue) {
+	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)
+	if err != nil {
 		return nil, err
 	}
+	added.Endpoint = endpoint
 
 	slog.DebugContext(ctx, fmt.Sprintf("Profile %s resolved to %+v", name, *added))
 	return added, nil

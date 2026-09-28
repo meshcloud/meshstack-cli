@@ -13,7 +13,7 @@ import (
 
 //nolint:recvcheck // only exception is init() to set fields after unmarshalling
 type Profile struct {
-	Endpoint         *xurl.URL           `json:"endpoint,omitzero"`
+	Endpoint         xurl.URL            `json:"endpoint,omitzero"`
 	DefaultWorkspace meshstack.Workspace `json:"default_workspace,omitzero"`
 	Credential       credential.Name     `json:"credential,omitzero"`
 
@@ -32,10 +32,7 @@ func (p Profile) EndpointSource() setting.FallbackSource {
 	return setting.FallbackSource{Source: setting.LookupSource{
 		Description: fmt.Sprintf("endpoint in profile %s", p.Name),
 		Func: func(_ context.Context) (string, error) {
-			if p.Endpoint != nil {
-				return p.Endpoint.String(), nil
-			}
-			return "", nil
+			return p.Endpoint.String(), nil
 		},
 	}}
 }

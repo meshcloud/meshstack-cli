@@ -50,6 +50,14 @@ func TestSessionRefreshesARejectedToken(t *testing.T) {
 	assert.EqualValues(t, 2, server.Counts(t).Logins, "a 401 mints once more, on demand")
 }
 
+func TestSessionOnAFreshConfigDirectoryWithoutEndpointNamesTheSetting(t *testing.T) {
+	newTestServer(t)
+	t.Setenv(meshstack.EndpointSetting.EnvKey(), "")
+
+	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	require.ErrorContains(t, err, meshstack.EndpointSetting.EnvKey())
+}
+
 func TestSessionWithoutAnyCredentialNamesTheSettingsItLookedFor(t *testing.T) {
 	newTestServer(t)
 

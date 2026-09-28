@@ -60,7 +60,7 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting, currentProfile.EndpointSource())
 	if err != nil {
 		return Session{}, err
-	} else if currentProfile.Endpoint != nil && !endpoint.Equal(*currentProfile.Endpoint) {
+	} else if !endpoint.Equal(currentProfile.Endpoint) {
 		// this prevents accidentally sending credentials to the wrong endpoint
 		return Session{}, fmt.Errorf("endpoint from profile '%s' does not match endpoint '%s' configured for session", currentProfile.Endpoint, endpoint)
 	}

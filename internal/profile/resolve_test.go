@@ -23,14 +23,17 @@ import (
 //go:embed testdata/jwt.json
 var jwtJson []byte
 
+var testEndpoint = xurl.MustParsef("https://localhost:1337")
+
 func TestResolveProfileCreatesADefaultProfileWhenTheConfigDirectoryIsMissing(t *testing.T) {
 	givenNoMeshstackEnvironment(t)
 	t.Setenv(config.DirectorySetting.EnvKey(), "really-does-not-exists/and-should-never-exist/so-thats-a-unique-path")
+	t.Setenv(meshstack.EndpointSetting.EnvKey(), testEndpoint.String())
 
 	currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 
 	require.NoError(t, err)
-	expected := &Profile{Name: "default"}
+	expected := &Profile{Name: "default", Endpoint: testEndpoint}
 	assert.EqualExportedValues(t, expected, withoutConfigDir(currentProfile))
 	assertProfiles(t, profiles, expected)
 }
@@ -39,13 +42,14 @@ func TestResolveProfilePrefersAProfileNameFromAFrontEndSourceOverTheEnvironment(
 	givenNoMeshstackEnvironment(t)
 	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 	t.Setenv(NameSetting.EnvKey(), "from-the-environment")
+	t.Setenv(meshstack.EndpointSetting.EnvKey(), testEndpoint.String())
 
 	currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{
 		SettingSources: profileNameFromFrontend("from-the-front-end"),
 	})
 
 	require.NoError(t, err)
-	expected := &Profile{Name: "from-the-front-end"}
+	expected := &Profile{Name: "from-the-front-end", Endpoint: testEndpoint}
 	assert.EqualExportedValues(t, expected, withoutConfigDir(currentProfile))
 	assertProfiles(t, profiles, expected)
 }
@@ -56,7 +60,7 @@ func TestResolveProfileFindsAStoredProfileWithoutItsNameOrEndpointInTheEnvironme
 	t.Setenv(NameSetting.EnvKey(), "dev-local")
 	// Upper case and a trailing slash, so that the stored endpoint shows the canonical form.
 	t.Setenv(meshstack.EndpointSetting.EnvKey(), "https://LOCALHOST:1337/")
-	devLocal := &Profile{Name: "dev-local", Endpoint: new(xurl.MustParsef("https://localhost:%d", 1337))}
+	devLocal := &Profile{Name: "dev-local", Endpoint: xurl.MustParsef("https://localhost:%d", 1337)}
 	cachedToken := jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)
 
 	currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
@@ -84,11 +88,11 @@ func TestResolveProfileReadsTheCurrentProfileAndItsCachedTokenFromDisk(t *testin
 	currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 
 	require.NoError(t, err)
-	devLocal := &Profile{Name: "dev-local", Endpoint: new(xurl.MustParsef("https://localhost:1337")), Credential: "apiKey"}
+	devLocal := &Profile{Name: "dev-local", Endpoint: xurl.MustParsef("https://localhost:1337"), Credential: "apiKey"}
 	assert.EqualExportedValues(t, devLocal, withoutConfigDir(currentProfile))
 	assertProfiles(t, profiles,
 		devLocal,
-		&Profile{Name: "default", Endpoint: new(xurl.MustParsef("https://api.dev.meshcloud.io/"))},
+		&Profile{Name: "default", Endpoint: xurl.MustParsef("https://api.dev.meshcloud.io/")},
 		&Profile{Name: "empty"},
 	)
 	assertApiKeyWithCachedToken(t, currentProfile,
@@ -111,6 +115,7 @@ func TestResolveProfileFailsOnANameThatIsNotOnDisk(t *testing.T) {
 func TestResolveProfileCreatesAMissingProfileForALoginAndUpdatesItOnTheNextOne(t *testing.T) {
 	givenNoMeshstackEnvironment(t)
 	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
+	t.Setenv(meshstack.EndpointSetting.EnvKey(), testEndpoint.String())
 	_, defaultOnly, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 	require.NoError(t, err)
 	require.NoError(t, defaultOnly.Store(t.Context()))
@@ -119,9 +124,9 @@ func TestResolveProfileCreatesAMissingProfileForALoginAndUpdatesItOnTheNextOne(t
 	created, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{CreateProfileIfMissing: true})
 
 	require.NoError(t, err)
-	dev := &Profile{Name: "dev"}
+	dev := &Profile{Name: "dev", Endpoint: testEndpoint}
 	assert.EqualExportedValues(t, dev, withoutConfigDir(created))
-	assertProfiles(t, profiles, dev, &Profile{Name: "default"})
+	assertProfiles(t, profiles, dev, &Profile{Name: "default", Endpoint: testEndpoint})
 
 	// What a login stores through the returned pointer has to survive the next one.
 	created.DefaultWorkspace = "my-workspace-ab12c"
@@ -131,7 +136,7 @@ func TestResolveProfileCreatesAMissingProfileForALoginAndUpdatesItOnTheNextOne(t
 	require.NoError(t, err)
 	dev.DefaultWorkspace = "my-workspace-ab12c"
 	assert.EqualExportedValues(t, dev, withoutConfigDir(reloaded))
-	assertProfiles(t, reloadedProfiles, dev, &Profile{Name: "default"})
+	assertProfiles(t, reloadedProfiles, dev, &Profile{Name: "default", Endpoint: testEndpoint})
 }
 
 func TestLoadProfilesRejectsANullProfile(t *testing.T) {
@@ -176,7 +181,7 @@ func storeApiKeyWithCachedToken(t *testing.T, p *Profile, token jwt.JWT) {
 	creds, err := p.Credentials(t.Context())
 	require.NoError(t, err)
 	creds.SetIdentity(&credential.ApiKey{
-		Endpoint:     *p.Endpoint,
+		Endpoint:     p.Endpoint,
 		ClientId:     uuid.MustParse("08be9109-45bf-42ba-a965-2097b9d0d181"),
 		ClientSecret: "super-test-secret",
 	})
