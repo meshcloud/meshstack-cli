@@ -13,7 +13,8 @@ import (
 
 //nolint:recvcheck // only exception is init() to set fields after unmarshalling
 type Profile struct {
-	Endpoint         xurl.URL            `json:"endpoint,omitzero"`
+	Endpoint xurl.URL `json:"endpoint,omitzero"`
+	// DefaultWorkspace might be meshstack.NoWorkspace (empty string), default value when being unmarshaled.
 	DefaultWorkspace meshstack.Workspace `json:"default_workspace,omitzero"`
 	Credential       credential.Name     `json:"credential,omitzero"`
 
@@ -26,8 +27,6 @@ func (p Profile) String() string {
 	return string(p.Name)
 }
 
-// EndpointSource ranks below the environment, which is what lets ResolveSession catch an endpoint
-// that does not match the profile rather than quietly using the profile's own.
 func (p Profile) EndpointSource() setting.FallbackSource {
 	return setting.FallbackSource{Source: setting.LookupSource{
 		Description: fmt.Sprintf("endpoint in profile %s", p.Name),
@@ -37,13 +36,14 @@ func (p Profile) EndpointSource() setting.FallbackSource {
 	}}
 }
 
-// WorkspaceSource ranks below the environment and below an interactive prompt: it is what a login
-// remembered, never an override of what this run asks for.
 func (p Profile) WorkspaceSource() setting.FallbackSource {
 	return setting.FallbackSource{Source: setting.LookupSource{
 		Description: fmt.Sprintf("default workspace in profile %s", p.Name),
 		Func: func(_ context.Context) (string, error) {
-			return string(p.DefaultWorkspace), nil
+			if p.DefaultWorkspace == meshstack.NoWorkspace {
+				return "", nil
+			}
+			return p.DefaultWorkspace.String(), nil
 		},
 	}}
 }

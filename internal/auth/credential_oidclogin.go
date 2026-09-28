@@ -10,10 +10,9 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/browser"
 )
 
-// resolveOidcLoginCredential logs a person in through a browser, which is why
-// Session.credentialResolvers offers it only to a caller that named it.
+// resolveOidcLoginCredential logs a person in through a browser, which is why only Login calls it.
 func (s Session) resolveOidcLoginCredential(ctx context.Context, _ ResolveSessionOptions) (credential.Credential, error) {
-	meshInfo, err := s.checkedMeshInfo()
+	meshInfo, err := s.MeshInfo()
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +26,7 @@ func (s Session) resolveOidcLoginCredential(ctx context.Context, _ ResolveSessio
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Logged in at %s through a browser", oidcClient.Issuer))
 	oidcLogin := &credential.OidcLogin{
-		Endpoint: s.Endpoint,
+		Endpoint: s.CurrentProfile.Endpoint,
 		Issuer:   oidcClient.Issuer,
 		ClientId: oidcClient.Id,
 	}

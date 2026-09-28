@@ -16,6 +16,17 @@ var (
 	ProfileFlag          = NewFlagForSetting[string]("profile", setting.Profile)
 )
 
+func SettingSources() setting.Sources {
+	return setting.Sources{
+		EndpointFlag.AsSource(),
+		WorkspaceFlag.AsSource(),
+		// An unset bool flag reads false, and a frontend source outranks the environment, so
+		// contributing that false would mask MESHSTACK_SKIP_VERSION_CHECK.
+		SkipVersionCheckFlag.AsSourceUnless(func(skip bool) bool { return !skip }),
+		ProfileFlag.AsSource(),
+	}
+}
+
 type FlagName string
 
 func (n FlagName) SourceDescription() string {

@@ -12,15 +12,8 @@ import (
 // unsignedEmptyJwt is an unsigned JWT with an empty payload, all MESHSTACK_API_TOKEN needs to parse.
 const unsignedEmptyJwt = "eyJhbGciOiJub25lIn0.e30."
 
-// These three refusals run in-process, because no invocation of the binary reaches them:
-// `meshstack login` always names the credential it wants.
-
-func TestAccCredentialResolutionRefusesAnUnknownForcedCredential(t *testing.T) {
-	newInProcessCLI(t)
-
-	_, err := auth.ResolveSession(t.Context(), resolveOptions(auth.Method("nope")))
-	require.ErrorContains(t, err, "cannot authenticate with credential 'nope'; pick one of [apiKey manual oidcLogin]")
-}
+// These refusals run in-process, because no invocation of the binary reaches them: `meshstack
+// login` always names the credential it wants.
 
 func TestAccCredentialResolutionRefusesTwoCredentialsAtOnce(t *testing.T) {
 	newInProcessCLI(t)
@@ -28,14 +21,14 @@ func TestAccCredentialResolutionRefusesTwoCredentialsAtOnce(t *testing.T) {
 	t.Setenv(setting.ApiKeyClientSecret.EnvKey(), "not-a-real-secret")
 	t.Setenv(setting.ApiToken.EnvKey(), unsignedEmptyJwt)
 
-	_, err := auth.ResolveSession(t.Context(), resolveOptions(""))
+	_, err := auth.ResolveClient(t.Context(), resolveOptions())
 	require.ErrorContains(t, err, "resolved more than one credential")
 }
 
 func TestAccCredentialResolutionNamesEveryCredentialItLooksFor(t *testing.T) {
 	newInProcessCLI(t)
 
-	_, err := auth.ResolveSession(t.Context(), resolveOptions(""))
+	_, err := auth.ResolveClient(t.Context(), resolveOptions())
 	require.ErrorContains(t, err, "selects none")
 	require.ErrorContains(t, err, setting.ApiKeyClientId.EnvKey())
 	require.ErrorContains(t, err, setting.ApiKeyClientSecret.EnvKey())
@@ -55,10 +48,9 @@ func newInProcessCLI(t *testing.T) {
 	t.Setenv(setting.ApiToken.EnvKey(), "")
 }
 
-func resolveOptions(forced auth.Method) auth.ResolveSessionOptions {
-	return auth.ResolveSessionOptions{
-		Version:       "testacc",
-		GitHubRepo:    "meshcloud/meshstack-cli",
-		ForceAuthWith: forced,
+func resolveOptions() auth.ResolveClientOptions {
+	return auth.ResolveClientOptions{
+		Version:    "testacc",
+		GitHubRepo: "meshcloud/meshstack-cli",
 	}
 }

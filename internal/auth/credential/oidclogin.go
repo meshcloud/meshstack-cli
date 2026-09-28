@@ -25,6 +25,10 @@ type OidcLogin struct {
 	} `json:"-"`
 }
 
+func (oidcLogin *OidcLogin) Name() Name {
+	return OidcLoginName
+}
+
 func (oidcLogin *OidcLogin) Identity() Identity {
 	return identityOf(oidcLogin)
 }

@@ -15,7 +15,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/pkg/auth"
+	"github.com/meshcloud/meshstack-cli/internal/auth"
+	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
@@ -47,57 +48,57 @@ MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --ap
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			var forceAuthWith auth.Method
-			var sources setting.Sources
+			opts := internal.ResolveClientOptions()
 			promptedFrom := newPrompt(cmd)
+			var authWith credential.Name
 			switch {
 			case cmd.Flags().Changed(apiKeyFlag.Name.String()):
-				forceAuthWith = auth.ApiKeyMethod
+				authWith = credential.ApiKeyName
 				if apiKeyFlag.Value == "" {
 					return fmt.Errorf("the API key id is empty; --%s= was given without an id; specify --%s to read from env",
 						apiKeyFlag.Name, apiKeyFlag.Name)
 				}
-				sources = append(sources,
+				opts.SettingSources = append(opts.SettingSources,
 					apiKeyFlag.AsSourceUnless(func(value string) bool {
 						return value == apiKeyIdDefault
 					}),
 					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), &openStdinFlag, promptedFrom, "API Client Secret"),
 				)
 			case apiTokenFlag.Value:
-				forceAuthWith = auth.ManualMethod
-				sources = append(sources, apiTokenFlag.AsSource(&openStdinFlag, promptedFrom, "API Token"))
+				authWith = credential.ManualName
+				opts.SettingSources = append(opts.SettingSources, apiTokenFlag.AsSource(&openStdinFlag, promptedFrom, "API Token"))
 			default:
 				// A browser login waits for the person to finish it, and gives up on one who never does.
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
 				defer cancel()
-				forceAuthWith = auth.OidcLoginMethod
+				authWith = credential.OidcLoginName
 			}
 
 			// A token given with --apitoken already names the workspace it belongs to, and a
 			// building block runner's token — the usual reason to pass one — may list none at all.
-			if forceAuthWith != auth.ManualMethod {
-				sources = append(sources, newWorkspaceSelectionSource(promptedFrom))
+			if authWith != credential.ManualName {
+				opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom))
 			}
 
-			session, err := internal.ResolveSession(ctx, func(opts *auth.ResolveSessionOptions) {
-				opts.SettingSources = append(opts.SettingSources, sources...)
-				opts.ForceAuthWith = forceAuthWith
-				opts.CreateProfileIfMissing = true
-			})
+			session, storeSession, err := auth.Login(ctx, authWith, opts)
 			if err != nil {
 				return err
 			}
-			sessionStatus, err := session.Status(ctx)
+			_, err = session.GetBearerToken(ctx)
 			if err != nil {
 				return err
 			}
-			if err := session.Store(ctx); err != nil {
+			meshInfo, err := session.MeshInfo()
+			if err != nil {
+				return err
+			}
+			if err := storeSession(ctx); err != nil {
 				return err
 			}
 			// TODO render Markdown output from model instead of logging?!
 			slog.InfoContext(ctx, fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s",
-				sessionStatus.CliClientId, internal.Version, sessionStatus.Version, sessionStatus.Endpoint))
+				meshInfo.CliClientId, internal.Version, meshInfo.Version, session.CurrentProfile.Endpoint))
 			return nil
 		},
 	}

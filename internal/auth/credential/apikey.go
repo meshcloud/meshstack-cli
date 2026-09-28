@@ -23,6 +23,10 @@ type ApiKey struct {
 	} `json:"-"`
 }
 
+func (apiKey *ApiKey) Name() Name {
+	return ApiKeyName
+}
+
 func (apiKey *ApiKey) Identity() Identity {
 	return identityOf(apiKey)
 }

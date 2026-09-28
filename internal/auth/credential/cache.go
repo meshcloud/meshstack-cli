@@ -5,10 +5,8 @@ import (
 	"reflect"
 )
 
-// WithCacheOf reaches the optional Cache field of a credential struct, such as ApiKey, and holds
-// the struct to what identityOf needs to copy it: Cache is a json-ignored pointer, and no other
-// field is a pointer at all.
-func WithCacheOf(credential Credential, action func(cache reflect.Value)) (ok bool) {
+// WithCacheOf reaches the optional Cache field of a credential struct, such as ApiKey.
+func WithCacheOf(credential Credential, action func(cache reflect.Value)) {
 	for field, v := range reflect.ValueOf(credential).Elem().Fields() {
 		if field.Name == "Cache" {
 			if v.Kind() != reflect.Pointer {
@@ -18,13 +16,11 @@ func WithCacheOf(credential Credential, action func(cache reflect.Value)) (ok bo
 				panic(fmt.Sprintf("credential Cache field must be json-ignored with '-' in %T", credential))
 			}
 			action(v)
-			ok = true
 		} else if v.Kind() == reflect.Pointer {
 			// A second pointer would be shared rather than copied by identityOf.
 			panic(fmt.Sprintf("credential field %s must NOT be a pointer in %T", field.Name, credential))
 		}
 	}
-	return
 }
 
 // newCache allocates the Cache field of a credential struct, whose type is anonymous and so
@@ -33,21 +29,6 @@ func WithCacheOf(credential Credential, action func(cache reflect.Value)) (ok bo
 func newCache(credential Credential) {
 	WithCacheOf(credential, func(cache reflect.Value) {
 		cache.Set(reflect.New(cache.Type().Elem()))
-	})
-}
-
-func adoptCacheIfIdentityMatches(fromValue reflect.Value, to Credential) {
-	if fromValue.IsNil() {
-		return
-	}
-	from := fromValue.Interface().(Credential) //nolint:forcetypeassert // the field comes from Credentials, whose pointer fields are all Credential
-	if identityOf(from).Hash != identityOf(to).Hash {
-		return
-	}
-	WithCacheOf(from, func(fromCache reflect.Value) {
-		WithCacheOf(to, func(toCache reflect.Value) {
-			toCache.Set(fromCache)
-		})
 	})
 }
 

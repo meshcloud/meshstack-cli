@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth"
+	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
 )
@@ -35,9 +36,10 @@ func TestConcurrentSessionsShareOneMintedToken(t *testing.T) {
 	// The warm-up writes profiles.json, the credentials file and the token cache before any
 	// goroutine starts. A lock file whose directory does not exist yet cannot be taken, and
 	// internal/lock reports that as acquired, so the first writer would otherwise be unguarded.
-	warmUp := requireSession(t, testApiKey1)
+	warmUp, storeWarmUp, err := auth.Login(t.Context(), credential.ApiKeyName, sessionOptsFor(testApiKey1))
+	require.NoError(t, err)
 	server.RequireGreeting(t, greetingClient(warmUp))
-	require.NoError(t, warmUp.Store(t.Context()))
+	require.NoError(t, storeWarmUp(t.Context()))
 
 	resolvers := []*stressResolver{
 		{name: "first-key-1", apiKey: testApiKey1, every: 100 * time.Millisecond},
@@ -127,7 +129,7 @@ func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserv
 			// Storing is serialized across resolvers because concurrent writers of one profile
 			// are not something the CLI has to support, while concurrent authorization is.
 			storing.Lock()
-			err = session.Store(ctx)
+			err = storeByLogin(ctx, r.apiKey)
 			storing.Unlock()
 		}
 		inFlight.Add(-1)
@@ -242,11 +244,13 @@ func staticSetting(envKey, value string) setting.Source {
 	}
 }
 
-func requireSession(t *testing.T, key testserver.ApiKey) auth.Session {
-	t.Helper()
-	session, err := auth.ResolveSession(t.Context(), sessionOptsFor(key))
-	require.NoError(t, err)
-	return session
+// storeByLogin stores what a session resolved the only way there is, which is a login.
+func storeByLogin(ctx context.Context, key testserver.ApiKey) error {
+	_, store, err := auth.Login(ctx, credential.ApiKeyName, sessionOptsFor(key))
+	if err != nil {
+		return err
+	}
+	return store(ctx)
 }
 
 func stressDuration(t *testing.T) time.Duration {

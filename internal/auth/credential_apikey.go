@@ -51,7 +51,7 @@ func (s Session) resolveApiKeyCredential(ctx context.Context, opts ResolveSessio
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using api key credentials (client id %s with %d bytes long secret)", apiKeyClientId, len(apiKeyClientSecret)))
 	return &credential.ApiKey{
-		Endpoint:     s.Endpoint,
+		Endpoint:     s.CurrentProfile.Endpoint,
 		ClientId:     apiKeyClientId,
 		ClientSecret: apiKeyClientSecret,
 	}, nil

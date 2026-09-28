@@ -31,8 +31,5 @@ func (s Session) resolveManualCredential(ctx context.Context, opts ResolveSessio
 		return nil, apiTokenErr
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using setting %s as manual credential", ApiTokenSetting.EnvKey()))
-	return &credential.Manual{
-		Endpoint: s.Endpoint,
-		Token:    apiToken,
-	}, nil
+	return credential.NewManual(s.CurrentProfile.Endpoint, apiToken), nil
 }

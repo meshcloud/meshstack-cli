@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/pkg/profile"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
 func newLogout() *cobra.Command {
@@ -13,7 +13,7 @@ func newLogout() *cobra.Command {
 		Short: "Remove this profile's stored credentials",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			currentProfile, err := profile.ResolveProfile(cmd.Context(), profile.ResolveProfileOptions{
+			currentProfile, _, err := profile.ResolveProfile(cmd.Context(), profile.ResolveProfileOptions{
 				SettingSources: internal.SettingSources(),
 			})
 			if err != nil {

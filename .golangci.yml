@@ -200,6 +200,7 @@ linters:
             - "**/cmd/*.go"
             - "**/cmd/**/*.go"
             - "!**/cmd/meshstack/*.go"
+            - "!**/cmd/auth/*.go"
             - "!**/cmd/internal/*.go"
             - "!$test"
           list-mode: strict
@@ -240,6 +241,28 @@ linters:
             - github.com/meshcloud/meshstack-cli/pkg/io
             - github.com/spf13/cobra
             - github.com/charmbracelet/log
+
+        cmd-auth:
+          files:
+            - "**/cmd/auth/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - log/slog
+            # cmd/auth is an exception and accesses internal/{profile,auth} directly to persist changes on disk
+            - github.com/meshcloud/meshstack-cli/internal/auth
+            - github.com/meshcloud/meshstack-cli/internal/profile
+            - github.com/meshcloud/meshstack-cli/cmd/internal
+            - github.com/meshcloud/meshstack-cli/pkg/setting
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/spf13/cobra
+            - github.com/spf13/pflag
 
         cmd-internal:
           files:

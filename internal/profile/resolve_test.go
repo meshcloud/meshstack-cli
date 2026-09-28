@@ -102,17 +102,7 @@ func TestResolveProfileReadsTheCurrentProfileAndItsCachedTokenFromDisk(t *testin
 	require.NoError(t, profiles.Store(t.Context()))
 }
 
-func TestResolveProfileFailsOnANameThatIsNotOnDisk(t *testing.T) {
-	givenNoMeshstackEnvironment(t)
-	t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
-	t.Setenv(NameSetting.EnvKey(), "dev-locl")
-
-	_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
-
-	require.ErrorContains(t, err, "no profile found with name dev-locl")
-}
-
-func TestResolveProfileCreatesAMissingProfileForALoginAndUpdatesItOnTheNextOne(t *testing.T) {
+func TestResolveProfileCreatesAMissingProfileAndUpdatesItOnTheNextRun(t *testing.T) {
 	givenNoMeshstackEnvironment(t)
 	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 	t.Setenv(meshstack.EndpointSetting.EnvKey(), testEndpoint.String())
@@ -121,7 +111,7 @@ func TestResolveProfileCreatesAMissingProfileForALoginAndUpdatesItOnTheNextOne(t
 	require.NoError(t, defaultOnly.Store(t.Context()))
 
 	t.Setenv(NameSetting.EnvKey(), "dev")
-	created, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{CreateProfileIfMissing: true})
+	created, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 
 	require.NoError(t, err)
 	dev := &Profile{Name: "dev", Endpoint: testEndpoint}
@@ -131,7 +121,7 @@ func TestResolveProfileCreatesAMissingProfileForALoginAndUpdatesItOnTheNextOne(t
 	// What a login stores through the returned pointer has to survive the next one.
 	created.DefaultWorkspace = "my-workspace-ab12c"
 	require.NoError(t, profiles.Store(t.Context()))
-	reloaded, reloadedProfiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{CreateProfileIfMissing: true})
+	reloaded, reloadedProfiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 
 	require.NoError(t, err)
 	dev.DefaultWorkspace = "my-workspace-ab12c"
@@ -180,19 +170,17 @@ func storeApiKeyWithCachedToken(t *testing.T, p *Profile, token jwt.JWT) {
 	t.Helper()
 	creds, err := p.Credentials(t.Context())
 	require.NoError(t, err)
-	creds.SetIdentity(&credential.ApiKey{
+	apiKey := &credential.ApiKey{
 		Endpoint:     p.Endpoint,
 		ClientId:     uuid.MustParse("08be9109-45bf-42ba-a965-2097b9d0d181"),
 		ClientSecret: "super-test-secret",
-	})
-	require.NoError(t, creds.Store(t.Context()))
-	require.NoError(t, creds.ModifyCache(t.Context(), creds.ApiKey, func() error {
-		creds.ApiKey.Cache = &struct {
+		Cache: &struct {
 			Token jwt.JWT `json:"token,omitzero"`
-		}{Token: token}
-		return nil
-	}))
+		}{Token: token},
+	}
+	creds.Set(apiKey)
 	require.NoError(t, creds.Store(t.Context()))
+	require.NoError(t, p.CacheFor(apiKey).Write(t.Context()))
 }
 
 func assertApiKeyWithCachedToken(t *testing.T, p *Profile, clientId, clientSecret string, token jwt.JWT) {
@@ -202,10 +190,9 @@ func assertApiKeyWithCachedToken(t *testing.T, p *Profile, clientId, clientSecre
 	require.NotNil(t, creds.ApiKey)
 	assert.Equal(t, uuid.MustParse(clientId), creds.ApiKey.ClientId)
 	assert.Equal(t, clientSecret, creds.ApiKey.ClientSecret)
-	require.NoError(t, creds.ReadCache(t.Context(), creds.ApiKey, func() error {
-		assert.Equal(t, token, creds.ApiKey.Cache.Token)
-		return nil
-	}))
+	require.NoError(t, p.CacheFor(creds.ApiKey).Load(t.Context()))
+	require.NotNil(t, creds.ApiKey.Cache)
+	assert.Equal(t, token, creds.ApiKey.Cache.Token)
 }
 
 func assertProfiles(t *testing.T, actual Profiles, expected ...*Profile) {

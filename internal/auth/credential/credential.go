@@ -13,8 +13,12 @@ import (
 )
 
 type Credential interface {
-	// Identity identifies the credential, see Credentials.SetIdentity.
+	// Name returns a human-readable credential name (unique for all available credentials).
+	Name() Name
+	// Identity identifies the credential, so that a cache minted for another one is not used.
 	Identity() Identity
+	// CachedToken consults the cache (if present) and returns a token.
+	// Token expiry must be checked and if RefreshCachedToken is then to be called if the token is expired.
 	CachedToken(ctx context.Context, getWorkspace getWorkspaceFunc) (token jwt.JWT, found bool)
 	// RefreshCachedToken re-mints the token, so a CachedToken call after it finds one.
 	RefreshCachedToken(ctx context.Context, client http.Client, getWorkspace getWorkspaceFunc) error
@@ -28,9 +32,8 @@ type Credentials struct {
 	OidcLogin *OidcLogin `json:"oidcLogin,omitempty"`
 }
 
-func (cs *Credentials) SetIdentity(cred Credential) {
+func (cs *Credentials) Set(cred Credential) {
 	cs.withFieldFor(cred, func(_ Name, storedValue reflect.Value) {
-		adoptCacheIfIdentityMatches(storedValue, cred)
 		storedValue.Set(reflect.ValueOf(cred))
 	})
 }

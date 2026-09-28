@@ -13,7 +13,20 @@ var _ Credential = &Manual{}
 
 type Manual struct {
 	Endpoint xurl.URL `json:"endpoint"`
-	Token    jwt.JWT  `json:"token"`
+	Cache    *struct {
+		Token jwt.JWT `json:"token"`
+	} `json:"-"`
+}
+
+func NewManual(endpoint xurl.URL, token jwt.JWT) *Manual {
+	manual := &Manual{Endpoint: endpoint}
+	newCache(manual)
+	manual.Cache.Token = token
+	return manual
+}
+
+func (manual *Manual) Name() Name {
+	return ManualName
 }
 
 func (manual *Manual) Identity() Identity {
@@ -21,7 +34,10 @@ func (manual *Manual) Identity() Identity {
 }
 
 func (manual *Manual) CachedToken(_ context.Context, _ getWorkspaceFunc) (jwt.JWT, bool) {
-	return manual.Token, manual.Token.String() != ""
+	if manual.Cache == nil {
+		return jwt.JWT{}, false
+	}
+	return manual.Cache.Token, true
 }
 
 func (manual *Manual) RefreshCachedToken(_ context.Context, _ http.Client, _ getWorkspaceFunc) error {

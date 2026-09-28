@@ -15,6 +15,10 @@ func (s Session) GetBearerToken(ctx context.Context) (out http.BearerToken, err 
 }
 
 func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerToken) (out http.BearerToken, err error) {
+	// Resolved before any cache lock is taken: resolving the workspace may list workspaces, and
+	// that request needs a token of its own, which takes the same lock. A failure is returned by
+	// the calls below, which get the memoized result.
+	_, _ = s.getWorkspace()
 	usable := func() bool {
 		token, found := s.Credential.CachedToken(ctx, s.getWorkspace)
 		if !found || token.GetClaim(jwt.ExpiryClaim).Expired(30*time.Second) || token.String() == string(rejected) {
@@ -25,14 +29,14 @@ func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerTok
 	}
 
 	var foundCached bool
-	err = s.Credentials.ReadCache(ctx, s.Credential, func() error {
+	err = s.Credential.Read(ctx, func() error {
 		foundCached = usable()
 		return nil
 	})
 	if err != nil || foundCached {
 		return
 	}
-	err = s.Credentials.ModifyCache(ctx, s.Credential, func() error {
+	err = s.Credential.Modify(ctx, func() error {
 		if usable() {
 			return nil
 		}
