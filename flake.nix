@@ -2,12 +2,17 @@
   description = "meshStack CLI";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-unstable";
+    # nixpkgs-unstable rather than nixos-unstable: the former only advances once the Darwin
+    # builds pass as well, and a flake reference spelled out in full does not depend on the
+    # consumer's flake registry.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
   outputs = { self, nixpkgs }:
     let
-      supportedSystems = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      # No x86_64-darwin: nixpkgs 26.11 dropped it, so this flake cannot build for Intel Macs.
+      # The release archives still cover them.
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
         pkgs = import nixpkgs { inherit system; };
       });
@@ -32,7 +37,7 @@
         # No subPackages, so that doCheck below runs the whole suite rather than one
         # directory's tests.
 
-        vendorHash = "sha256-vvO0VufdztbH0PCXGwJ1yEfB4Xo1Ot/b5JkrVe0YTE0=";
+        vendorHash = "sha256-zYMhfwD18PMP0rYYEP6dCkhvYWGYJTleIaylKEr+Vdw=";
 
         # .goreleaser.yml and the Dockerfile set the same ldflag, and all three have to
         # agree. The linker ignores an -X whose path does not resolve and warns about
@@ -47,7 +52,7 @@
         meta = {
           description = "Command line interface for meshStack";
           homepage = "https://github.com/meshcloud/meshstack-cli";
-          license = nixpkgs.lib.licenses.asl20;
+          license = pkgs.lib.licenses.asl20;
           mainProgram = "meshstack";
         };
       };

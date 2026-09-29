@@ -1,0 +1,42 @@
+name: Nix
+
+# Builds the flake the way a user installs it. Nothing else here does, so without this a go.mod
+# change that leaves vendorHash stale breaks `nix profile add` without anyone noticing.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Nix Build (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One runner per system in flake.nix's supportedSystems.
+          - system: x86_64-linux
+            runner: ubuntu-latest
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+          - system: aarch64-darwin
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: nix flake check --print-build-logs
+      - run: nix build .#meshstack --print-build-logs
+      - run: ./result/bin/meshstack --version
+      - name: Suggest fix command on failure
+        if: failure()
+        run: |
+          echo "::error::If the log shows a hash mismatch for the go-modules derivation, set vendorHash in flake.nix to the 'got:' hash it prints."
