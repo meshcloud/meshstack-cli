@@ -111,10 +111,16 @@ func TestResolveSettingNamesEverySourceThatCouldHaveCarriedTheValue(t *testing.T
 		Func:        func(context.Context) (string, error) { return "", nil },
 	}}
 
-	_, err := setting.Sources{prompt}.ResolveSetting(t.Context(), withoutDefault)
+	derived := setting.FallbackSource{Source: setting.LookupSource{
+		Description: "the current profile",
+		Func:        func(context.Context) (string, error) { return "", nil },
+	}}
+
+	_, err := setting.Sources{prompt, derived}.ResolveSetting(t.Context(), withoutDefault)
 
 	require.ErrorIs(t, err, setting.ErrNoSourceProvidedValue)
 	require.ErrorContains(t, err, "MESHSTACK_TEST_NO_VALUE")
 	require.ErrorContains(t, err, "try setting the --endpoint flag")
 	require.ErrorContains(t, err, "try setting environment variable MESHSTACK_TEST_NO_VALUE")
+	require.NotContains(t, err.Error(), "the current profile")
 }
