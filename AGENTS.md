@@ -167,11 +167,19 @@ provider's own pin.
 
 This repository is a **meshStack satellite**: `cmd/internal/testacc/` drives the built binary
 against a live backend, and a whole meshStack only exists in the *meshcloud-internal* mono repo, so
-that repository runs the suite and nothing here does.
-`.github/workflows/test-acceptance.yml` asks for the run, and `meshstack-satellite.gradle` is
-everything the run reads from here. The other half of the lane belongs to `../meshfed-release` and
-changes without us, so read it there, in `satellite-suites.md` of the `acceptance-testing` skill,
-rather than trusting a copy here.
+CI here does not run the suite. `.github/workflows/test-acceptance.yml` asks that repository for the
+run, and `meshstack-satellite.gradle` is everything the run reads from here. The other half of the
+lane belongs to `../meshfed-release` and changes without us, so read it there, in
+`satellite-suites.md` of the `acceptance-testing` skill, rather than trusting a copy here.
+
+To run the suite yourself, bring up the local stack of `../meshfed-release` (its `local-dev-stack`
+skill); `./gradlew satelliteEnv` there writes `../.env-satellites-testacc`. Then run the suite from
+here with plain `go test`:
+
+```bash
+set -a; . ../.env-satellites-testacc; set +a
+go test ./cmd/internal/testacc/... -run TestAcc
+```
 
 ## Authentication
 
