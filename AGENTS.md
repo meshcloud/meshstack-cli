@@ -187,7 +187,7 @@ git-ignored `.env` for local runs.
 
 ## Releasing
 
-Pushing a `v*` tag runs goreleaser, which publishes the archives and checksums, and then builds the
+Pushing a `vN.N.N` tag runs goreleaser, which publishes the archives and checksums, and then builds the
 container image for the same tag. The image goes to GHCR only, as
 `ghcr.io/meshcloud/meshstack-cli`, and its entrypoint is the `meshstack` binary, so the image takes
 the same arguments a local `meshstack` does. A push to `main` refreshes `:main`, so an image exists

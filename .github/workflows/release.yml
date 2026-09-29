@@ -1,10 +1,10 @@
-# Releases the meshstack CLI when a tag matching "v*" is pushed.
+# Releases the meshstack CLI when a tag of the form vN.N.N is pushed.
 name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: read
@@ -27,6 +27,7 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
+          version: v2.18.2
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,3 +43,53 @@ jobs:
     uses: ./.github/workflows/build-image.yml
     with:
       version: ${{ github.ref_name }}
+
+  # Writes the formula for this release into meshcloud/homebrew-tap, so that
+  # `brew install meshcloud/tap/meshstack-cli` and `brew upgrade` pick it up. Separate job for the
+  # same reason as the image.
+  homebrew:
+    name: Homebrew
+    needs: [ goreleaser ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Mint a token for the tap
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.HOMEBREW_TAP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          owner: meshcloud
+          repositories: homebrew-tap
+          permission-contents: write
+
+      - name: Push the formula to the tap
+        env:
+          # Read through the environment, for the same reason as in build-image.yml.
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          TAP_TOKEN: ${{ steps.token.outputs.token }}
+          APP_SLUG: ${{ steps.token.outputs.app-slug }}
+        run: |
+          gh release download "$TAG" --pattern '*_SHA256SUMS' --dir "$RUNNER_TEMP/release"
+
+          tap="$RUNNER_TEMP/tap"
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/meshcloud/homebrew-tap.git" "$tap"
+          mkdir -p "$tap/Formula"
+          .github/homebrew/formula.sh "$TAG" "$RUNNER_TEMP"/release/*_SHA256SUMS > "$tap/Formula/meshstack-cli.rb"
+
+          # Committed as the app's bot user, which is how GitHub attributes a commit to an app.
+          bot="${APP_SLUG}[bot]"
+          git -C "$tap" config user.name "$bot"
+          git -C "$tap" config user.email "$(gh api "/users/${bot}" --jq .id)+${bot}@users.noreply.github.com"
+
+          git -C "$tap" add Formula/meshstack-cli.rb
+          # A re-run of this job for the same tag finds nothing to commit.
+          if git -C "$tap" diff --cached --quiet; then
+            exit 0
+          fi
+          git -C "$tap" commit -m "meshstack-cli ${TAG#v}"
+          git -C "$tap" push origin HEAD:main
