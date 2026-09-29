@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -44,8 +45,8 @@ func devLogins(t *testing.T) []devLogin {
 const refusedWithoutAWorkspace = "cannot list workspaces"
 
 // TestAccOidcLogin drives the authorization code flow with no browser and no terminal, which is the
-// shape CI has: the CLI prints the authorization URL to stderr and waits on a loopback listener, so
-// anything that can read stderr and speak HTTP can finish the login.
+// shape CI has: the CLI prints the URL of its access level page to stderr and waits on a loopback
+// listener, so anything that can read stderr and speak HTTP can finish the login.
 func TestAccOidcLogin(t *testing.T) {
 	endpoint := requireLocalStack(t)
 	issuer := meshInfo(t, endpoint).Issuer.String()
@@ -53,9 +54,10 @@ func TestAccOidcLogin(t *testing.T) {
 
 	t.Run("a wrong password logs nobody in", func(t *testing.T) {
 		c := newCLI(t, endpoint)
-		login := startLogin(t, c, issuer, "1")
+		login := startLogin(t, c, "1")
 
-		page := keycloakLogin(t, login.awaitAuthorizationURL(t), logins[0].Username, "not-the-password")
+		_, page := keycloakLogin(t, login.awaitStartURL(t), "full", logins[0].Username, "not-the-password")
+		assert.Truef(t, strings.HasPrefix(page.url.String(), issuer), "the access level page redirected to %s, not to %s", page.url, issuer)
 		stillAsksForALogin := strings.Contains(page.body, "kc-form-login")
 		assert.Truef(t, stillAsksForALogin, "keycloak took a wrong password and answered %s", page.url)
 		assert.Equal(t, "Invalid username or password.", keycloakFeedback(page.body))
@@ -67,9 +69,9 @@ func TestAccOidcLogin(t *testing.T) {
 	for _, login := range logins {
 		t.Run(login.Username, func(t *testing.T) {
 			c := newCLI(t, endpoint)
-			run := startLogin(t, c, issuer, "1")
+			run := startLogin(t, c, "1")
 
-			completeKeycloakLogin(t, run.awaitAuthorizationURL(t), login.Username, login.Password)
+			completeKeycloakLogin(t, run.awaitStartURL(t), "full", login.Username, login.Password)
 
 			if len(login.Workspaces) == 0 {
 				require.Errorf(t, run.wait(), "the login stored a credential it cannot use:\n%s", run.output.String())
@@ -82,6 +84,43 @@ func TestAccOidcLogin(t *testing.T) {
 			requireStoredLogin(t, c, run.output.String())
 		})
 	}
+
+	t.Run("a changed access level asks for consent again", func(t *testing.T) {
+		login := firstLoginWithAWorkspace(t, logins)
+		c := newCLI(t, endpoint)
+		loginWith := func(level string) (askedForConsent bool) {
+			run := startLogin(t, c, "1")
+			startURL := run.awaitStartURL(t)
+			askedForConsent = completeKeycloakLogin(t, startURL, level, login.Username, login.Password)
+			require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
+			assert.Equal(t, level, storedAccessLevel(t, c), "the credential keeps the chosen access level")
+			return
+		}
+
+		loginWith("read")
+		assert.True(t, loginWith("write"), "a changed access level must ask for consent again")
+		assert.False(t, loginWith("write"), "the same access level must reuse the consent keycloak remembers")
+	})
+}
+
+func firstLoginWithAWorkspace(t *testing.T, logins []devLogin) devLogin {
+	t.Helper()
+	found := slices.IndexFunc(logins, func(login devLogin) bool { return len(login.Workspaces) > 0 })
+	require.NotEqualf(t, -1, found, "%s carries no login with a workspace", envTestUsers)
+	return logins[found]
+}
+
+func storedAccessLevel(t *testing.T, c *cli) string {
+	t.Helper()
+	content, err := os.ReadFile(c.credentialsJson())
+	require.NoError(t, err)
+	var credentials struct {
+		OidcLogin struct {
+			AccessLevel string `json:"accessLevel"`
+		} `json:"oidcLogin"`
+	}
+	require.NoError(t, json.Unmarshal(content, &credentials))
+	return credentials.OidcLogin.AccessLevel
 }
 
 // TestAccApiKeyLogin logs in with the API key the Terraform provider's acceptance suite uses, and
@@ -142,15 +181,15 @@ func cachedApiKeyToken(t *testing.T, c *cli) string {
 }
 
 type loginRun struct {
-	cmd     *exec.Cmd
-	output  *syncBuffer
-	authURL chan string
-	drained chan struct{}
+	cmd      *exec.Cmd
+	output   *syncBuffer
+	startURL chan string
+	drained  chan struct{}
 }
 
-// startLogin drains stderr while the command still runs: login writes the authorization URL and
-// then blocks on the redirect, so nothing about it is readable after the fact.
-func startLogin(t *testing.T, c *cli, issuer, workspaceAnswer string) *loginRun {
+// startLogin drains stderr while the command still runs: login writes the URL of its access level
+// page and then blocks on the redirect, so nothing about it is readable after the fact.
+func startLogin(t *testing.T, c *cli, workspaceAnswer string) *loginRun {
 	t.Helper()
 	cmd := c.command("login")
 	cmd.Stdin = strings.NewReader(workspaceAnswer + "\n")
@@ -162,12 +201,12 @@ func startLogin(t *testing.T, c *cli, issuer, workspaceAnswer string) *loginRun 
 		cmd:    cmd,
 		output: &syncBuffer{},
 		// Buffered, so the scanner never blocks on a test that has already given up.
-		authURL: make(chan string, 1),
-		drained: make(chan struct{}),
+		startURL: make(chan string, 1),
+		drained:  make(chan struct{}),
 	}
 	require.NoError(t, cmd.Start())
 
-	printed := regexp.MustCompile(regexp.QuoteMeta(issuer) + `/\S+`)
+	printed := regexp.MustCompile(`http://127\.0\.0\.1:\d+\S*`)
 	go func() {
 		defer close(run.drained)
 		lines := bufio.NewScanner(stderr)
@@ -176,7 +215,7 @@ func startLogin(t *testing.T, c *cli, issuer, workspaceAnswer string) *loginRun 
 			_, _ = run.output.Write(append(line, '\n'))
 			if found := printed.Find(line); found != nil {
 				select {
-				case run.authURL <- string(found):
+				case run.startURL <- string(found):
 				default:
 				}
 			}
@@ -185,15 +224,15 @@ func startLogin(t *testing.T, c *cli, issuer, workspaceAnswer string) *loginRun 
 	return run
 }
 
-func (r *loginRun) awaitAuthorizationURL(t *testing.T) string {
+func (r *loginRun) awaitStartURL(t *testing.T) string {
 	t.Helper()
 	select {
-	case found := <-r.authURL:
+	case found := <-r.startURL:
 		return found
 	case <-r.drained:
-		t.Fatalf("`meshstack login` ended without printing an authorization URL. It said:\n%s", r.output.String())
+		t.Fatalf("`meshstack login` ended without printing the URL of its login page. It said:\n%s", r.output.String())
 	case <-time.After(time.Minute):
-		t.Fatalf("no authorization URL appeared within a minute. `meshstack login` said:\n%s", r.output.String())
+		t.Fatalf("no login page URL appeared within a minute. `meshstack login` said:\n%s", r.output.String())
 	}
 	return ""
 }
@@ -212,44 +251,49 @@ func (r *loginRun) abort() {
 	_ = r.cmd.Wait()
 }
 
-func completeKeycloakLogin(t *testing.T, authURL, username, password string) {
+// completeKeycloakLogin reports whether keycloak asked for consent, which it does for an access
+// level the user has not granted yet, and on prompt=consent.
+func completeKeycloakLogin(t *testing.T, startURL, accessLevel, username, password string) (askedForConsent bool) {
 	t.Helper()
-	page := keycloakLogin(t, authURL, username, password)
+	browser, page := keycloakLogin(t, startURL, accessLevel, username, password)
 	// Asserted as a bool: a Contains assertion would quote two hundred lines of patternfly.
 	stillAsksForALogin := strings.Contains(page.body, "kc-form-login")
 	require.Falsef(t, stillAsksForALogin,
 		"keycloak is still asking for a login, so it refused %s: %s", username, keycloakFeedback(page.body))
+
+	askedForConsent = strings.Contains(page.body, consentAction)
+	if askedForConsent {
+		page = submitForm(t, browser, page, `action="[^"]*`+consentAction, url.Values{
+			"code":   {firstSubmatch(t, page.body, `name="code" value="([^"]*)"`)},
+			"accept": {"Yes"},
+		})
+	}
+	require.Containsf(t, page.body, "You are logged in", "the login did not reach the CLI's result page at %s", page.url)
+	return
 }
 
-// keycloakLogin is the browser's part: fetch the authorization URL, post the forms keycloak answers
-// with, and follow every redirect. The last redirect goes to http://127.0.0.1:<port>/callback, and
-// making that request is what hands the CLI its authorization code and ends its wait.
-func keycloakLogin(t *testing.T, authURL, username, password string) htmlPage {
+// keycloakLogin is the browser's part up to the consent screen: pick the access level on the CLI's
+// own page, which redirects to keycloak, and post the login form there. Keycloak then redirects to
+// http://127.0.0.1:<port>/callback, which hands the CLI its authorization code and ends its wait.
+func keycloakLogin(t *testing.T, startURL, accessLevel, username, password string) (*gohttp.Client, htmlPage) {
 	t.Helper()
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	// Keycloak carries the authentication session in a cookie, so the jar is not a convenience.
 	browser := &gohttp.Client{Jar: jar, Timeout: 30 * time.Second}
 
-	page := fetch(t, browser, authURL)
+	page := fetch(t, browser, startURL)
+	page = submitForm(t, browser, page, `action="/"`, url.Values{"access": {accessLevel}})
 	asksForALogin := strings.Contains(page.body, "kc-form-login")
 	require.Truef(t, asksForALogin,
-		"keycloak served no login form at %s, but %s", authURL, keycloakFeedback(page.body))
+		"keycloak served no login form at %s, but %s", page.url, keycloakFeedback(page.body))
 	page = submitForm(t, browser, page, `id="kc-form-login"`, url.Values{
 		"username": {username},
 		"password": {password},
 		// Posted empty as keycloak's own form does: leaving it out picks a different authenticator.
 		"credentialId": {""},
 	})
-
-	// The consent screen appears on a first login for this client and not on later ones.
-	if strings.Contains(page.body, consentAction) {
-		page = submitForm(t, browser, page, `action="[^"]*`+consentAction, url.Values{
-			"code":   {firstSubmatch(t, page.body, `name="code" value="([^"]*)"`)},
-			"accept": {"Yes"},
-		})
-	}
-	return page
+	return browser, page
 }
 
 // consentAction identifies the consent form, which carries no id of its own.
