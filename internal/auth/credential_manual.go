@@ -25,8 +25,8 @@ var ApiTokenSetting = setting.Setting[jwt.JWT]{
 	Parse: setting.ParseTextUnmarshaler[jwt.JWT],
 }
 
-func (s Session) resolveManualCredential(ctx context.Context, opts ResolveSessionOptions) (credential.Credential, error) {
-	apiToken, apiTokenErr := opts.ResolveSetting(ctx, ApiTokenSetting)
+func (s Session) resolveManualCredential(ctx context.Context, settingSources setting.Sources) (credential.Credential, error) {
+	apiToken, apiTokenErr := settingSources.ResolveSetting(ctx, ApiTokenSetting)
 	if apiTokenErr != nil {
 		return nil, apiTokenErr
 	}
