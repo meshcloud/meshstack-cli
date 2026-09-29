@@ -25,8 +25,8 @@ func (s Session) resolveCredentials(ctx context.Context, opts ResolveSessionOpti
 	}
 	// No browser login here: it needs a person, so only Login reaches it, and the Terraform
 	// provider resolves a session on every plan and must never open a browser.
-	collect(s.resolveApiKeyCredential(ctx, opts))
-	collect(s.resolveManualCredential(ctx, opts))
+	collect(s.resolveApiKeyCredential(ctx, opts.SettingSources))
+	collect(s.resolveManualCredential(ctx, opts.SettingSources))
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}

@@ -34,9 +34,9 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	case credential.OidcLoginName:
 		resolved, err = session.resolveOidcLoginCredential(ctx, opts)
 	case credential.ManualName:
-		resolved, err = session.resolveManualCredential(ctx, opts)
+		resolved, err = session.resolveManualCredential(ctx, opts.SettingSources)
 	case credential.ApiKeyName:
-		resolved, err = session.resolveApiKeyCredential(ctx, opts)
+		resolved, err = session.resolveApiKeyCredential(ctx, opts.SettingSources)
 	default:
 		return Session{}, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", withAuth, credential.Names)
 	}
