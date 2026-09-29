@@ -6,9 +6,28 @@ repository also holds the Go client for the meshStack API, which the
 
 ## Install
 
+With [Homebrew](https://brew.sh/), on macOS or Linux:
+
+```shell
+brew install meshcloud/tap/meshstack-cli
+brew upgrade meshstack-cli
+```
+
+With Go:
+
 ```shell
 go install github.com/meshcloud/meshstack-cli/cmd/meshstack@latest
 ```
+
+With [Nix](https://nixos.org/) (flakes enabled), on Linux (x86_64, aarch64) or on an Apple Silicon Mac:
+
+```shell
+nix profile add github:meshcloud/meshstack-cli   # older Nix versions call this `nix profile install`
+nix profile upgrade meshstack-cli
+```
+
+`nix profile upgrade` follows the `main` branch, not releases. To try it without installing it,
+run `nix run github:meshcloud/meshstack-cli -- --version`.
 
 ## Development
 
