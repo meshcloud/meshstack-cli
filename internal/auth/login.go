@@ -32,7 +32,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	var resolved credential.Credential
 	switch withAuth {
 	case credential.OidcLoginName:
-		resolved, err = session.resolveOidcLoginCredential(ctx, opts)
+		resolved, err = session.resolveOidcLoginCredential(ctx, creds.OidcLogin)
 	case credential.ManualName:
 		resolved, err = session.resolveManualCredential(ctx, opts.SettingSources)
 	case credential.ApiKeyName:

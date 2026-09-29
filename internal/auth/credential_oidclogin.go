@@ -6,12 +6,14 @@ import (
 	"log/slog"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/browser"
 )
 
 // resolveOidcLoginCredential logs a person in through a browser, which is why only Login calls it.
-func (s Session) resolveOidcLoginCredential(ctx context.Context, _ ResolveSessionOptions) (credential.Credential, error) {
+// The previous login, if any, is what the access level page preselects.
+func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *credential.OidcLogin) (credential.Credential, error) {
 	meshInfo, err := s.MeshInfo()
 	if err != nil {
 		return nil, err
@@ -20,15 +22,20 @@ func (s Session) resolveOidcLoginCredential(ctx context.Context, _ ResolveSessio
 	if err != nil {
 		return nil, err
 	}
-	token, err := browser.Login(ctx, oidcClient)
+	var previousLevel meshstack.AccessLevel
+	if previous != nil {
+		previousLevel = previous.AccessLevel
+	}
+	token, level, err := browser.Login(ctx, oidcClient, previousLevel)
 	if err != nil {
 		return nil, err
 	}
-	slog.DebugContext(ctx, fmt.Sprintf("Logged in at %s through a browser", oidcClient.Issuer))
+	slog.DebugContext(ctx, fmt.Sprintf("Logged in at %s through a browser with access level %q", oidcClient.Issuer, level))
 	oidcLogin := &credential.OidcLogin{
-		Endpoint: s.CurrentProfile.Endpoint,
-		Issuer:   oidcClient.Issuer,
-		ClientId: oidcClient.Id,
+		Endpoint:    s.CurrentProfile.Endpoint,
+		Issuer:      oidcClient.Issuer,
+		ClientId:    oidcClient.Id,
+		AccessLevel: level,
 	}
 	oidcLogin.StoreLogin(token.RefreshToken, token.AccessToken)
 
