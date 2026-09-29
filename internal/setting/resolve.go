@@ -22,9 +22,12 @@ func (sources Sources) ResolveSetting[T any](ctx context.Context, setting Settin
 		if err != nil {
 			errs := []error{err}
 			for _, source := range emptySources {
-				if _, isDefault := source.(DefaultSource); isDefault {
+				switch source.(type) {
+				case DefaultSource, FallbackSource:
+					// Both derive a value from other state, so no person can set them.
 					continue
-				} else if describeSource := source.Describe(setting.EnvKey()); describeSource != "" {
+				}
+				if describeSource := source.Describe(setting.EnvKey()); describeSource != "" {
 					errs = append(errs, fmt.Errorf("try setting %s", describeSource))
 				}
 			}
