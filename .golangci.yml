@@ -105,6 +105,9 @@ linters:
       - path: cmd/internal/testacc/
         linters:
           - forbidigo
+        text: one HTTP client
+      - path: cmd/internal/testacc/
+        linters:
           - gosec
 
   settings:
@@ -112,7 +115,8 @@ linters:
     forbidigo:
       analyze-types: true
       forbid:
-        - pattern: \.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
+        # Anchored to the package, as net/http has more methods named Get, such as Header.Get.
+        - pattern: ^http\.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
           pkg: ^net/http$
           msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
         # A test that sleeps for real is slow, and flaky once the machine is slower than the
