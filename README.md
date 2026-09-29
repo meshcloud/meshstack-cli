@@ -6,28 +6,48 @@ repository also holds the Go client for the meshStack API, which the
 
 ## Install
 
-With [Homebrew](https://brew.sh/), on macOS or Linux:
+### With [Homebrew](https://brew.sh/)
 
 ```shell
 brew install meshcloud/tap/meshstack-cli
 brew upgrade meshstack-cli
 ```
 
-With Go:
+### With Go
 
 ```shell
 go install github.com/meshcloud/meshstack-cli/cmd/meshstack@latest
 ```
 
-With [Nix](https://nixos.org/) (flakes enabled), on Linux (x86_64, aarch64) or on an Apple Silicon Mac:
+...or without installing it:
 
 ```shell
-nix profile add github:meshcloud/meshstack-cli   # older Nix versions call this `nix profile install`
+go run github.com/meshcloud/meshstack-cli/cmd/meshstack@latest --version
+```
+
+### With [Nix](https://nixos.org/) (flakes enabled)
+
+```shell
+nix profile add github:meshcloud/meshstack-cli   # older Nix: `nix profile install`
 nix profile upgrade meshstack-cli
 ```
 
-`nix profile upgrade` follows the `main` branch, not releases. To try it without installing it,
-run `nix run github:meshcloud/meshstack-cli -- --version`.
+...or without installing it:
+
+```shell
+nix run github:meshcloud/meshstack-cli -- --version
+```
+
+:warning: `nix profile upgrade` follows the `main` branch, not releases.
+
+### With the install script
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/meshcloud/meshstack-cli/main/install.sh | sh
+```
+
+Run it again to upgrade. `| sh -s -- --version v1.2.3 --dir ~/bin` pins a release and the directory,
+and `| sh -s -- --help` lists the options.
 
 ## Development
 
