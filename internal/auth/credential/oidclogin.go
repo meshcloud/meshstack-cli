@@ -19,7 +19,9 @@ type OidcLogin struct {
 	Endpoint xurl.URL `json:"endpoint"`
 	Issuer   xurl.URL `json:"issuer"`
 	ClientId string   `json:"clientId"`
-	Cache    *struct {
+	// AccessLevel is empty for a login of an older CLI, or on a meshStack without access levels.
+	AccessLevel meshstack.AccessLevel `json:"accessLevel,omitzero"`
+	Cache       *struct {
 		RefreshToken string                  `json:"refreshToken"`
 		ScopedTokens map[scope.Scope]jwt.JWT `json:"tokens,omitzero"`
 	} `json:"-"`
@@ -108,6 +110,9 @@ func tokenCacheKey(workspace meshstack.Workspace) scope.Scope {
 // the default scopes openid, profile and email and falls back to the workspace in a keycloak
 // session note, while any other non-c: scope clears that note. Asking for no workspace therefore
 // names offline_access, where openid alone would inherit the previous workspace.
+//
+// The access level needs no scope here: keycloak keeps the scopes granted at login on every
+// refresh, whatever the request names.
 func scopesFor(workspace meshstack.Workspace) scope.Scopes {
 	if workspace == meshstack.NoWorkspace {
 		return scope.Scopes{scope.OpenId, scope.OfflineAccess}

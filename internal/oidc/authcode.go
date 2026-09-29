@@ -30,12 +30,13 @@ func (a AuthorizationCodeFlow) Exchange(ctx context.Context, code string) (Token
 	return a.ExchangeAuthCode(ctx, code, a.RedirectURI, a.verifier)
 }
 
-func (a AuthorizationCodeFlow) BrowserUrl() xurl.URL {
+// BrowserUrl asks for the standard scopes plus extraScopes. askConsent makes keycloak show its
+// consent screen even for scopes the user has granted before.
+func (a AuthorizationCodeFlow) BrowserUrl(extraScopes scope.Scopes, askConsent bool) xurl.URL {
 	challenge := sha256.Sum256([]byte(a.verifier))
 	// scopes never include c:<workspace>: a login is unscoped and the workspace arrives later
-	scopes := scope.Scopes{scope.OpenId, scope.Profile, scope.Email, scope.OfflineAccess}
-	authURL := a.AuthorizationEndpoint.Clone()
-	authURL.RawQuery = url.Values{
+	scopes := append(scope.Scopes{scope.OpenId, scope.Profile, scope.Email, scope.OfflineAccess}, extraScopes...)
+	query := url.Values{
 		"response_type":         {"code"},
 		"client_id":             {a.Id},
 		"redirect_uri":          {a.RedirectURI.String()},
@@ -43,7 +44,12 @@ func (a AuthorizationCodeFlow) BrowserUrl() xurl.URL {
 		"state":                 {a.state},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(challenge[:])},
 		"code_challenge_method": {"S256"},
-	}.Encode()
+	}
+	if askConsent {
+		query.Set("prompt", "consent")
+	}
+	authURL := a.AuthorizationEndpoint.Clone()
+	authURL.RawQuery = query.Encode()
 	return authURL
 }
 
