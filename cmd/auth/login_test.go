@@ -53,7 +53,7 @@ func TestProfileSelection(t *testing.T) {
 			selection: profile.Selection{Profiles: all, Current: "second"},
 			answers:   "\n",
 			want:      "second",
-			wantAsked: "  [1] first (https://a.example.io)\n *[2] second (https://b.example.io)\n  [3] third (https://a.example.io)\n" +
+			wantAsked: "  [1] first  (https://a.example.io)\n *[2] second (https://b.example.io)\n  [3] third  (https://a.example.io)\n" +
 				"Select a profile [1-3, default=2]: ",
 		},
 		{
@@ -123,7 +123,7 @@ func TestWorkspaceSelection(t *testing.T) {
 		{Metadata: client.MeshWorkspaceMetadata{Name: "first"}, Spec: client.MeshWorkspaceSpec{DisplayName: "First"}},
 		{Metadata: client.MeshWorkspaceMetadata{Name: "second"}, Spec: client.MeshWorkspaceSpec{DisplayName: "Second"}},
 	}}
-	const asked = "  [1] First (first)\n  [2] Second (second)\nSelect a workspace [1-2]: "
+	const asked = "  [1] First  (first)\n  [2] Second (second)\nSelect a workspace [1-2]: "
 
 	// An input that stays open with nothing on it, as the stdin of some scripts does.
 	silent := func(t *testing.T) io.Reader {

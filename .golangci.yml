@@ -206,6 +206,7 @@ linters:
             - "!**/cmd/meshstack/*.go"
             - "!**/cmd/auth/*.go"
             - "!**/cmd/internal/*.go"
+            - "!**/cmd/internal/**/*.go"
             - "!$test"
           list-mode: strict
           deny:
@@ -271,6 +272,7 @@ linters:
         cmd-internal:
           files:
             - "**/cmd/internal/*.go"
+            - "**/cmd/internal/**/*.go"
             - "!$test"
           list-mode: strict
           deny:
@@ -287,6 +289,11 @@ linters:
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
             - github.com/spf13/pflag
+            # nice terminal support for prompting the user
+            - charm.land/bubbletea/v2
+            - charm.land/bubbles/v2/list
+            - github.com/charmbracelet/x/term
+            - github.com/charmbracelet/x/ansi
 
         # The package the Terraform provider consumes most directly, so it reaches nothing
         # beyond the standard library and the three packages below.
@@ -359,7 +366,8 @@ linters:
 
         internal:
           files:
-            - "**/internal/**/*.go"
+            - "**/internal/**/*.go" # catch all for anything internal...
+            - "!**/cmd/**/*.go"     # ...except cmd, whose internal packages the cmd rules cover
             - "!$test"
             - "!**/internal/testutil/**/*.go"
           list-mode: strict
@@ -376,10 +384,10 @@ linters:
             - github.com/meshcloud/meshstack-cli/internal
             # internal/auth builds a client, and the types a profile stores are client/types ones
             - github.com/meshcloud/meshstack-cli/client
-            # Keep this list of external libraries as small as possible. Never add cobra.
+            # Keep this list of external libraries as small as possible. Never add cobra here.
             - github.com/gofrs/flock
 
-        internal-test:
+        internal-testutil:
           files:
             - "**/internal/testutil/**/*.go"
           list-mode: strict
@@ -393,8 +401,6 @@ linters:
             - github.com/meshcloud/meshstack-cli
             - github.com/stretchr/testify
 
-        # A test that pins a wire format with encoding/json v1 pins a format this module does
-        # not produce, so the deny holds here too.
         tests:
           files:
             - "$test"
@@ -410,3 +416,4 @@ linters:
             - github.com/spf13/cobra
             - github.com/stretchr/testify
             - github.com/gofrs/flock
+            - charm.land/bubbletea/v2
