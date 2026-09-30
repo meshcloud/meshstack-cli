@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"strings"
@@ -39,4 +40,23 @@ func TestNext(t *testing.T) {
 			assert.Equal(t, time.Minute, time.Since(start))
 		})
 	})
+}
+
+func TestUsesTerminal(t *testing.T) {
+	var asked bytes.Buffer
+	p := New(strings.NewReader("\n"), &asked)
+	require.False(t, p.usesTerminal(), "a strings.Reader is no terminal")
+
+	p.input.terminal = true
+	copied := p
+	require.True(t, copied.usesTerminal(), "a terminal is used until a line is read")
+
+	_, err := p.Next(t.Context(), "secret")
+	require.NoError(t, err)
+
+	assert.False(t, p.usesTerminal())
+	assert.False(t, copied.usesTerminal(), "a copy of the prompt has read that line as well")
+	_, err = Select(t.Context(), copied, "thing", []candidate{"a", "b"}, nil)
+	require.ErrorIs(t, err, ErrEndOfInput)
+	assert.Equal(t, "  [1] label of a\n  [2] label of b\nSelect a thing [1-2]: ", asked.String(), "the selection asked line by line")
 }

@@ -161,7 +161,7 @@ func requireStoredLogin(t *testing.T, c *cli, output string) {
 	assert.Contains(t, string(profiles), `"default_workspace"`, "the login stored the workspace it resolved")
 	// The identifier is read out of the list the login printed, which only appears where more than
 	// one workspace is reachable, so this holds for any seed.
-	if offered := regexp.MustCompile(`\[1\] .*\((\S+)\)`).FindStringSubmatch(output); offered != nil {
+	if offered := regexp.MustCompile(`\[ *1\] .*\((\S+)\)`).FindStringSubmatch(output); offered != nil {
 		assert.Contains(t, string(profiles), offered[1], "the selected workspace is the profile's default")
 	}
 }
