@@ -62,14 +62,6 @@ func (ws Workspaces) ProfileDefault(ctx context.Context) (r *MeshWorkspace) {
 	return nil
 }
 
-func (ws Workspaces) Single(ctx context.Context) (single *MeshWorkspace) {
-	if len(ws.Items) == 1 {
-		single = &MeshWorkspace{ws.Items[0]}
-		slog.InfoContext(ctx, fmt.Sprintf("Auto-selecting the only workspace available: %s", single))
-	}
-	return
-}
-
 func (w MeshWorkspace) Name() Workspace {
 	return Workspace(w.Metadata.Name)
 }
@@ -80,4 +72,9 @@ func (w MeshWorkspace) Matches(other MeshWorkspace) bool {
 
 func (w MeshWorkspace) String() string {
 	return fmt.Sprintf("%s (%s)", w.Spec.DisplayName, w.Metadata.Name)
+}
+
+// Label is what a person picks a workspace by.
+func (w MeshWorkspace) Label() string {
+	return w.String()
 }
