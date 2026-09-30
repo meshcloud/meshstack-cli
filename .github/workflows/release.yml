@@ -1,4 +1,3 @@
-# Releases the meshstack CLI when a tag of the form vN.N.N is pushed.
 name: Release
 
 on:
@@ -44,9 +43,7 @@ jobs:
     with:
       version: ${{ github.ref_name }}
 
-  # Writes the formula for this release into meshcloud/homebrew-tap, so that
-  # `brew install meshcloud/tap/meshstack-cli` and `brew upgrade` pick it up. Separate job for the
-  # same reason as the image.
+  # Separate job for the same reason as the image.
   homebrew:
     name: Homebrew
     needs: [ goreleaser ]

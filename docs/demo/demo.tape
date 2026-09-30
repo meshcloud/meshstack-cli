@@ -1,4 +1,3 @@
-# Records docs/demo.gif: run `task docs:demo` from the repository root, see README.md here.
 Output docs/demo.gif
 
 Require go

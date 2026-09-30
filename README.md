@@ -50,8 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/meshcloud/meshstack-cli/main/instal
 
 ## Development
 
-The Nix dev shell provides Go, `goreleaser` and `task`. `task lint` builds `golangci-lint` from
-the tool directive in `go.mod`, so the dev shell deliberately does not carry it:
+The Nix dev shell provides Go, `goreleaser` and `task`:
 
 ```shell
 nix develop

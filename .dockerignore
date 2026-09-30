@@ -1,5 +1,3 @@
-# The build only needs the Go sources, go.mod and go.sum. Everything below would
-# otherwise be copied into the build context and invalidate its cache.
 .git/
 .github/
 dist/

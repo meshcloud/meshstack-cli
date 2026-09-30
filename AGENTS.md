@@ -80,13 +80,10 @@ These rules hold the tree together:
 
 ## Dependency policy
 
-The CLI runs on the standard library and a short list of external dependencies, with `testify` in
-tests. `go.mod` is that list.
-
 **The `depguard` rules in `.golangci.yml` are the policy**, not only its enforcement: each rule
 confines a dependency to a smaller area than the module, so widening a boundary is a deliberate edit
-rather than a lint fix. Adding a dependency therefore means editing both files, and the second edit
-is where you argue for it.
+rather than a lint fix. Adding a dependency therefore means editing `go.mod` and `.golangci.yml`,
+and the second edit is where you argue for it.
 
 <rules id="client-package">
 **This repository is the client's only home.** `client/` moved here from
@@ -160,9 +157,6 @@ The Go version is pinned in `go.mod`, in `flake.nix` and in the `Dockerfile`'s b
 must agree**, each says so at the pin, and all three are held in lock-step with the Terraform
 provider's own pin.
 
-`flake.nix` also builds the binary — `nix build .#meshstack` — and exports it as
-`packages.<system>.meshstack` and as `overlays.default`, so another flake can put it in a dev shell.
-
 ## Acceptance tests
 
 This repository is a **meshStack satellite**: `cmd/internal/testacc/` drives the built binary
@@ -195,11 +189,8 @@ git-ignored `.env` for local runs.
 
 ## Releasing
 
-Pushing a `vN.N.N` tag runs goreleaser, which publishes the archives and checksums, and then builds the
-container image for the same tag. The image goes to GHCR only, as
-`ghcr.io/meshcloud/meshstack-cli`, and its entrypoint is the `meshstack` binary, so the image takes
-the same arguments a local `meshstack` does. A push to `main` refreshes `:main`, so an image exists
-before the first release does.
+Pushing a `vN.N.N` tag runs `.github/workflows/release.yml`: goreleaser publishes the archives and
+checksums, and the image goes to GHCR only, as `ghcr.io/meshcloud/meshstack-cli`.
 
 <rules id="release-version">
 The version reaches the binary through an ldflag on
@@ -207,11 +198,9 @@ The version reaches the binary through an ldflag on
 `Dockerfile` and in `flake.nix`. **They must agree**, and all three say so at the ldflag. The linker
 ignores an `-X` whose path does not resolve and warns about nothing, so a stale path is silent.
 
-A build with no ldflag falls back to what the go command stamped itself, which `cmd/internal` reads
-from `debug.ReadBuildInfo`: the module version for `go install <path>@<version>`, and since Go 1.24
-a pseudo-version derived from the commit for a build inside a git checkout. Only a source tree with
-no VCS information, such as an extracted archive, reports `dev`. Check with `meshstack --version`
-after `task release:snapshot`.
+A build with no ldflag reports the version the go command stamped, a pseudo-version inside a
+checkout, so a missed ldflag fails nothing. Check `dist/*/meshstack --version` after
+`task release:snapshot`.
 </rules>
 
 Pin every GitHub Action by commit SHA with the version in a trailing comment, as the existing

@@ -1,7 +1,5 @@
-# Binary produced by 'task build'
 /meshstack
 
-# Release artifacts produced by goreleaser
 /dist/
 
 # Go environment created by the Nix dev shell (flake.nix shellHook)
@@ -26,7 +24,6 @@ covdata/
 junit.xml
 unit.txt
 
-# Editor and IDE directories
 .vscode/
 .idea/
 
