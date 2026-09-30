@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -16,6 +18,8 @@ import (
 // so --profile and MESHSTACK_PROFILE are taken as given. It ranks above the endpoint match and the
 // current profile of internal/profile, which is why it has to take a single candidate itself, as
 // prompt.Select does. With --stdin it asks nothing at all, since stdin then carries the secret.
+// An input that ends before an answer takes the current profile as well, so that a script with a
+// closed stdin goes on as it did before there was a question to answer.
 func newProfileSelectionSource(p prompt.Prompt, stdinCarriesSecret bool) setting.FallbackSource {
 	return setting.FallbackLookupSource(setting.Profile.EnvKey(), "the profile selection",
 		func(ctx context.Context) (string, error) {
@@ -33,6 +37,7 @@ func newProfileSelectionSource(p prompt.Prompt, stdinCarriesSecret bool) setting
 			}
 			candidates := selection.Candidates()
 			isCurrent := func(candidate *profile.Profile) bool { return candidate.Name == selection.Current }
+			currentIsCandidate := slices.ContainsFunc(candidates, isCurrent)
 			switch {
 			case len(selection.Profiles) == 0:
 				return "", nil
@@ -43,13 +48,17 @@ func newProfileSelectionSource(p prompt.Prompt, stdinCarriesSecret bool) setting
 					selection.Endpoint, labelProfiles(selection.Profiles),
 					internal.EndpointFlag.Name, selection.Endpoint, internal.ProfileFlag.Name)
 			case stdinCarriesSecret && len(candidates) > 1:
-				if slices.ContainsFunc(candidates, isCurrent) {
+				if currentIsCandidate {
 					return string(selection.Current), nil
 				}
 				return "", fmt.Errorf("this login could go to any of %s; name one with --%s, as --%s leaves no stdin to ask on",
 					labelProfiles(candidates), internal.ProfileFlag.Name, stdinFlagName)
 			}
 			selected, err := prompt.Select(ctx, p, "profile", candidates, isCurrent)
+			if currentIsCandidate && errors.Is(err, prompt.ErrEndOfInput) {
+				slog.InfoContext(ctx, fmt.Sprintf("Selecting the current profile '%s', as the input ended before an answer", selection.Current))
+				return string(selection.Current), nil
+			}
 			if err != nil {
 				return "", err
 			}

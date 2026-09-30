@@ -29,6 +29,7 @@ does not exist yet.
 
 Unless --profile or MESHSTACK_PROFILE names the profile, it asks which of the stored profiles to log
 in to, and offers only those for the endpoint where --endpoint or MESHSTACK_ENDPOINT gives one.
+Where the input ends before an answer, it logs in to the current profile if that is one of them.
 
 With no flag this is a browser login, and it asks which workspace to work in unless --workspace or
 MESHSTACK_WORKSPACE already says. An API key login asks the same way, but goes on without a workspace

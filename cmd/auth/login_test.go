@@ -71,6 +71,19 @@ func TestProfileSelection(t *testing.T) {
 				"create a new profile for it with `meshstack login --endpoint https://unknown.example.io --profile <new profile name>`",
 		},
 		{
+			name:      "an input that ends takes the current profile",
+			selection: profile.Selection{Profiles: all, Current: "second"},
+			want:      "second",
+			wantAsked: "  [1] first  (https://a.example.io)\n *[2] second (https://b.example.io)\n  [3] third  (https://a.example.io)\n" +
+				"Select a profile [1-3, default=2]: ",
+		},
+		{
+			name:      "an input that ends is an error where the current profile is for another endpoint",
+			selection: profile.Selection{Profiles: all, Current: "second", Endpoint: &endpointA},
+			wantErr:   "nothing was entered for the profile selection",
+			wantAsked: "  [1] first (https://a.example.io)\n  [2] third (https://a.example.io)\nSelect a profile [1-2]: ",
+		},
+		{
 			name:      "with --stdin the current profile is taken without asking",
 			selection: profile.Selection{Profiles: all, Current: "third", Endpoint: &endpointA},
 			stdin:     true,
