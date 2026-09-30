@@ -299,7 +299,6 @@ func keycloakLogin(t *testing.T, startURL, accessLevel, username, password strin
 // consentAction identifies the consent form, which carries no id of its own.
 const consentAction = "login-actions/consent"
 
-// keycloakFeedback pulls the one sentence keycloak puts on the page when it refuses something.
 func keycloakFeedback(body string) string {
 	said := regexp.MustCompile(`kc-feedback-text[^>]*>([^<]*)<`).FindStringSubmatch(body)
 	if len(said) != 2 {

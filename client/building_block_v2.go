@@ -59,9 +59,9 @@ type MeshBuildingBlockV2Spec struct {
 	Inputs                  map[string]*MeshBuildingBlockInput `json:"inputs" tfsdk:"inputs"`
 	ParentBuildingBlockRefs types.Set[UuidRef]                 `json:"parentBuildingBlockRefs" tfsdk:"parent_building_block_refs"`
 
-	// ParentBuildingBlocks holds the deprecated parentBuildingBlocks field. MarshalJSON and
-	// UnmarshalJSON put it on the wire and take it off again, and the deprecated
-	// meshstack_building_block_v2 surfaces read it for the definition uuid they report.
+	// ParentBuildingBlocks is the deprecated parentBuildingBlocks field, which MarshalJSON and
+	// UnmarshalJSON carry. The deprecated meshstack_building_block_v2 surfaces of the Terraform
+	// provider read the definition uuid they report from it.
 	ParentBuildingBlocks types.Set[MeshBuildingBlockV2Parent] `json:"-" tfsdk:"-"`
 }
 
@@ -69,7 +69,7 @@ type MeshBuildingBlockV2Spec struct {
 type MeshBuildingBlockV2Parent struct {
 	UuidRef
 
-	// BuildingBlockUuid identifies the parent and always holds the same value as Uuid.
+	// BuildingBlockUuid always holds the same value as Uuid.
 	BuildingBlockUuid string `json:"buildingBlockUuid"`
 	// DefinitionUuid is the parent's building block definition. The backend derives it from the
 	// referenced block, so every response carries it and a request never does.
@@ -186,11 +186,9 @@ type MeshBuildingBlockInput struct {
 	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitzero" tfsdk:"-"`
 	AssignmentType enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
 
-	// If IsSensitive is true, the [types.Variant] (typedef [types.SecretOrAny]) for Value field
-	// is of [types.Secret] (case [types.Variant.X]).
-	// Otherwise, the [types.Variant] is of [types.Any] (case [types.Variant.Y]).
-	// As this is a fallback detection when JSON (un)marshaling,
-	// types.Any must go second as [types.Variant] intentionally prefers X over Y.
+	// IsSensitive decides the case of Value: [types.Secret] when true, [types.Any] otherwise.
+	// [types.Variant] decodes into X first, so UnmarshalJSON moves a non-sensitive value that also
+	// decodes as a Secret over to Y.
 	IsSensitive bool `json:"isSensitive" tfsdk:"-"`
 }
 
@@ -203,8 +201,6 @@ func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
 	*m = MeshBuildingBlockInput(target)
 	switch {
 	case !m.IsSensitive:
-		// ensure "any" struct fields never end up in X accidentally,
-		// as X is only set when IsSensitive is true!
 		var errs []error
 		moveXtoYIfPresent := func(v *types.SecretOrAny) {
 			if v.HasX() {
@@ -226,10 +222,9 @@ func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
 type MeshBuildingBlockV2DefinitionVersionRef struct {
 	UuidRef
 
-	// ContentHash is a Terraform-only field (json:"-", never sent to or returned by the backend).
-	// It lets a config signal that the referenced version's content changed so a rerun is triggered
-	// even though the version uuid is unchanged. The building_block (v3) resource honors it via the
-	// shared rerunNeeded predicate used by both ModifyPlan and Update.
+	// ContentHash never reaches the backend. A Terraform config changes it to ask for a rerun when
+	// the content of the referenced version changed but its uuid did not; see rerunNeeded in
+	// terraform-provider-meshstack.
 	ContentHash *string `json:"-" tfsdk:"content_hash"`
 }
 
@@ -263,31 +258,25 @@ type MeshBuildingBlockOutput struct {
 	AssignmentType enum.Entry[MeshBuildingBlockDefinitionOutputAssignmentType] `json:"assignmentType" tfsdk:"assignment_type"`
 }
 
-// MeshBuildingBlockV2ListFilter holds the optional query filters for listing building blocks
-// via the v2-preview list endpoint. All scalar fields are nil when unset (omitted from the
-// query). The backend returns only active building blocks; soft-deleted ones are not listed.
-// MeshBuildingBlockV2ListFilter holds the optional filters for the V2 building block list endpoint.
-// The json tags are the query param names and must match the backend fetchBuildingBlocksV2
-// @RequestParam names exactly; a typo silently disables the filter.
+// MeshBuildingBlockV2ListFilter never matches a soft-deleted building block: the endpoint lists
+// only active ones. The json tags are the query parameter names and must match the @RequestParam
+// names of fetchBuildingBlocksV2 in the meshStack backend, which ignores an unknown parameter, so
+// a typo turns the filter off without an error.
 type MeshBuildingBlockV2ListFilter struct {
 	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
 	ProjectIdentifier   *string `json:"projectIdentifier"`
 	PlatformIdentifier  *string `json:"platformIdentifier"`
 	Name                *string `json:"name"`
-	// DefinitionUuid filters by the owning building block definition's UUID (not a version).
-	DefinitionUuid *string `json:"definitionUuid"`
-	// VersionUuid filters by a specific building block definition version UUID.
-	VersionUuid *string `json:"versionUuid"`
-	// VersionNumber filters by the literal definition version number. The backend parses it
-	// leniently, so both "v1" and "1" match version 1.
+	DefinitionUuid      *string `json:"definitionUuid"`
+	VersionUuid         *string `json:"versionUuid"`
+	// VersionNumber matches version 1 for both "v1" and "1".
 	VersionNumber *string `json:"versionNumber"`
 	TenantUuid    *string `json:"tenantUuid"`
-	// TargetKind filters by target ref kind, one of meshTenant or meshWorkspace.
+	// TargetKind is meshTenant or meshWorkspace.
 	TargetKind *string `json:"targetRefKind"`
 	Status     *string `json:"status"`
-	// ManagedByWorkspaceIdentifier and ManagedByDefinitionUuid select the platform-operator
-	// (managed) permission scope: building blocks created from definitions owned by the given
-	// workspace / definition. Requires the MANAGED_BUILDINGBLOCK_LIST authority.
+	// ManagedByWorkspaceIdentifier and ManagedByDefinitionUuid list the building blocks of the
+	// definitions a platform operator owns, and need the MANAGED_BUILDINGBLOCK_LIST permission.
 	ManagedByWorkspaceIdentifier *string `json:"managedByWorkspaceIdentifier"`
 	ManagedByDefinitionUuid      *string `json:"managedByDefinitionUuid"`
 }
@@ -346,10 +335,6 @@ func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purg
 	return c.meshObject.Delete(ctx, uuid)
 }
 
-// IsWaitingForInput reports whether the building block run is paused awaiting
-// human input, a dependency, or an approval. Such a run will not progress on its
-// own, so polling callers treat it as a terminal (but non-fatal) state and surface
-// a warning.
 func (bb *MeshBuildingBlockV2) IsWaitingForInput() bool {
 	return bb.Status.Status == BuildingBlockStatusWaitingForOperatorInput ||
 		bb.Status.Status == BuildingBlockStatusWaitingForUserInput ||
@@ -357,7 +342,6 @@ func (bb *MeshBuildingBlockV2) IsWaitingForInput() bool {
 		bb.Status.Status == BuildingBlockStatusWaitingForApproval
 }
 
-// bbUuidOrUnknown returns the building block UUID for diagnostic messages, or "<unknown>" if nil.
 func bbUuidOrUnknown(bb *MeshBuildingBlockV2) string {
 	if bb != nil && bb.Metadata.Uuid != nil {
 		return *bb.Metadata.Uuid
@@ -370,18 +354,17 @@ func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
 	case bb == nil:
 		err = errors.New("building block not found after creation")
 	case bb.Status == nil:
-		// no status yet — keep polling
+		// keep polling
 	case bb.Status.Status == BuildingBlockStatusFailed,
 		bb.Status.Status == BuildingBlockStatusAborted:
 		err = fmt.Errorf("building block %s reached %s state, check run logs in meshStack", bbUuidOrUnknown(bb), bb.Status.Status)
 	case bb.IsWaitingForInput():
-		// Paused awaiting input — stop polling so the caller can surface a warning.
+		// A waiting run does not go on by itself, so stop polling and leave the warning to the caller.
 		done = true
 	case bb.Status.Status == BuildingBlockStatusSucceeded:
 		done = true
 	case !slices.Contains(BuildingBlockStatuses, bb.Status.Status):
-		// Unrecognized status: fail fast instead of polling to the timeout — the backend returned a
-		// status this provider version does not know about (provider may be out of date).
+		// Fail now: a status this client does not know would keep the poll going until it times out.
 		err = fmt.Errorf("unknown building block status %q for building block %s; provider may be out of date", bb.Status.Status, bbUuidOrUnknown(bb))
 	}
 	return
@@ -390,18 +373,15 @@ func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
 func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 	switch {
 	case bb == nil:
-		// 404: the block was hard-removed (e.g. its definition was deleted too); treat as done.
+		// A 404: the block is gone, for example together with its definition.
 		done = true
 	case bb.Status != nil && bb.Status.Lifecycle.State == BuildingBlockLifecycleStateDeleted:
-		// Soft delete: once deletion completes the backend keeps returning the block with lifecycle
-		// DELETED (it does not 404), so treat DELETED as done. While deletion is still in progress the
-		// block is returned with MARKED_FOR_DELETION, which falls through as not-yet-done so we keep polling.
+		// A soft-deleted block does not return 404: the backend keeps returning it with DELETED.
+		// MARKED_FOR_DELETION means the deletion still runs, so polling goes on.
 		done = true
 	case bb.Status != nil && bb.Status.Status == BuildingBlockStatusFailed:
-		// A force-purge (definition deletion_mode = PURGE, or an admin purge) deletes the block
-		// regardless of its delete run's outcome, so a FAILED status here is transient — the
-		// lifecycle still proceeds to DELETED. Keep polling instead of erroring on that transient
-		// FAILED. Only a FAILED delete that is NOT being force-purged is a genuine stuck deletion.
+		// A force purge (definition deletion_mode PURGE, or an admin purge) deletes the block whatever
+		// its delete run reports, so FAILED passes and the lifecycle still reaches DELETED.
 		if !bb.Status.ForcePurge {
 			err = fmt.Errorf("building block %s reached FAILED state during deletion. For more details, check the building block run logs in meshStack", bbUuidOrUnknown(bb))
 		}

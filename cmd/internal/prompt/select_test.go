@@ -14,7 +14,6 @@ type candidate string
 
 func (c candidate) Label() string { return "label of " + string(c) }
 
-// labeled is a candidate whose label is all of it.
 type labeled string
 
 func (l labeled) Label() string { return string(l) }

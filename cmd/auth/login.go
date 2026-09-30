@@ -65,7 +65,7 @@ Every question, the secret prompts of --stdin included, fails where no answer co
 					}),
 					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), &openStdinFlag, promptedFrom, "API Client Secret"),
 				)
-				// An API key works without a workspace, so only query optionally if stdin is "free".
+				// An API key login needs no workspace, so it asks for one only while stdin carries no secret.
 				if !openStdinFlag.Value {
 					opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom, true))
 				}

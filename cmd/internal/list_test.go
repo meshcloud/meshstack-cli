@@ -13,7 +13,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
-// countingItems yields a, b, c, … and counts how many of them were asked for.
 func countingItems(pulled *int) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
 		for _, value := range []string{`"a"`, `"b"`, `"c"`, `"d"`} {

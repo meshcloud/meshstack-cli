@@ -284,8 +284,8 @@ func TestResolveProfileOffersASelectionOnlyWhenNothingElseNamesTheProfile(t *tes
 		assert.Empty(t, asked)
 	})
 
-	// Loading the profiles once resolved the profile name itself, and so reached the selection
-	// before the context carried it.
+	// A LoadProfiles that resolves the profile name itself reaches the selection before the
+	// context carries it.
 	t.Run("a first-time use offers an empty selection", func(t *testing.T) {
 		givenNoMeshstackEnvironment(t)
 		t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
@@ -313,7 +313,6 @@ func TestSelectionFromContextFailsOutsideTheProfileNameResolution(t *testing.T) 
 	require.ErrorContains(t, err, NameSetting.EnvKey())
 }
 
-// selectionSource installs a selection the way a front end does, as a fallback source.
 func selectionSource(choose func(Selection) Name) SettingSources {
 	return setting.Sources{setting.FallbackSource{Source: setting.LookupSource{
 		MatchingKey: NameSetting.EnvKey(),

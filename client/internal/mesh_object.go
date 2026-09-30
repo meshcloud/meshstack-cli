@@ -23,9 +23,6 @@ type HttpClient struct {
 	EndpointUrl xurl.URL
 }
 
-// MeshObjectClient provides typed CRUD operations for meshStack API objects.
-// It embeds [http.AuthorizedClient] and adds meshObject-specific functionality including automatic
-// MIME type handling and pagination.
 type MeshObjectClient[M any] struct {
 	http.AuthorizedClient
 
@@ -34,11 +31,9 @@ type MeshObjectClient[M any] struct {
 	ApiUrl     *url.URL
 }
 
-// NewMeshObjectClient creates a new [MeshObjectClient] for a specific meshObject type with automatic URL path inference.
-// The meshObject kind is inferred from type M.
-// The API URL is constructed from explicitApiPathElems if provided,
-// otherwise the pluralized and lowercased kind is used as a single element, a convention only the
-// workspace and project user/group binding APIs break.
+// NewMeshObjectClient takes the API path from the kind of M, in plural and lower case, unless
+// explicitApiPathElems is given. Only the user and group binding APIs of workspaces and projects
+// break that convention.
 func NewMeshObjectClient[M any](ctx context.Context, httpClient HttpClient, apiVersion string, explicitApiPathElems ...string) MeshObjectClient[M] {
 	kind := InferKind[M]()
 
@@ -53,10 +48,8 @@ func NewMeshObjectClient[M any](ctx context.Context, httpClient HttpClient, apiV
 
 var versionSuffixRe = regexp.MustCompile(`V\d+$`)
 
-// InferKind infers the meshObject kind from a struct type name using the same convention
-// as the meshObject API: MeshWorkspace → "meshWorkspace", MeshBuildingBlockV2 → "meshBuildingBlock".
-// Version suffixes (V\d+) are stripped.
-// Tested when client.Kind is statically initialized.
+// InferKind follows the naming of the meshObject API: MeshWorkspace gives meshWorkspace, and
+// MeshBuildingBlockV2 gives meshBuildingBlock.
 func InferKind[M any]() string {
 	typeName := reflect.TypeFor[M]().Name()
 
@@ -67,9 +60,7 @@ func InferKind[M any]() string {
 	return versionSuffixRe.ReplaceAllString(kind, "")
 }
 
-var pluralExceptions = map[string]string{
-	// Add exceptions here as needed, e.g. "meshPolicy": "meshPolicies"
-}
+var pluralExceptions = map[string]string{}
 
 func pluralizeKind(kind string) string {
 	if plural, ok := pluralExceptions[kind]; ok {
@@ -82,7 +73,6 @@ func (c MeshObjectClient[M]) MeshObjectMimeType() string {
 	return fmt.Sprintf("application/vnd.meshcloud.api.%s.%s.hal+json", c.Kind, c.ApiVersion)
 }
 
-// Get retrieves a meshObject by ID. Returns nil if not found.
 func (c MeshObjectClient[M]) Get(ctx context.Context, id string) (resp *M, err error) {
 	resp, err = c.GetAtPath[*M](ctx, id)
 	if httpErr, ok := errors.AsType[http.Error](err); ok && httpErr.IsNotFound() {
@@ -96,8 +86,6 @@ func (c MeshObjectClient[M]) GetAtPath[R any](ctx context.Context, id string, ex
 	return c.DoRequest[R](ctx, http.MethodGet, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.WithAccept(c.MeshObjectMimeType()))
 }
 
-// Post creates a new meshObject with the given payload.
-// Automatically injects apiVersion and kind into the JSON payload.
 func (c MeshObjectClient[M]) Post[P any](ctx context.Context, payload P) (*M, error) {
 	return c.PostAtPath[*M](ctx, payload)
 }
@@ -107,15 +95,12 @@ func (c MeshObjectClient[M]) PostAtPath[R, P any](ctx context.Context, payload P
 		http.WithAccept(c.MeshObjectMimeType()), c.withMeshObjectPayload(payload))
 }
 
-// Put updates an existing meshObject by ID with the given payload.
-// Automatically injects apiVersion and kind into the JSON payload.
 func (c MeshObjectClient[M]) Put[P any](ctx context.Context, id string, payload P) (*M, error) {
 	return c.DoRequest[*M](ctx, http.MethodPut, c.ApiUrl.JoinPath(id), c.withMeshObjectPayload(payload), http.Retryable())
 }
 
-// withMeshObjectPayload injects apiVersion and kind as top-level members. P carries the payload's
-// own type because the `,embed` tag takes a struct, a string-keyed map or a jsontext.Value, never
-// an any.
+// withMeshObjectPayload takes P rather than an any because the `,embed` tag takes a struct, a
+// string-keyed map or a jsontext.Value, never an any.
 func (c MeshObjectClient[M]) withMeshObjectPayload[P any](payload P) http.RequestOption {
 	return http.WithJsonPayload(struct {
 		ApiVersion string `json:"apiVersion"`
@@ -124,7 +109,6 @@ func (c MeshObjectClient[M]) withMeshObjectPayload[P any](payload P) http.Reques
 	}{c.ApiVersion, c.Kind, payload}, c.MeshObjectMimeType())
 }
 
-// Delete removes a meshObject by ID.
 func (c MeshObjectClient[M]) Delete(ctx context.Context, id string) (err error) {
 	return c.DeleteAtPath(ctx, id)
 }
@@ -134,8 +118,6 @@ func (c MeshObjectClient[M]) DeleteAtPath(ctx context.Context, id string, extraP
 	return
 }
 
-// ListSeq retrieves all meshObjects with automatic pagination handling, and yields each one as its
-// page arrives.
 func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.RequestOption) iter.Seq2[M, error] {
 	return c.ListSeqAs[M](ctx, options...)
 }

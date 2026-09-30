@@ -63,8 +63,6 @@ type MeshLandingZoneCreate struct {
 	Spec     MeshLandingZoneSpec     `json:"spec" tfsdk:"spec"`
 }
 
-// MeshLandingZoneListQuery holds the optional filters for the V1 landing zone list endpoint. The
-// json tags name the query params; unset (nil/zero) fields are dropped by WithUrlQuery.
 type MeshLandingZoneListQuery struct {
 	PlatformUuid     *string `json:"platformUuid"`
 	Identifier       *string `json:"identifier"`

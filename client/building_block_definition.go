@@ -53,7 +53,7 @@ type MeshBuildingBlockDefinitionSpec struct {
 	UseInLandingZonesOnly bool                                        `json:"useInLandingZonesOnly" tfsdk:"use_in_landing_zones_only"`
 	SupportURL            *string                                     `json:"supportUrl,omitzero" tfsdk:"support_url"`
 	DocumentationURL      *string                                     `json:"documentationUrl,omitzero" tfsdk:"documentation_url"`
-	// NotificationSubscribers can also specify emails with prefix 'email:', so it's not only usernames (as the JSON field name suggests)!
+	// NotificationSubscribers also takes an email address as `email:<address>`, despite the JSON name.
 	NotificationSubscribers types.Set[string]               `json:"notificationSubscriberUsernames,omitempty" tfsdk:"notification_subscribers"`
 	Symbol                  *string                         `json:"symbol,omitzero" tfsdk:"symbol"`
 	SupportedPlatforms      types.Set[SupportedPlatformRef] `json:"supportedPlatforms" tfsdk:"supported_platforms"`
@@ -67,7 +67,6 @@ type MeshBuildingBlockDefinitionApprovalPolicies struct {
 	AnyInputChanges       bool `json:"anyInputChanges" tfsdk:"any_input_changes"`
 }
 
-// NothingRequiresApproval reports whether no approval gate is enabled.
 func (a MeshBuildingBlockDefinitionApprovalPolicies) NothingRequiresApproval() bool {
 	return a == MeshBuildingBlockDefinitionApprovalPolicies{}
 }
@@ -90,12 +89,10 @@ func (s MeshBuildingBlockDefinitionSchedule) IsDisabled() bool {
 	return s == DisabledSchedule()
 }
 
-// HasNeutralPolicies reports whether the spec asks for no approval gate and no schedule.
 func (s MeshBuildingBlockDefinitionSpec) HasNeutralPolicies() bool {
 	return s.ApprovalPolicies.NothingRequiresApproval() && s.Schedule.IsDisabled()
 }
 
-// WithNeutralPolicies returns a copy of the spec without any required approvals and without a schedule.
 func (s MeshBuildingBlockDefinitionSpec) WithNeutralPolicies() MeshBuildingBlockDefinitionSpec {
 	s.ApprovalPolicies = MeshBuildingBlockDefinitionApprovalPolicies{}
 	s.Schedule = DisabledSchedule()
@@ -106,7 +103,8 @@ type MeshBuildingBlockDefinitionStatusVersion struct {
 	VersionUuid   string                                  `json:"versionUuid"`
 	VersionNumber int64                                   `json:"versionNumber"`
 	State         MeshBuildingBlockDefinitionVersionState `json:"state"`
-	// WorkloadIdentityFederation is the identity a run of this version presents to a cloud provider, rendered from the runner's template, absent when the runner declares none.
+	// WorkloadIdentityFederation is rendered from the runner's template, and is nil when the runner
+	// declares none.
 	WorkloadIdentityFederation *MeshBuildingBlockDefinitionWif `json:"workloadIdentityFederation,omitzero"`
 }
 
@@ -158,9 +156,8 @@ func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.H
 }
 
 type meshBuildingBlockDefinitionListQuery struct {
-	// IncludeAllPublished is always true here: list definitions published across the platform in
-	// addition to the workspace's own. (A false bool would be dropped by WithUrlQuery, which is fine —
-	// this endpoint is only ever called with it set.)
+	// IncludeAllPublished is always true, so the list also holds the definitions published to the
+	// whole platform, not only the workspace's own.
 	IncludeAllPublished bool    `json:"includeAllPublished"`
 	OwnedByWorkspace    *string `json:"ownedByWorkspace"`
 }

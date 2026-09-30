@@ -77,8 +77,6 @@ type TagMapper struct {
 	ValuePattern string `json:"valuePattern" tfsdk:"value_pattern"`
 }
 
-// MeshPlatformListQuery holds the optional filters for the V2 platform list endpoint. The json tags
-// name the query params; unset (nil/zero) fields are dropped by WithUrlQuery.
 type MeshPlatformListQuery struct {
 	OwnedByWorkspace      *string `json:"ownedByWorkspace"`
 	Identifier            *string `json:"identifier"`
@@ -87,8 +85,8 @@ type MeshPlatformListQuery struct {
 	Restriction           *string `json:"restriction"`
 	PublicationState      *string `json:"publicationState"`
 	ContributingWorkspace *string `json:"contributingWorkspace"`
-	// PlatformTypeIdentifier filters by the platform type's identifier (matched backend-side); the type
-	// is not carried in the response, and spec.config is redacted for marketplace consumers anyway.
+	// PlatformTypeIdentifier can only be filtered by the backend: a response does not carry the type,
+	// and spec.config is redacted for marketplace consumers.
 	PlatformTypeIdentifier *string `json:"platformTypeIdentifier"`
 }
 

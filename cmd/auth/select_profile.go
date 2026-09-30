@@ -14,8 +14,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// newProfileSelectionSource lets the person pick the profile to act on. It is a fallback source,
-// so --profile and MESHSTACK_PROFILE are taken as given. It ranks above the endpoint match and the
+// newProfileSelectionSource is a fallback source, so --profile and MESHSTACK_PROFILE are taken as given. It ranks above the endpoint match and the
 // current profile of internal/profile, which is why it has to take a single candidate itself, as
 // prompt.Select does. With --stdin it asks nothing at all, since stdin then carries the secret.
 // An input that ends before an answer takes the current profile as well, so that a script with a

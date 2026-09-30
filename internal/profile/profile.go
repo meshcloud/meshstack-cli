@@ -13,12 +13,10 @@ import (
 
 //nolint:recvcheck // only exception is init() to set fields after unmarshalling
 type Profile struct {
-	Endpoint xurl.URL `json:"endpoint,omitzero"`
-	// DefaultWorkspace might be meshstack.NoWorkspace (empty string), default value when being unmarshaled.
+	Endpoint         xurl.URL            `json:"endpoint,omitzero"`
 	DefaultWorkspace meshstack.Workspace `json:"default_workspace,omitzero"`
 	Credential       credential.Name     `json:"credential,omitzero"`
 
-	// Name and ConfigDir are set by [Profile.init] after load or create, not by the JSON.
 	Name      Name             `json:"-"`
 	ConfigDir config.Directory `json:"-"`
 }

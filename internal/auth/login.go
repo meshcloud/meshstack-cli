@@ -62,7 +62,6 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	})
 
 	storeSession := func(ctx context.Context) error {
-		// The credentials go first, and every step runs even after an earlier one failed.
 		errs := []error{creds.Store(ctx)}
 
 		switch defaultWorkspace, err := session.getWorkspace(); {
@@ -72,8 +71,8 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 			errs = append(errs, err)
 		}
 
-		// A login makes its profile the current one. CurrentProfile points into the map profiles
-		// holds, so the default workspace set above is stored as well.
+		// CurrentProfile points into the map profiles holds, so the default workspace set above is
+		// stored as well.
 		profiles.CurrentProfile = session.CurrentProfile.Name
 		return errors.Join(append(errs, profiles.Store(ctx))...)
 	}

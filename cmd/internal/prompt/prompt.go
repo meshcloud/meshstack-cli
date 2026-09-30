@@ -35,12 +35,12 @@ type input struct {
 	lines    func() <-chan string
 }
 
+// answerTime makes a script whose stdin stays open with nothing on it fail rather than wait
+// forever.
 const answerTime = time.Minute
 
 // New reads in only once something asks, and then line by line for every later question, so
-// several prompts of one command take their answers from the same input in turn. Each answer has to
-// come within a minute, so that a script whose stdin stays open with nothing on it fails rather than
-// waits forever.
+// several prompts of one command take their answers from the same input in turn.
 func New(in io.Reader, out io.Writer) Prompt {
 	return Prompt{
 		input: &input{

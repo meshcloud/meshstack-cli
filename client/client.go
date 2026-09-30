@@ -15,8 +15,6 @@ var MinMeshStackVersion = version.MustParse("2026.36.0")
 // another module.
 type Version = version.Version
 
-// HttpError represents an HTTP error response with status code.
-// This error is returned when an HTTP request fails with a non-2XX status code.
 type HttpError = http.Error
 
 type Authorization = http.Authorization

@@ -44,7 +44,6 @@ func (ps Profiles) selection() Selection {
 	return Selection{Profiles: sorted, Current: ps.CurrentProfile}
 }
 
-// Candidates are the profiles this run may use: those for its endpoint, or all without one.
 func (s Selection) Candidates() []*Profile {
 	if s.Endpoint == nil {
 		return s.Profiles
@@ -54,7 +53,6 @@ func (s Selection) Candidates() []*Profile {
 	})
 }
 
-// Label is what a person picks a profile by.
 func (p Profile) Label() string {
 	if p.Endpoint.URL == nil {
 		return fmt.Sprintf("%s (no endpoint)", p.Name)

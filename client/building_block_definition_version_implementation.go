@@ -74,8 +74,8 @@ type MeshBuildingBlockDefinitionImplementation struct {
 	Terraform           *MeshBuildingBlockDefinitionTerraformImplementation           `json:"terraform,omitzero" tfsdk:"terraform"`
 }
 
-// InferType derives the implementation type from the one variant that is set. A version without any variant
-// is what meshStack answers a workspace that may only consume the definition.
+// InferType accepts a version without any variant: meshStack answers that way to a workspace that
+// may only consume the definition.
 func (m MeshBuildingBlockDefinitionImplementation) InferType() (enum.Entry[MeshBuildingBlockImplementationType], error) {
 	result, err := variant.InferType(
 		variant.NewCandidate(MeshBuildingBlockImplementationTypeManual, m.Manual != nil),

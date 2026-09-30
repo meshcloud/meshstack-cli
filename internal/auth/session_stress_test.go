@@ -147,7 +147,6 @@ func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserv
 	}
 }
 
-// greetConcurrently reports whether every worker got all its greetings.
 func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, server *testserver.Server, session auth.Session, failures *stressFailures) bool {
 	t.Helper()
 	greet := greetingClient(session)
@@ -179,9 +178,7 @@ func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, se
 // its five callers all meet a 401 at once and go through auth.Session.RefreshBearerToken
 // together. Exactly one of them may then mint, which is what the login count checks.
 //
-// It revokes only between rounds. A revocation during a request can leave a 401 that nothing
-// recovers from, because the client retries once and may retry with a token it adopted from the
-// cache file just before that token was revoked.
+// It revokes only between rounds, as [testserver.Server.RevokeNewestToken] requires.
 func revokeTokens(t *testing.T, ctx context.Context, server *testserver.Server, inFlight *atomic.Int64) {
 	t.Helper()
 	ticker := time.NewTicker(revokeEvery)

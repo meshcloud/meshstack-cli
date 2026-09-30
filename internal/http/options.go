@@ -13,7 +13,6 @@ import (
 )
 
 type (
-	// RequestOption is a functional option for configuring HTTP requests.
 	RequestOption func(opts *requestOptions)
 
 	requestOptions struct {
@@ -46,15 +45,10 @@ func isRetryable(ctx context.Context) bool {
 	return retryable
 }
 
-// WithUrlQuery adds URL query parameters from a query value.
-//
-// The given value is JSON-marshalled and decoded into a flat map, so each field becomes a query param
-// named by its `json` tag. A struct passed by value is the common case: its zero-value fields are
-// dropped (an implicit `omitempty`), so an unset filter needs neither a pointer nor an `omitempty`
-// tag and a zero-value struct adds no params at all. A map[string]string / map[string]any is taken
-// verbatim — every entry is sent, including deliberate zero values such as page=0.
-//
-// A value goes in as the JSON literal it marshalled to, with a string unquoted; nested objects or
+// WithUrlQuery sends each field of query as a query parameter named by its `json` tag. A struct
+// passed by value leaves out every field that has the zero value, so an unset filter needs neither
+// a pointer nor `omitempty`. A map is sent as given, so a deliberate zero such as page=0 stays.
+// Each value is sent as the JSON literal it marshals to, with a string unquoted. Nested objects and
 // arrays are not supported.
 func WithUrlQuery(query any) RequestOption {
 	return appendRequestModifier(func(req *gohttp.Request) error {
@@ -81,8 +75,6 @@ func convertStructOrMapToUrlValues(structOrMap any) (url.Values, error) {
 	if err := json.Unmarshal(data, &converted); err != nil {
 		return nil, fmt.Errorf("cannot decode type %T into a flat map: %w", structOrMap, err)
 	}
-	// Drop zero-value fields only for a struct (passed by value, not by pointer); a map is
-	// passed through as given.
 	skipZero := reflect.ValueOf(structOrMap).Kind() == reflect.Struct
 	result := url.Values{}
 	for key, value := range converted {

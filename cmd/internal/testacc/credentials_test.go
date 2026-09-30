@@ -35,7 +35,6 @@ func TestAccCredentialResolutionNamesEveryCredentialItLooksFor(t *testing.T) {
 	require.ErrorContains(t, err, setting.ApiToken.EnvKey())
 }
 
-// newInProcessCLI is newCLI's counterpart for a resolution that runs in this process.
 func newInProcessCLI(t *testing.T) {
 	t.Helper()
 	endpoint := requireLocalStack(t)

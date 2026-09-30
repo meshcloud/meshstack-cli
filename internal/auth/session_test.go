@@ -198,8 +198,6 @@ var (
 	testApiKey2     = testserver.ApiKey{ClientId: "22222222-45bf-42ba-a965-2097b9d0d181", ClientSecret: "super-test-secret-2"}
 )
 
-// newTestServer starts a backend both test api keys can log in to, and points a fresh config
-// directory and the endpoint setting at it.
 func newTestServer(t *testing.T) *testserver.Server {
 	t.Helper()
 	// A shell that exports any of these would otherwise reach the resolutions under test, and a

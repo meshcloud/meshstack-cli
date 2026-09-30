@@ -7,7 +7,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 )
 
-// A Candidate is one variant of a type that holds exactly one of several variants, one field each.
 type Candidate[T ~string] struct {
 	Type  enum.Entry[T]
 	IsSet bool

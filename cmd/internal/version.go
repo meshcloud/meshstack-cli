@@ -6,9 +6,8 @@ import (
 
 const devVersion = "dev"
 
-// Version identifies the CLI to the meshStack API through the
-// client's UserAgent. A release overrides it with
-// -ldflags "-X github.com/meshcloud/meshstack-cli/cmd/internal.Version=<tag>".
+// Version is set with -X by its package path in .goreleaser.yml, the Dockerfile and flake.nix, so
+// moving or renaming it needs the same change there. The linker ignores an -X that does not resolve.
 var Version = devVersion
 
 func init() {

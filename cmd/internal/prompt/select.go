@@ -13,9 +13,7 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-// Candidate is one thing a person can select.
 type Candidate interface {
-	// Label is what the person selects it by.
 	Label() string
 }
 

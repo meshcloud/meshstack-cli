@@ -1,4 +1,3 @@
-// Package jsontest holds the json helpers that only a test needs.
 package jsontest
 
 import (

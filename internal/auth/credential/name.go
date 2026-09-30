@@ -13,11 +13,8 @@ func (n Name) String() string {
 }
 
 const (
-	// ApiKeyName mints a token from an API key id and secret.
-	ApiKeyName Name = "apiKey"
-	// ManualName sends an access token as it is.
-	ManualName Name = "manual"
-	// OidcLoginName logs a person in through a browser, so it resolves only when asked for by name.
+	ApiKeyName    Name = "apiKey"
+	ManualName    Name = "manual"
 	OidcLoginName Name = "oidcLogin"
 )
 

@@ -32,8 +32,7 @@ type marshalOptions struct {
 	perm os.FileMode
 }
 
-// UserOnlyFilePerms keeps the file readable and writable by its owner alone. Use it for a
-// file that holds a credential, or a token minted from one.
+// UserOnlyFilePerms is for a file that holds a credential, or a token minted from one.
 func UserOnlyFilePerms() MarshalOption {
 	return func(opts *marshalOptions) {
 		opts.perm = 0o600

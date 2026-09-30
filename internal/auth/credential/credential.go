@@ -13,12 +13,11 @@ import (
 )
 
 type Credential interface {
-	// Name returns a human-readable credential name (unique for all available credentials).
 	Name() Name
 	// Identity identifies the credential, so that a cache minted for another one is not used.
 	Identity() Identity
-	// CachedToken consults the cache (if present) and returns a token.
-	// Token expiry must be checked and if RefreshCachedToken is then to be called if the token is expired.
+	// CachedToken does not check the expiry. The caller does, and calls RefreshCachedToken for an
+	// expired token.
 	CachedToken(ctx context.Context, getWorkspace getWorkspaceFunc) (token jwt.JWT, found bool)
 	// RefreshCachedToken re-mints the token, so a CachedToken call after it finds one.
 	RefreshCachedToken(ctx context.Context, client http.Client, getWorkspace getWorkspaceFunc) error

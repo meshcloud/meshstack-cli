@@ -44,7 +44,6 @@ func (l loggedHeaders) String() string {
 	var lines []string
 	for _, k := range slices.Sorted(maps.Keys(l)) {
 		for _, v := range l[k] {
-			// Avoid printing that longish JWT Bearer token (which is also a secret)
 			if k == "Authorization" {
 				v = "[REDACTED]"
 			}
