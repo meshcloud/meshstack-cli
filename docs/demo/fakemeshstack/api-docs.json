@@ -1,0 +1,83 @@
+{
+  "openapi": "3.0.1",
+  "info": {"title": "meshStack API", "version": "2026.39.0"},
+  "paths": {
+    "/api/meshobjects/meshbuildingblocks": {
+      "get": {
+        "summary": "List building blocks",
+        "operationId": "meshBuildingBlockList",
+        "parameters": [
+          {"name": "workspaceIdentifier", "in": "query", "description": "Only those of this workspace.", "schema": {"type": "string"}},
+          {"name": "size", "in": "query", "description": "The page size (default=50).", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"schema": {"$ref": "#/components/schemas/meshBuildingBlockPage"}},
+              "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {"schema": {"$ref": "#/components/schemas/meshBuildingBlockPage"}}
+            }
+          }
+        }
+      }
+    },
+    "/api/meshobjects/meshbuildingblocks/{uuid}": {
+      "get": {
+        "summary": "Get building block",
+        "operationId": "meshBuildingBlock",
+        "parameters": [{"name": "uuid", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"schema": {"$ref": "#/components/schemas/meshBuildingBlock"}},
+              "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {"schema": {"$ref": "#/components/schemas/meshBuildingBlock"}}
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete building block",
+        "operationId": "meshBuildingBlockDelete",
+        "parameters": [{"name": "uuid", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"202": {"description": "Accepted"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "meshBuildingBlockPage": {
+        "type": "object",
+        "required": ["_embedded", "page"],
+        "properties": {
+          "_embedded": {
+            "type": "object",
+            "properties": {
+              "meshBuildingBlocks": {"type": "array", "items": {"$ref": "#/components/schemas/meshBuildingBlock"}}
+            }
+          },
+          "page": {"type": "object", "description": "Paging info."}
+        }
+      },
+      "meshBuildingBlock": {
+        "type": "object",
+        "required": ["metadata", "spec"],
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "uuid": {"type": "string", "description": "Its uuid."}
+            }
+          },
+          "spec": {
+            "type": "object",
+            "required": ["displayName"],
+            "properties": {
+              "displayName": {"type": "string", "description": "Its name."}
+            }
+          }
+        }
+      }
+    }
+  }
+}
