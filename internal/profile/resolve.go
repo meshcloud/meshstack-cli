@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
@@ -48,7 +49,23 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 		},
 	}}
 
-	name, err := opts.ResolveSetting(ctx, NameSetting,
+	// A front end source that selects the profile reads what to select from out of the context,
+	// as the one for the workspace does. Being a fallback source of the front end, it ranks above
+	// both of the sources here, so it has to take a unique endpoint match without asking.
+	ctxWithSelection := SetSelectionInContext(ctx, sync.OnceValues(func() (Selection, error) {
+		profiles, err := loadProfiles()
+		if err != nil {
+			return Selection{}, err
+		}
+		selection := profiles.selection()
+		endpoint, found, err := opts.resolveEndpointIfAny(ctx)
+		if found {
+			selection.Endpoint = &endpoint
+		}
+		return selection, err
+	}))
+
+	name, err := opts.ResolveSetting(ctxWithSelection, NameSetting,
 		endpointMatchingSource,
 		currentProfileSource,
 	)
@@ -73,23 +90,25 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 }
 
 func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts ResolveProfileOptions) (string, error) {
-	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)
-	if errors.Is(err, setting.ErrNoSourceProvidedValue) {
-		slog.DebugContext(ctx, "No endpoint known at this point, cannot search for matching profile")
-		return "", nil
-	} else if err != nil {
+	endpoint, found, err := opts.resolveEndpointIfAny(ctx)
+	if err != nil || !found {
 		return "", err
 	}
-	var matchingProfiles []*Profile
-	for _, profile := range ps.Profiles {
-		if profile.Endpoint.Equal(endpoint) {
-			matchingProfiles = append(matchingProfiles, profile)
-		}
-	}
-	if len(matchingProfiles) == 1 {
+	selection := ps.selection()
+	selection.Endpoint = &endpoint
+	if matchingProfiles := selection.Candidates(); len(matchingProfiles) == 1 {
 		profile := matchingProfiles[0]
 		slog.DebugContext(ctx, fmt.Sprintf("Using profile %s by uniquely matching endpoint '%s'", profile, endpoint))
 		return string(profile.Name), nil
 	}
 	return "", nil
+}
+
+func (opts ResolveProfileOptions) resolveEndpointIfAny(ctx context.Context) (xurl.URL, bool, error) {
+	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)
+	if errors.Is(err, setting.ErrNoSourceProvidedValue) {
+		slog.DebugContext(ctx, "No endpoint known at this point, cannot search for matching profile")
+		return xurl.URL{}, false, nil
+	}
+	return endpoint, err == nil, err
 }

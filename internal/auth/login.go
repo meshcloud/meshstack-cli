@@ -18,7 +18,7 @@ import (
 type StoreFunc func(context.Context) error
 
 func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOptions) (Session, StoreFunc, error) {
-	session, storeProfiles, err := newSession(ctx, opts)
+	session, profiles, err := newSession(ctx, opts)
 	if err != nil {
 		return Session{}, nil, err
 	}
@@ -72,9 +72,10 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 			errs = append(errs, err)
 		}
 
-		// currentProfile points into the map profiles holds, so the assignment above is what
-		// storeProfiles writes out.
-		return errors.Join(append(errs, storeProfiles(ctx))...)
+		// A login makes its profile the current one. CurrentProfile points into the map profiles
+		// holds, so the default workspace set above is stored as well.
+		profiles.CurrentProfile = session.CurrentProfile.Name
+		return errors.Join(append(errs, profiles.Store(ctx))...)
 	}
 	return session, storeSession, nil
 }
