@@ -2,14 +2,19 @@ package auth
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
@@ -97,5 +102,68 @@ func TestProfileSelection(t *testing.T) {
 			assert.Equal(t, tt.want, selected)
 			assert.Equal(t, tt.wantAsked, asked.String())
 		})
+	}
+}
+
+func TestWorkspaceSelection(t *testing.T) {
+	workspaces := meshstack.Workspaces{Items: []client.MeshWorkspace{
+		{Metadata: client.MeshWorkspaceMetadata{Name: "first"}, Spec: client.MeshWorkspaceSpec{DisplayName: "First"}},
+		{Metadata: client.MeshWorkspaceMetadata{Name: "second"}, Spec: client.MeshWorkspaceSpec{DisplayName: "Second"}},
+	}}
+	const asked = "  [1] First (first)\n  [2] Second (second)\nSelect a workspace [1-2]: "
+
+	// An input that stays open with nothing on it, as the stdin of some scripts does.
+	silent := func(t *testing.T) io.Reader {
+		t.Helper()
+		reader, writer := io.Pipe()
+		t.Cleanup(func() { _ = writer.Close() })
+		return reader
+	}
+
+	tests := []struct {
+		name     string
+		optional bool
+		answers  func(t *testing.T) io.Reader
+		want     string
+		wantErr  string
+	}{
+		{name: "an answer selects", answers: answer("2"), want: "second"},
+		{name: "an optional selection answered selects as well", optional: true, answers: answer("2"), want: "second"},
+		{name: "an input that ends is an error", answers: answer(""), wantErr: "nothing was entered for the workspace selection"},
+		{name: "an optional selection takes an input that ends as none", optional: true, answers: answer("")},
+		{name: "an input with no answer in time is an error", answers: silent, wantErr: context.DeadlineExceeded.Error()},
+		{name: "an optional selection fails as well with no answer in time", optional: true, answers: silent, wantErr: context.DeadlineExceeded.Error()},
+	}
+	for _, tt := range tests {
+		// The fake clock of synctest runs out the answer time of the prompt at once.
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var output bytes.Buffer
+
+				source := newWorkspaceSelectionSource(prompt.New(tt.answers(t), &output), tt.optional)
+				ctx := meshstack.SetWorkspacesInContext(t.Context(), func() (meshstack.Workspaces, error) {
+					return workspaces, nil
+				})
+
+				selected, err := source.Lookup(ctx, setting.Workspace.EnvKey())
+
+				if tt.wantErr != "" {
+					require.ErrorContains(t, err, tt.wantErr)
+				} else {
+					require.NoError(t, err)
+				}
+				assert.Equal(t, tt.want, selected)
+				assert.Equal(t, asked, output.String())
+			})
+		})
+	}
+}
+
+func answer(line string) func(*testing.T) io.Reader {
+	return func(*testing.T) io.Reader {
+		if line == "" {
+			return strings.NewReader("")
+		}
+		return strings.NewReader(line + "\n")
 	}
 }

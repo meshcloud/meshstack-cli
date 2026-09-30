@@ -5,12 +5,17 @@ package prompt
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
 	"time"
 )
+
+// ErrEndOfInput is what Next returns once the input has ended, which a caller can accept as no
+// answer at all where one is optional.
+var ErrEndOfInput = errors.New("the prompt reached the end of its input")
 
 type Prompt struct {
 	in  func() <-chan string
@@ -49,7 +54,7 @@ func (p Prompt) Next(ctx context.Context, what string) (string, error) {
 		return "", fmt.Errorf("nothing was entered for the %s: %w", what, context.Cause(ctx))
 	case line, open := <-p.in():
 		if !open {
-			return "", fmt.Errorf("nothing was entered for the %s, as the prompt reached the end of its input", what)
+			return "", fmt.Errorf("nothing was entered for the %s: %w", what, ErrEndOfInput)
 		}
 		return strings.TrimSpace(line), nil
 	}

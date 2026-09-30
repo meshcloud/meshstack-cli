@@ -31,7 +31,9 @@ Unless --profile or MESHSTACK_PROFILE names the profile, it asks which of the st
 in to, and offers only those for the endpoint where --endpoint or MESHSTACK_ENDPOINT gives one.
 
 With no flag this is a browser login, and it asks which workspace to work in unless --workspace or
-MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --apitoken asks nothing.
+MESHSTACK_WORKSPACE already says. An API key login asks the same way, but goes on without a workspace
+where it may not list workspaces, where the input ends before an answer, or where --stdin carries its
+secret. --apitoken asks nothing.
 
 Every question, the secret prompts of --stdin included, fails where no answer comes within a minute.`,
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -62,17 +64,20 @@ Every question, the secret prompts of --stdin included, fails where no answer co
 					}),
 					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), &openStdinFlag, promptedFrom, "API Client Secret"),
 				)
+				// An API key works without a workspace, so only query optionally if stdin is "free".
+				if !openStdinFlag.Value {
+					opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom, true))
+				}
 			case apiTokenFlag.Value:
 				authWith = credential.ManualName
 				opts.SettingSources = append(opts.SettingSources, newPromptingSource(setting.ApiToken.EnvKey(), &openStdinFlag, promptedFrom, "API Token"))
 			default:
+				if openStdinFlag.Value {
+					return fmt.Errorf("--%s reads the secret of --%s or --%s, and a browser login has none",
+						openStdinFlag.Name, apiKeyFlag.Name, apiTokenFlag.Name)
+				}
 				authWith = credential.OidcLoginName
-			}
-
-			// A token given with --apitoken already names the workspace it belongs to, and a
-			// building block runner's token — the usual reason to pass one — may list none at all.
-			if authWith != credential.ManualName {
-				opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom))
+				opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom, false))
 			}
 
 			opts.SettingSources = append(opts.SettingSources, newProfileSelectionSource(promptedFrom, openStdinFlag.Value))

@@ -21,6 +21,8 @@ func TestNext(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, want, answer)
 		}
+		_, err := p.Next(t.Context(), "thing")
+		require.ErrorIs(t, err, ErrEndOfInput)
 	})
 
 	t.Run("an input that stays open with no answer fails after a minute", func(t *testing.T) {
