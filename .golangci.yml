@@ -11,9 +11,9 @@ formatters:
   settings:
     gci:
       sections:
-        - standard     # Go standard library
-        - default      # All other external dependencies
-        - localmodule  # This repository's modules
+        - standard
+        - default
+        - localmodule
 
 linters:
   # Every linter, minus the list below, so a rejection is a line here with a reason.
@@ -260,7 +260,7 @@ linters:
           allow:
             - $gostd
             - log/slog
-            # cmd/auth is an exception and accesses internal/{profile,auth} directly to persist changes on disk
+            # cmd/auth writes profiles to disk, which pkg/ does not expose
             - github.com/meshcloud/meshstack-cli/internal/auth
             - github.com/meshcloud/meshstack-cli/internal/profile
             - github.com/meshcloud/meshstack-cli/cmd/internal
@@ -289,7 +289,7 @@ linters:
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
             - github.com/spf13/pflag
-            # nice terminal support for prompting the user
+            # the terminal prompts
             - charm.land/bubbletea/v2
             - charm.land/bubbles/v2/list
             - github.com/charmbracelet/x/term

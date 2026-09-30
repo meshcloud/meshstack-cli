@@ -6,7 +6,6 @@ FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 
 WORKDIR /src
 
-# Copied on their own so the module download layer survives any source change.
 COPY go.mod go.sum ./
 RUN go mod download
 

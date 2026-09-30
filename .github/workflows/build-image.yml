@@ -1,4 +1,3 @@
-# Modelled on meshcloud/building-block-runner's build-images.yml, minus the Docker Hub push.
 name: Build Image
 
 env:
@@ -7,7 +6,6 @@ env:
   IMAGE_NAME: meshstack-cli
 
 on:
-  # Called by the release workflow, so a tagged release publishes the matching image.
   workflow_call:
     inputs:
       version:

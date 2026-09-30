@@ -35,8 +35,7 @@
         src = self;
 
         # No subPackages, so that doCheck below runs the whole suite rather than one
-        # directory's tests.
-        # docs/demo is a module of its own, which this module does not contain.
+        # directory's tests. docs/demo is a module of its own.
         excludedPackages = [ "docs/demo" ];
 
         vendorHash = "sha256-8G8DY7jnhSy0vDnWBES4goPixBV/yyGmoOhh+NLFi58=";
@@ -60,18 +59,13 @@
       };
     in
     {
-      # Two lines make the binary available to another flake — this is how the meshStack
-      # Terraform provider's dev shell gets it:
-      #
-      #   inputs.meshstack-cli.url = "github:meshcloud/meshstack-cli";
-      #   # then, in a devShell:  packages = [ meshstack-cli.packages.${system}.meshstack ];
+      # terraform-provider-meshstack's dev shell reads packages.<system>.meshstack, so a rename
+      # breaks that flake.
       packages = forEachSupportedSystem ({ pkgs }: rec {
         meshstack = meshstackPackage pkgs;
         default = meshstack;
       });
 
-      # The alternative to the lines above: a consumer that adds this overlay to its own
-      # nixpkgs writes `meshstack` in a `with pkgs; [ … ]` list like any other package.
       overlays.default = final: _prev: {
         meshstack = meshstackPackage final;
       };
@@ -90,7 +84,6 @@
             go-task
             goreleaser
 
-            # Records docs/demo.gif, see docs/demo/README.md. Brings ttyd and ffmpeg along.
             vhs
             # VHS starts the first bash on PATH, and docs/demo/demo.tape recalls a command line
             # with the up arrow, which needs readline. The bash of stdenv is built without it.

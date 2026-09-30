@@ -167,9 +167,6 @@ on_path() {
   esac
 }
 
-# Prints the directory on PATH to install into, or nothing. The directories that users most often
-# keep for their own binaries come first, then any other writable directory in $HOME, then any
-# other writable directory. root gets /usr/local/bin first.
 find_install_dir() {
   # An upgrade replaces the meshstack that PATH finds, rather than installing a second one behind it.
   installed=$(command -v "$BINARY" 2>/dev/null) || installed=

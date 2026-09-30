@@ -50,7 +50,7 @@ resource "github_repository_ruleset" "protect_default_branch" {
 
   rules {
     deletion         = true
-    non_fast_forward = true # force push
+    non_fast_forward = true
 
     # Rebase-only and a linear history, which is what the other meshcloud repositories enforce, are
     # both impossible here: client/ arrives as a git subtree, and every `git subtree pull` produces

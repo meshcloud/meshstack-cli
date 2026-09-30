@@ -1,6 +1,5 @@
 version: '3'
 
-# Git-ignored, and holds the MESHSTACK_* credentials that AGENTS.md lists.
 dotenv: ['.env']
 
 tasks:
@@ -38,8 +37,6 @@ tasks:
       - goreleaser check
 
   release:snapshot:
-    # Check `dist/*/meshstack --version` afterwards: a build that missed the ldflag
-    # reports `dev` rather than failing.
     desc: Build the release artifacts into dist/ without publishing them
     cmds:
       - goreleaser release --snapshot --clean {{.CLI_ARGS}}
