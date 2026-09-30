@@ -36,6 +36,8 @@
 
         # No subPackages, so that doCheck below runs the whole suite rather than one
         # directory's tests.
+        # docs/demo is a module of its own, which this module does not contain.
+        excludedPackages = [ "docs/demo" ];
 
         vendorHash = "sha256-8G8DY7jnhSy0vDnWBES4goPixBV/yyGmoOhh+NLFi58=";
 
@@ -87,6 +89,9 @@
 
             go-task
             goreleaser
+
+            # Records docs/demo.gif, see docs/demo/README.md. Brings ttyd and ffmpeg along.
+            vhs
           ];
 
           shellHook = ''

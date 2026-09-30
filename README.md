@@ -4,6 +4,8 @@
 repository also holds the Go client for the meshStack API, which the
 [meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) imports.
 
+![meshstack login picks a profile, logs in through the browser and selects a workspace, then meshstack buildingblock list lists the first building blocks](docs/demo.gif)
+
 ## Install
 
 ### With [Homebrew](https://brew.sh/)
