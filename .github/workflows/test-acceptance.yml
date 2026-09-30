@@ -8,10 +8,6 @@ on:
   push:
     branches:
       - main
-      # TEMPORARY, delete before merge. A pull_request_target run takes this file from the base
-      # branch, where it does not exist yet, so a push is the only trigger that can try the
-      # dispatcher out on its own pull request.
-      - feature/scaffold-cli
 
 permissions:
   contents: read
