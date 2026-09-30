@@ -24,6 +24,8 @@ type Profiles struct {
 	configDir config.Directory
 }
 
+// LoadProfiles only reads, and resolves nothing but the configuration directory: ResolveProfile
+// creates the first profile, as it creates any other.
 func LoadProfiles(ctx context.Context, opts ResolveProfileOptions) (profiles Profiles, err error) {
 	profiles.configDir, err = opts.ResolveSetting(ctx, config.DirectorySetting)
 	if err != nil {
@@ -38,7 +40,7 @@ func LoadProfiles(ctx context.Context, opts ResolveProfileOptions) (profiles Pro
 		}
 	}))
 	if errors.Is(err, fs.ErrNotExist) {
-		err = initEmptyProfiles(ctx, opts, &profiles)
+		profiles.Version, err = version, nil
 	} else if err == nil {
 		err = profiles.validate()
 	}
@@ -47,17 +49,6 @@ func LoadProfiles(ctx context.Context, opts ResolveProfileOptions) (profiles Pro
 
 func (ps Profiles) Store(ctx context.Context) error {
 	return json.MarshalTo(ctx, ps.configDir.ProfilesJson(), ps)
-}
-
-func initEmptyProfiles(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles) error {
-	profiles.Version = version
-	name, err := opts.ResolveSetting(ctx, NameSetting)
-	if err != nil {
-		return err
-	}
-	slog.InfoContext(ctx, fmt.Sprintf("Initializing first-time use profile '%s'", name))
-	_, err = addProfile(ctx, opts, profiles, name)
-	return err
 }
 
 // addProfile creates the named profile and makes it the current one, with the endpoint of this run

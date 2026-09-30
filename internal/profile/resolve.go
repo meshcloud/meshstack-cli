@@ -63,7 +63,11 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 	if currentProfile, ok := profiles.Profiles[name]; ok {
 		return currentProfile, profiles, nil
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("Creating profile '%s'", name))
+	if len(profiles.Profiles) == 0 {
+		slog.InfoContext(ctx, fmt.Sprintf("Initializing first-time use profile '%s'", name))
+	} else {
+		slog.InfoContext(ctx, fmt.Sprintf("Creating profile '%s'", name))
+	}
 	created, err := addProfile(ctx, opts, &profiles, name)
 	return created, profiles, err
 }
