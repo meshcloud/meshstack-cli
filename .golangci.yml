@@ -244,7 +244,7 @@ linters:
             - github.com/meshcloud/meshstack-cli/cmd
             - github.com/meshcloud/meshstack-cli/pkg/io
             - github.com/spf13/cobra
-            - github.com/charmbracelet/log
+            - charm.land/log/v2
 
         cmd-auth:
           files:

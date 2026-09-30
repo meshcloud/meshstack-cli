@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/signal"
 
-	clog "github.com/charmbracelet/log"
+	clog "charm.land/log/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
