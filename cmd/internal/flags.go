@@ -38,10 +38,9 @@ func (n FlagName) String() string {
 }
 
 type Flag[T string | bool] struct {
-	Name  FlagName
-	Help  string
-	Value T
-	// SettingEnvKey is required to use the Flag as a setting.FrontendSource.
+	Name          FlagName
+	Help          string
+	Value         T
 	SettingEnvKey string
 }
 
@@ -67,8 +66,8 @@ func (flag *Flag[T]) AsSource() setting.FrontendSource {
 	})
 }
 
-// AsSourceUnless contributes nothing but its own name while the flag still carries the
-// placeholder. The source is registered anyway, so setting resolution can name it in its error.
+// AsSourceUnless contributes no value while predicate holds, but stays a source, so that setting
+// resolution can still name the flag in an error.
 func (flag *Flag[T]) AsSourceUnless(predicate func(T) bool) setting.FrontendSource {
 	return setting.LookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func(_ context.Context) (string, error) {
 		if predicate(flag.Value) {

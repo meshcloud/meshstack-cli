@@ -19,7 +19,7 @@ var (
 	MeshFeatureFlagFourEyesRoleApproval = MeshFeatureFlags.Entry("four_eyes_role_approval")
 )
 
-// MeshInfo is the public, unauthenticated /mesh/info document, as the endpoint returns it.
+// MeshInfo is the /mesh/info document, which meshStack serves without authentication.
 type MeshInfo struct {
 	Version string `json:"version" tfsdk:"version"`
 	// Is4EPEnabled means "Is four-eyes principle enabled"

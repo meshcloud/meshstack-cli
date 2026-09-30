@@ -51,8 +51,6 @@ func (ps Profiles) Store(ctx context.Context) error {
 	return json.MarshalTo(ctx, ps.configDir.ProfilesJson(), ps)
 }
 
-// addProfile creates the named profile and makes it the current one, with the endpoint of this run
-// where there is one.
 func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles, name Name) (*Profile, error) {
 	added := &Profile{}
 	added.init(name, profiles.configDir)

@@ -9,8 +9,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// newWorkspaceSelectionSource lets the person pick one of the workspaces this login can reach. It
-// is a fallback source, so --workspace and MESHSTACK_WORKSPACE are taken as given, while the
+// newWorkspaceSelectionSource is a fallback source, so --workspace and MESHSTACK_WORKSPACE are taken as given, while the
 // profile's default ranks below it: a login is what changes that default. It needs no --stdin,
 // unlike the secret prompts in stdin.go, because the list has to be shown for the choice to make sense.
 //

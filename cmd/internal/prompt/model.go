@@ -22,8 +22,8 @@ func (i item) FilterValue() string { return i.label() }
 
 func (i item) label() string { return i.name + i.detail }
 
-// delegate renders a candidate on one line. Widths are terminal cells, so that wide characters such
-// as CJK or emoji line up as well.
+// delegate counts widths in terminal cells rather than bytes, so that wide characters such as CJK
+// or emoji line up as well.
 type delegate struct{ numberWidth, nameWidth int }
 
 func newDelegate(items []item) delegate {
@@ -96,7 +96,7 @@ func newModel(what string, items []item, defaultNumber int) model {
 	return model{list: candidateList, delegate: d, what: what, defaultNumber: defaultNumber}
 }
 
-// linesBelowList are the count of the candidates past the page, the help and the status.
+// linesBelowList are the lines View puts below the list: the "… more" line, the help and the status.
 const linesBelowList = 3
 
 // listHeight leaves room for the title.
@@ -136,7 +136,6 @@ func (m model) View() tea.View {
 	return tea.NewView(frame)
 }
 
-// outcome is the line left on the terminal once the selection ends.
 func (m model) outcome() string {
 	if m.aborted {
 		return fmt.Sprintf("No %s selected.", m.what)

@@ -1,6 +1,5 @@
 package client
 
-// meshObjectKind provides typed constants for meshObject kind strings used across the provider.
 type meshObjectKind struct {
 	ApiKey                         string
 	BuildingBlock                  string

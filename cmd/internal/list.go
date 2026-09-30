@@ -15,7 +15,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-// ListFlags are the flags every list command takes, and Run is how each one lists.
 type ListFlags struct {
 	output OutputFlag
 	limit  LimitFlag
@@ -30,9 +29,8 @@ func (f *ListFlags) Register(flags *pflag.FlagSet) {
 	flags.Var(&f.limit, limitFlagName, "list at most this many items, or unlimited for all of them")
 }
 
-// ListWorkspace is the workspace a listing is narrowed to, or nil for none. It leaves out the
-// profile's default workspace, so that a listing asked for no workspace shows what the credential
-// can see.
+// ListWorkspace leaves out the profile's default workspace, so that a listing asked for no
+// workspace shows what the credential can see.
 func ListWorkspace(ctx context.Context) (*string, error) {
 	workspace, err := setting.ResolveWorkspace(ctx, SettingSources())
 	if err != nil || workspace == "" {
@@ -68,8 +66,6 @@ func (f *ListFlags) Run(cmd *cobra.Command, list func(ctx context.Context, meshS
 	return nil
 }
 
-// CutShortNote says that a listing stopped at its limit before the end, and is empty for a listing
-// that is complete.
 func CutShortNote(limit, listed int, total *int, defaulted bool) string {
 	const howToListMore = "raise --limit, or pass --limit unlimited to list all of them"
 	switch {

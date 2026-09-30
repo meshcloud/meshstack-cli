@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	// checkInterval is recorded on disk, as one invocation is too short-lived to hold it.
 	checkInterval       = 24 * time.Hour
 	releaseCheckTimeout = 10 * time.Second
 )

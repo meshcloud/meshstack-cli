@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// OutputFormat is what a list command writes its items as.
 type OutputFormat string
 
 const (
@@ -17,8 +16,8 @@ const (
 	OutputNdjson OutputFormat = "ndjson"
 )
 
-// OutputFlag registers --output and holds what it was set to. It implements [pflag.Value], so an
-// unknown format is rejected while the flags are parsed rather than after the first page arrived.
+// OutputFlag implements [pflag.Value], so an unknown format is rejected while the flags are parsed
+// rather than after the first page arrived.
 type OutputFlag struct{ Format OutputFormat }
 
 func (f *OutputFlag) Register(flags *pflag.FlagSet) {

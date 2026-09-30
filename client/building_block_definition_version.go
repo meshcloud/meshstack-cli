@@ -11,8 +11,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
-// Enums
-
 type MeshBuildingBlockDefinitionVersionState string
 
 var (
@@ -48,7 +46,6 @@ var (
 	MeshBuildingBlockIOTypeJson = enum.Entry[MeshBuildingBlockIOType]("JSON")
 )
 
-// MeshBuildingBlockDefinitionInputTypes are the types a definition input may declare.
 var MeshBuildingBlockDefinitionInputTypes = MeshBuildingBlockIOTypes.With(MeshBuildingBlockIOTypeJson)
 
 var MeshBuildingBlockOutputIOTypes = enum.Of(
@@ -94,9 +91,9 @@ var (
 // because a tag key may contain a dot itself.
 const TagInputTargetSeparator = "."
 
-// TagInputTargetsFor answers which tags a building block of this target type can read. A workspace
-// building block only ever runs in the context of a workspace; a tenant building block additionally
-// sees its project, and that project's payment method and landing zone.
+// TagInputTargetsFor follows what a building block sees: a workspace building block runs in the
+// context of its workspace only, while a tenant building block also sees its project, and that
+// project's payment method and landing zone.
 func TagInputTargetsFor(targetType MeshBuildingBlockType) enum.Enum[MeshBuildingBlockTagInputTarget] {
 	if targetType == MeshBuildingBlockTypeWorkspaceLevel.Unwrap() {
 		return enum.Of(MeshBuildingBlockTagInputTargetWorkspace)
@@ -115,21 +112,15 @@ var (
 	MeshBuildingBlockDefinitionOutputAssignmentTypeSummary          = MeshBuildingBlockDefinitionOutputAssignmentTypes.Entry("SUMMARY")
 )
 
-// Input and Output types
-
 type MeshBuildingBlockDefinitionInput struct {
 	DisplayName    string                               `json:"displayName" tfsdk:"display_name"`
 	Type           MeshBuildingBlockIOType              `json:"type" tfsdk:"type"`
 	AssignmentType MeshBuildingBlockInputAssignmentType `json:"assignmentType" tfsdk:"assignment_type"`
 	IsEnvironment  bool                                 `json:"isEnvironment" tfsdk:"is_environment"`
 	IsSensitive    bool                                 `json:"isSensitive" tfsdk:"-"`
-	// If IsSensitive is true, the [types.Variant] (typedef [types.SecretOrAny]) for fields
-	// MeshBuildingBlockDefinitionInputAdapter.Argument and
-	// MeshBuildingBlockDefinitionInputAdapter.DefaultValue
-	// is of [types.Secret] (case [types.Variant.X]).
-	// Otherwise, the [types.Variant] is of [types.Any] (case [types.Variant.Y]).
-	// As this is a fallback detection when JSON (un)marshaling,
-	// types.Any must go second as [types.Variant] intentionally prefers X over Y.
+	// Argument and DefaultValue hold a [types.Secret] when IsSensitive is true and a [types.Any]
+	// otherwise. [types.Variant] decodes into X first, so UnmarshalJSON moves a non-sensitive value
+	// that also decodes as a Secret over to Y.
 	Argument                    types.SecretOrAny `json:"argument" tfsdk:"argument"`
 	DefaultValue                types.SecretOrAny `json:"defaultValue" tfsdk:"default_value"`
 	UpdateableByConsumer        bool              `json:"updateableByConsumer" tfsdk:"updateable_by_consumer"`
@@ -138,7 +129,8 @@ type MeshBuildingBlockDefinitionInput struct {
 	Description                 *string           `json:"description,omitzero" tfsdk:"description"`
 	ValueValidationRegex        *string           `json:"valueValidationRegex,omitzero" tfsdk:"value_validation_regex"`
 	ValidationRegexErrorMessage *string           `json:"validationRegexErrorMessage,omitzero" tfsdk:"validation_regex_error_message"`
-	// The form this input is filled in through, as a JSON Schema string. Only for MeshBuildingBlockIOTypeJson.
+	// JsonSchema describes the form of an input of type MeshBuildingBlockIOTypeJson, and is set only
+	// for that type.
 	JsonSchema *string `json:"jsonSchema,omitzero" tfsdk:"json_schema"`
 	Condition  *string `json:"condition,omitzero" tfsdk:"condition"`
 	// No omitempty: a 0 (the schema default, and what an unknown plan value collapses to) must be sent so
@@ -156,8 +148,6 @@ func (m *MeshBuildingBlockDefinitionInput) UnmarshalJSON(bytes []byte) error {
 	*m = MeshBuildingBlockDefinitionInput(target)
 	switch {
 	case !m.IsSensitive:
-		// ensure "any" struct fields never end up in X accidentally,
-		// as X is only set when IsSensitive is true!
 		var errs []error
 		moveXtoYIfPresent := func(v *types.SecretOrAny) {
 			if v.HasX() {
@@ -184,8 +174,6 @@ type MeshBuildingBlockDefinitionOutput struct {
 	// No omitempty so a 0 is sent, not dropped (see MeshBuildingBlockDefinitionInput.DisplayOrder).
 	DisplayOrder int64 `json:"displayOrder" tfsdk:"display_order"`
 }
-
-// Main version types
 
 type MeshBuildingBlockDefinitionVersionMetadata struct {
 	Uuid             string `json:"uuid"`
@@ -219,9 +207,8 @@ type MeshBuildingBlockDefinitionVersion struct {
 	Status   *MeshBuildingBlockDefinitionVersionStatus  `json:"status,omitzero" tfsdk:"status"`
 }
 
-// MeshBuildingBlockDefinitionVersionClient manages a version of a building block definition.
-// As such a version is tightly coupled to the definition, there's no single Get or Delete implemented.
-// A Get is not required as we always expose all versions of a definition anyway, and a Delete happens together when the definition is deleted.
+// MeshBuildingBlockDefinitionVersionClient has no Get and no Delete: a caller always reads all
+// versions of a definition with List, and the versions are deleted together with their definition.
 type MeshBuildingBlockDefinitionVersionClient interface {
 	List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error)
 	Create(ctx context.Context, ownedByWorkspace string, versionSpec MeshBuildingBlockDefinitionVersionSpec) (*MeshBuildingBlockDefinitionVersion, error)

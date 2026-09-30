@@ -21,8 +21,6 @@ func TestLoginRefusesAnUnknownCredential(t *testing.T) {
 }
 
 // The source stands in for the workspace selection of 'meshstack login', which needs the list.
-// Listing through the session's own client once waited on the very workspace resolution that
-// asked for the list, so the store never returned.
 func TestLoginListsWorkspacesWithoutWaitingOnItsOwnWorkspace(t *testing.T) {
 	newTestServer(t)
 	testApiKey1.SetEnv(t)

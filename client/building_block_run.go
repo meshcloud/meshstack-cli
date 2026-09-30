@@ -46,12 +46,10 @@ type MeshBuildingBlockRunListFilter struct {
 	BuildingBlockUuid string `json:"buildingBlockUuid"`
 }
 
-// MeshBuildingBlockRunLogs is the response from the download-logs actions endpoint.
 type MeshBuildingBlockRunLogs struct {
 	Steps []MeshBuildingBlockRunStepLog `json:"steps"`
 }
 
-// MeshBuildingBlockRunStepLog represents a single step's log data.
 type MeshBuildingBlockRunStepLog struct {
 	DisplayName   string  `json:"displayName"`
 	Status        string  `json:"status"`

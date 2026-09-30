@@ -22,8 +22,6 @@ func TestTheEnvironmentDecidesWhileTheBoolFlagIsUnset(t *testing.T) {
 	assert.True(t, skip)
 }
 
-// A listing asked for no workspace shows what the credential can see, so a profile's default
-// workspace narrows it no more than an absent flag does.
 func TestListWorkspaceIgnoresTheProfileDefault(t *testing.T) {
 	configDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(configDir, "profiles.json"),

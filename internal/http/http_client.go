@@ -53,10 +53,8 @@ func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.UR
 		return
 	}
 	if len(body) == 0 {
-		// An empty body is expected only for no-content calls, which are typed DoRequest[any] (e.g.
-		// trigger-run, delete) and ignore the result. For a call that expects an object (a pointer or a
-		// concrete struct), an empty 2xx body is unexpected — fail loudly instead of returning a nil/zero
-		// value that the caller would dereference or mistake for a 404/"not found".
+		// Only a call typed DoRequest[any], such as a delete, expects no content. Any other call
+		// fails here, because its caller would dereference a nil result or read it as "not found".
 		if t := reflect.TypeFor[R](); t.Kind() == reflect.Interface && t.NumMethod() == 0 {
 			return
 		}

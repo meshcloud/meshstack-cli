@@ -1,5 +1,3 @@
-// Package testacc runs the real `meshstack` binary against a live local meshStack, and acts as the
-// browser itself where a login needs one.
 package testacc
 
 import (
@@ -164,7 +162,6 @@ func (c *cli) profilesJson() string {
 	return filepath.Join(c.configDir, "profiles.json")
 }
 
-// syncBuffer collects a subprocess's output while a test reads it, so the two need a lock.
 type syncBuffer struct {
 	mu   sync.Mutex
 	data []byte

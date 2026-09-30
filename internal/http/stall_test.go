@@ -58,10 +58,8 @@ func TestStallGuardReadsABodyThatKeepsArriving(t *testing.T) {
 	})
 }
 
-// newPipeClient returns a client behind a stall guard whose one connection is served in memory:
-// the answer has a Content-Length of contentLength, and writeBody writes its body. A socket would
-// keep the bubble's clock from advancing, since the clock only moves while every goroutine waits on
-// something inside the bubble.
+// newPipeClient serves its one connection in memory. A socket would keep the bubble's clock from
+// advancing, since the clock only moves while every goroutine waits on something inside the bubble.
 func newPipeClient(t *testing.T, timeout time.Duration, contentLength int, writeBody func(io.Writer)) *gohttp.Client {
 	t.Helper()
 	clientConn, serverConn := net.Pipe()
@@ -74,7 +72,6 @@ func newPipeClient(t *testing.T, timeout time.Duration, contentLength int, write
 		}
 		_, _ = fmt.Fprintf(serverConn, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", contentLength)
 		writeBody(serverConn)
-		// Wait for the client to hang up.
 		_, _ = io.Copy(io.Discard, serverConn)
 	}()
 	transport := &gohttp.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) {

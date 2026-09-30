@@ -13,7 +13,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 )
 
-// AuthorizationCodeFlow is one run of the authorization code flow with PKCE.
 type AuthorizationCodeFlow struct {
 	Client
 

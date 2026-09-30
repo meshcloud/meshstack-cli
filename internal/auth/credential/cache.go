@@ -5,7 +5,6 @@ import (
 	"reflect"
 )
 
-// WithCacheOf reaches the optional Cache field of a credential struct, such as ApiKey.
 func WithCacheOf(credential Credential, action func(cache reflect.Value)) {
 	for field, v := range reflect.ValueOf(credential).Elem().Fields() {
 		if field.Name == "Cache" {

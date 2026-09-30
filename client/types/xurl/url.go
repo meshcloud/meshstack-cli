@@ -25,8 +25,6 @@ func MustParsef(format string, args ...any) (result URL) {
 	return
 }
 
-// UnmarshalText validates and canonicalizes the URL as well.
-//
 //goland:noinspection GoMixedReceiverTypes
 func (u *URL) UnmarshalText(text []byte) (err error) {
 	u.URL, err = url.ParseRequestURI(string(text))

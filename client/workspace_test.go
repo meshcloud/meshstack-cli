@@ -15,13 +15,9 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
-// This is a sort-of regression test, because a previous implementation deserialized the backend response into MeshWorkspace
-// and then serialized it to JSON again before printing it, which turned out to be a bad idea:
-// The MeshWorkspace model does not include some properties that the raw JSON sent by the backend does include, such as
-// `apiVersion`, `kind` and `_links`. But these properties shouldn't be swallowed. `apiVersion` and `kind` are a
-// mandatory when POSTing meshObjects, so imagine a scenario where the CLI is used to fetch entities, modify them, and
-// then send them back to the server. This would then fail. `_links` should also not be swallowed, because it's useful for LLM
-// agents to understand relations between meshObjects.
+// Decoding into MeshWorkspace and encoding again would drop what the model lacks: apiVersion and
+// kind, which a POST of the edited object needs, and _links, which shows an LLM agent how
+// meshObjects relate.
 func TestListRawSeqYieldsEveryWorkspaceOfEveryPageAsSent(t *testing.T) {
 	platformTeam := `
 	{

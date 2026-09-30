@@ -6,9 +6,8 @@ import (
 	"sync"
 )
 
-// holdLogs keeps every record logged from now on until the returned flush, which hands them to the
-// handler installed before, in the order they came in. A log line written while a terminal UI
-// draws would tear its view apart, while one written afterwards costs only its moment.
+// holdLogs holds back every log record until flush: a line written while a terminal UI draws
+// breaks its view, and one written afterwards is only late.
 func holdLogs() (flush func(ctx context.Context)) {
 	held := &heldRecords{}
 	previous := slog.Default()

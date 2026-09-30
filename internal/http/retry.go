@@ -15,10 +15,8 @@ import (
 )
 
 type RetryOptions struct {
-	// MaxRetries limits the attempts to retries. If zero, retries will never be attempted.
 	MaxRetries int
-	// Backoff to use when retrying. If nil, retries will never be attempted.
-	Backoff RetryBackoff
+	Backoff    RetryBackoff
 }
 
 // ApplyTo makes the given client retry a GET on its own, and any other method only where the
@@ -37,8 +35,6 @@ func (options RetryOptions) ApplyTo(c *gohttp.Client) {
 			}
 			return req.Method == MethodGet || isRetryable(req.Context())
 		},
-		// ShouldRetryResponse returns the backoff policy if the response/error indicates a retryable condition,
-		// otherwise nil is returned to indicate no retry.
 		ShouldRetryResponse: func(resp *gohttp.Response, err error) RetryBackoff {
 			if err != nil {
 				// Only a connection that broke once it was up clears on a retry, as one an ingress drops
@@ -66,12 +62,10 @@ func isBrokenConnection(err error) bool {
 		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
-// RetryBackoff calculates the duration to wait before the next retry attempt.
 type RetryBackoff interface {
 	Calculate(attempt int) time.Duration
 }
 
-// ExponentialBackoff increases the backoff exponentially: minWait * 2^(attempt-1).
 type ExponentialBackoff struct {
 	MinWait, MaxWait time.Duration
 }
@@ -101,28 +95,22 @@ func (b retryAfterBackoff) Calculate(attempt int) (waitTime time.Duration) {
 		}
 	}()
 
-	// Parse the Retry-After header from a response.
-	// It supports both delay-seconds and HTTP-date formats (RFC 7231 §7.1.3).
-
+	// Retry-After holds either delay-seconds or an HTTP-date, RFC 7231 §7.1.3.
 	header := b.Response.Header.Get("Retry-After")
 	if header == "" {
 		return -1
 	}
 
-	// Try as delay-seconds first.
 	if seconds, err := strconv.ParseInt(header, 10, 64); err == nil {
 		return time.Duration(seconds) * time.Second
 	}
 
-	// Try as HTTP-date (RFC 7231).
 	if date, err := gohttp.ParseTime(header); err == nil {
 		return date.Sub(timeNow())
 	}
 	return -1
 }
 
-// retryRoundTripper wraps a gohttp.RoundTripper to retry failed requests.
-// See [RetryOptions.ApplyTo] for which methods are retried.
 type retryRoundTripper struct {
 	Next                gohttp.RoundTripper
 	MaxRetries          int
@@ -144,7 +132,6 @@ func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, er
 			return resp, err
 		}
 		backoff := r.ShouldRetryResponse(resp, err)
-		// No retry needed or no more retries left — return as-is.
 		if backoff == nil || attempt > r.MaxRetries {
 			return resp, err
 		}
@@ -183,8 +170,8 @@ func makeRequestBodyRetryable(req *gohttp.Request) *gohttp.Request {
 	if req.Body == nil {
 		return req
 	}
-	// If GetBody already returns independent readers (e.g. set by gohttp.NewRequestWithContext
-	// for *bytes.Buffer, *bytes.Reader, *strings.Reader), use it as-is for retries.
+	// gohttp.NewRequestWithContext sets GetBody for a *bytes.Buffer, *bytes.Reader or
+	// *strings.Reader body.
 	if req.GetBody != nil {
 		return req
 	}
@@ -196,9 +183,6 @@ func makeRequestBodyRetryable(req *gohttp.Request) *gohttp.Request {
 	return result
 }
 
-// retryableBody lazily captures request body bytes on the first read and replays them on retries.
-// Buffer is filled via TeeReader as the transport reads during the first request. On Close, the
-// source is released and subsequent reads replay from Buffer via bytes.NewReader.
 type retryableBody struct {
 	io.Reader
 	io.Closer
@@ -209,12 +193,11 @@ type retryableBody struct {
 var errRetryableBodyClose = errors.New("retryableBody failed to close")
 
 func (b *retryableBody) Close() error {
-	// Drain remaining bytes through the TeeReader to ensure Buffer captures the full body,
-	// even if the transport only partially read it (e.g. connection reset mid-write).
+	// The transport can stop reading early, for example on a connection reset, and the retry
+	// replays Buffer, so Buffer needs the rest of the body.
 	if _, err := io.Copy(io.Discard, b.Reader); err != nil {
 		return errors.Join(err, errRetryableBodyClose)
 	}
-	// On first close, close the Body and use the b.Buffer from now on
 	if b.Closer != nil {
 		if err := b.Closer.Close(); err != nil {
 			return errors.Join(err, errRetryableBodyClose)
@@ -225,8 +208,6 @@ func (b *retryableBody) Close() error {
 	return nil
 }
 
-// appendWriter is an io.Writer that appends to a []byte slice.
-// Helper for retryableBody.Buffer.
 type appendWriter []byte
 
 func (w *appendWriter) Write(p []byte) (int, error) {
@@ -234,11 +215,9 @@ func (w *appendWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// drainAndCloseResponseBody reads up to maxBytes from the response body before closing it.
-// Draining enables Go's gohttp.Transport to reuse the underlying TCP connection for
-// subsequent requests. The maxBytes limit prevents getting stuck on large or slow
-// responses — if the body exceeds this limit, the connection won't be reused, but
-// we won't block indefinitely either.
+// drainAndCloseResponseBody drains the body so that gohttp.Transport can reuse the connection.
+// It reads at most maxBytes, so that a large or slow body cannot block the retry; the connection
+// of such a body is then not reused.
 func drainAndCloseResponseBody(ctx context.Context, resp *gohttp.Response) {
 	const maxBytes = 16 * 1024
 	if resp != nil && resp.Body != nil {

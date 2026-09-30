@@ -55,7 +55,7 @@ func TestHttpClient(t *testing.T) {
 
 	t.Run("DoRequest no-content call (any) tolerates an empty 2xx body", func(t *testing.T) {
 		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-			resp.WriteHeader(gohttp.StatusAccepted) // empty body by design (trigger-run/delete)
+			resp.WriteHeader(gohttp.StatusAccepted)
 		})
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("trigger-run"))
 		require.NoError(t, err)
@@ -155,8 +155,6 @@ func TestHttpClient(t *testing.T) {
 		assert.Equal(t, 1, attempts, "PATCH must not be retried")
 	})
 
-	// An OIDC grant and /api/login are both a POST, and only one of them may be replayed.
-	// Retryable is what tells them apart.
 	t.Run("DoRequest with POST", func(t *testing.T) {
 		t.Run("is not retried by default", func(t *testing.T) {
 			attempts := 0
@@ -293,7 +291,6 @@ func TestHttpClient(t *testing.T) {
 	})
 }
 
-// refreshableAuthorization mints "fresh" once it has been told its token was refused.
 type refreshableAuthorization struct {
 	token      http.BearerToken
 	keepToken  bool
@@ -338,8 +335,6 @@ func TestUrlQueryOptions(t *testing.T) {
 		assert.Equal(t, "SUCCEEDED", got.Get("status"))
 	})
 
-	// MeshObjectClient.List puts two of these on one request: the caller's filter, then the page
-	// it is fetching. Replacing rather than merging drops the filter, and the backend answers 400.
 	t.Run("a second query adds to the first", func(t *testing.T) {
 		var gotQuery url.Values
 		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
@@ -382,9 +377,6 @@ func TestUrlQueryOptions(t *testing.T) {
 	})
 }
 
-// TestFormPayloadOption covers what the OIDC grants send and receive. A grant is a form and the
-// token endpoint answers JSON, so the two content types disagree here where WithJsonPayload has
-// them agree.
 func TestFormPayloadOption(t *testing.T) {
 	postForm := func(t *testing.T, payload any) (gohttp.Header, url.Values) {
 		t.Helper()
@@ -452,8 +444,6 @@ func TestFormPayloadOption(t *testing.T) {
 		assert.False(t, got.Has("unset_uri"), "a URL nobody set is dropped like any other zero value")
 	})
 
-	// xurl.URL and jwt.JWT both parse from a JSON string through UnmarshalText, so a caller
-	// declares the field it wants and reads a parsed URL or the token's claims.
 	t.Run("the answer parses into the types the caller declared", func(t *testing.T) {
 		type tokenResponse struct {
 			Issuer      xurl.URL `json:"issuer"`
@@ -504,7 +494,7 @@ type TestClient struct {
 
 func newTestClientWithServer(t *testing.T, handlerFunc gohttp.HandlerFunc) TestClient {
 	t.Helper()
-	// In memory, so that a test can run inside a synctest bubble. Client sets URL, so it comes first.
+	// In memory, so that a test can run inside a synctest bubble.
 	server := httptest.NewTestServer(t, handlerFunc)
 	client := server.Client()
 	serverUrl, err := url.Parse(server.URL)

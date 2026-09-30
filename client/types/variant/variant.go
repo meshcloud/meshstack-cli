@@ -7,10 +7,8 @@ import (
 	"reflect"
 )
 
-// A Variant represents a single JSON map entry having two different Go type representations X and Y.
-// After JSON unmarshalling you can check with HasX, HasY which field has been detected, while X is preferred.
-// An example usage is a Client DTO response which can either be struct representing a secret hash,
-// or a simple string response if that's a non-sensitive value.
+// A Variant decodes one JSON value into X or into Y. When both decode, X wins, so Y can be a type
+// that takes any value: a secret comes back as a hash object in X, and a plain value in Y.
 type Variant[X, Y any] struct {
 	X X
 	Y Y
@@ -42,11 +40,10 @@ func (v Variant[X, Y]) MarshalJSON() ([]byte, error) {
 func has[T any](xy any) bool {
 	v := reflect.ValueOf(xy)
 	kind := reflect.TypeFor[T]().Kind()
+	// For a T of type any, a decoded 0, "" or false counts as set; only JSON null leaves it unset.
 	if kind != reflect.Interface {
-		// T is not any (aka as a valid 'zero' representation)
 		return !v.IsZero()
 	} else {
-		// T is any, so we only check for validness
 		return v.IsValid()
 	}
 }
@@ -80,8 +77,7 @@ func (v *Variant[X, Y]) UnmarshalJSON(bytes []byte) error {
 	errY := json.Unmarshal(bytes, &v.Y)
 	switch {
 	case v.HasX() && v.HasY():
-		// Explicitly prefer X over Y and set Y to zero even if unmarshalling has also worked,
-		// this supports having Y with catch-all type 'any'
+		// Y is cleared because a Y of type any decodes from every JSON value.
 		var zeroY Y
 		v.Y = zeroY
 		return errX
@@ -95,7 +91,7 @@ func (v *Variant[X, Y]) UnmarshalJSON(bytes []byte) error {
 			return fmt.Errorf("cannot unmarshal to any: %w", err)
 		}
 		if nothing == nil {
-			// support optional unmarshalling aka neither X nor Y is set
+			// JSON null leaves both unset, which is not an error.
 			return nil
 		}
 		return errors.Join(fmt.Errorf("variant[%T, %T]: cannot unmarshal '%s' to any field", v.X, v.Y, string(bytes)), errX, errY)

@@ -1,4 +1,3 @@
-// Command meshstack is the command line interface (CLI) for meshStack.
 package main
 
 import (
@@ -41,8 +40,7 @@ func newRootCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
-		Version: internal.Version,
-		// A command that fails prints its error, not the whole help text.
+		Version:      internal.Version,
 		SilenceUsage: true,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			setupLogging(debug)

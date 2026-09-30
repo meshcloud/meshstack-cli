@@ -55,8 +55,6 @@ var workspaces = [][2]string{
 func (i installation) endpoint() string { return "https://" + i.api }
 func (i installation) issuer() string   { return "https://" + i.sso + realm }
 
-// register serves what `meshstack login` calls: /mesh/info on the API host, the OIDC discovery,
-// authorization and token endpoints of a Keycloak realm on the SSO host, and the workspace list.
 func (i installation) register(mux *http.ServeMux, idp *identityProvider) {
 	mux.HandleFunc("GET "+i.api+"/mesh/info", func(w http.ResponseWriter, _ *http.Request) {
 		writeJson(w, "application/json", http.StatusOK, map[string]any{
@@ -174,7 +172,6 @@ func stableUuid(of string) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", sum[0:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
 }
 
-// identityProvider is the authorization code flow with PKCE, as Keycloak runs it for the CLI.
 type identityProvider struct {
 	mu    sync.Mutex
 	codes map[string]authorization

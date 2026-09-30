@@ -44,9 +44,8 @@ type MeshTenantSpec struct {
 	PlatformRef      UuidRef   `json:"platformRef" tfsdk:"platform_ref"`
 	PlatformTenantId *string   `json:"platformTenantId" tfsdk:"platform_tenant_id"`
 	LandingZoneRef   *NamedRef `json:"landingZoneRef" tfsdk:"landing_zone_ref"`
-	// RequestedQuotas is the preferred key->value form for requesting quotas at creation, e.g.
-	// {"limits.cpu": {"value": 4}}. The backend does not return it on read (it is a create-time input),
-	// so the resource echoes the configured value from state.
+	// RequestedQuotas is an input at creation only: the backend does not return it on read, so the
+	// Terraform resource keeps the configured value from its state.
 	RequestedQuotas map[string]RequestQuotaValue `json:"requestedQuotas" tfsdk:"requested_quotas"`
 }
 
@@ -55,10 +54,8 @@ type MeshTenantStatus struct {
 	PlatformTypeIdentifier string              `json:"platformTypeIdentifier" tfsdk:"platform_type_identifier"`
 	PlatformWorkspaceId    *string             `json:"platformWorkspaceId" tfsdk:"platform_workspace_id"`
 	Tags                   map[string][]string `json:"tags" tfsdk:"tags"`
-	// AppliedQuotas are the effective quotas meshStack applied to the tenant as a key->value map, each
-	// value a structured object (e.g. `{"limits.cpu": {"value": 4}}`). spec.requested_quotas carries
-	// only the values requested at create (create-only); the effective quotas here can differ once
-	// landing-zone defaults are merged in or an operator adjusts them, so drift is tracked against these.
+	// AppliedQuotas can differ from the requested quotas once the landing zone defaults are merged in
+	// or an operator changes them, so drift is tracked against these.
 	AppliedQuotas map[string]AppliedQuotaValue `json:"appliedQuotas" tfsdk:"applied_quotas"`
 	Lifecycle     MeshTenantLifecycle          `json:"lifecycle" tfsdk:"-"`
 }
@@ -70,19 +67,17 @@ type MeshTenantQuota struct {
 	Value int64  `json:"value" tfsdk:"value"`
 }
 
-// RequestQuotaValue is a tenant quota value as requested at create time. The scalar is wrapped in an
-// object (rather than a bare number) so the v4 API can grow per-quota fields — e.g. a unit — without a
-// breaking change to the requested_quotas map shape.
+// RequestQuotaValue wraps the number in an object so that the v4 API can add a field to a quota, such
+// as a unit, without a breaking change to the map.
 //
-// Its shape is identical to AppliedQuotaValue, deliberately so: the resource must echo the configured
-// request in spec while reading effective values from status, and separate types turn mixing the two
-// into a compile error rather than the requested-vs-applied conflation this map form fixes.
+// It has the same shape as AppliedQuotaValue on purpose: the Terraform resource echoes the requested
+// value in spec and reads the applied one from status, and two types make mixing them up a compile
+// error.
 type RequestQuotaValue struct {
 	Value int64 `json:"value" tfsdk:"value"`
 }
 
-// AppliedQuotaValue is a tenant quota value as actually applied by the backend. See RequestQuotaValue
-// for why the two are not a single type.
+// AppliedQuotaValue is not merged with RequestQuotaValue; see there for why.
 type AppliedQuotaValue struct {
 	Value int64 `json:"value" tfsdk:"value"`
 }
@@ -156,7 +151,6 @@ func (tenant *MeshTenant) CreationSuccessful() (done bool, err error) {
 	case tenant == nil:
 		err = errors.New("tenant not found after creation")
 	case tenant.Spec.PlatformTenantId != nil && *tenant.Spec.PlatformTenantId != "":
-		// Creation is complete (platformTenantId is set and not empty)
 		done = true
 	}
 	return

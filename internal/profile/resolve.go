@@ -19,9 +19,8 @@ type (
 	}
 )
 
-// ResolveProfile loads every profile from disk, creating a default one when there is none. The
-// returned *Profile points into Profiles.Profiles, so a change through the pointer is persisted by
-// a later Profiles.Store.
+// ResolveProfile returns a *Profile that points into Profiles.Profiles, so a change through the
+// pointer is persisted by a later Profiles.Store.
 func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, Profiles, error) {
 	loadProfiles := sync.OnceValues(func() (Profiles, error) {
 		return LoadProfiles(ctx, opts)

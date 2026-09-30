@@ -11,9 +11,9 @@ type (
 	Set[T any] []T
 
 	Secret struct {
-		// Plaintext is optionally set if secret is initially created (or rotated later)
+		// Plaintext is sent only to create or rotate the secret; a response never carries it.
 		Plaintext *string `json:"plaintext,omitzero" tfsdk:"plaintext"`
-		// Hash is always present in responses (Plaintext is never returned) and set in requests if secret is supposed to be kept.
+		// Hash is in every response, and a request sends it to keep the secret unchanged.
 		Hash *string `json:"hash,omitzero" tfsdk:"-"`
 	}
 
@@ -22,7 +22,7 @@ type (
 	Any any
 )
 
-// IsSet returns true if the given type uses the generic Set type, ignoring the concrete container type T.
+// IsSet ignores the element type of the Set.
 func IsSet(other reflect.Type) bool {
 	setType := reflect.TypeFor[Set[any]]()
 	if other.PkgPath() == setType.PkgPath() {

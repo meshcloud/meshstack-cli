@@ -34,8 +34,6 @@ type ApiKey struct {
 	ClientSecret string `json:"clientSecret"`
 }
 
-// SetEnv points the api key settings at this key for the rest of the test, so that the code
-// under test resolves this credential.
 func (k ApiKey) SetEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), k.ClientId)
@@ -73,7 +71,6 @@ type mintedToken struct {
 	honored bool
 }
 
-// New starts a server that honors the given api keys, and stops it when the test ends.
 func New(t *testing.T, honored ...ApiKey) *Server {
 	t.Helper()
 	server := &Server{honored: honored}

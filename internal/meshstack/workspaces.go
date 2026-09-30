@@ -74,7 +74,6 @@ func (w MeshWorkspace) String() string {
 	return fmt.Sprintf("%s (%s)", w.Spec.DisplayName, w.Metadata.Name)
 }
 
-// Label is what a person picks a workspace by.
 func (w MeshWorkspace) Label() string {
 	return w.String()
 }

@@ -51,7 +51,6 @@ func TestLoggedBodyKeepsALargeIntegerExact(t *testing.T) {
 	assert.Contains(t, loggedBody{bytes.NewBufferString(`{"at":1234567890123456789}`)}.String(), "1234567890123456789")
 }
 
-// countingReader counts how often loggedBody rendered it.
 type countingReader struct {
 	counted *int
 }

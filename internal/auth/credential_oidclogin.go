@@ -11,8 +11,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/browser"
 )
 
-// resolveOidcLoginCredential logs a person in through a browser, which is why only Login calls it.
-// The previous login, if any, is what the access level page preselects.
 func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *credential.OidcLogin) (credential.Credential, error) {
 	meshInfo, err := s.MeshInfo()
 	if err != nil {

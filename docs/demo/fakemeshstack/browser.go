@@ -16,9 +16,8 @@ const browserDelay = 1500 * time.Millisecond
 
 var nonceInput = regexp.MustCompile(`name="nonce" value="([^"]+)"`)
 
-// browse does what a person does on the CLI's loopback page, see internal/oidc/browser: it submits
-// the access level form and follows the redirects through the identity provider back to the
-// loopback callback. HTTPS_PROXY and SSL_CERT_FILE, inherited from the CLI, lead it to serve.
+// browse plays the person on the CLI's loopback page, see internal/oidc/browser. HTTPS_PROXY and
+// SSL_CERT_FILE, inherited from the CLI, lead it to serve.
 func browse(startURL string) error {
 	time.Sleep(browserDelay)
 	jar, err := cookiejar.New(nil)

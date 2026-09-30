@@ -71,7 +71,6 @@ func (m MeshIntegrationConfig) InferType() (enum.Entry[MeshIntegrationConfigType
 }
 
 func (m MeshIntegrationConfig) MarshalJSON() ([]byte, error) {
-	// Using wrapped type avoids calling MarshalJSON recursively!
 	type wrapped MeshIntegrationConfig
 	w := wrapped(m)
 	// Built-in integrations (replicator, metering) come with a type but no variant, so the type is only
