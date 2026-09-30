@@ -221,3 +221,117 @@ func withoutConfigDir(p *Profile) *Profile {
 	stripped.ConfigDir = ""
 	return &stripped
 }
+
+func TestResolveProfileOffersASelectionOnlyWhenNothingElseNamesTheProfile(t *testing.T) {
+	var asked []Selection
+	selectDefault := selectionSource(func(selection Selection) Name {
+		asked = append(asked, selection)
+		return "default"
+	})
+
+	t.Run("without an endpoint it offers every profile, ordered by name", func(t *testing.T) {
+		givenNoMeshstackEnvironment(t)
+		t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
+		asked = nil
+
+		selected, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{SettingSources: selectDefault})
+
+		require.NoError(t, err)
+		assert.Equal(t, Name("default"), selected.Name)
+		require.Len(t, asked, 1)
+		assert.Nil(t, asked[0].Endpoint)
+		assert.Equal(t, Name("dev-local"), asked[0].Current)
+		assert.Equal(t, []Name{"default", "dev-local", "empty"}, names(asked[0].Candidates()))
+	})
+
+	t.Run("an endpoint narrows the candidates to its profiles", func(t *testing.T) {
+		givenNoMeshstackEnvironment(t)
+		t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
+		t.Setenv(meshstack.EndpointSetting.EnvKey(), "https://api.dev.meshcloud.io")
+		asked = nil
+
+		_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{SettingSources: selectDefault})
+
+		require.NoError(t, err)
+		require.Len(t, asked, 1)
+		assert.Equal(t, []Name{"default"}, names(asked[0].Candidates()))
+		assert.Len(t, asked[0].Profiles, 3)
+	})
+
+	t.Run("an endpoint matching no profile leaves no candidate", func(t *testing.T) {
+		givenNoMeshstackEnvironment(t)
+		t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
+		t.Setenv(meshstack.EndpointSetting.EnvKey(), testEndpoint.String()+"/other")
+		asked = nil
+
+		_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{SettingSources: selectDefault})
+
+		require.NoError(t, err)
+		require.Len(t, asked, 1)
+		assert.Empty(t, asked[0].Candidates())
+	})
+
+	t.Run("a profile named in the environment needs no selection", func(t *testing.T) {
+		givenNoMeshstackEnvironment(t)
+		t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
+		t.Setenv(NameSetting.EnvKey(), "empty")
+		asked = nil
+
+		selected, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{SettingSources: selectDefault})
+
+		require.NoError(t, err)
+		assert.Equal(t, Name("empty"), selected.Name)
+		assert.Empty(t, asked)
+	})
+
+	// Loading the profiles once resolved the profile name itself, and so reached the selection
+	// before the context carried it.
+	t.Run("a first-time use offers an empty selection", func(t *testing.T) {
+		givenNoMeshstackEnvironment(t)
+		t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
+		t.Setenv(meshstack.EndpointSetting.EnvKey(), testEndpoint.String())
+		asked = nil
+		leaveItToTheDefault := selectionSource(func(selection Selection) Name {
+			asked = append(asked, selection)
+			return ""
+		})
+
+		created, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{SettingSources: leaveItToTheDefault})
+
+		require.NoError(t, err)
+		require.Len(t, asked, 1)
+		assert.Empty(t, asked[0].Profiles)
+		expected := &Profile{Name: "default", Endpoint: testEndpoint}
+		assert.EqualExportedValues(t, expected, withoutConfigDir(created))
+		assertProfiles(t, profiles, expected)
+	})
+}
+
+func TestSelectionFromContextFailsOutsideTheProfileNameResolution(t *testing.T) {
+	_, err := SelectionFromContext(t.Context())
+
+	require.ErrorContains(t, err, NameSetting.EnvKey())
+}
+
+// selectionSource installs a selection the way a front end does, as a fallback source.
+func selectionSource(choose func(Selection) Name) SettingSources {
+	return setting.Sources{setting.FallbackSource{Source: setting.LookupSource{
+		MatchingKey: NameSetting.EnvKey(),
+		Description: "the profile selection",
+		Func: func(ctx context.Context) (string, error) {
+			selection, err := SelectionFromContext(ctx)
+			if err != nil {
+				return "", err
+			}
+			return string(choose(selection)), nil
+		},
+	}}}
+}
+
+func names(profiles []*Profile) []Name {
+	result := make([]Name, 0, len(profiles))
+	for _, p := range profiles {
+		result = append(result, p.Name)
+	}
+	return result
+}

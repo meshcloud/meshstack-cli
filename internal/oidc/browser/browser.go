@@ -25,6 +25,9 @@ import (
 const (
 	startPath    = "/"
 	callbackPath = "/callback"
+	// loginTime bounds only the wait for the person in the browser, not the questions a login
+	// asks before or after it.
+	loginTime = 5 * time.Minute
 )
 
 // Login supplies the two things oidc.AuthorizationCodeFlow needs and internal/oidc cannot have:
@@ -33,6 +36,9 @@ const (
 // page redirects on to the identity provider. It returns the level the identity provider granted,
 // which is none on a meshStack older than access levels.
 func Login(ctx context.Context, client oidc.Client, previous meshstack.AccessLevel) (oidc.Token, meshstack.AccessLevel, error) {
+	ctx, cancel := context.WithTimeout(ctx, loginTime)
+	defer cancel()
+
 	// Bound first, because the port it gets is part of the redirect URI, which the flow puts
 	// in the authorization request and echoes back in the token request.
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")

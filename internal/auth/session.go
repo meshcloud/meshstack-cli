@@ -38,20 +38,21 @@ type (
 	}
 )
 
-func newSession(ctx context.Context, opts ResolveSessionOptions) (Session, StoreFunc, error) {
+func newSession(ctx context.Context, opts ResolveSessionOptions) (Session, profile.Profiles, error) {
 	currentProfile, profiles, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{
 		SettingSources: opts.SettingSources,
 	})
 	if err != nil {
-		return Session{}, nil, err
+		return Session{}, profile.Profiles{}, err
 	}
 
 	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting, currentProfile.EndpointSource())
 	if err != nil {
-		return Session{}, nil, err
+		return Session{}, profile.Profiles{}, err
 	} else if !endpoint.Equal(currentProfile.Endpoint) {
 		// this prevents accidentally sending credentials to the wrong endpoint
-		return Session{}, nil, fmt.Errorf("endpoint from profile '%s' does not match endpoint '%s' configured for session", currentProfile.Endpoint, endpoint)
+		return Session{}, profile.Profiles{}, fmt.Errorf("profile '%s' is for endpoint '%s', not for endpoint '%s' of this run; "+
+			"select a profile for that endpoint, or log in with a new profile name to create one", currentProfile, currentProfile.Endpoint, endpoint)
 	}
 
 	buildHttpClient := func() (http.Client, error) {
@@ -67,7 +68,7 @@ func newSession(ctx context.Context, opts ResolveSessionOptions) (Session, Store
 
 	httpClient, err := buildHttpClient()
 	if err != nil {
-		return Session{}, nil, err
+		return Session{}, profile.Profiles{}, err
 	}
 
 	return Session{
@@ -80,7 +81,7 @@ func newSession(ctx context.Context, opts ResolveSessionOptions) (Session, Store
 		getWorkspace: func() (meshstack.Workspace, error) {
 			return meshstack.NoWorkspace, nil
 		},
-	}, profiles.Store, nil
+	}, profiles, nil
 }
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {

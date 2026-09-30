@@ -1,10 +1,8 @@
 package auth
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -28,6 +26,9 @@ func NewLogin() *cobra.Command {
 		Short: "Log in to meshStack",
 		Long: `Log in to meshStack and store the credential in a profile, creating that profile where it
 does not exist yet.
+
+Unless --profile or MESHSTACK_PROFILE names the profile, it asks which of the stored profiles to log
+in to, and offers only those for the endpoint where --endpoint or MESHSTACK_ENDPOINT gives one.
 
 With no flag this is a browser login, and it asks which workspace to work in unless --workspace or
 MESHSTACK_WORKSPACE already says. An API key login asks the same way, while --apitoken asks nothing.
@@ -65,10 +66,6 @@ Every question, the secret prompts of --stdin included, fails where no answer co
 				authWith = credential.ManualName
 				opts.SettingSources = append(opts.SettingSources, newPromptingSource(setting.ApiToken.EnvKey(), &openStdinFlag, promptedFrom, "API Token"))
 			default:
-				// A browser login waits for the person to finish it, and gives up on one who never does.
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
-				defer cancel()
 				authWith = credential.OidcLoginName
 			}
 
@@ -77,6 +74,8 @@ Every question, the secret prompts of --stdin included, fails where no answer co
 			if authWith != credential.ManualName {
 				opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom))
 			}
+
+			opts.SettingSources = append(opts.SettingSources, newProfileSelectionSource(promptedFrom, openStdinFlag.Value))
 
 			session, storeSession, err := auth.Login(ctx, authWith, opts)
 			if err != nil {
@@ -93,9 +92,8 @@ Every question, the secret prompts of --stdin included, fails where no answer co
 			if err := storeSession(ctx); err != nil {
 				return err
 			}
-			// TODO render Markdown output from model instead of logging?!
-			slog.InfoContext(ctx, fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s",
-				meshInfo.CliClientId, internal.Version, meshInfo.Version, session.CurrentProfile.Endpoint))
+			slog.InfoContext(ctx, fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s, current profile is '%s'",
+				meshInfo.CliClientId, internal.Version, meshInfo.Version, session.CurrentProfile.Endpoint, session.CurrentProfile.Name))
 			return nil
 		},
 	}
