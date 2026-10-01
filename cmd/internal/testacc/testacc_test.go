@@ -131,13 +131,17 @@ type cliRun struct {
 	err      error
 }
 
-// start sets the environment with t.Setenv, so no two commands of a test can run at the same time.
-func (c *cli) start(stdin string, args ...string) *cliRun {
-	c.t.Helper()
+func (c *cli) applyEnv() {
 	for _, variable := range c.environ() {
 		key, value, _ := strings.Cut(variable, "=")
 		c.t.Setenv(key, value)
 	}
+}
+
+// start sets the environment with t.Setenv, so no two commands of a test can run at the same time.
+func (c *cli) start(stdin string, args ...string) *cliRun {
+	c.t.Helper()
+	c.applyEnv()
 	ctx, cancel := context.WithCancel(c.t.Context())
 	run := &cliRun{output: &syncBuffer{}, cancel: cancel, finished: make(chan struct{})}
 	previous := slog.Default()

@@ -127,9 +127,7 @@ func storedAccessLevel(t *testing.T, c *cli) string {
 // --apitoken without minting a token, and a configuration directory is writable in CI too.
 func TestAccApiKeyLogin(t *testing.T) {
 	endpoint := requireLocalStack(t)
-	c := newCLI(t, endpoint)
-	c.setEnv(setting.ApiKeyClientId.EnvKey(), requireEnv(t, setting.ApiKeyClientId.EnvKey()))
-	c.setEnv(setting.ApiKeyClientSecret.EnvKey(), requireEnv(t, setting.ApiKeyClientSecret.EnvKey()))
+	c := newCLI(t, endpoint).withApiKey()
 
 	// A bare --apikey reads the id from the environment, which is what its NoOptDefVal is for.
 	output, err := c.run("1\n", "login", "--apikey")
@@ -148,6 +146,22 @@ func TestAccApiKeyLogin(t *testing.T) {
 		require.FileExists(t, withToken.credentialsJson())
 		requireAuthStatus(t, withToken, "API token")
 	})
+}
+
+// withApiKey gives c the API key of this suite, for a login with --apikey.
+func (c *cli) withApiKey() *cli {
+	c.t.Helper()
+	c.setEnv(setting.ApiKeyClientId.EnvKey(), requireEnv(c.t, setting.ApiKeyClientId.EnvKey()))
+	c.setEnv(setting.ApiKeyClientSecret.EnvKey(), requireEnv(c.t, setting.ApiKeyClientSecret.EnvKey()))
+	return c
+}
+
+func loggedInWithApiKey(t *testing.T) *cli {
+	t.Helper()
+	c := newCLI(t, requireLocalStack(t)).withApiKey()
+	output, err := c.run("", "login", "--apikey")
+	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
+	return c
 }
 
 // requireAuthStatus does not check whether this meshStack lets an API key read itself through
