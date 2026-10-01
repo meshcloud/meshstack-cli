@@ -1,12 +1,12 @@
 package prompt
 
 import (
-	"regexp"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,10 +73,6 @@ func TestModelViewKeepsItsSize(t *testing.T) {
 		enter = tea.KeyPressMsg{Code: tea.KeyEnter}
 		esc   = tea.KeyPressMsg{Code: tea.KeyEscape}
 	)
-	// Every character on the frame takes one cell.
-	width := func(line string) int {
-		return utf8.RuneCountInString(regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(line, ""))
-	}
 	long := strings.Repeat("a-rather-long-name-", 5)
 	items := []item{newItem(1, "dev", false), newItem(2, long+"(with-an-identifier)", true), newItem(3, "staging", false)}
 	const terminalWidth = 50
@@ -99,7 +95,7 @@ func TestModelViewKeepsItsSize(t *testing.T) {
 		lines := strings.Split(m.View().Content, "\n")
 		assert.Len(t, lines, frameHeight)
 		for _, line := range lines {
-			assert.LessOrEqual(t, width(line), terminalWidth, line)
+			assert.LessOrEqual(t, ansi.StringWidth(line), terminalWidth, line)
 			if !strings.Contains(line, long[:10]) {
 				assert.NotContains(t, line, "…", "only the long entry is cut off")
 			}
@@ -133,4 +129,19 @@ func TestModelCountsTheCandidatesPastThePage(t *testing.T) {
 	m, _ = m.update(tea.KeyPressMsg{Code: tea.KeyRight})
 	assert.NotContains(t, m.View().Content, "more")
 	assert.Equal(t, frameHeight, strings.Count(m.View().Content, "\n")+1)
+}
+
+func TestTheFilterMatchesASubstringRatherThanScatteredLetters(t *testing.T) {
+	targets := []string{
+		"apikeytest (http://localhost:8080)",
+		"likvid-bank-demo (https://federation.demo.meshcloud.io)",
+		"Meshstack-API (https://example.com)",
+	}
+
+	ranks := substringFilter("API", targets)
+
+	assert.Equal(t, []list.Rank{
+		{Index: 0, MatchedIndexes: []int{0, 1, 2}},
+		{Index: 2, MatchedIndexes: []int{10, 11, 12}},
+	}, ranks)
 }
