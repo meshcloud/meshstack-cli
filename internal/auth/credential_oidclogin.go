@@ -11,14 +11,14 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/browser"
 )
 
-func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *credential.OidcLogin) (credential.Credential, error) {
+func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *credential.OidcLogin) (Credential, error) {
 	meshInfo, err := s.MeshInfo()
 	if err != nil {
-		return nil, err
+		return Credential{}, err
 	}
 	oidcClient, err := oidc.NewClient(ctx, s.httpClient, meshInfo.Issuer, meshInfo.CliClientId)
 	if err != nil {
-		return nil, err
+		return Credential{}, err
 	}
 	var previousLevel meshstack.AccessLevel
 	if previous != nil {
@@ -26,7 +26,7 @@ func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *crede
 	}
 	token, level, err := browser.Login(ctx, oidcClient, previousLevel)
 	if err != nil {
-		return nil, err
+		return Credential{}, err
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Logged in at %s through a browser with access level %q", oidcClient.Issuer, level))
 	oidcLogin := &credential.OidcLogin{
@@ -35,7 +35,7 @@ func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *crede
 		ClientId:    oidcClient.Id,
 		AccessLevel: level,
 	}
-	oidcLogin.StoreLogin(token.RefreshToken, token.AccessToken)
+	oidcLogin.StoreLogin(token)
 
-	return oidcLogin, nil
+	return CacheFor(s.CurrentProfile, oidcLogin), nil
 }

@@ -82,6 +82,7 @@ func TestAccOidcLogin(t *testing.T) {
 			require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
 			assert.Contains(t, run.output.String(), "logged in at meshStack", "the login reports what it reached")
 			requireStoredLogin(t, c, run.output.String())
+			requireAuthStatus(t, c, "Browser login")
 		})
 	}
 
@@ -139,6 +140,7 @@ func TestAccApiKeyLogin(t *testing.T) {
 	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
 	assert.Contains(t, string(output), "logged in at meshStack", "the login reports what it reached")
 	requireStoredLogin(t, c, string(output))
+	requireAuthStatus(t, c, "API key")
 
 	t.Run("--apitoken sends the token the API key login cached", func(t *testing.T) {
 		withToken := newCLI(t, endpoint)
@@ -148,7 +150,17 @@ func TestAccApiKeyLogin(t *testing.T) {
 		require.NoErrorf(t, err, "the API token login did not finish:\n%s", output)
 		assert.Contains(t, string(output), "logged in at meshStack", "the login reports what it reached")
 		require.FileExists(t, withToken.credentialsJson())
+		requireAuthStatus(t, withToken, "API token")
 	})
+}
+
+// requireAuthStatus does not check whether this meshStack lets an API key read itself through
+// /self yet, so it accepts the warnings about the key's details.
+func requireAuthStatus(t *testing.T, c *cli, wantCredential string) {
+	t.Helper()
+	status, err := c.command("auth", "status").CombinedOutput()
+	require.NoErrorf(t, err, "meshstack auth status failed:\n%s", status)
+	assert.Contains(t, string(status), "| Credential | "+wantCredential)
 }
 
 func requireStoredLogin(t *testing.T, c *cli, output string) {

@@ -51,13 +51,18 @@ func (ps Profiles) Store(ctx context.Context) error {
 	return json.MarshalTo(ctx, ps.configDir.ProfilesJson(), ps)
 }
 
-func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles, name Name) (*Profile, error) {
-	added := &Profile{}
-	added.init(name, profiles.configDir)
+// Add puts p into profiles under its name, replacing any profile of that name.
+func Add(profiles *Profiles, p Profile) *Profile {
+	p.init(p.Name, profiles.configDir)
 	if profiles.Profiles == nil {
 		profiles.Profiles = make(map[Name]*Profile, 1)
 	}
-	profiles.Profiles[name] = added
+	profiles.Profiles[p.Name] = &p
+	return &p
+}
+
+func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles, name Name) (*Profile, error) {
+	added := Add(profiles, Profile{Name: name})
 	profiles.CurrentProfile = name
 
 	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)

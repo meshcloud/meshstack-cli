@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"time"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
@@ -44,10 +45,15 @@ type Token struct {
 	AccessToken  jwt.JWT `json:"access_token"`
 	RefreshToken string  `json:"refresh_token"`
 	Scope        string  `json:"scope"`
+	// RefreshExpiresIn is Keycloak's own field: the seconds left until the refresh token's session
+	// ends at the latest, where 0 or its absence means no limit.
+	RefreshExpiresIn int64 `json:"refresh_expires_in"`
+	// RefreshExpiresAt counts from before the request was sent, so it errs early.
+	RefreshExpiresAt time.Time `json:"-"`
 }
 
 func (c Client) Refresh(ctx context.Context, refreshToken string, scopes scope.Scopes) (resp Token, err error) {
-	resp, err = c.doPost[Token](ctx, c.TokenEndpoint.URL, map[string]any{
+	resp, err = c.requestToken(ctx, map[string]any{
 		"grant_type":    "refresh_token",
 		"refresh_token": refreshToken,
 		"client_id":     c.Id,
@@ -67,7 +73,7 @@ func (c Client) Refresh(ctx context.Context, refreshToken string, scopes scope.S
 
 // ExchangeAuthCode ends the authorization code flow, see AuthorizationCodeFlow.Exchange.
 func (c Client) ExchangeAuthCode(ctx context.Context, code string, redirectUri xurl.URL, verifier string) (resp Token, err error) {
-	resp, err = c.doPost[Token](ctx, c.TokenEndpoint.URL, map[string]any{
+	resp, err = c.requestToken(ctx, map[string]any{
 		"grant_type":    "authorization_code",
 		"code":          code,
 		"redirect_uri":  redirectUri,
@@ -97,6 +103,15 @@ func (c Client) EndSession(ctx context.Context, refreshToken string) error {
 	}
 	_, err := c.doPost[any](ctx, endpoint.URL, payload)
 	return err
+}
+
+func (c Client) requestToken(ctx context.Context, payload map[string]any) (Token, error) {
+	requested := time.Now()
+	token, err := c.doPost[Token](ctx, c.TokenEndpoint.URL, payload)
+	if token.RefreshExpiresIn > 0 {
+		token.RefreshExpiresAt = requested.Add(time.Duration(token.RefreshExpiresIn) * time.Second)
+	}
+	return token, err
 }
 
 func (c Client) doPost[R any](ctx context.Context, endpoint *url.URL, payload map[string]any) (result R, err error) {

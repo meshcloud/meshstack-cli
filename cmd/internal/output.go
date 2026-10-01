@@ -2,18 +2,23 @@ package internal
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"iter"
+	"text/template"
 
 	"github.com/spf13/pflag"
+
+	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 )
 
 type OutputFormat string
 
 const (
-	OutputJson   OutputFormat = "json"
-	OutputNdjson OutputFormat = "ndjson"
+	OutputJson     OutputFormat = "json"
+	OutputNdjson   OutputFormat = "ndjson"
+	OutputMarkdown OutputFormat = "markdown"
 )
 
 // OutputFlag implements [pflag.Value], so an unknown format is rejected while the flags are parsed
@@ -98,4 +103,47 @@ func listFormatOf(format OutputFormat) (listFormat, error) {
 	default:
 		return listFormat{}, fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
 	}
+}
+
+type ShowFlag struct{ Format OutputFormat }
+
+func (f *ShowFlag) Register(flags *pflag.FlagSet) {
+	f.Format = OutputMarkdown
+	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s, or %s for scripts", OutputMarkdown, OutputJson))
+}
+
+func (f *ShowFlag) String() string {
+	return string(f.Format)
+}
+
+func (f *ShowFlag) Set(value string) error {
+	format := OutputFormat(value)
+	switch format {
+	case OutputMarkdown, OutputJson:
+		f.Format = format
+		return nil
+	default:
+		return fmt.Errorf("%q is no output format, write %s or %s", value, OutputMarkdown, OutputJson)
+	}
+}
+
+func (f *ShowFlag) Type() string {
+	return "format"
+}
+
+// Json output is read by a script, so a command must not prompt for anything then.
+func (f *ShowFlag) Json() bool {
+	return f.Format == OutputJson
+}
+
+func (f *ShowFlag) Show(w io.Writer, markdownTemplate *template.Template, data any) error {
+	if f.Json() {
+		content, err := json.Marshal(data, jsontext.WithIndent("  "))
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(w, "%s\n", content)
+		return err
+	}
+	return markdown.Write(w, markdownTemplate, data)
 }

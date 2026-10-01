@@ -40,7 +40,10 @@ func (s Session) RefreshBearerToken(ctx context.Context, rejected http.BearerTok
 		if usable() {
 			return nil
 		}
-		if err := s.Credential.RefreshCachedToken(ctx, s.httpClient, s.getWorkspace); err != nil {
+		// Not cancelled with ctx, so that Ctrl+C or a short deadline cannot cut a refresh off after the
+		// issuer has rotated the refresh token: the rotated one would be lost, and with it the login.
+		// Modify writes it to the cache before it returns, and the HTTP client's timeouts still end it.
+		if err := s.Credential.RefreshCachedToken(context.WithoutCancel(ctx), s.httpClient, s.getWorkspace); err != nil {
 			return err
 		}
 		// RefreshCachedToken guarantees a cached token, so found is always true here.

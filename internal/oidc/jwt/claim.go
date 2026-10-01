@@ -1,9 +1,11 @@
 package jwt
 
 import (
+	"strings"
 	"time"
 
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 )
 
 type Claim[V any] struct {
@@ -28,6 +30,21 @@ var (
 	// prefix, so this carries the identifier rather than the scope. It is absent altogether where
 	// the user holds no role on the workspace the token was asked for, which is NoWorkspace here.
 	WorkspaceClaim = StringClaim[meshstack.Workspace]("MC_CUSTOMER")
+
+	ScopeClaim = Claim[scope.Scopes]{
+		key: "scope",
+		converter: func(v any) (scopes scope.Scopes) {
+			text, _ := v.(string)
+			for one := range strings.FieldsSeq(text) {
+				scopes = append(scopes, scope.Scope(one))
+			}
+			return
+		},
+	}
+	PreferredUsernameClaim = StringClaim[string]("preferred_username")
+	EmailClaim             = StringClaim[string]("email")
+	// ClientIdClaim is only on a token a client minted with its own credentials, such as an API key.
+	ClientIdClaim = StringClaim[string]("client_id")
 )
 
 // StringClaim reads a claim written as a JSON string, and is the zero value of V where the claim

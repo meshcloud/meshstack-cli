@@ -38,3 +38,15 @@ func (cs *Credentials) ByName(name Name) Credential {
 	}
 	return nil
 }
+
+func (n Name) Label() string {
+	switch n {
+	case ApiKeyName:
+		return "API key"
+	case ManualName:
+		return "API token"
+	case OidcLoginName:
+		return "Browser login"
+	}
+	return string(n)
+}

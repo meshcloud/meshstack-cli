@@ -5,14 +5,29 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-func ResolveClientOptions() auth.ResolveClientOptions {
+type ResolveClientOptionsModifier func(*auth.ResolveClientOptions)
+
+func ResolveClientOptions(modifiers ...ResolveClientOptionsModifier) (opts auth.ResolveClientOptions) {
+	defer func() {
+		for _, modifier := range modifiers {
+			modifier(&opts)
+		}
+	}()
 	return auth.ResolveClientOptions{
 		SettingSources: SettingSources(),
 		Version:        Version,
 		GitHubRepo:     "meshcloud/meshstack-cli",
 	}
+}
+
+// SkipVersionCheck is for a call whose failure only leaves something out: the version checks call
+// meshStack and GitHub, and warn where they fail.
+func SkipVersionCheck(opts *auth.ResolveClientOptions) {
+	opts.SettingSources = append(opts.SettingSources, setting.LookupSource(setting.SkipVersionCheck.EnvKey(), "the calling command",
+		func(context.Context) (string, error) { return "true", nil }))
 }
 
 // ResolveClient is the only place a client is built, so every command sends the same user agent
