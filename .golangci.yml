@@ -151,6 +151,9 @@ linters:
       checks:
         - all
         - -ST1000
+        # SA4023 crashes on a type with a generic method, as client.RawClient has: go1.27.0 loses
+        # the order of methods in the export data (golang/go#81188). Enable it again with go1.27.2.
+        - -SA4023
       # Replaces the default list, so that ClientId, BaseUrl and Uuid stand as the meshObject
       # API spells them. ST1003 still enforces the rest.
       initialisms: []
