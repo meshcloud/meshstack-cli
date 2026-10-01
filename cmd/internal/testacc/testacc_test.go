@@ -16,6 +16,12 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblock"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockdefinition"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockdefinitionversion"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
+	"github.com/meshcloud/meshstack-cli/cmd/eventlog"
+	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
@@ -118,7 +124,9 @@ func (c *cli) environ() []string {
 // no test can import, and adds only persistent flags, which this suite sets through the environment.
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{Use: "meshstack", SilenceUsage: true}
-	root.AddCommand(auth.New(), auth.NewLogin())
+	root.AddCommand(auth.New(), auth.NewLogin(),
+		buildingblock.New(), buildingblockdefinition.New(), buildingblockdefinitionversion.New(),
+		buildingblockrun.New(), eventlog.New(), workspace.New())
 	return root
 }
 
