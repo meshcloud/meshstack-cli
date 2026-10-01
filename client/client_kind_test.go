@@ -14,6 +14,7 @@ func TestKind(t *testing.T) {
 	assert.Equal(t, internal.InferKind[MeshBuildingBlockV2](), MeshObjectKind.BuildingBlock)
 	assert.Equal(t, internal.InferKind[MeshBuildingBlockDefinition](), MeshObjectKind.BuildingBlockDefinition)
 	assert.Equal(t, internal.InferKind[MeshBuildingBlockDefinitionVersion](), MeshObjectKind.BuildingBlockDefinitionVersion)
+	assert.Equal(t, internal.InferKind[MeshEventLog](), MeshObjectKind.EventLog)
 	assert.Equal(t, internal.InferKind[MeshIntegration](), MeshObjectKind.Integration)
 	assert.Equal(t, internal.InferKind[MeshLandingZone](), MeshObjectKind.LandingZone)
 	assert.Equal(t, internal.InferKind[MeshLocation](), MeshObjectKind.Location)

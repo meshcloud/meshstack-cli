@@ -7,6 +7,7 @@ type meshObjectKind struct {
 	BuildingBlockDefinition        string
 	BuildingBlockDefinitionVersion string
 	BuildingBlockRunner            string
+	EventLog                       string
 	Integration                    string
 	LandingZone                    string
 	Location                       string
@@ -32,6 +33,7 @@ var MeshObjectKind = meshObjectKind{
 	BuildingBlockDefinition:        "meshBuildingBlockDefinition",
 	BuildingBlockDefinitionVersion: "meshBuildingBlockDefinitionVersion",
 	BuildingBlockRunner:            "meshBuildingBlockRunner",
+	EventLog:                       "meshEventLog",
 	Integration:                    "meshIntegration",
 	LandingZone:                    "meshLandingZone",
 	Location:                       "meshLocation",

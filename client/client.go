@@ -89,7 +89,8 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 			with(buildingBlockV2.meshObject).
 			with(buildingBlockRun.meshObject).
 			with(buildingBlockDefinition.meshObject).
-			withOwnOrder(buildingBlockDefinitionVersion.meshObject),
+			withOwnOrder(buildingBlockDefinitionVersion.meshObject).
+			with(newEventLogMeshObject(ctx, authorizedClient)),
 
 		Endpoint: endpoint,
 	}
