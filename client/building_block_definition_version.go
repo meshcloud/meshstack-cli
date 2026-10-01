@@ -219,18 +219,18 @@ type meshBuildingBlockDefinitionVersionClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinitionVersion]
 }
 
-func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockDefinitionVersionClient {
+func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockDefinitionVersionClient {
 	return meshBuildingBlockDefinitionVersionClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinitionVersion](ctx, httpClient, "v1-preview"),
 	}
 }
 
-type meshBuildingBlockDefinitionVersionListQuery struct {
+type MeshBuildingBlockDefinitionVersionListFilter struct {
 	BuildingBlockDefinitionUuid string `json:"buildingBlockDefinitionUuid"`
 }
 
 func (c meshBuildingBlockDefinitionVersionClient) List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
+	return c.meshObject.List(ctx, http.WithUrlQuery(MeshBuildingBlockDefinitionVersionListFilter{
 		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
 	}))
 }

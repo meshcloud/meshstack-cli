@@ -1,4 +1,4 @@
-package workspace
+package buildingblockdefinition
 
 import (
 	"github.com/spf13/cobra"
@@ -8,9 +8,9 @@ import (
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "workspace",
-		Aliases: internal.KindAliases("workspace"),
-		Short:   "Work with meshStack workspaces",
+		Use:     "buildingblockdefinition",
+		Aliases: internal.KindAliases("buildingblockdefinition"),
+		Short:   "Work with meshStack building block definitions",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()

@@ -28,11 +28,17 @@ type RawClient struct {
 	httpClient internal.HttpClient
 	// apis is keyed by the Go type rather than the kind, because MeshBuildingBlock and
 	// MeshBuildingBlockV2 share a kind in different API versions.
-	apis map[reflect.Type]internal.MeshObjectApi
+	apis map[reflect.Type]rawApi
+}
+
+type rawApi struct {
+	internal.MeshObjectApi
+
+	sortsByCreatedAt bool
 }
 
 func newRawClient(httpClient internal.HttpClient) *RawClient {
-	return &RawClient{httpClient: httpClient, apis: map[reflect.Type]internal.MeshObjectApi{}}
+	return &RawClient{httpClient: httpClient, apis: map[reflect.Type]rawApi{}}
 }
 
 // List pages through the objects of M, narrowed by filter, a struct whose fields are the query
@@ -47,7 +53,10 @@ func (r *RawClient) List[M any](ctx context.Context, filter any, options ListOpt
 	// Newest first, an object created while the pages are read would land on a page already read
 	// and push another one onto the next page, to be listed twice. The fixed until leaves it out; an
 	// endpoint without until ignores the parameter. The filter's own sort and until win.
-	newestFirst := url.Values{"sort": {"createdAt,desc"}, "until": {time.Now().UTC().Format(time.RFC3339Nano)}}
+	newestFirst := url.Values{"until": {time.Now().UTC().Format(time.RFC3339Nano)}}
+	if api.sortsByCreatedAt {
+		newestFirst.Set("sort", "createdAt,desc")
+	}
 	return api.ListSeqAs[jsontext.Value](ctx, options, http.WithUrlQuery(newestFirst), http.WithUrlQuery(filter))
 }
 
@@ -71,11 +80,18 @@ func (r *RawClient) DoRequest(ctx context.Context, method, path string, opts ...
 // with makes List and Get reach the objects of M through the API version of meshObject, so that
 // the version stays declared once, in the constructor of M's typed client.
 func (r *RawClient) with[M any](meshObject internal.MeshObjectClient[M]) *RawClient {
-	r.apis[reflect.TypeFor[M]()] = meshObject.MeshObjectApi
+	r.apis[reflect.TypeFor[M]()] = rawApi{MeshObjectApi: meshObject.MeshObjectApi, sortsByCreatedAt: true}
 	return r
 }
 
-func (r *RawClient) api[M any]() (internal.MeshObjectApi, error) {
+// withOwnOrder is with for a listing that answers 400 to any sort key, as that of building block
+// definition versions does, which orders by version number.
+func (r *RawClient) withOwnOrder[M any](meshObject internal.MeshObjectClient[M]) *RawClient {
+	r.apis[reflect.TypeFor[M]()] = rawApi{MeshObjectApi: meshObject.MeshObjectApi}
+	return r
+}
+
+func (r *RawClient) api[M any]() (rawApi, error) {
 	api, ok := r.apis[reflect.TypeFor[M]()]
 	if !ok {
 		return api, fmt.Errorf("the raw client has no API for %s: add its typed client in client.New", reflect.TypeFor[M]())

@@ -17,6 +17,8 @@ func newList() *cobra.Command {
 
 --workspace, or MESHSTACK_WORKSPACE, lists that workspace's building blocks. Without either the
 backend lists what the credential can see, whatever default workspace the profile has.`,
+		Example: `  meshstack buildingblock list --workspace my-workspace
+  meshstack bb list --limit unlimited -o ndjson`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (

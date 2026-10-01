@@ -140,3 +140,27 @@ func TestAFailingPageStopsTheListing(t *testing.T) {
 		})
 	}
 }
+
+func TestASingleItemIsWrittenAsAnObjectOfItsOwn(t *testing.T) {
+	item := `{"kind": "meshBuildingBlockRunLogs", "steps": [{"status": "SUCCEEDED"}]}`
+	for format, want := range map[internal.OutputFormat]string{
+		internal.OutputJson: `{
+  "kind": "meshBuildingBlockRunLogs",
+  "steps": [
+    {
+      "status": "SUCCEEDED"
+    }
+  ]
+}
+`,
+		internal.OutputNdjson: `{"kind":"meshBuildingBlockRunLogs","steps":[{"status":"SUCCEEDED"}]}` + "\n",
+	} {
+		t.Run(string(format), func(t *testing.T) {
+			var out strings.Builder
+
+			require.NoError(t, internal.WriteItem(&out, format, jsontext.Value(item)))
+
+			assert.Equal(t, want, out.String())
+		})
+	}
+}

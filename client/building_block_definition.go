@@ -149,23 +149,23 @@ type meshBuildingBlockDefinitionClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinition]
 }
 
-func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockDefinitionClient {
+func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockDefinitionClient {
 	return meshBuildingBlockDefinitionClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinition](ctx, httpClient, "v1-preview"),
 	}
 }
 
-type meshBuildingBlockDefinitionListQuery struct {
-	// IncludeAllPublished is always true, so the list also holds the definitions published to the
-	// whole platform, not only the workspace's own.
-	IncludeAllPublished bool    `json:"includeAllPublished"`
-	OwnedByWorkspace    *string `json:"ownedByWorkspace"`
+type MeshBuildingBlockDefinitionListFilter struct {
+	OwnedByWorkspace *string `json:"ownedByWorkspace"`
+	// IncludeAllPublished adds the definitions published to the whole platform to the workspace's own.
+	IncludeAllPublished bool         `json:"includeAllPublished"`
+	Sort                SortCriteria `json:"sort"`
 }
 
 func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
-		IncludeAllPublished: true,
+	return c.meshObject.List(ctx, http.WithUrlQuery(MeshBuildingBlockDefinitionListFilter{
 		OwnedByWorkspace:    workspaceIdentifier,
+		IncludeAllPublished: true,
 	}))
 }
 

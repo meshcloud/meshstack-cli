@@ -30,6 +30,12 @@ func (f *OutputFlag) Register(flags *pflag.FlagSet) {
 	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for one array, %s for one item per line", OutputJson, OutputNdjson))
 }
 
+// RegisterForItem is Register for a command that writes one object through [WriteItem].
+func (f *OutputFlag) RegisterForItem(flags *pflag.FlagSet) {
+	f.Format = OutputJson
+	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s, or %s for one line", OutputJson, OutputNdjson))
+}
+
 func (f *OutputFlag) String() string {
 	return string(f.Format)
 }
@@ -81,6 +87,10 @@ func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value,
 	return err
 }
 
+func unknownFormat(format OutputFormat) error {
+	return fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
+}
+
 type listFormat struct {
 	begin, between, after, end, empty string
 	format                            func(item *jsontext.Value) error
@@ -101,7 +111,7 @@ func listFormatOf(format OutputFormat) (listFormat, error) {
 			},
 		}, nil
 	default:
-		return listFormat{}, fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
+		return listFormat{}, unknownFormat(format)
 	}
 }
 
@@ -146,4 +156,22 @@ func (f *ShowFlag) Show(w io.Writer, markdownTemplate *template.Template, data a
 		return err
 	}
 	return markdown.Write(w, markdownTemplate, data)
+}
+
+// WriteItem is for a command that answers with one object rather than a listing.
+func WriteItem(w io.Writer, format OutputFormat, item jsontext.Value) error {
+	var err error
+	switch format {
+	case OutputNdjson:
+		err = item.Compact()
+	case OutputJson:
+		err = item.Indent(jsontext.WithIndent("  "))
+	default:
+		err = unknownFormat(format)
+	}
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "%s\n", item)
+	return err
 }

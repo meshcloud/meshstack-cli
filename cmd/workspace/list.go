@@ -18,6 +18,8 @@ is --workspace, MESHSTACK_WORKSPACE, or the profile's default workspace.
 
 From the workspace behind meshPanel's admin area, a role that may list every workspace, such as
 Organization Admin, lists them all. From any other workspace the list holds that workspace alone.`,
+		Example: `  meshstack workspace list
+  meshstack ws list --workspace admin-workspace --limit unlimited -o ndjson`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return flags.Run[client.MeshWorkspace](cmd, client.MeshWorkspaceListFilter{})

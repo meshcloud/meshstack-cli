@@ -29,6 +29,8 @@ func newList() *cobra.Command {
 --building-block lists that block's runs, and cannot be combined with --workspace. Without it
 the runs of every building block the credential can see are listed, one block after the other,
 the newest block first, and --workspace, or MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
+		Example: `  meshstack buildingblockrun list --building-block 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
+  meshstack bbrun list --workspace my-workspace --limit 20`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (
