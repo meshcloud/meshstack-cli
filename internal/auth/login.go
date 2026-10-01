@@ -63,19 +63,19 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	})
 
 	storeSession := func(ctx context.Context) error {
-		errs := []error{creds.Store(ctx)}
-
+		// A login that fails stores nothing, so it neither switches the current profile nor leaves a
+		// credential behind that a later command would use.
 		switch defaultWorkspace, err := session.getWorkspace(); {
 		case err == nil:
 			session.CurrentProfile.DefaultWorkspace = defaultWorkspace
 		case !errors.Is(err, setting.ErrNoSourceProvidedValue):
-			errs = append(errs, err)
+			return err
 		}
 
 		// CurrentProfile points into the map profiles holds, so the default workspace set above is
 		// stored as well.
 		profiles.CurrentProfile = session.CurrentProfile.Name
-		return errors.Join(append(errs, profiles.Store(ctx))...)
+		return errors.Join(creds.Store(ctx), profiles.Store(ctx))
 	}
 	return session, storeSession, nil
 }
