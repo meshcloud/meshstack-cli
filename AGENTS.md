@@ -116,7 +116,7 @@ git blame client/client.go              # traverses the merge on its own
 
 **`client/` does not log in.** `client.Authorization` produces a bearer token and replaces one that
 came back 401; resolving a credential, minting a token, caching it and refreshing it is `pkg/auth`.
-Both front ends build their client through `auth.Session.Client`, so the endpoint and the
+Both front ends build their client through `auth.ResolveClient`, so the endpoint and the
 authorization always agree with what was resolved. Do **not** add a login exchange anywhere else: a
 second one gets a static token and starts returning 401 once it expires, and for a browser login it
 would end the user's session.
