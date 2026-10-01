@@ -3,18 +3,20 @@ package testacc
 import (
 	"context"
 	"encoding/json/v2"
-	"fmt"
+	"log/slog"
 	gohttp "net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/cmd/auth"
+	"github.com/meshcloud/meshstack-cli/pkg/io"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
@@ -29,33 +31,6 @@ const (
 	testAccOn     = "1"
 	loopbackHosts = "http://localhost http://127.0.0.1"
 )
-
-var meshstack string
-
-func TestMain(m *testing.M) {
-	os.Exit(func() int {
-		if os.Getenv(envTestAcc) != testAccOn {
-			return m.Run()
-		}
-		dir, err := os.MkdirTemp("", "meshstack-testacc")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "cannot create a directory for the binary under test:", err)
-			return 1
-		}
-		defer func() { _ = os.RemoveAll(dir) }()
-
-		// -o names the directory, so the binary keeps the name `go build ./cmd/meshstack` gives it.
-		build := exec.CommandContext(context.Background(), "go", "build", "-o", dir, "./cmd/meshstack")
-		build.Dir = filepath.Join("..", "..", "..")
-		build.Stdout, build.Stderr = os.Stdout, os.Stderr
-		if err := build.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "cannot build the meshstack binary under test:", err)
-			return 1
-		}
-		meshstack = filepath.Join(dir, "meshstack")
-		return m.Run()
-	}())
-}
 
 func requireLocalStack(t *testing.T) string {
 	t.Helper()
@@ -126,23 +101,78 @@ func (c *cli) setEnv(key, value string) {
 // environ blanks every MESHSTACK_* name this suite does not set on purpose, so that a developer's
 // .env cannot decide what a test proves.
 func (c *cli) environ() []string {
-	return append(append(os.Environ(),
-		envConfigDir+"="+c.configDir,
-		envNoBrowser+"="+testAccOn,
-		envEndpoint+"="+c.endpoint,
-		envProfile+"=",
-		envWorkspace+"=",
-		setting.ApiKeyClientId.EnvKey()+"=",
-		setting.ApiKeyClientSecret.EnvKey()+"=",
-		setting.ApiToken.EnvKey()+"=",
-	), c.extraEnv...)
+	return append([]string{
+		envConfigDir + "=" + c.configDir,
+		envNoBrowser + "=" + testAccOn,
+		envEndpoint + "=" + c.endpoint,
+		envProfile + "=",
+		envWorkspace + "=",
+		setting.SkipVersionCheck.EnvKey() + "=",
+		setting.ApiKeyClientId.EnvKey() + "=",
+		setting.ApiKeyClientSecret.EnvKey() + "=",
+		setting.ApiToken.EnvKey() + "=",
+	}, c.extraEnv...)
 }
 
-func (c *cli) command(args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(c.t.Context(), meshstack, args...)
-	cmd.Env = c.environ()
-	cmd.Stdin = nil
-	return cmd
+// newRootCommand holds the commands this suite runs. The binary's own root is in package main, which
+// no test can import, and adds only persistent flags, which this suite sets through the environment.
+func newRootCommand() *cobra.Command {
+	root := &cobra.Command{Use: "meshstack", SilenceUsage: true}
+	root.AddCommand(auth.New(), auth.NewLogin())
+	return root
+}
+
+// cliRun is a command that runs in process, in the environment of its cli. Its output holds what the
+// binary would write to stdout and stderr, and the log, in the order it was written.
+type cliRun struct {
+	output   *syncBuffer
+	cancel   context.CancelFunc
+	finished chan struct{}
+	err      error
+}
+
+// start sets the environment with t.Setenv, so no two commands of a test can run at the same time.
+func (c *cli) start(stdin string, args ...string) *cliRun {
+	c.t.Helper()
+	for _, variable := range c.environ() {
+		key, value, _ := strings.Cut(variable, "=")
+		c.t.Setenv(key, value)
+	}
+	ctx, cancel := context.WithCancel(c.t.Context())
+	run := &cliRun{output: &syncBuffer{}, cancel: cancel, finished: make(chan struct{})}
+	previous := slog.Default()
+	c.t.Cleanup(func() { slog.SetDefault(previous) })
+	slog.SetDefault(slog.New(slog.NewTextHandler(run.output, nil)))
+
+	cmd := newRootCommand()
+	cmd.SetArgs(args)
+	cmd.SetIn(strings.NewReader(stdin))
+	cmd.SetOut(run.output)
+	cmd.SetErr(run.output)
+	go func() {
+		defer close(run.finished)
+		run.err = cmd.ExecuteContext(io.WithStderr(ctx, run.output))
+	}()
+	return run
+}
+
+func (r *cliRun) wait() error {
+	<-r.finished
+	r.cancel()
+	return r.err
+}
+
+// abort ends a login that will never finish, because the redirect it waits for never comes.
+func (r *cliRun) abort() {
+	r.cancel()
+	<-r.finished
+}
+
+func (c *cli) run(stdin string, args ...string) (string, error) {
+	c.t.Helper()
+	run := c.start(stdin, args...)
+	err := run.wait()
+	return run.output.String(), err
 }
 
 // Every test brings its own configuration directory, so the profile is always the default one.

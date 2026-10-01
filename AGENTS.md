@@ -50,7 +50,7 @@ The binary gets its name from its directory, `cmd/meshstack`, which is what `tas
 | `cmd/meshstack/` | `package main`: `main()` and the root command. The only main package. |
 | `cmd/<subcommand>/` | One package per subcommand of the cobra command tree. |
 | `cmd/internal/` | What the command tree shares: flags, the session it resolves, the version. |
-| `cmd/internal/testacc/` | The suite that drives the built binary against a live meshStack. |
+| `cmd/internal/testacc/` | The suite that runs the commands against a live meshStack. |
 | `pkg/` | Each package here wraps the `internal/` package of the same name, and nothing else. |
 | `client/` | The meshStack API client, which the Terraform provider imports. |
 | `internal/` | Everything else. The `depguard` rules in `.golangci.yml` say which package may import which. |
@@ -166,8 +166,10 @@ provider's own pin.
 
 ## Acceptance tests
 
-This repository is a **meshStack satellite**: `cmd/internal/testacc/` drives the built binary
-against a live backend, and a whole meshStack only exists in the *meshcloud-internal* mono repo, so
+This repository is a **meshStack satellite**: `cmd/internal/testacc/` runs the commands against a
+live backend. It builds **no binary**: it runs the cobra commands in process, and talks to them only
+through stdin, stdout, stderr and the environment, as a person or a script uses the binary.
+A whole meshStack only exists in the *meshcloud-internal* mono repo, so
 CI here does not run the suite. `.github/workflows/test-acceptance.yml` asks that repository for the
 run, and `meshstack-satellite.gradle` is everything the run reads from here. The other half of the
 lane belongs to `../meshfed-release` and changes without us, so read it there, in

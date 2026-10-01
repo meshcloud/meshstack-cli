@@ -1,7 +1,6 @@
 package testacc
 
 import (
-	"bufio"
 	"encoding/json/v2"
 	"html"
 	"io"
@@ -10,7 +9,6 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
-	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -134,21 +132,19 @@ func TestAccApiKeyLogin(t *testing.T) {
 	c.setEnv(setting.ApiKeyClientSecret.EnvKey(), requireEnv(t, setting.ApiKeyClientSecret.EnvKey()))
 
 	// A bare --apikey reads the id from the environment, which is what its NoOptDefVal is for.
-	login := c.command("login", "--apikey")
-	login.Stdin = strings.NewReader("1\n")
-	output, err := login.CombinedOutput()
+	output, err := c.run("1\n", "login", "--apikey")
 	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
-	assert.Contains(t, string(output), "| meshStack | ", "the login shows the status, with the meshStack it reached")
-	requireStoredLogin(t, c, string(output))
+	assert.Contains(t, output, "| meshStack | ", "the login shows the status, with the meshStack it reached")
+	requireStoredLogin(t, c, output)
 	requireAuthStatus(t, c, "API key")
 
 	t.Run("--apitoken sends the token the API key login cached", func(t *testing.T) {
 		withToken := newCLI(t, endpoint)
 		withToken.setEnv(setting.ApiToken.EnvKey(), cachedApiKeyToken(t, c))
 
-		output, err := withToken.command("login", "--apitoken").CombinedOutput()
+		output, err := withToken.run("", "login", "--apitoken")
 		require.NoErrorf(t, err, "the API token login did not finish:\n%s", output)
-		assert.Contains(t, string(output), "| meshStack | ", "the login shows the status, with the meshStack it reached")
+		assert.Contains(t, output, "| meshStack | ", "the login shows the status, with the meshStack it reached")
 		require.FileExists(t, withToken.credentialsJson())
 		requireAuthStatus(t, withToken, "API token")
 	})
@@ -158,9 +154,9 @@ func TestAccApiKeyLogin(t *testing.T) {
 // /self yet, so it accepts the warnings about the key's details.
 func requireAuthStatus(t *testing.T, c *cli, wantCredential string) {
 	t.Helper()
-	status, err := c.command("auth", "status").CombinedOutput()
+	status, err := c.run("", "auth", "status")
 	require.NoErrorf(t, err, "meshstack auth status failed:\n%s", status)
-	assert.Contains(t, string(status), "| Credential | "+wantCredential)
+	assert.Contains(t, status, "| Credential | "+wantCredential)
 }
 
 func requireStoredLogin(t *testing.T, c *cli, output string) {
@@ -192,76 +188,31 @@ func cachedApiKeyToken(t *testing.T, c *cli) string {
 	return cacheFile.Cache.Token
 }
 
-type loginRun struct {
-	cmd      *exec.Cmd
-	output   *syncBuffer
-	startURL chan string
-	drained  chan struct{}
+func startLogin(t *testing.T, c *cli, workspaceAnswer string) *cliRun {
+	t.Helper()
+	return c.start(workspaceAnswer+"\n", "login")
 }
 
-// startLogin drains stderr, where login asks and logs, while the command still runs: login writes the URL of its access level
-// page and then blocks on the redirect, so nothing about it is readable after the fact.
-func startLogin(t *testing.T, c *cli, workspaceAnswer string) *loginRun {
+// awaitStartURL reads the output while the login runs, since a browser login writes the URL of its
+// access level page and then blocks on the redirect.
+func (r *cliRun) awaitStartURL(t *testing.T) string {
 	t.Helper()
-	cmd := c.command("login")
-	cmd.Stdin = strings.NewReader(workspaceAnswer + "\n")
-	stderr, err := cmd.StderrPipe()
-	require.NoError(t, err)
-
-	run := &loginRun{
-		cmd:    cmd,
-		output: &syncBuffer{},
-		// Buffered, so the scanner never blocks on a test that has already given up.
-		startURL: make(chan string, 1),
-		drained:  make(chan struct{}),
-	}
-	// The status the login ends with goes to stdout.
-	cmd.Stdout = run.output
-	require.NoError(t, cmd.Start())
-
 	printed := regexp.MustCompile(`http://127\.0\.0\.1:\d+\S*`)
-	go func() {
-		defer close(run.drained)
-		lines := bufio.NewScanner(stderr)
-		for lines.Scan() {
-			line := lines.Bytes()
-			_, _ = run.output.Write(append(line, '\n'))
-			if found := printed.Find(line); found != nil {
-				select {
-				case run.startURL <- string(found):
-				default:
-				}
-			}
+	timeout := time.After(time.Minute)
+	poll := time.NewTicker(20 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		if found := printed.FindString(r.output.String()); found != "" {
+			return found
 		}
-	}()
-	return run
-}
-
-func (r *loginRun) awaitStartURL(t *testing.T) string {
-	t.Helper()
-	select {
-	case found := <-r.startURL:
-		return found
-	case <-r.drained:
-		t.Fatalf("`meshstack login` ended without printing the URL of its login page. It said:\n%s", r.output.String())
-	case <-time.After(time.Minute):
-		t.Fatalf("no login page URL appeared within a minute. `meshstack login` said:\n%s", r.output.String())
+		select {
+		case <-r.finished:
+			t.Fatalf("`meshstack login` ended without printing the URL of its login page. It said:\n%s", r.output.String())
+		case <-timeout:
+			t.Fatalf("no login page URL appeared within a minute. `meshstack login` said:\n%s", r.output.String())
+		case <-poll.C:
+		}
 	}
-	return ""
-}
-
-// wait reads stderr to its end before reaping the command, which is what os/exec requires of a
-// StderrPipe.
-func (r *loginRun) wait() error {
-	<-r.drained
-	return r.cmd.Wait()
-}
-
-// abort ends a login that will never finish, because the redirect it waits for never comes.
-func (r *loginRun) abort() {
-	_ = r.cmd.Process.Kill()
-	<-r.drained
-	_ = r.cmd.Wait()
 }
 
 // completeKeycloakLogin reports whether keycloak asked for consent, which it does for an access

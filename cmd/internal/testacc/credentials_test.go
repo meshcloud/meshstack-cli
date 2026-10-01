@@ -12,8 +12,8 @@ import (
 // unsignedEmptyJwt is an unsigned JWT with an empty payload, all MESHSTACK_API_TOKEN needs to parse.
 const unsignedEmptyJwt = "eyJhbGciOiJub25lIn0.e30."
 
-// These refusals run in-process, because no invocation of the binary reaches them: `meshstack
-// login` always names the credential it wants.
+// These refusals call auth.ResolveClient rather than a command, because no command reaches them:
+// `meshstack login` always names the credential it wants.
 
 func TestAccCredentialResolutionRefusesTwoCredentialsAtOnce(t *testing.T) {
 	newInProcessCLI(t)
