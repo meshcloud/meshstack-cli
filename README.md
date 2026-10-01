@@ -1,10 +1,25 @@
 # meshStack CLI
 
-`meshstack` is the command line interface for [meshStack](https://www.meshcloud.io/). This
-repository also holds the Go client for the meshStack API, which the
-[meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) imports.
+`meshstack` is the command line interface for your [meshStack](https://www.meshcloud.io/en/product/) instance,
+handling multiple meshStacks via [the `meshstack profile` command](docs/profile.md).
 
-![meshstack login picks a profile, logs in through the browser and selects a workspace, then meshstack buildingblock list lists the first building blocks](docs/demo.gif)
+Start with `meshstack login --profile your-profile-name` and explore the CLI with `meshstack --help`.
+
+The [meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) builds on this `login` as follows:
+
+```hcl
+provider "meshstack" {
+  profile   = "your-profile-name" # login creates 'default' initially
+  workspace = "your-workspace"    # use 'meshstack workspace list' to find one, 
+                                  # also profile may specify default
+}
+```
+
+Other commands typically use `--output [nd]json` by default. 
+They are intended to be using within Agentic AI workflows with a `| jq ...` pipe and probed with `--limit`. 
+
+![meshstack login picks a profile, logs in through the browser and selects a workspace, meshstack buildingblock list lists the first building blocks, meshstack profile edits a profile, and meshstack profile add completes the endpoint and the workspace of the logged-in profile](docs/demo.gif)
+
 
 ## Install
 
@@ -49,6 +64,9 @@ curl -fsSL https://raw.githubusercontent.com/meshcloud/meshstack-cli/main/instal
 ```
 
 ## Development
+
+This repository also holds the Go client for the meshStack API in [`client/`](client), which the
+[meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) imports.
 
 The Nix dev shell provides Go, `goreleaser` and `task`:
 

@@ -6,7 +6,7 @@ Require git
 Set Shell bash
 Set FontSize 17
 Set Width 1100
-Set Height 540
+Set Height 620
 Set Padding 24
 Set TypingSpeed 70ms
 Set Theme "Catppuccin Mocha"
@@ -53,6 +53,53 @@ Sleep 600ms
 Enter
 Wait+Screen@20s /listed the first 5 of/
 Sleep 6s
+
+Hide
+Type "clear"
+Enter
+Show
+
+Sleep 1s
+Type "meshstack profile"
+Sleep 600ms
+Enter
+Wait+Screen@20s /meshStack CLI profiles/
+Sleep 1.5s
+Up@400ms 2
+Down@400ms 2
+Sleep 500ms
+Enter
+Wait+Screen@20s /Edit profile/
+Sleep 2.5s
+Escape
+Sleep 1s
+Type "q"
+
+Hide
+Type "clear"
+Enter
+Show
+
+Sleep 1s
+Type "meshstack profile add"
+Sleep 600ms
+Enter
+Wait+Screen@20s /Add a profile/
+Sleep 1s
+Type "https://api.s"
+Sleep 800ms
+Tab
+Sleep 1s
+Enter
+Sleep 800ms
+Type@150ms "pay"
+Sleep 1s
+Tab
+Sleep 1s
+Enter
+Sleep 1.5s
+Enter
+Sleep 3s
 
 Hide
 Type `kill "$demo_server"; rm -rf "$demo_dir"`

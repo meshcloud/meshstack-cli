@@ -234,7 +234,10 @@ func (idp *identityProvider) token(w http.ResponseWriter, r *http.Request, issue
 		"token_type":    "Bearer",
 		"expires_in":    300,
 		"refresh_token": rand.Text(),
-		"scope":         scope,
+		// Keycloak's session lifetime for the meshstack-cli client, see
+		// ../meshfed-release/ci/keycloak/container/realms.json.
+		"refresh_expires_in": 86400,
+		"scope":              scope,
 	})
 }
 

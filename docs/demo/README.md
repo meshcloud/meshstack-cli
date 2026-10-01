@@ -1,7 +1,13 @@
 # Demo
 
-`demo.tape` records [`../demo.gif`](../demo.gif) with [VHS](https://github.com/charmbracelet/vhs),
-which the `nix develop` shell provides. Re-record it from the repository root, on Linux:
+Two tapes record the gifs with [VHS](https://github.com/charmbracelet/vhs), which the
+`nix develop` shell provides:
+
+- `demo.tape` records [`../demo.gif`](../demo.gif), the intro at the top of the README.
+- `profile.tape` records [`../profile.gif`](../profile.gif) for [`../profile.md`](../profile.md).
+  It starts with no profile.
+
+Re-record both from the repository root, on Linux:
 
 ```shell
 task docs:demo
