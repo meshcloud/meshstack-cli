@@ -1,0 +1,37 @@
+name: Dependabot vendorHash
+
+# A Dependabot go.sum change leaves vendorHash in flake.nix stale and fails the Nix workflow.
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  vendor-hash:
+    if: github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/go_modules/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - run: nix develop -c task nix:vendor-hash
+
+      # A push with GITHUB_TOKEN starts no workflow runs, a workflow_dispatch is the exception, so
+      # this dispatches every workflow that posts a required check on the pushed commit.
+      # `@dependabot recreate` drops the commit, and the next run of this job adds it again.
+      - name: Push vendorHash and run the checks on it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          git diff --quiet -- flake.nix && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(deps): update vendorHash" -- flake.nix
+          git push
+          for workflow in test.yml nix.yml test-acceptance.yml; do
+            gh workflow run "$workflow" --ref "$BRANCH"
+          done

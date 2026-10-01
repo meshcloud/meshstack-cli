@@ -2,11 +2,13 @@ name: Nix
 
 # Builds the flake the way a user installs it. Nothing else here does, so without this a go.mod
 # change that leaves vendorHash stale breaks `nix profile add` without anyone noticing.
+# dependabot-vendor-hash.yml dispatches this for the commit it pushes.
 on:
   pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -39,4 +41,4 @@ jobs:
       - name: Suggest fix command on failure
         if: failure()
         run: |
-          echo "::error::If the log shows a hash mismatch for the go-modules derivation, set vendorHash in flake.nix to the 'got:' hash it prints."
+          echo "::error::If the log shows a hash mismatch for the go-modules derivation, run 'task nix:vendor-hash' and commit flake.nix. On a Dependabot pull request, the Dependabot vendorHash workflow does that."

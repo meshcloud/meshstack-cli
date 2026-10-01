@@ -1,0 +1,46 @@
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+#
+# No docker: the Dockerfile's golang base image moves in lock-step with go.mod and flake.nix.
+version: 2
+updates:
+  # dependabot-vendor-hash.yml keeps vendorHash in flake.nix in step with go.sum on these pull
+  # requests. Not docs/demo/fakemeshstack: that module requires nothing.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      go-modules:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+          - "major"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "nix"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      nix:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
