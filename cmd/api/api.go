@@ -1,117 +1,182 @@
 package api
 
 import (
+	"bytes"
+	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	gohttp "net/http"
-	"net/url"
-	"os"
-	"strings"
+	"slices"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 func New() *cobra.Command {
-	var (
-		method  string
-		headers []string
-		input   string
-	)
+	var flags requestFlags
 
 	cmd := &cobra.Command{
 		Use:   "api <path>",
 		Short: "Send an authorized request to the meshStack API",
-		Long: `Send an authorized request to a path of the meshStack API, and write the answer as it came.
+		Long: `Send an authorized request to a path of the meshStack API, and write the answer, as indented JSON
+where it is JSON.
 
 This reaches what the other commands do not cover, such as deleting a meshObject or reading a newer
-representation of it. meshStack versions an endpoint through the Accept header, so name the media
-type there. The meshStack OpenAPI spec lists the paths and their media types:
-https://docs.meshcloud.io/api/meshstack-openapi-docs.json
+representation of it. meshStack versions a meshObject endpoint through its media type, and the
+command reads the version from the API docs, which meshstack api-docs shows: the latest one the path
+offers, previews included, unless --api-version, an Accept or Content-Type header or the body's
+apiVersion names another. A meshObject body then gets the kind and apiVersion it lacks.
 
---input sends a file, or stdin for '-', as the request body, typed application/json unless a
-Content-Type header says otherwise.
+--request-json sends a JSON file, or stdin for '-', typed with the version's media type. For a path
+of no version in the API docs, the Content-Type and Accept headers default to application/json, and
+without the API docs the Content-Type alone does.
 
-An answer outside 2xx still writes its body, and the command then fails.`,
-		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace' \
-    -H 'Accept: application/vnd.meshcloud.api.meshtenant.v4.hal+json'
-  meshstack api -X DELETE /api/meshobjects/meshbuildingblocks/<uuid>/purge \
-    -H 'Accept: application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json'`,
+An answer outside 2xx still writes its body, and the command then fails.
+
+The same command line with api-docs in place of api describes the request.`,
+		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace'
+  meshstack api -X DELETE /api/meshobjects/meshbuildingblocks/<uuid>/purge
+  meshstack api -X POST /api/meshobjects/meshworkspaces --request-json workspace.json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			header, err := parseHeaders(headers)
+			r, err := flags.parse(cmd, args)
 			if err != nil {
 				return err
 			}
-			body, err := readInput(cmd, input)
+			selector, err := flags.selector(r)
 			if err != nil {
 				return err
 			}
-			if _, typed := header["Content-Type"]; body != nil && !typed {
-				header.Set("Content-Type", "application/json")
-			}
-
-			target, err := url.Parse(args[0])
-			if err != nil {
-				return err
-			}
-			if target.Scheme != "" || target.Host != "" {
-				return fmt.Errorf("'%s' is not a path, write it relative to the endpoint", args[0])
-			}
-
 			ctx := cmd.Context()
+			// Resolved before the API docs, whose first download takes a while, so that a missing
+			// login fails at once.
 			meshStack, err := internal.ResolveClient(ctx)
 			if err != nil {
 				return err
 			}
-			answer, err := meshStack.Raw.DoRequest(ctx, strings.ToUpper(method), target.Path,
-				http.WithUrlQuery(target.Query()), http.WithHeaders(header), http.WithBody(body))
+			spec, wait, err := flags.loadApiDocs(cmd)
+			defer wait()
+			if err != nil {
+				slog.WarnContext(ctx, fmt.Sprintf("Sending the request as given, without the API docs: %s. "+
+					"Run %s to see why.", err, docsCommand(cmd, args)))
+			} else if negotiateErr := r.negotiate(ctx, spec, selector); negotiateErr != nil {
+				return negotiateErr
+			}
+			if _, typed := r.header["Content-Type"]; r.body != nil && !typed {
+				r.header.Set("Content-Type", "application/json")
+			}
+
+			answer, err := meshStack.Raw.DoRequest(ctx, r.method, r.target.Path,
+				http.WithUrlQuery(r.target.Query()), http.WithHeaders(r.header), http.WithBody(r.body))
 			if httpErr, ok := errors.AsType[client.HttpError](err); ok {
-				if _, writeErr := cmd.OutOrStdout().Write(httpErr.ResponseBody); writeErr != nil {
+				if writeErr := writeAnswer(cmd.OutOrStdout(), httpErr.ResponseBody); writeErr != nil {
 					return writeErr
 				}
 				// The body is on stdout already, so the error says only what it adds.
+				if httpErr.IsClientError() && !httpErr.IsUnauthorized() && !httpErr.IsForbidden() && !r.objectNotFound(httpErr) {
+					return fmt.Errorf("meshStack answered HTTP %d. Run %s to see what the API takes",
+						httpErr.StatusCode, docsCommand(cmd, args))
+				}
 				return fmt.Errorf("meshStack answered HTTP %d", httpErr.StatusCode)
 			}
 			if err != nil {
 				return err
 			}
-			_, err = cmd.OutOrStdout().Write(answer)
-			return err
+			return writeAnswer(cmd.OutOrStdout(), answer)
 		},
 	}
 
-	cmd.Flags().StringVarP(&method, "method", "X", gohttp.MethodGet, "HTTP method of the request")
-	cmd.Flags().StringArrayVarP(&headers, "header", "H", nil, "add a request header, as 'key: value'")
-	cmd.Flags().StringVar(&input, "input", "", "file to send as the request body, or - for stdin")
+	flags.register(cmd, gohttp.MethodGet, "HTTP method of the request")
 
 	return cmd
 }
 
-func parseHeaders(headers []string) (gohttp.Header, error) {
-	header := gohttp.Header{}
-	for _, line := range headers {
-		key, value, ok := strings.Cut(line, ":")
-		if !ok || strings.TrimSpace(key) == "" {
-			return nil, fmt.Errorf("header '%s' is not of 'key: value' format", line)
-		}
-		header.Add(strings.TrimSpace(key), strings.TrimSpace(value))
+// objectNotFound tells a 404 for a path that exists, whose object is missing, from one for a path that
+// does not: only the latter is something the API docs help with.
+func (r *request) objectNotFound(httpErr client.HttpError) bool {
+	if !httpErr.IsNotFound() || !r.documented {
+		return false
 	}
-	return header, nil
+	var answer struct {
+		ErrorCode string `json:"errorCode"`
+	}
+	return json.Unmarshal(httpErr.ResponseBody, &answer) != nil || answer.ErrorCode != noHandlerFound
 }
 
-func readInput(cmd *cobra.Command, input string) ([]byte, error) {
-	switch input {
-	case "":
-		return nil, nil
-	case "-":
-		return io.ReadAll(cmd.InOrStdin())
-	default:
-		//nolint:gosec // G304: reading the file the user named is what --input is for
-		return os.ReadFile(input)
+// noHandlerFound is the errorCode of meshStack's answer to a path it serves nothing at.
+const noHandlerFound = "NoHandlerFound"
+
+// writeAnswer ends a body of text with a newline, so that the error after it starts on a line of its
+// own.
+func writeAnswer(w io.Writer, body []byte) error {
+	if len(body) == 0 {
+		return nil
 	}
+	if value := jsontext.Value(slices.Clone(body)); value.Indent(jsontext.WithIndent("  ")) == nil {
+		body = value
+	}
+	if utf8.Valid(body) && !bytes.HasSuffix(body, []byte("\n")) {
+		body = append(body, '\n')
+	}
+	_, err := w.Write(body)
+	return err
+}
+
+func (r *request) negotiate(ctx context.Context, spec openapi.Spec, selector openapi.Selector) error {
+	// The request goes out as given where the docs know no better, because they can lag behind the
+	// meshStack it is sent to.
+	selected, err := spec.Select(selector)
+	r.documented = err == nil
+	if err != nil {
+		if !openapi.ParseMediaType(r.header.Get("Accept")).ApiVersion.IsZero() {
+			slog.WarnContext(ctx, fmt.Sprintf("Sending the request as given: %s", err))
+			return nil
+		}
+		return err
+	}
+	var mediaType openapi.MediaType
+	for _, operation := range selected.Operations {
+		if latest, ok := operation.LatestMediaType(); ok && (mediaType.Name == "" || !latest.ApiVersion.IsZero()) {
+			mediaType = latest
+		}
+	}
+	if mediaType.ApiVersion.IsZero() {
+		if !selector.ApiVersion.IsZero() && r.header.Get("Accept") == "" {
+			slog.WarnContext(ctx, fmt.Sprintf("The API docs list no version of %s %s, so no Accept header asks for %s",
+				selector.Method, selector.Path, selector.ApiVersion))
+		} else {
+			slog.DebugContext(ctx, fmt.Sprintf("The API docs list no version of %s %s", selector.Method, selector.Path))
+		}
+		// Only here, because a meshObject endpoint answers application/json with a 406, which
+		// does not say, as the 406 to no Accept header does, that it wants a version.
+		if r.header.Get("Accept") == "" {
+			if mediaType.Name != "" {
+				r.header.Set("Accept", mediaType.Name)
+			} else if r.body != nil {
+				r.header.Set("Accept", "application/json")
+			}
+		}
+		return nil
+	}
+	slog.DebugContext(ctx, fmt.Sprintf("Sending %s %s as %s", selector.Method, selector.Path, mediaType.Name))
+	if r.header.Get("Accept") == "" {
+		r.header.Set("Accept", mediaType.Name)
+	}
+	if r.body == nil {
+		return nil
+	}
+	if r.header.Get("Content-Type") == "" {
+		r.header.Set("Content-Type", mediaType.Name)
+	}
+	r.body, err = mediaType.WithKindAndApiVersion(r.body)
+	return err
 }

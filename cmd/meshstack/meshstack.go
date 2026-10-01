@@ -61,6 +61,7 @@ func newRootCommand() *cobra.Command {
 	internal.ProfileFlag.Register(persistentFlags)
 
 	cmd.AddCommand(api.New())
+	cmd.AddCommand(api.NewDocs())
 	cmd.AddCommand(auth.New())
 	// `meshstack login` is a shortcut for `meshstack auth login`. Calling the constructor a second
 	// time is the only way to get one: cobra's Aliases rename a command inside its own parent.

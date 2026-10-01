@@ -14,6 +14,10 @@ func (e Error) Error() string {
 	return fmt.Sprintf("http error %d, response '%s'", e.StatusCode, string(e.ResponseBody))
 }
 
+func (e Error) IsClientError() bool {
+	return e.StatusCode >= gohttp.StatusBadRequest && e.StatusCode < gohttp.StatusInternalServerError
+}
+
 func (e Error) IsUnauthorized() bool {
 	return e.StatusCode == gohttp.StatusUnauthorized
 }

@@ -25,6 +25,12 @@ type Spec struct {
 type Operation struct {
 	Method       string
 	PathTemplate string
+	// Kind is the meshObject kind below whose path the operation is, such as meshBuildingBlock, or
+	// empty outside the path of a kind.
+	Kind string
+	// Action names the operation within its kind, as a command of the CLI would: list, show,
+	// create, update, delete, or the path below the kind's object, such as trigger-run.
+	Action string
 	// MediaTypes are those of the request body and of every response, each once.
 	MediaTypes []MediaType
 
@@ -41,10 +47,15 @@ func (c component) ref() string {
 	return "#/components/" + c.kind + "/" + c.name
 }
 
+// Parse leaves out what the document says about authentication, see withoutAuthentication.
 func Parse(r io.Reader) (Spec, error) {
-	document, err := io.ReadAll(r)
+	read, err := io.ReadAll(r)
 	if err != nil {
 		return Spec{}, err
+	}
+	document, err := withoutAuthentication(read)
+	if err != nil {
+		return Spec{}, fmt.Errorf("cannot parse the OpenAPI document: %w", err)
 	}
 	var parsed struct {
 		Paths      object            `json:"paths"`
@@ -67,6 +78,7 @@ func Parse(r io.Reader) (Spec, error) {
 			spec.Operations = append(spec.Operations, operation)
 		}
 	}
+	assignKinds(spec.Operations)
 	for _, kind := range slices.Sorted(maps.Keys(parsed.Components)) {
 		for _, c := range parsed.Components[kind] {
 			spec.components = append(spec.components, component{kind: kind, member: c})
@@ -110,6 +122,27 @@ func (o Operation) ApiVersions() []ApiVersion {
 	return sortedUnique(versions)
 }
 
+// LatestApiVersion is zero for an operation of no version.
+func (o Operation) LatestApiVersion() ApiVersion {
+	versions := o.ApiVersions()
+	if len(versions) == 0 {
+		return ApiVersion{}
+	}
+	return versions[len(versions)-1]
+}
+
+// LatestMediaType is the one of the latest version, or for an operation of no version the first,
+// such as application/json. It is the one to accept, and to send a body in.
+func (o Operation) LatestMediaType() (MediaType, bool) {
+	if mediaType, ok := o.MediaType(o.LatestApiVersion()); ok {
+		return mediaType, true
+	}
+	if len(o.MediaTypes) == 0 {
+		return MediaType{}, false
+	}
+	return o.MediaTypes[0], true
+}
+
 func (o Operation) MediaType(version ApiVersion) (MediaType, bool) {
 	for _, mediaType := range o.MediaTypes {
 		if mediaType.ApiVersion == version {
@@ -120,6 +153,9 @@ func (o Operation) MediaType(version ApiVersion) (MediaType, bool) {
 }
 
 type Selector struct {
+	// Kind and Action select by Operation.Kind and Operation.Action. Kind is matched in any case.
+	Kind   string
+	Action string
 	// Method is empty for every method.
 	Method string
 	// Path is a request path such as /api/meshobjects/meshtenants/<uuid>, or empty for every path.
@@ -134,7 +170,9 @@ func (s Selector) IsZero() bool {
 
 func (s Selector) matches(operation Operation) bool {
 	return (s.Method == "" || strings.EqualFold(operation.Method, s.Method)) &&
-		(s.Path == "" || templateMatches(operation.PathTemplate, s.Path))
+		(s.Path == "" || templateMatches(operation.PathTemplate, s.Path)) &&
+		(s.Kind == "" || strings.EqualFold(operation.Kind, s.Kind)) &&
+		(s.Action == "" || operation.Action == s.Action)
 }
 
 // Select keeps the operations the selector matches, and of their media types those of one version.
@@ -145,14 +183,18 @@ func (s Spec) Select(selector Selector) (Spec, error) {
 	matched := slices.DeleteFunc(slices.Clone(s.Operations), func(operation Operation) bool {
 		return !selector.matches(operation)
 	})
-	// The templates of one method that match a path are versions of one operation, because
-	// meshStack names a path parameter differently in different versions: meshtenants/{tenantIdentifier}
-	// in v3 and meshtenants/{uuid} in v4.
+	// The templates of one method that match a path, or of one action of a kind, are versions of one
+	// operation, because meshStack names a path parameter differently in different versions:
+	// meshtenants/{tenantIdentifier} in v3 and meshtenants/{uuid} in v4.
 	operationKey := func(operation Operation) string {
-		if selector.Path == "" {
+		switch {
+		case selector.Path != "":
+			return operation.Method
+		case operation.Kind != "":
+			return operation.Kind + " " + operation.Method + " " + operation.Action
+		default:
 			return operation.Method + " " + operation.PathTemplate
 		}
-		return operation.Method
 	}
 
 	selected := Spec{components: s.components}
@@ -283,15 +325,15 @@ func (s Spec) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if s.document != nil {
 		return enc.WriteValue(s.document)
 	}
-	paths := mustMarshal(nestedObject(s.Operations,
+	paths := nestedObject(s.Operations,
 		func(operation Operation) string { return operation.PathTemplate },
-		func(operation Operation) member { return member{strings.ToLower(operation.Method), operation.raw} }))
+		func(operation Operation) member { return member{strings.ToLower(operation.Method), operation.raw} }).mustMarshal()
 	document := object{{"paths", paths}}
 	if referenced := s.referencedComponents(paths); len(referenced) > 0 {
 		components := nestedObject(referenced,
 			func(c component) string { return c.kind },
 			func(c component) member { return c.member })
-		document = append(document, member{"components", mustMarshal(components)})
+		document = append(document, member{"components", components.mustMarshal()})
 	}
 	return json.MarshalEncode(enc, document)
 }
@@ -344,12 +386,12 @@ func nestedObject[V any](values []V, outer func(V) string, inner func(V) member)
 		for _, value := range group {
 			members = append(members, inner(value))
 		}
-		nested = append(nested, member{outer(group[0]), mustMarshal(members)})
+		nested = append(nested, member{outer(group[0]), members.mustMarshal()})
 	}
 	return nested
 }
 
-func mustMarshal(o object) jsontext.Value {
+func (o object) mustMarshal() jsontext.Value {
 	value, err := json.Marshal(o)
 	if err != nil {
 		panic(err)

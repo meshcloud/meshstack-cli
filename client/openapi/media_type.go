@@ -98,11 +98,16 @@ func (v ApiVersion) IsZero() bool {
 	return v == ApiVersion{}
 }
 
+// String is empty for the zero version.
 func (v ApiVersion) String() string {
-	if v.preview {
+	switch {
+	case v.IsZero():
+		return ""
+	case v.preview:
 		return fmt.Sprintf("v%d-preview", v.number)
+	default:
+		return fmt.Sprintf("v%d", v.number)
 	}
-	return fmt.Sprintf("v%d", v.number)
 }
 
 func (v ApiVersion) Compare(other ApiVersion) int {

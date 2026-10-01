@@ -29,6 +29,10 @@ func Parse(name, text string) *template.Template {
 			escaped := strings.ReplaceAll(fmt.Sprint(value), "|", `\|`)
 			return strings.Join(strings.Fields(escaped), " ")
 		},
+		// indent writes no-break spaces, because goldmark trims the spaces a table cell starts with.
+		"indent": func(depth int) string {
+			return strings.Repeat("\u00a0\u00a0", depth)
+		},
 		"at": func(t time.Time) string {
 			return fmt.Sprintf("%s (%s)", t.Format("2006-01-02 15:04"), relative(time.Until(t)))
 		},

@@ -264,12 +264,21 @@ linters:
               desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
+            - log/slog
+            # the deny on encoding/json matches its subpackages too; a request body is checked as
+            # JSON, and api-docs writes a part of the OpenAPI document
+            - encoding/json/jsontext
+            - encoding/json/v2
             - github.com/meshcloud/meshstack-cli/cmd/internal
             - github.com/meshcloud/meshstack-cli/client
             # the request options client.Raw.DoRequest takes, which pkg/ does not expose: they are for the
             # CLI alone
             - github.com/meshcloud/meshstack-cli/internal/http
+            # the API docs choose the version of a request
+            - github.com/meshcloud/meshstack-cli/internal/apidocs
             - github.com/spf13/cobra
+            # api-docs renders the flags of a failed request back into a command line
+            - github.com/spf13/pflag
 
         cmd-auth:
           files:

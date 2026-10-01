@@ -3,7 +3,10 @@
   "paths": {
     "/api/meshobjects/meshbuildingblocks": {
       "post": {
+        "summary": "Create a building block",
+        "description": "Creates a building block.",
         "operationId": "meshBuildingBlockPost",
+        "parameters": [{"name": "Accept", "in": "header", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
           "content": {
             "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"schema": {"$ref": "#/components/schemas/blockV1"}},
@@ -40,6 +43,12 @@
         "responses": {"200": {"description": "200", "content": {"application/json": {}}}}
       }
     },
+    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/plan-artifact": {
+      "get": {
+        "operationId": "meshBuildingBlockRunPlanArtifact",
+        "responses": {"200": {"description": "200", "content": {"application/octet-stream": {}}}}
+      }
+    },
     "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/{part}": {
       "post": {
         "operationId": "meshBuildingBlockRunPart",
@@ -53,20 +62,29 @@
       }
     },
     "/api/meshobjects/meshtenants/{uuid}": {
-      "get": {
-        "operationId": "meshTenantV4",
-        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshtenant.v4.hal+json": {}}}}
-      },
       "delete": {
         "operationId": "meshTenantDeleteV4",
         "responses": {"202": {"description": "202"}}
+      },
+      "get": {
+        "operationId": "meshTenantV4",
+        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshtenant.v4.hal+json": {}}}}
       }
     }
   },
   "components": {
     "schemas": {
       "blockV1": {"type": "object", "properties": {"spec": {"$ref": "#/components/schemas/specV1"}}},
-      "specV1": {"type": "object"},
+      "specV1": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string", "description": "The name."},
+          "tags": {"type": "array", "items": {"$ref": "#/components/schemas/tagV1"}},
+          "parent": {"$ref": "#/components/schemas/specV1"}
+        }
+      },
+      "tagV1": {"type": "object", "properties": {"key": {"type": "string", "format": "uuid"}}},
       "blockV2": {"type": "object"}
     }
   }

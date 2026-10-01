@@ -1,0 +1,57 @@
+{{- /* A field shows its name indented below its parent rather than its whole path: lipgloss
+wraps a table cell only at a space or a hyphen, not at a dot or a zero-width space, so it would cut
+a long path in the middle of a word. */}}
+{{- define "body"}}
+{{- if .Fields}}
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+{{- range .Fields}}
+| {{indent .Depth}}`{{if .Depth}}.{{end}}{{.Name}}` | {{cell .Type}} | {{if .Required}}yes{{end}} | {{cell .Description}} |
+{{- end}}
+{{- end}}
+{{- end -}}
+
+# {{.Title}}
+{{- range .Operations}}
+
+## {{with .Action}}{{.}}: {{end}}`{{.Method}} {{.PathTemplate}}`
+
+{{with .LatestApiVersion.String}}API version {{.}}{{else}}No API version{{end}}
+{{- if .Summary}}
+
+**{{.Summary}}**
+{{- end}}
+{{- if .Description}}
+
+{{.Description}}
+{{- end}}
+{{- if .Parameters}}
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+{{- range .Parameters}}
+| `{{.Name}}` | {{.In}} | {{cell .Type}} | {{if .Required}}yes{{end}} | {{cell .Description}} |
+{{- end}}
+{{- end}}
+{{- range .RequestBodies}}
+
+### Request body `{{.MediaType}}`
+{{- template "body" .}}
+{{- end}}
+{{- range .Responses}}
+{{- $response := .}}
+{{- if .Bodies}}
+{{- range .Bodies}}
+
+### Response {{$response.Status}} `{{.MediaType}}`
+{{- template "body" .}}
+{{- end}}
+{{- else}}
+
+### Response {{.Status}}
+{{- end}}
+{{- end}}
+{{- end}}

@@ -19,8 +19,7 @@ func newLogs() *cobra.Command {
 		Long: `Show the logs of a building block run.
 
 The run is named by its uuid, which "meshstack buildingblockrun list" reports as metadata.uuid.
-Each step of the run carries its own status and messages: systemMessage holds what the runner
-produced, userMessage what the run reported back to the user.`,
+"meshstack api-docs --describe buildingblockrun.logs" shows the fields of the answer.`,
 		Example: `  meshstack buildingblockrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c -o ndjson`,
 		Args: cobra.ExactArgs(1),

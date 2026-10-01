@@ -2,7 +2,9 @@ package openapi
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
+	"slices"
 )
 
 // object keeps the order of its members, which a map would lose, so that a part of the document
@@ -62,4 +64,57 @@ func (o object) get(name string) (jsontext.Value, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (o object) without(name string) object {
+	return slices.DeleteFunc(o, func(m member) bool { return m.name == name })
+}
+
+// update replaces the object at name, where there is one.
+func (o object) update(name string, f func(object) (object, error)) error {
+	for i, m := range o {
+		if m.name != name {
+			continue
+		}
+		var value object
+		if err := json.Unmarshal(m.value, &value); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		updated, err := f(value)
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		if o[i].value, err = json.Marshal(updated); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// updateAll replaces each member that is an object, and leaves any other value as it is.
+func (o object) updateAll(f func(object) (object, error)) error {
+	for _, m := range o {
+		if m.value.Kind() != '{' {
+			continue
+		}
+		if err := o.update(m.name, f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// updateString replaces the string at name, where there is one.
+func (o object) updateString(name string, f func(string) string) error {
+	for i, m := range o {
+		var value string
+		if m.name != name || json.Unmarshal(m.value, &value) != nil {
+			continue
+		}
+		var err error
+		if o[i].value, err = json.Marshal(f(value)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
