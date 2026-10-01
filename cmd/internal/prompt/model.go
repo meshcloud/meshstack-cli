@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"slices"
@@ -10,6 +11,8 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 )
 
 type item struct {
@@ -70,6 +73,7 @@ type model struct {
 	number        string
 	problem       string
 	width         int
+	warned        logs.Warned
 	selected      item
 	aborted       bool
 	done          bool
@@ -139,7 +143,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // the inline renderer of bubbletea v2.0.10 clamps its cursor position to a shrinking frame and then
 // redraws it from the wrong line. selectOnTerminal replaces the last frame with the outcome instead.
 func (m model) View() tea.View {
-	status := m.problem
+	status := cmp.Or(m.problem, m.warned.String())
 	if m.number != "" {
 		status = fmt.Sprintf("Number: %s (Enter takes it, Esc clears it)", m.number)
 	}
@@ -170,6 +174,9 @@ func (m model) outcome() string {
 // update is Update keeping the model's type, for the line driver and the tests.
 func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case logs.Warned:
+		m.warned = msg
+		return m, nil
 	case tea.WindowSizeMsg:
 		// The frame has to fit on the terminal, or the renderer drops lines from its top.
 		m.width = msg.Width

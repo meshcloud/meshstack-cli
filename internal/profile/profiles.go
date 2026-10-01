@@ -10,6 +10,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 const (
@@ -66,7 +67,9 @@ func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profi
 	profiles.CurrentProfile = name
 
 	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)
-	if err != nil {
+	if opts.EndpointOptional && errors.Is(err, setting.ErrNoSourceProvidedValue) {
+		return added, nil
+	} else if err != nil {
 		return nil, err
 	}
 	added.Endpoint = endpoint

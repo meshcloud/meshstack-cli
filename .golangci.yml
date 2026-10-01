@@ -289,6 +289,8 @@ linters:
             # stored session, both of which pkg/auth leaves out
             - github.com/meshcloud/meshstack-cli/internal/auth
             - github.com/meshcloud/meshstack-cli/internal/meshstack
+            # the terminal UI shows what it holds back of the log
+            - github.com/meshcloud/meshstack-cli/internal/logs
             - github.com/meshcloud/meshstack-cli/cmd/internal
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
@@ -325,8 +327,9 @@ linters:
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
             - github.com/spf13/pflag
-            # the terminal prompts
+            # the terminal prompts, which hold back the log while they draw
             - charm.land/bubbletea/v2
+            - github.com/meshcloud/meshstack-cli/internal/logs
             - charm.land/bubbles/v2/list
             - github.com/charmbracelet/x/term
             - github.com/charmbracelet/x/ansi

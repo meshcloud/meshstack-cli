@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 )
 
 func TestModel(t *testing.T) {
@@ -103,6 +106,19 @@ func TestModelViewKeepsItsSize(t *testing.T) {
 	}
 	require.True(t, m.done)
 	assert.Equal(t, "Selected profile: staging", m.outcome())
+}
+
+func TestModelShowsAWarningInTheStatusLineWhereNothingElseIs(t *testing.T) {
+	m := newModel("thing", []item{newItem(1, "dev", false), newItem(2, "prod", false)}, 0)
+	frameHeight := strings.Count(m.View().Content, "\n") + 1
+	const notice = "1 warning was logged, read it once you quit: Cannot read the credential."
+
+	m, _ = m.update(logs.Warned{Warnings: 1, Latest: slog.Record{Message: "Cannot read the credential."}})
+	assert.Contains(t, m.View().Content, notice)
+	assert.Equal(t, frameHeight, strings.Count(m.View().Content, "\n")+1)
+
+	m, _ = m.update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	assert.NotContains(t, m.View().Content, notice, "the typed number takes the line")
 }
 
 func TestModelFitsAShortTerminal(t *testing.T) {

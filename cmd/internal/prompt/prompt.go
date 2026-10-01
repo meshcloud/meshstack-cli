@@ -79,26 +79,32 @@ func (p Prompt) Next(ctx context.Context, what string) (string, error) {
 	}
 }
 
+// Ask takes an input that ends before an answer as an empty answer, so a script can give every
+// answer as a flag and leave stdin empty. It fails only where validate refuses that.
 func (p Prompt) Ask(ctx context.Context, what, defaultAnswer string, validate func(string) error) (string, error) {
 	question := what + ": "
 	if defaultAnswer != "" {
 		question = fmt.Sprintf("%s [%s]: ", what, defaultAnswer)
+	}
+	if validate == nil {
+		validate = func(string) error { return nil }
 	}
 	for {
 		if err := p.Printf("%s", question); err != nil {
 			return "", err
 		}
 		answer, err := p.Next(ctx, strings.ToLower(what))
-		if err != nil {
+		ended := errors.Is(err, ErrEndOfInput)
+		if err != nil && !ended {
 			return "", err
 		}
 		answer = cmp.Or(answer, defaultAnswer)
-		if validate == nil {
-			return answer, nil
-		}
 		problem := validate(answer)
-		if problem == nil {
+		switch {
+		case problem == nil:
 			return answer, nil
+		case ended:
+			return "", fmt.Errorf("%w; %w", err, problem)
 		}
 		if err := p.Printf("%s\n", problem); err != nil {
 			return "", err

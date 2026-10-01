@@ -76,6 +76,7 @@ func TestAskTakesTheDefaultForAnEmptyAnswerAndAsksAgainUntilValid(t *testing.T) 
 		answers       string
 		want          string
 		wantAsked     string
+		wantErr       string
 	}{
 		{name: "an answer is taken", answers: "dev\n", want: "dev", wantAsked: "Name: "},
 		{name: "an empty answer takes the default", defaultAnswer: "prod", answers: "\n", want: "prod", wantAsked: "Name [prod]: "},
@@ -84,6 +85,16 @@ func TestAskTakesTheDefaultForAnEmptyAnswerAndAsksAgainUntilValid(t *testing.T) 
 			name: "an answer validate refuses is asked again", validate: notEmpty, answers: "\ndev\n", want: "dev",
 			wantAsked: "Name: an answer is needed\nName: ",
 		},
+		{name: "an input that ends takes the default", defaultAnswer: "prod", validate: notEmpty, want: "prod", wantAsked: "Name [prod]: "},
+		{name: "an input that ends without default is empty", wantAsked: "Name: "},
+		{
+			name: "an input that ends fails where validate refuses the default", validate: notEmpty,
+			wantErr: "nothing was entered for the name: the prompt reached the end of its input; an answer is needed", wantAsked: "Name: ",
+		},
+		{
+			name: "an input that ends after a refused answer fails", validate: notEmpty, answers: "\n",
+			wantErr: "nothing was entered for the name: the prompt reached the end of its input; an answer is needed", wantAsked: "Name: an answer is needed\nName: ",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,7 +102,12 @@ func TestAskTakesTheDefaultForAnEmptyAnswerAndAsksAgainUntilValid(t *testing.T) 
 
 			answer, err := New(strings.NewReader(tt.answers), &asked).Ask(t.Context(), "Name", tt.defaultAnswer, tt.validate)
 
-			require.NoError(t, err)
+			if tt.wantErr != "" {
+				require.ErrorIs(t, err, ErrEndOfInput)
+				require.EqualError(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
 			assert.Equal(t, tt.want, answer)
 			assert.Equal(t, tt.wantAsked, asked.String())
 		})

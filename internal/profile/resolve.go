@@ -16,6 +16,10 @@ type (
 	SettingSources        = setting.Sources
 	ResolveProfileOptions struct {
 		SettingSources
+
+		// EndpointOptional lets a profile that ResolveProfile creates go without an endpoint, for a
+		// command that only shows it.
+		EndpointOptional bool
 	}
 )
 

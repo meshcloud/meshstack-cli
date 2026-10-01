@@ -1,0 +1,16 @@
+{{- with .Status -}}
+{{template "credential" .}}
+{{- else -}}
+| Profile | {{cell .Name}} |
+| --- | --- |
+| Endpoint | {{with .Endpoint.URL}}{{cell .}}{{else}}none{{end}} |
+| Default workspace | {{or .DefaultWorkspace "none"}} |
+| Credential | {{with .StatusError}}{{$.Credential.Label}}, whose status could not be read: {{cell .}}{{else}}none, run `meshstack login -p {{.Name}}`{{end}} |
+{{- end}}
+{{- if .New}}
+
+This profile is not stored yet, a first login stores it.
+{{- else if .Current}}
+
+This is the current profile.
+{{- end}}

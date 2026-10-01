@@ -13,6 +13,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/cmd/profile"
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
 )
@@ -61,6 +62,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(auth.NewLogin())
 	cmd.AddCommand(buildingblock.New())
 	cmd.AddCommand(buildingblockrun.New())
+	cmd.AddCommand(profile.New())
 	cmd.AddCommand(workspace.New())
 
 	return cmd

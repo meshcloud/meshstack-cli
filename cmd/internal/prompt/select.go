@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 )
 
 type Candidate interface {
@@ -125,10 +126,7 @@ func selectOnTerminal(ctx context.Context, p Prompt, m model) (model, error) {
 }
 
 func (p Prompt) RunOnTerminal[M tea.Model](ctx context.Context, m M) (M, error) {
-	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(p.input.in), tea.WithOutput(p.out))
-	flushLogs := holdLogs(func() { program.Send(WarningHeld{}) })
-	defer flushLogs(ctx)
-	finished, err := program.Run()
+	finished, err := RunProgram(ctx, tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(p.input.in), tea.WithOutput(p.out)))
 	if err != nil {
 		return m, err
 	}
@@ -137,4 +135,12 @@ func (p Prompt) RunOnTerminal[M tea.Model](ctx context.Context, m M) (M, error) 
 		return m, fmt.Errorf("the terminal UI ended with an unexpected %T", finished)
 	}
 	return result, nil
+}
+
+// RunProgram holds back the log while program runs, and sends program a logs.Warned after each
+// record at WARN or above. Once program has ended, the log gets every record it held.
+func RunProgram(ctx context.Context, program *tea.Program) (tea.Model, error) {
+	held := logs.Hold(func(warned logs.Warned) { program.Send(warned) })
+	defer held.Release(ctx)
+	return program.Run()
 }
