@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
@@ -22,8 +23,9 @@ type OidcLogin struct {
 	// AccessLevel is empty for a login of an older CLI, or on a meshStack without access levels.
 	AccessLevel meshstack.AccessLevel `json:"accessLevel,omitzero"`
 	Cache       *struct {
-		RefreshToken string                  `json:"refreshToken"`
-		ScopedTokens map[scope.Scope]jwt.JWT `json:"tokens,omitzero"`
+		RefreshToken     string                  `json:"refreshToken"`
+		RefreshExpiresAt time.Time               `json:"refreshExpiresAt,omitzero"`
+		ScopedTokens     map[scope.Scope]jwt.JWT `json:"tokens,omitzero"`
 	} `json:"-"`
 }
 
@@ -35,16 +37,18 @@ func (oidcLogin *OidcLogin) Identity() Identity {
 	return identityOf(oidcLogin)
 }
 
-func (oidcLogin *OidcLogin) StoreLogin(refreshToken string, token jwt.JWT) {
+func (oidcLogin *OidcLogin) StoreLogin(oidcToken oidc.Token) {
 	if oidcLogin.Cache == nil {
 		newCache(oidcLogin)
 	}
-	oidcLogin.Cache.RefreshToken = refreshToken
+	oidcLogin.Cache.RefreshToken = oidcToken.RefreshToken
+	oidcLogin.Cache.RefreshExpiresAt = oidcToken.RefreshExpiresAt
 	if oidcLogin.Cache.ScopedTokens == nil {
 		oidcLogin.Cache.ScopedTokens = map[scope.Scope]jwt.JWT{}
 	}
 	// An initial login carries no workspace claim, and neither does a token keycloak minted for a
 	// workspace it refused, so both are stored as the unscoped token they are.
+	token := oidcToken.AccessToken
 	oidcLogin.Cache.ScopedTokens[tokenCacheKey(token.GetClaim(jwt.WorkspaceClaim))] = token
 }
 
@@ -68,8 +72,7 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 	}
 	workspace, err := getWorkspace()
 	if err != nil {
-		// TODO profile default workspace can't set otherwise as long as 'meshstack profile edit' is missing (there's no profile CRUD in CLI at all right now)
-		return fmt.Errorf("a workspace is required for %T; configure one or run 'meshstack login --endpoint %s' and pick one as profile default: %w", oidcLogin, oidcLogin.Endpoint, err)
+		return fmt.Errorf("a workspace is required for %T; configure one, or give the profile a default workspace with 'meshstack profile edit' or 'meshstack login --endpoint %s': %w", oidcLogin, oidcLogin.Endpoint, err)
 	}
 	oidcClient, err := oidc.NewClient(ctx, client, oidcLogin.Issuer, oidcLogin.ClientId)
 	if err != nil {
@@ -82,7 +85,7 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 	// Stored before the check below, so that the rotated refresh token is kept even when the
 	// workspace turns out to be wrong. Keycloak ends the whole session when a session replays
 	// a refresh token it has already rotated away.
-	oidcLogin.StoreLogin(oidcToken.RefreshToken, oidcToken.AccessToken)
+	oidcLogin.StoreLogin(oidcToken)
 	if workspaceFromToken := oidcToken.AccessToken.GetClaim(jwt.WorkspaceClaim); workspace != meshstack.NoWorkspace && workspaceFromToken != workspace {
 		return fmt.Errorf("no access to workspace '%s': %s minted a token for workspace '%s' instead; check the workspace identifier, or ask for access to it in meshPanel",
 			workspace, oidcLogin.Issuer, workspaceFromToken)

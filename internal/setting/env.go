@@ -18,7 +18,7 @@ func (k EnvKey) Lookup(_ context.Context, key string) (string, error) {
 }
 
 func (k EnvKey) Describe(key string) string {
-	return "environment variable " + key
+	return "env " + key
 }
 
 var _ Source = EnvKey("")

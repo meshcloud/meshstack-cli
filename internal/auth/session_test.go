@@ -2,14 +2,18 @@ package auth_test
 
 import (
 	"context"
+	"fmt"
 	gohttp "net/http"
+	gohttptest "net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
@@ -63,7 +67,7 @@ func TestSessionWithoutAnyCredentialNamesTheSettingsItLookedFor(t *testing.T) {
 	newTestServer(t)
 
 	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.ErrorContains(t, err, "selects none")
+	require.ErrorContains(t, err, "selects no credential")
 	require.ErrorContains(t, err, auth.ApiTokenSetting.EnvKey())
 	require.ErrorContains(t, err, auth.ApiKeyClientIdSetting.EnvKey())
 	require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
@@ -226,4 +230,57 @@ func greetingClient(session auth.Session) testserver.GreetingClient {
 		return http.NewClient("session-test").WithAuthorization(session).
 			DoRequest[string](ctx, gohttp.MethodGet, url)
 	}
+}
+
+func TestARefreshFinishesAndIsCachedThoughItsContextIsCancelledMidway(t *testing.T) {
+	newTestServer(t)
+	requested, release := make(chan struct{}), make(chan struct{})
+	slowLogin := gohttptest.NewServer(gohttp.HandlerFunc(func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		if req.URL.Path != "/api/login" {
+			resp.WriteHeader(gohttp.StatusNotFound)
+			return
+		}
+		close(requested)
+		<-release
+		_, _ = fmt.Fprintf(resp, `{"access_token":%q}`, testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix()}).String())
+	}))
+	t.Cleanup(slowLogin.Close)
+	p := &profile.Profile{
+		Name: "slow", Endpoint: xurl.URL{URL: must(url.Parse(slowLogin.URL))}, Credential: credential.ApiKeyName,
+		ConfigDir: config.Directory(t.TempDir()),
+	}
+	apiKey := &credential.ApiKey{Endpoint: p.Endpoint, ClientId: uuid.MustParse(testApiKey1.ClientId), ClientSecret: testApiKey1.ClientSecret}
+	creds, err := p.Credentials(t.Context())
+	require.NoError(t, err)
+	creds.Set(apiKey)
+	require.NoError(t, creds.Store(t.Context()))
+	require.NoError(t, auth.CacheFor(p, apiKey).Write(t.Context()))
+
+	// The version checks would call the login server, which knows only the login.
+	t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
+	ctx, cancel := context.WithCancel(t.Context())
+	session, err := auth.StoredSession(ctx, p, testSessionOpts)
+	require.NoError(t, err)
+	c, err := session.Client()
+	require.NoError(t, err)
+	listed := make(chan error, 1)
+	go func() {
+		_, err := c.Workspace.List(ctx)
+		listed <- err
+	}()
+	<-requested
+	cancel()
+	close(release)
+
+	require.ErrorIs(t, <-listed, context.Canceled)
+	reloaded := &credential.ApiKey{Endpoint: p.Endpoint, ClientId: apiKey.ClientId, ClientSecret: apiKey.ClientSecret}
+	require.NoError(t, auth.CacheFor(p, reloaded).Load(t.Context()))
+	assert.NotNil(t, reloaded.Cache, "the refresh finished and cached its token before the call returned")
+}
+
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
 }

@@ -38,7 +38,7 @@
         # directory's tests. docs/demo is a module of its own.
         excludedPackages = [ "docs/demo" ];
 
-        vendorHash = "sha256-8G8DY7jnhSy0vDnWBES4goPixBV/yyGmoOhh+NLFi58=";
+        vendorHash = "sha256-ONUfCMh1rRuYCXdnDD6QVIPosPcn6ng8g01+3d+kPIo=";
 
         # .goreleaser.yml and the Dockerfile set the same ldflag, and all three have to
         # agree. The linker ignores an -X whose path does not resolve and warns about

@@ -19,7 +19,7 @@ import (
 type Session struct {
 	CurrentProfile *profile.Profile
 
-	Credential profile.CachedCredential
+	Credential Credential
 	Client     func() (client.Client, error)
 	MeshInfo   func() (client.MeshInfo, error)
 
@@ -38,6 +38,36 @@ type (
 	}
 )
 
+func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {
+	session, _, err := newSession(ctx, opts)
+	if err != nil {
+		return Session{}, err
+	}
+	resolved, err := session.resolveCredentials(ctx, opts)
+	if err != nil {
+		return Session{}, err
+	}
+	session.getWorkspace = sync.OnceValues(func() (meshstack.Workspace, error) {
+		return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
+	})
+	return session.withCredential(ctx, resolved, opts)
+}
+
+func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionOptions) (Session, error) {
+	session, err := newSessionFor(ctx, p, opts)
+	if err != nil {
+		return Session{}, err
+	}
+	stored, err := session.storedCredential(ctx, nil)
+	if err != nil {
+		return Session{}, err
+	}
+	session.getWorkspace = func() (meshstack.Workspace, error) {
+		return p.DefaultWorkspace, nil
+	}
+	return session.withCredential(ctx, stored, opts)
+}
+
 func newSession(ctx context.Context, opts ResolveSessionOptions) (Session, profile.Profiles, error) {
 	currentProfile, profiles, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{
 		SettingSources: opts.SettingSources,
@@ -55,56 +85,41 @@ func newSession(ctx context.Context, opts ResolveSessionOptions) (Session, profi
 			"select a profile for that endpoint, or log in with a new profile name to create one", currentProfile, currentProfile.Endpoint, endpoint)
 	}
 
-	buildHttpClient := func() (http.Client, error) {
-		org, repo, ok := strings.Cut(opts.GitHubRepo, "/")
-		if !ok || org == "" || repo == "" {
-			return http.Client{}, fmt.Errorf("GitHub repo '%s' is not of <org>/<repo> format", opts.GitHubRepo)
-		}
-		if opts.Version == "" {
-			return http.Client{}, fmt.Errorf("no version given for GitHub repo '%s'", opts.GitHubRepo)
-		}
-		return http.NewClient(repo + "/" + opts.Version), nil
-	}
+	session, err := newSessionFor(ctx, currentProfile, opts)
+	return session, profiles, err
+}
 
-	httpClient, err := buildHttpClient()
-	if err != nil {
-		return Session{}, profile.Profiles{}, err
+func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (Session, error) {
+	org, repo, ok := strings.Cut(opts.GitHubRepo, "/")
+	if !ok || org == "" || repo == "" {
+		return Session{}, fmt.Errorf("GitHub repo '%s' is not of <org>/<repo> format", opts.GitHubRepo)
 	}
-
+	if opts.Version == "" {
+		return Session{}, fmt.Errorf("no version given for GitHub repo '%s'", opts.GitHubRepo)
+	}
+	httpClient := http.NewClient(repo + "/" + opts.Version)
 	return Session{
 		CurrentProfile: currentProfile,
 		httpClient:     httpClient,
 		// Lazy, because OidcLogin needs /mesh/info before the authenticated client exists.
 		MeshInfo: sync.OnceValues(func() (client.MeshInfo, error) {
-			return getAndCheckMeshInfo(ctx, httpClient, endpoint, opts.SettingSources)
+			return getAndCheckMeshInfo(ctx, httpClient, currentProfile.Endpoint, opts.SettingSources)
 		}),
 		getWorkspace: func() (meshstack.Workspace, error) {
 			return meshstack.NoWorkspace, nil
 		},
-	}, profiles, nil
+	}, nil
 }
 
-func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {
-	session, _, err := newSession(ctx, opts)
-	if err != nil {
+func (s Session) withCredential(ctx context.Context, cred Credential, opts ResolveSessionOptions) (Session, error) {
+	s.Credential = cred
+	if err := s.Credential.Load(ctx); err != nil {
 		return Session{}, err
 	}
-
-	resolvedCredential, err := session.resolveCredentials(ctx, opts)
-	if err != nil {
-		return Session{}, err
-	}
-	session.Credential = session.CurrentProfile.CacheFor(resolvedCredential)
-	if err := session.Credential.Load(ctx); err != nil {
-		return Session{}, err
-	}
-	session.Client = sync.OnceValues(func() (client.Client, error) {
-		return session.buildClient(ctx, opts)
+	s.Client = sync.OnceValues(func() (client.Client, error) {
+		return s.buildClient(ctx, opts)
 	})
-	session.getWorkspace = sync.OnceValues(func() (meshstack.Workspace, error) {
-		return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
-	})
-	return session, nil
+	return s, nil
 }
 
 func getAndCheckMeshInfo(ctx context.Context, httpClient http.Client, endpoint xurl.URL, settingSources SettingSources) (client.MeshInfo, error) {

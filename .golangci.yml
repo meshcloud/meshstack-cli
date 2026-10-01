@@ -205,6 +205,7 @@ linters:
             - "**/cmd/**/*.go"
             - "!**/cmd/meshstack/*.go"
             - "!**/cmd/auth/*.go"
+            - "!**/cmd/profile/*.go"
             - "!**/cmd/internal/*.go"
             - "!**/cmd/internal/**/*.go"
             - "!$test"
@@ -269,6 +270,38 @@ linters:
             - github.com/spf13/cobra
             - github.com/spf13/pflag
 
+        cmd-profile:
+          files:
+            - "**/cmd/profile/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - log/slog
+            # like cmd/auth, it changes the profiles on disk, whose workspace is an internal/meshstack type
+            - github.com/meshcloud/meshstack-cli/internal/profile
+            # show reads the stored credential's status, and the form lists workspaces through a
+            # stored session, both of which pkg/auth leaves out
+            - github.com/meshcloud/meshstack-cli/internal/auth
+            - github.com/meshcloud/meshstack-cli/internal/meshstack
+            - github.com/meshcloud/meshstack-cli/cmd/internal
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/spf13/cobra
+            # the terminal UI: a table of the profiles, a form to add or edit one, and a dialog
+            # over the table to delete one
+            - charm.land/bubbletea/v2
+            - charm.land/bubbles/v2/table
+            - charm.land/bubbles/v2/help
+            - charm.land/bubbles/v2/key
+            - charm.land/huh/v2
+            - charm.land/lipgloss/v2
+            - github.com/charmbracelet/x/ansi
+
         cmd-internal:
           files:
             - "**/cmd/internal/*.go"
@@ -285,6 +318,9 @@ linters:
             - log/slog
             # the deny on encoding/json matches its subpackages too; a listing writes raw items
             - encoding/json/jsontext
+            # and a command that shows one object marshals it, or writes it as Markdown
+            - encoding/json/v2
+            - github.com/meshcloud/meshstack-cli/cmd/internal/markdown
             - github.com/meshcloud/meshstack-cli/pkg
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
@@ -294,6 +330,8 @@ linters:
             - charm.land/bubbles/v2/list
             - github.com/charmbracelet/x/term
             - github.com/charmbracelet/x/ansi
+            # renders the Markdown a command shows on a terminal
+            - charm.land/glamour/v2
 
         # The package the Terraform provider consumes most directly, so it reaches nothing
         # beyond the standard library and the three packages below.
@@ -401,6 +439,8 @@ linters:
             - github.com/meshcloud/meshstack-cli
             - github.com/stretchr/testify
 
+        # A test may use every direct dependency in go.mod: the rules above already confine where
+        # production code uses each one, and a test checks that code with the same libraries.
         tests:
           files:
             - "$test"
@@ -413,7 +453,14 @@ linters:
             - encoding/json/v2
             - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli
-            - github.com/spf13/cobra
-            - github.com/stretchr/testify
-            - github.com/gofrs/flock
+            - charm.land/bubbles/v2
             - charm.land/bubbletea/v2
+            - charm.land/glamour/v2
+            - charm.land/huh/v2
+            - charm.land/log/v2
+            - github.com/charmbracelet/x/ansi
+            - github.com/charmbracelet/x/term
+            - github.com/gofrs/flock
+            - github.com/spf13/cobra
+            - github.com/spf13/pflag
+            - github.com/stretchr/testify

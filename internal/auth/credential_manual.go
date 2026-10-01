@@ -25,11 +25,13 @@ var ApiTokenSetting = setting.Setting[jwt.JWT]{
 	Parse: setting.ParseTextUnmarshaler[jwt.JWT],
 }
 
-func (s Session) resolveManualCredential(ctx context.Context, settingSources setting.Sources) (credential.Credential, error) {
-	apiToken, apiTokenErr := settingSources.ResolveSetting(ctx, ApiTokenSetting)
+func (s Session) resolveManualCredential(ctx context.Context, settingSources setting.Sources) (Credential, error) {
+	apiToken, source, apiTokenErr := settingSources.ResolveSettingWithSource(ctx, ApiTokenSetting)
 	if apiTokenErr != nil {
-		return nil, apiTokenErr
+		return Credential{}, apiTokenErr
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using setting %s as manual credential", ApiTokenSetting.EnvKey()))
-	return credential.NewManual(s.CurrentProfile.Endpoint, apiToken), nil
+	manual := CacheFor(s.CurrentProfile, credential.NewManual(s.CurrentProfile.Endpoint, apiToken))
+	manual.Sources = []string{source.Describe(ApiTokenSetting.EnvKey())}
+	return manual, nil
 }

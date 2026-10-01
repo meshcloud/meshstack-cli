@@ -64,6 +64,7 @@ type Server struct {
 
 	mu     sync.Mutex
 	minted []mintedToken
+	routes map[string]gohttp.HandlerFunc
 }
 
 type mintedToken struct {
@@ -148,6 +149,17 @@ func (s *Server) RequireGreeting(t *testing.T, greet GreetingClient) {
 	require.NoError(t, s.Greeting(t, t.Context(), greet))
 }
 
+// Route answers requests for path with handler, whatever token they carry.
+func (s *Server) Route(t *testing.T, path string, handler gohttp.HandlerFunc) {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.routes == nil {
+		s.routes = map[string]gohttp.HandlerFunc{}
+	}
+	s.routes[path] = handler
+}
+
 func (s *Server) handle(resp gohttp.ResponseWriter, req *gohttp.Request) {
 	switch req.URL.Path {
 	case "/api/login":
@@ -155,7 +167,14 @@ func (s *Server) handle(resp gohttp.ResponseWriter, req *gohttp.Request) {
 	case "/greeting":
 		s.handleGreeting(resp, req)
 	default:
-		resp.WriteHeader(gohttp.StatusNotFound)
+		s.mu.Lock()
+		route, found := s.routes[req.URL.Path]
+		s.mu.Unlock()
+		if !found {
+			resp.WriteHeader(gohttp.StatusNotFound)
+			return
+		}
+		route(resp, req)
 	}
 }
 

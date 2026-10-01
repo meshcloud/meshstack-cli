@@ -1,6 +1,9 @@
-package profile
+package auth_test
 
 import (
+	_ "embed"
+	"os"
+	"path/filepath"
 	"testing"
 	"uuid"
 
@@ -8,11 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
+	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/jsontest"
 )
+
+//go:embed testdata/jwt.json
+var jwtJson []byte
 
 func TestCacheModifyLeavesACacheOfAnotherIdentityAlone(t *testing.T) {
 	p := newCacheTestProfile(t)
@@ -20,10 +29,10 @@ func TestCacheModifyLeavesACacheOfAnotherIdentityAlone(t *testing.T) {
 	stored.Cache = &struct {
 		Token jwt.JWT `json:"token,omitzero"`
 	}{Token: jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)}
-	require.NoError(t, p.CacheFor(stored).Write(t.Context()))
+	require.NoError(t, auth.CacheFor(p, stored).Write(t.Context()))
 
 	fromEnvironment := newCacheTestApiKey(p, "22222222-45bf-42ba-a965-2097b9d0d181")
-	require.NoError(t, p.CacheFor(fromEnvironment).Modify(t.Context(), func() error {
+	require.NoError(t, auth.CacheFor(p, fromEnvironment).Modify(t.Context(), func() error {
 		fromEnvironment.Cache = &struct {
 			Token jwt.JWT `json:"token,omitzero"`
 		}{}
@@ -31,7 +40,7 @@ func TestCacheModifyLeavesACacheOfAnotherIdentityAlone(t *testing.T) {
 	}))
 
 	reloaded := newCacheTestApiKey(p, "11111111-45bf-42ba-a965-2097b9d0d181")
-	require.NoError(t, p.CacheFor(reloaded).Load(t.Context()))
+	require.NoError(t, auth.CacheFor(p, reloaded).Load(t.Context()))
 	require.NotNil(t, reloaded.Cache)
 	assert.Equal(t, stored.Cache.Token, reloaded.Cache.Token)
 }
@@ -39,7 +48,7 @@ func TestCacheModifyLeavesACacheOfAnotherIdentityAlone(t *testing.T) {
 func TestCacheModifyWritesBackOverAWriteOfNoCacheYet(t *testing.T) {
 	p := newCacheTestProfile(t)
 	loggedIn := newCacheTestApiKey(p, "11111111-45bf-42ba-a965-2097b9d0d181")
-	cache := p.CacheFor(loggedIn)
+	cache := auth.CacheFor(p, loggedIn)
 	require.NoError(t, cache.Write(t.Context()))
 
 	token := jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)
@@ -51,7 +60,7 @@ func TestCacheModifyWritesBackOverAWriteOfNoCacheYet(t *testing.T) {
 	}))
 
 	reloaded := newCacheTestApiKey(p, "11111111-45bf-42ba-a965-2097b9d0d181")
-	require.NoError(t, p.CacheFor(reloaded).Load(t.Context()))
+	require.NoError(t, auth.CacheFor(p, reloaded).Load(t.Context()))
 	require.NotNil(t, reloaded.Cache)
 	assert.Equal(t, token, reloaded.Cache.Token)
 }
@@ -62,28 +71,51 @@ func TestCacheModifyKeepsTheRefreshTokenOfALoginAgain(t *testing.T) {
 	p := newCacheTestProfile(t)
 	token := jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)
 	previous := newCacheTestOidcLogin(p)
-	previous.StoreLogin("previous-refresh-token", token)
-	require.NoError(t, p.CacheFor(previous).Write(t.Context()))
+	previous.StoreLogin(oidc.Token{RefreshToken: "previous-refresh-token", AccessToken: token})
+	require.NoError(t, auth.CacheFor(p, previous).Write(t.Context()))
 
 	again := newCacheTestOidcLogin(p)
-	again.StoreLogin("fresh-refresh-token", token)
-	cache := p.CacheFor(again)
+	again.StoreLogin(oidc.Token{RefreshToken: "fresh-refresh-token", AccessToken: token})
+	cache := auth.CacheFor(p, again)
 	require.NoError(t, cache.Write(t.Context()))
 	require.NoError(t, cache.Modify(t.Context(), func() error { return nil }))
 
 	assert.Equal(t, "fresh-refresh-token", again.Cache.RefreshToken)
 }
 
-func newCacheTestProfile(t *testing.T) Profile {
+func TestCacheOfAnotherVersionIsIgnoredWithAWarningUntilALoginWritesItAnew(t *testing.T) {
+	p := newCacheTestProfile(t)
+	loggedIn := newCacheTestApiKey(p, "11111111-45bf-42ba-a965-2097b9d0d181")
+	path := p.ConfigDir.CredentialsCacheJsonFor(p.Name, loggedIn.Name())
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(`{"version":2,"identity":"minted by a later meshstack"}`), 0o600))
+	logs := capturedLogs(t)
+
+	require.NoError(t, auth.CacheFor(p, loggedIn).Load(t.Context()))
+	assert.Nil(t, loggedIn.Cache)
+	assert.Contains(t, logs.String(), "level=WARN")
+	assert.Contains(t, logs.String(), "run 'meshstack login -p cache-test' to update it")
+
+	loggedIn.Cache = &struct {
+		Token jwt.JWT `json:"token,omitzero"`
+	}{Token: jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)}
+	require.NoError(t, auth.CacheFor(p, loggedIn).Write(t.Context()))
+	reloaded := newCacheTestApiKey(p, "11111111-45bf-42ba-a965-2097b9d0d181")
+	require.NoError(t, auth.CacheFor(p, reloaded).Load(t.Context()))
+	require.NotNil(t, reloaded.Cache)
+	assert.Equal(t, loggedIn.Cache.Token, reloaded.Cache.Token)
+}
+
+func newCacheTestProfile(t *testing.T) *profile.Profile {
 	t.Helper()
-	return Profile{
+	return &profile.Profile{
 		Name:      "cache-test",
 		ConfigDir: config.Directory(t.TempDir()),
 		Endpoint:  xurl.MustParsef("https://localhost:1337"),
 	}
 }
 
-func newCacheTestApiKey(p Profile, clientId string) *credential.ApiKey {
+func newCacheTestApiKey(p *profile.Profile, clientId string) *credential.ApiKey {
 	return &credential.ApiKey{
 		Endpoint:     p.Endpoint,
 		ClientId:     uuid.MustParse(clientId),
@@ -91,7 +123,7 @@ func newCacheTestApiKey(p Profile, clientId string) *credential.ApiKey {
 	}
 }
 
-func newCacheTestOidcLogin(p Profile) *credential.OidcLogin {
+func newCacheTestOidcLogin(p *profile.Profile) *credential.OidcLogin {
 	return &credential.OidcLogin{
 		Endpoint: p.Endpoint,
 		Issuer:   xurl.MustParsef("https://localhost:1337/auth/realms/meshfed"),

@@ -29,7 +29,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 		return Session{}, nil, err
 	}
 
-	var resolved credential.Credential
+	var resolved Credential
 	switch withAuth {
 	case credential.OidcLoginName:
 		resolved, err = session.resolveOidcLoginCredential(ctx, creds.OidcLogin)
@@ -43,12 +43,13 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	if err != nil {
 		return Session{}, nil, err
 	}
-	creds.Set(resolved)
+	creds.Set(resolved.Credential)
 
 	slog.DebugContext(ctx, fmt.Sprintf("Setting credential %s in profile", withAuth))
 	session.CurrentProfile.Credential = withAuth
 
-	session.Credential = session.CurrentProfile.CacheFor(resolved)
+	resolved.Sources, resolved.Stored = []string{"file " + creds.FilePath}, true
+	session.Credential = resolved
 	if err := session.Credential.Write(ctx); err != nil {
 		return Session{}, nil, err
 	}
@@ -85,6 +86,11 @@ func (s Session) resolveWorkspaceForLogin(ctx context.Context, opts ResolveSessi
 	// session's own client resolves the workspace first, which is the resolution running here.
 	ctxWithWorkspaces := meshstack.SetWorkspacesInContext(ctx, sync.OnceValues(func() (r meshstack.Workspaces, err error) {
 		r.ProfileDefaultWorkspace = s.CurrentProfile.DefaultWorkspace
+		if meshInfo, infoErr := s.MeshInfo(); infoErr != nil {
+			slog.WarnContext(ctx, "Cannot tell which workspace is the admin workspace: "+infoErr.Error())
+		} else {
+			r.AdminWorkspace = meshstack.Workspace(meshInfo.AdminWorkspaceIdentifier)
+		}
 		unscoped := s
 		unscoped.getWorkspace = func() (meshstack.Workspace, error) {
 			return meshstack.NoWorkspace, nil

@@ -121,6 +121,20 @@ func TestResolveSettingNamesEverySourceThatCouldHaveCarriedTheValue(t *testing.T
 	require.ErrorIs(t, err, setting.ErrNoSourceProvidedValue)
 	require.ErrorContains(t, err, "MESHSTACK_TEST_NO_VALUE")
 	require.ErrorContains(t, err, "try setting the --endpoint flag")
-	require.ErrorContains(t, err, "try setting environment variable MESHSTACK_TEST_NO_VALUE")
+	require.ErrorContains(t, err, "try setting env MESHSTACK_TEST_NO_VALUE")
 	require.NotContains(t, err.Error(), "the current profile")
+}
+
+func TestResolveSettingWithSourceDescribesTheSourceThatWon(t *testing.T) {
+	described := setting.Setting[string]{Env: "MESHSTACK_TEST_DESCRIBED", Parse: setting.ParseText[string]}
+	flag := setting.FrontendSource{Source: setting.LookupSource{
+		Description: "flag --described",
+		Func:        func(context.Context) (string, error) { return "", nil },
+	}}
+
+	t.Setenv(described.EnvKey(), "from the environment")
+	value, source, err := setting.Sources{flag}.ResolveSettingWithSource(t.Context(), described)
+	require.NoError(t, err)
+	assert.Equal(t, "from the environment", value)
+	assert.Equal(t, "env MESHSTACK_TEST_DESCRIBED", source.Describe(described.EnvKey()))
 }

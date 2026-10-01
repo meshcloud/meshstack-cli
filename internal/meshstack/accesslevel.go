@@ -25,6 +25,15 @@ func ParseAccessLevel(value string) (AccessLevel, bool) {
 	return "", false
 }
 
+func AccessLevelOf(scopes scope.Scopes) (AccessLevel, bool) {
+	for _, level := range AccessLevels {
+		if slices.Contains(scopes, level.Scope()) {
+			return level, true
+		}
+	}
+	return "", false
+}
+
 // Scope must match the client scopes that CliClientBootstrapService in ../meshfed-release creates.
 func (l AccessLevel) Scope() scope.Scope {
 	return "cli-access-" + scope.Scope(l)

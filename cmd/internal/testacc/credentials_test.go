@@ -29,7 +29,7 @@ func TestAccCredentialResolutionNamesEveryCredentialItLooksFor(t *testing.T) {
 	newInProcessCLI(t)
 
 	_, err := auth.ResolveClient(t.Context(), resolveOptions())
-	require.ErrorContains(t, err, "selects none")
+	require.ErrorContains(t, err, "selects no credential")
 	require.ErrorContains(t, err, setting.ApiKeyClientId.EnvKey())
 	require.ErrorContains(t, err, setting.ApiKeyClientSecret.EnvKey())
 	require.ErrorContains(t, err, setting.ApiToken.EnvKey())

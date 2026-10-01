@@ -30,18 +30,24 @@ func SetWorkspacesInContext(ctx context.Context, workspacesFunc WorkspacesFunc) 
 
 type (
 	Workspaces struct {
-		Items                   []client.MeshWorkspace
+		Items []client.MeshWorkspace
+		// AdminWorkspace is the workspace of meshPanel's admin area. The listed workspaces do not
+		// mark it, so it comes from client.MeshInfo.AdminWorkspaceIdentifier.
+		AdminWorkspace          Workspace
 		ProfileDefaultWorkspace Workspace
 	}
+	// MeshWorkspace is a workspace to select from, where a Workspace only names one.
 	MeshWorkspace struct {
 		client.MeshWorkspace
+
+		IsAdmin bool
 	}
 )
 
 func (ws Workspaces) All() iter.Seq2[int, MeshWorkspace] {
 	return func(yield func(int, MeshWorkspace) bool) {
 		for i, item := range ws.Items {
-			if !yield(i, MeshWorkspace{item}) {
+			if !yield(i, MeshWorkspace{MeshWorkspace: item, IsAdmin: ws.AdminWorkspace != NoWorkspace && Workspace(item.Metadata.Name) == ws.AdminWorkspace}) {
 				return
 			}
 		}
@@ -71,6 +77,9 @@ func (w MeshWorkspace) Matches(other MeshWorkspace) bool {
 }
 
 func (w MeshWorkspace) String() string {
+	if w.IsAdmin {
+		return fmt.Sprintf("**ADMIN** (%s)", w.Metadata.Name)
+	}
 	return fmt.Sprintf("%s (%s)", w.Spec.DisplayName, w.Metadata.Name)
 }
 

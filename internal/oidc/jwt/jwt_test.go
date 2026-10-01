@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/jsontest"
 )
 
@@ -20,6 +21,8 @@ var (
 	unscopedTokenNoExp []byte
 	//go:embed testdata/jwt_scoped.json
 	scopedToken []byte
+	//go:embed testdata/jwt_identity.json
+	identityToken []byte
 	//go:embed testdata/jwt_opaque.json
 	opaqueToken []byte
 	//go:embed testdata/jwt_not_base64.json
@@ -51,6 +54,13 @@ func TestJWTClaims(t *testing.T) {
 		// Verified against a live keycloak: the claim carries the identifier, not the c: scope the
 		// token was asked for.
 		assert.Equal(t, meshstack.Workspace("demo-partner"), WorkspaceClaim.getFrom(token))
+	})
+	t.Run("a token names who it is for and the scopes it was granted", func(t *testing.T) {
+		token := jsontest.MustUnmarshal[JWT](t, identityToken)
+		assert.Equal(t, "jane", PreferredUsernameClaim.getFrom(token))
+		assert.Equal(t, "jane@example.com", EmailClaim.getFrom(token))
+		assert.Equal(t, "11111111-45bf-42ba-a965-2097b9d0d181", ClientIdClaim.getFrom(token))
+		assert.Equal(t, scope.Scopes{"openid", "cli-access-write", "offline_access"}, ScopeClaim.getFrom(token))
 	})
 	t.Run("an unscoped token names no workspace", func(t *testing.T) {
 		token := jsontest.MustUnmarshal[JWT](t, unscopedToken)

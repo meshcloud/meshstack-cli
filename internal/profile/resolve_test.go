@@ -2,7 +2,6 @@ package profile
 
 import (
 	"context"
-	_ "embed"
 	"os"
 	"testing"
 	"uuid"
@@ -14,14 +13,9 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
-	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 	"github.com/meshcloud/meshstack-cli/internal/setting/setting_test"
-	"github.com/meshcloud/meshstack-cli/internal/testutil/jsontest"
 )
-
-//go:embed testdata/jwt.json
-var jwtJson []byte
 
 var testEndpoint = xurl.MustParsef("https://localhost:1337")
 
@@ -61,14 +55,13 @@ func TestResolveProfileFindsAStoredProfileWithoutItsNameOrEndpointInTheEnvironme
 	// Upper case and a trailing slash, so that the stored endpoint shows the canonical form.
 	t.Setenv(meshstack.EndpointSetting.EnvKey(), "https://LOCALHOST:1337/")
 	devLocal := &Profile{Name: "dev-local", Endpoint: xurl.MustParsef("https://localhost:%d", 1337)}
-	cachedToken := jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)
 
 	currentProfile, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
 	require.NoError(t, err)
 	assert.EqualExportedValues(t, devLocal, withoutConfigDir(currentProfile))
 	assertProfiles(t, profiles, devLocal)
 	require.NoError(t, profiles.Store(t.Context()))
-	storeApiKeyWithCachedToken(t, currentProfile, cachedToken)
+	storeApiKey(t, currentProfile)
 
 	// An empty value is skipped as no value at all, so this is the unset case.
 	t.Setenv(NameSetting.EnvKey(), "")
@@ -78,10 +71,10 @@ func TestResolveProfileFindsAStoredProfileWithoutItsNameOrEndpointInTheEnvironme
 	require.NoError(t, err)
 	assert.EqualExportedValues(t, devLocal, withoutConfigDir(reloaded))
 	assertProfiles(t, reloadedProfiles, devLocal)
-	assertApiKeyWithCachedToken(t, reloaded, "08be9109-45bf-42ba-a965-2097b9d0d181", "super-test-secret", cachedToken)
+	assertApiKey(t, reloaded, "08be9109-45bf-42ba-a965-2097b9d0d181", "super-test-secret")
 }
 
-func TestResolveProfileReadsTheCurrentProfileAndItsCachedTokenFromDisk(t *testing.T) {
+func TestResolveProfileReadsTheCurrentProfileAndItsCredentialsFromDisk(t *testing.T) {
 	givenNoMeshstackEnvironment(t)
 	t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
 
@@ -95,8 +88,7 @@ func TestResolveProfileReadsTheCurrentProfileAndItsCachedTokenFromDisk(t *testin
 		&Profile{Name: "default", Endpoint: xurl.MustParsef("https://api.dev.meshcloud.io/")},
 		&Profile{Name: "empty"},
 	)
-	assertApiKeyWithCachedToken(t, currentProfile,
-		"08be9109-45bf-42ba-a965-2097b9d0d181", "super-test-secret", jsontest.MustUnmarshal[jwt.JWT](t, jwtJson))
+	assertApiKey(t, currentProfile, "08be9109-45bf-42ba-a965-2097b9d0d181", "super-test-secret")
 
 	// Storing what was just loaded leaves the files as they are, so testdata stays the fixture.
 	require.NoError(t, profiles.Store(t.Context()))
@@ -141,6 +133,19 @@ func TestLoadProfilesRejectsANullProfile(t *testing.T) {
 	require.ErrorContains(t, err, "'broken'")
 }
 
+func TestAddPutsAProfileIntoTheConfigDirectoryOfTheProfiles(t *testing.T) {
+	givenNoMeshstackEnvironment(t)
+	configDir := t.TempDir()
+	t.Setenv(config.DirectorySetting.EnvKey(), configDir)
+	profiles, err := LoadProfiles(t.Context(), ResolveProfileOptions{})
+	require.NoError(t, err)
+
+	added := Add(&profiles, Profile{Name: "dev", Endpoint: testEndpoint, ConfigDir: "elsewhere"})
+
+	assert.Equal(t, config.Directory(configDir), added.ConfigDir)
+	assert.Same(t, added, profiles.Profiles["dev"])
+}
+
 // givenNoMeshstackEnvironment keeps a developer's own shell out of the resolutions under test,
 // which would otherwise put its endpoint into every profile created here.
 func givenNoMeshstackEnvironment(t *testing.T) {
@@ -166,33 +171,25 @@ func profileNameFromFrontend(name Name) SettingSources {
 	)}}
 }
 
-func storeApiKeyWithCachedToken(t *testing.T, p *Profile, token jwt.JWT) {
+func storeApiKey(t *testing.T, p *Profile) {
 	t.Helper()
 	creds, err := p.Credentials(t.Context())
 	require.NoError(t, err)
-	apiKey := &credential.ApiKey{
+	creds.Set(&credential.ApiKey{
 		Endpoint:     p.Endpoint,
 		ClientId:     uuid.MustParse("08be9109-45bf-42ba-a965-2097b9d0d181"),
 		ClientSecret: "super-test-secret",
-		Cache: &struct {
-			Token jwt.JWT `json:"token,omitzero"`
-		}{Token: token},
-	}
-	creds.Set(apiKey)
+	})
 	require.NoError(t, creds.Store(t.Context()))
-	require.NoError(t, p.CacheFor(apiKey).Write(t.Context()))
 }
 
-func assertApiKeyWithCachedToken(t *testing.T, p *Profile, clientId, clientSecret string, token jwt.JWT) {
+func assertApiKey(t *testing.T, p *Profile, clientId, clientSecret string) {
 	t.Helper()
 	creds, err := p.Credentials(t.Context())
 	require.NoError(t, err)
 	require.NotNil(t, creds.ApiKey)
 	assert.Equal(t, uuid.MustParse(clientId), creds.ApiKey.ClientId)
 	assert.Equal(t, clientSecret, creds.ApiKey.ClientSecret)
-	require.NoError(t, p.CacheFor(creds.ApiKey).Load(t.Context()))
-	require.NotNil(t, creds.ApiKey.Cache)
-	assert.Equal(t, token, creds.ApiKey.Cache.Token)
 }
 
 func assertProfiles(t *testing.T, actual Profiles, expected ...*Profile) {

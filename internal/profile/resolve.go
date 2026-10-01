@@ -56,12 +56,7 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 		if err != nil {
 			return Selection{}, err
 		}
-		selection := profiles.selection()
-		endpoint, found, err := opts.resolveEndpointIfAny(ctx)
-		if found {
-			selection.Endpoint = &endpoint
-		}
-		return selection, err
+		return profiles.SelectionFor(ctx, opts)
 	}))
 
 	name, err := opts.ResolveSetting(ctxWithSelection, NameSetting,
@@ -93,14 +88,21 @@ func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts R
 	if err != nil || !found {
 		return "", err
 	}
-	selection := ps.selection()
-	selection.Endpoint = &endpoint
-	if matchingProfiles := selection.Candidates(); len(matchingProfiles) == 1 {
+	if matchingProfiles := ps.MatchingEndpoint(endpoint); len(matchingProfiles) == 1 {
 		profile := matchingProfiles[0]
 		slog.DebugContext(ctx, fmt.Sprintf("Using profile %s by uniquely matching endpoint '%s'", profile, endpoint))
 		return string(profile.Name), nil
 	}
 	return "", nil
+}
+
+func (ps Profiles) SelectionFor(ctx context.Context, opts ResolveProfileOptions) (Selection, error) {
+	selection := ps.Selection()
+	endpoint, found, err := opts.resolveEndpointIfAny(ctx)
+	if found {
+		selection.Endpoint = &endpoint
+	}
+	return selection, err
 }
 
 func (opts ResolveProfileOptions) resolveEndpointIfAny(ctx context.Context) (xurl.URL, bool, error) {

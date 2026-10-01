@@ -37,11 +37,18 @@ type Selection struct {
 	Endpoint *xurl.URL
 }
 
-func (ps Profiles) selection() Selection {
+func (ps Profiles) Selection() Selection {
 	sorted := slices.SortedFunc(maps.Values(ps.Profiles), func(a, b *Profile) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
 	return Selection{Profiles: sorted, Current: ps.CurrentProfile}
+}
+
+// MatchingEndpoint are the profiles for endpoint, ordered by name.
+func (ps Profiles) MatchingEndpoint(endpoint xurl.URL) []*Profile {
+	selection := ps.Selection()
+	selection.Endpoint = &endpoint
+	return selection.Candidates()
 }
 
 func (s Selection) Candidates() []*Profile {
