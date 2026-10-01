@@ -204,6 +204,7 @@ linters:
             - "**/cmd/*.go"
             - "**/cmd/**/*.go"
             - "!**/cmd/meshstack/*.go"
+            - "!**/cmd/api/*.go"
             - "!**/cmd/auth/*.go"
             - "!**/cmd/profile/*.go"
             - "!**/cmd/internal/*.go"
@@ -247,6 +248,25 @@ linters:
             - github.com/meshcloud/meshstack-cli/pkg/io
             - github.com/spf13/cobra
             - charm.land/log/v2
+
+        cmd-api:
+          files:
+            - "**/cmd/api/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/cmd/internal
+            - github.com/meshcloud/meshstack-cli/client
+            # the request options client.Raw.DoRequest takes, which pkg/ does not expose: they are for the
+            # CLI alone
+            - github.com/meshcloud/meshstack-cli/internal/http
+            - github.com/spf13/cobra
 
         cmd-auth:
           files:

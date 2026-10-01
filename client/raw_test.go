@@ -8,6 +8,7 @@ import (
 	"iter"
 	gohttp "net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -199,16 +200,20 @@ func TestGetReadsTheSubResourceOfAnObjectInItsKindsMediaType(t *testing.T) {
 func TestDoRequestSendsTheRequestToThePathAndReturnsTheAnswerAsItCame(t *testing.T) {
 	raw, requests := newRecordingRawClient(t, gohttp.StatusOK, `{"answer": 1}`)
 
-	answer, err := raw.DoRequest(t.Context(), gohttp.MethodPost, "/api/x", http.WithAccept("application/vnd.custom+json"))
+	answer, err := raw.DoRequest(t.Context(), gohttp.MethodPost, "/api/x",
+		http.WithUrlQuery(url.Values{"dry": {"true"}, "tag": {"a", "b"}}),
+		http.WithAccept("application/vnd.custom+json"),
+		http.WithBody([]byte(`{"spec":{}}`)))
 
 	require.NoError(t, err)
 	assert.Equal(t, `{"answer": 1}`, string(answer))
 	assert.Equal(t, []rawRequest{{
 		method:        gohttp.MethodPost,
 		host:          inMemoryServerUrl.Host,
-		pathAndQuery:  "/api/x",
+		pathAndQuery:  "/api/x?dry=true&tag=a&tag=b",
 		accept:        "application/vnd.custom+json",
 		authorization: "Bearer token",
+		body:          `{"spec":{}}`,
 	}}, *requests)
 }
 

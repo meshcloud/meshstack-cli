@@ -382,6 +382,11 @@ func TestUrlQueryOptions(t *testing.T) {
 		assert.False(t, got.Has("other"), "a nil slice field must be dropped")
 	})
 
+	t.Run("url.Values are sent as given, a repeated parameter included", func(t *testing.T) {
+		query := url.Values{"dry": {"true"}, "tag": {"a", "b"}, "empty": {""}}
+		assert.Equal(t, query, queryFrom(t, query))
+	})
+
 	t.Run("map values are kept even when zero", func(t *testing.T) {
 		got := queryFrom(t, map[string]any{"page": 0})
 		assert.Equal(t, "0", got.Get("page"))
