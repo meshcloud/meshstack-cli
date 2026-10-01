@@ -47,7 +47,7 @@ It ends with what meshstack auth status shows for the new login.`,
 				return fmt.Errorf("an API key id needs an equals sign: write `--%s=%s`",
 					apiKeyFlag.Name, args[0])
 			}
-			return fmt.Errorf("the meshstack auth login does not take any arguments such as '%q'; everything comes from flags and the environment", args)
+			return fmt.Errorf("%s takes no arguments such as %q; everything comes from flags and the environment", cmd.CommandPath(), args[0])
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
