@@ -1,0 +1,82 @@
+package profile
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/meshcloud/meshstack-cli/internal/profile"
+)
+
+func find(profiles profile.Profiles, name profile.Name) (*profile.Profile, error) {
+	found, ok := profiles.Profiles[name]
+	if !ok {
+		return nil, fmt.Errorf("there is no profile '%s'", name)
+	}
+	return found, nil
+}
+
+// put stores edited in place of original, or adds it where original is nil.
+func put(ctx context.Context, profiles *profile.Profiles, original *profile.Profile, edited profile.Profile) error {
+	if _, taken := profiles.Profiles[edited.Name]; taken && (original == nil || original.Name != edited.Name) {
+		return fmt.Errorf("a profile named '%s' exists already", edited.Name)
+	}
+	if original != nil {
+		if err := moveCredentials(ctx, *original, edited); err != nil {
+			return err
+		}
+		delete(profiles.Profiles, original.Name)
+		if profiles.CurrentProfile == original.Name {
+			profiles.CurrentProfile = edited.Name
+		}
+	}
+	profile.Add(profiles, edited)
+	if profiles.CurrentProfile == "" {
+		profiles.CurrentProfile = edited.Name
+	}
+	return profiles.Store(ctx)
+}
+
+func moveCredentials(ctx context.Context, original, edited profile.Profile) error {
+	if !original.Endpoint.Equal(edited.Endpoint) {
+		return original.RemoveCredentials(ctx)
+	}
+	if original.Name == edited.Name {
+		return nil
+	}
+	credentials, err := original.Credentials(ctx)
+	if err != nil {
+		return err
+	}
+	var none profile.Credentials
+	if credentials.Credentials != none.Credentials {
+		credentials.FilePath = original.ConfigDir.CredentialsJsonFor(edited.Name)
+		if err := credentials.Store(ctx); err != nil {
+			return err
+		}
+	}
+	// The token caches go as well, and new tokens are minted on next use.
+	return original.RemoveCredentials(ctx)
+}
+
+func remove(ctx context.Context, profiles *profile.Profiles, name profile.Name) error {
+	removed, err := find(*profiles, name)
+	if err != nil {
+		return err
+	}
+	if err := removed.RemoveCredentials(ctx); err != nil {
+		return err
+	}
+	delete(profiles.Profiles, name)
+	if profiles.CurrentProfile == name {
+		profiles.CurrentProfile = ""
+	}
+	return profiles.Store(ctx)
+}
+
+func use(ctx context.Context, profiles *profile.Profiles, name profile.Name) error {
+	if _, err := find(*profiles, name); err != nil {
+		return err
+	}
+	profiles.CurrentProfile = name
+	return profiles.Store(ctx)
+}

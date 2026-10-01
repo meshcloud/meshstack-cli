@@ -1,0 +1,13 @@
+{{- with .Status -}}
+{{template "credential" .}}
+{{- else -}}
+| Profile | {{cell .Name}} |
+| --- | --- |
+| Endpoint | {{with .Endpoint.URL}}{{cell .}}{{else}}none{{end}} |
+| Default workspace | {{or .DefaultWorkspace "none"}} |
+| Credential | none, run `meshstack login -p {{.Name}}` |
+{{- end}}
+{{- if .Current}}
+
+This is the current profile.
+{{- end}}
