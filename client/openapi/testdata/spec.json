@@ -1,0 +1,73 @@
+{
+  "openapi": "3.0.1",
+  "paths": {
+    "/api/meshobjects/meshbuildingblocks": {
+      "post": {
+        "operationId": "meshBuildingBlockPost",
+        "requestBody": {
+          "content": {
+            "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"schema": {"$ref": "#/components/schemas/blockV1"}},
+            "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {"schema": {"$ref": "#/components/schemas/blockV2"}}
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "201",
+            "content": {
+              "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"schema": {"$ref": "#/components/schemas/blockV1"}},
+              "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {"schema": {"$ref": "#/components/schemas/blockV2"}}
+            }
+          },
+          "400": {"description": "400", "content": {"application/json": {"schema": {"type": "object"}}}}
+        }
+      }
+    },
+    "/api/meshobjects/meshbuildingblockruns/create": {
+      "post": {
+        "operationId": "meshBuildingBlockRunCreate",
+        "responses": {"201": {"description": "201", "content": {"application/vnd.meshcloud.api.meshbuildingblockrun.v1.hal+json": {}}}}
+      }
+    },
+    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}": {
+      "get": {
+        "operationId": "meshBuildingBlockRun",
+        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshbuildingblockrun.v1.hal+json": {}}}}
+      }
+    },
+    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/status": {
+      "post": {
+        "operationId": "meshBuildingBlockRunStatus",
+        "responses": {"200": {"description": "200", "content": {"application/json": {}}}}
+      }
+    },
+    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/{part}": {
+      "post": {
+        "operationId": "meshBuildingBlockRunPart",
+        "responses": {"200": {"description": "200"}}
+      }
+    },
+    "/api/meshobjects/meshtenants/{tenantIdentifier}": {
+      "get": {
+        "operationId": "meshTenantV3",
+        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshtenant.v3.hal+json": {}}}}
+      }
+    },
+    "/api/meshobjects/meshtenants/{uuid}": {
+      "get": {
+        "operationId": "meshTenantV4",
+        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshtenant.v4.hal+json": {}}}}
+      },
+      "delete": {
+        "operationId": "meshTenantDeleteV4",
+        "responses": {"202": {"description": "202"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "blockV1": {"type": "object", "properties": {"spec": {"$ref": "#/components/schemas/specV1"}}},
+      "specV1": {"type": "object"},
+      "blockV2": {"type": "object"}
+    }
+  }
+}
