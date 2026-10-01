@@ -4,6 +4,7 @@ package prompt
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -78,14 +79,41 @@ func (p Prompt) Next(ctx context.Context, what string) (string, error) {
 	}
 }
 
+func (p Prompt) Ask(ctx context.Context, what, defaultAnswer string, validate func(string) error) (string, error) {
+	question := what + ": "
+	if defaultAnswer != "" {
+		question = fmt.Sprintf("%s [%s]: ", what, defaultAnswer)
+	}
+	for {
+		if err := p.Printf("%s", question); err != nil {
+			return "", err
+		}
+		answer, err := p.Next(ctx, strings.ToLower(what))
+		if err != nil {
+			return "", err
+		}
+		answer = cmp.Or(answer, defaultAnswer)
+		if validate == nil {
+			return answer, nil
+		}
+		problem := validate(answer)
+		if problem == nil {
+			return answer, nil
+		}
+		if err := p.Printf("%s\n", problem); err != nil {
+			return "", err
+		}
+	}
+}
+
 func (p Prompt) Printf(format string, args ...any) (err error) {
 	_, err = fmt.Fprintf(p.out, format, args...)
 	return
 }
 
-// usesTerminal is false once Next has read a line: its reader keeps reading the input, and would
+// UsesTerminal is false once Next has read a line: its reader keeps reading the input, and would
 // take the keys meant for a terminal UI.
-func (p Prompt) usesTerminal() bool {
+func (p Prompt) UsesTerminal() bool {
 	return p.input.terminal && !p.input.reading.Load()
 }
 

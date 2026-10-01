@@ -3,6 +3,7 @@ package prompt
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -18,7 +19,8 @@ type item struct {
 	isDefault bool
 }
 
-func (i item) FilterValue() string { return i.label() }
+// FilterValue matches what the entry shows, not the styling of a name rendered for the terminal.
+func (i item) FilterValue() string { return ansi.Strip(i.label()) }
 
 func (i item) label() string { return i.name + i.detail }
 
@@ -89,11 +91,33 @@ func newModel(what string, items []item, defaultNumber int) model {
 	candidateList.SetShowPagination(false)
 	candidateList.SetShowHelp(false)
 	candidateList.DisableQuitKeybindings()
+	candidateList.Filter = substringFilter
 	// The full help takes more lines than the list has, and the list would re-enable a merely disabled binding.
 	candidateList.KeyMap.ShowFullHelp.SetKeys()
 	candidateList.KeyMap.CloseFullHelp.SetKeys()
 	candidateList.Select(max(defaultNumber-1, 0))
 	return model{list: candidateList, delegate: d, what: what, defaultNumber: defaultNumber}
+}
+
+// substringFilter replaces the list's default fuzzy filter, which matches the letters of term one
+// by one anywhere in a label. With it, a short term matches nearly every label with an endpoint.
+func substringFilter(term string, targets []string) []list.Rank {
+	needle := []rune(strings.ToLower(term))
+	var ranks []list.Rank
+	for index, target := range targets {
+		haystack := []rune(strings.ToLower(target))
+		for start := 0; start+len(needle) <= len(haystack); start++ {
+			if slices.Equal(haystack[start:start+len(needle)], needle) {
+				matched := make([]int, len(needle))
+				for i := range matched {
+					matched[i] = start + i
+				}
+				ranks = append(ranks, list.Rank{Index: index, MatchedIndexes: matched})
+				break
+			}
+		}
+	}
+	return ranks
 }
 
 // linesBelowList are the lines View puts below the list: the "… more" line, the help and the status.

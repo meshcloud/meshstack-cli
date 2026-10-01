@@ -11,6 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
+
+	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 )
 
 type Candidate interface {
@@ -37,10 +39,14 @@ func Select[C Candidate](ctx context.Context, p Prompt, what string, candidates 
 		if defaultNumber == 0 && isDefault != nil && isDefault(candidate) {
 			defaultNumber = number
 		}
-		items = append(items, newItem(number, candidate.Label(), number == defaultNumber))
+		entry := newItem(number, candidate.Label(), number == defaultNumber)
+		if p.UsesTerminal() {
+			entry.name = markdown.RenderInline(entry.name)
+		}
+		items = append(items, entry)
 	}
 	m := newModel(what, items, defaultNumber)
-	if p.usesTerminal() {
+	if p.UsesTerminal() {
 		m, err = selectOnTerminal(ctx, p, m)
 	} else {
 		m, err = selectByLine(ctx, p, m)
@@ -106,15 +112,9 @@ func selectOnTerminal(ctx context.Context, p Prompt, m model) (model, error) {
 			m, _ = m.update(tea.WindowSizeMsg{Width: width, Height: height})
 		}
 	}
-	flushLogs := holdLogs()
-	defer flushLogs(ctx)
-	finished, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(p.input.in), tea.WithOutput(p.out)).Run()
+	result, err := p.RunOnTerminal(ctx, m)
 	if err != nil {
 		return m, err
-	}
-	result, ok := finished.(model)
-	if !ok {
-		return m, fmt.Errorf("the %s selection ended with an unexpected %T", m.what, finished)
 	}
 	// The renderer leaves the cursor on the last line of the frame, which the outcome replaces.
 	cursorUp := ""
@@ -122,4 +122,19 @@ func selectOnTerminal(ctx context.Context, p Prompt, m model) (model, error) {
 		cursorUp = ansi.CursorUp(frameHeight - 1)
 	}
 	return result, p.Printf("\r%s%s%s\n", cursorUp, ansi.EraseScreenBelow, result.outcome())
+}
+
+func (p Prompt) RunOnTerminal[M tea.Model](ctx context.Context, m M) (M, error) {
+	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(p.input.in), tea.WithOutput(p.out))
+	flushLogs := holdLogs(func() { program.Send(WarningHeld{}) })
+	defer flushLogs(ctx)
+	finished, err := program.Run()
+	if err != nil {
+		return m, err
+	}
+	result, ok := finished.(M)
+	if !ok {
+		return m, fmt.Errorf("the terminal UI ended with an unexpected %T", finished)
+	}
+	return result, nil
 }
