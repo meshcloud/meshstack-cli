@@ -31,6 +31,24 @@ tasks:
     cmds:
       - go mod tidy
 
+  nix:vendor-hash:
+    # An empty vendorHash makes nix build the Go modules anyway and report the hash it got. The
+    # `-i.bak` keeps sed portable between GNU and BSD.
+    desc: Set vendorHash in flake.nix to match go.sum
+    cmds:
+      - |
+        set_vendor_hash() { sed -i.bak "s|vendorHash = \"[^\"]*\";|vendorHash = \"$1\";|" flake.nix && rm flake.nix.bak; }
+        old=$(sed -n 's|^ *vendorHash = "\([^"]*\)";|\1|p' flake.nix)
+        set_vendor_hash ""
+        new=$(nix build .#meshstack.goModules --no-link 2>&1 | sed -n 's|^ *got: *||p')
+        if [ -z "$new" ]; then
+          set_vendor_hash "$old"
+          echo "nix reported no hash; run 'nix build .#meshstack.goModules' to see why" >&2
+          exit 1
+        fi
+        set_vendor_hash "$new"
+        echo "vendorHash = \"$new\""
+
   release:check:
     desc: Validate .goreleaser.yml
     cmds:

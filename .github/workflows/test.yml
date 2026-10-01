@@ -3,11 +3,14 @@ name: Tests
 # No `paths-ignore` on either trigger, deliberately: a workflow skipped that way never reports its
 # checks, so a required check on it stays "expected" forever and blocks the merge. A skipped *job*
 # reports success; a skipped *workflow* does not.
+#
+# dependabot-vendor-hash.yml dispatches this for the commit it pushes.
 on:
   pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -79,9 +82,10 @@ jobs:
           go tool gotestsum --junitfile junit.xml --format testdox -- \
             -coverpkg=./... ./... -args -test.gocoverdir="$PWD/covdata/unit"
 
-      # meshfed-release finds this by the pull request head sha, so it has to be uploaded from a
-      # `pull_request` job. The contract with that side is the artifact name `covdata-unit` and
-      # covmeta.*/covcounters.* at its root, which naming the directory gives and a glob would nest.
+      # meshfed-release finds this by the pull request head sha, so it has to be uploaded from a run
+      # on that commit: a `pull_request` run, or the dispatch of dependabot-vendor-hash.yml. The
+      # contract with that side is the artifact name `covdata-unit` and covmeta.*/covcounters.* at
+      # its root, which naming the directory gives and a glob would nest.
       - name: Upload unit coverage data
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

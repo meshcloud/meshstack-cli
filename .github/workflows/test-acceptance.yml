@@ -3,11 +3,13 @@
 name: Acceptance Tests
 
 # The push trigger catches a CLI/backend regression on main, before a release tag.
+# dependabot-vendor-hash.yml dispatches this for the commit it pushes.
 on:
   pull_request_target:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,8 +24,9 @@ jobs:
 
       # The run has to be in our own repository, and on a pull request the head branch has to live
       # here too — which means its author has write access, so the code under test is code we
-      # already trust.
-      DISPATCH: ${{ github.repository_owner == 'meshcloud' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
+      # already trust. A workflow_dispatch runs on a branch of this repository, started by someone
+      # with write access, so it is trusted like a push.
+      DISPATCH: ${{ github.repository_owner == 'meshcloud' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) }}
 
     # This workflow MUST NOT check out the pull request, and has no `actions/checkout` for that
     # reason. `pull_request_target` runs in the base repo's context with its secrets, so checking
