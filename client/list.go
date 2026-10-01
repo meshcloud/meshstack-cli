@@ -24,12 +24,14 @@ type MeshListingClient interface {
 	Workspaces(ctx context.Context) iter.Seq2[jsontext.Value, error]
 	BuildingBlocksV2(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error]
 	BuildingBlockRuns(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error]
+	EventLogs(ctx context.Context, filter MeshEventLogListFilter) iter.Seq2[jsontext.Value, error]
 }
 
 type meshListingClient struct {
 	workspace        meshWorkspaceClient
 	buildingBlockV2  meshBuildingBlockV2Client
 	buildingBlockRun meshBuildingBlockRunClient
+	eventLog         meshEventLogClient
 }
 
 func (c meshListingClient) Workspaces(ctx context.Context) iter.Seq2[jsontext.Value, error] {
@@ -42,4 +44,8 @@ func (c meshListingClient) BuildingBlocksV2(ctx context.Context, filter MeshBuil
 
 func (c meshListingClient) BuildingBlockRuns(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error] {
 	return c.buildingBlockRun.ListRawSeq(ctx, filter)
+}
+
+func (c meshListingClient) EventLogs(ctx context.Context, filter MeshEventLogListFilter) iter.Seq2[jsontext.Value, error] {
+	return c.eventLog.ListRawSeq(ctx, filter)
 }

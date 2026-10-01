@@ -86,6 +86,7 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 			workspace:        workspace,
 			buildingBlockV2:  buildingBlockV2,
 			buildingBlockRun: buildingBlockRun,
+			eventLog:         newEventLogClient(ctx, authorizedClient),
 		},
 
 		Endpoint: endpoint,
