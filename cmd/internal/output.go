@@ -100,3 +100,16 @@ func listFormatOf(format OutputFormat) (listFormat, error) {
 		return listFormat{}, fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
 	}
 }
+
+// WriteItem writes a single item as an object of its own, for a command whose result is not a listing.
+func WriteItem(w io.Writer, format OutputFormat, item jsontext.Value) error {
+	list, err := listFormatOf(format)
+	if err != nil {
+		return err
+	}
+	if err = list.format(&item); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "%s\n", item)
+	return err
+}

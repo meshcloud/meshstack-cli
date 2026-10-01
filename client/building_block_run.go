@@ -80,3 +80,8 @@ func (c meshBuildingBlockRunClient) ListRawSeq(ctx context.Context, filter MeshB
 func (c meshBuildingBlockRunClient) GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error) {
 	return c.meshObject.GetAtPath[MeshBuildingBlockRunLogs](ctx, runUuid, "logs")
 }
+
+// GetLogsRaw is GetLogs without decoding, so that a caller passes the answer on as the server sent it.
+func (c meshBuildingBlockRunClient) GetLogsRaw(ctx context.Context, runUuid string) (jsontext.Value, error) {
+	return c.meshObject.GetAtPath[jsontext.Value](ctx, runUuid, "logs")
+}

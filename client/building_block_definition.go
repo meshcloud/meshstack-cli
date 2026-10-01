@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
@@ -151,7 +153,7 @@ type meshBuildingBlockDefinitionClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinition]
 }
 
-func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockDefinitionClient {
+func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockDefinitionClient {
 	return meshBuildingBlockDefinitionClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinition](ctx, httpClient, "v1-preview"),
 	}
@@ -167,6 +169,13 @@ type meshBuildingBlockDefinitionListQuery struct {
 
 func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
 	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
+		IncludeAllPublished: true,
+		OwnedByWorkspace:    workspaceIdentifier,
+	}))
+}
+
+func (c meshBuildingBlockDefinitionClient) ListRawSeq(ctx context.Context, workspaceIdentifier *string) iter.Seq2[jsontext.Value, error] {
+	return c.meshObject.ListSeqAs[jsontext.Value](ctx, http.WithUrlQuery(meshBuildingBlockDefinitionListQuery{
 		IncludeAllPublished: true,
 		OwnedByWorkspace:    workspaceIdentifier,
 	}))

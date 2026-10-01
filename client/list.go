@@ -24,12 +24,17 @@ type MeshListingClient interface {
 	Workspaces(ctx context.Context) iter.Seq2[jsontext.Value, error]
 	BuildingBlocksV2(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error]
 	BuildingBlockRuns(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error]
+	BuildingBlockRunLogs(ctx context.Context, runUuid string) (jsontext.Value, error)
+	BuildingBlockDefinitions(ctx context.Context, workspaceIdentifier *string) iter.Seq2[jsontext.Value, error]
+	BuildingBlockDefinitionVersions(ctx context.Context, buildingBlockDefinitionUuid string) iter.Seq2[jsontext.Value, error]
 }
 
 type meshListingClient struct {
-	workspace        meshWorkspaceClient
-	buildingBlockV2  meshBuildingBlockV2Client
-	buildingBlockRun meshBuildingBlockRunClient
+	workspace                      meshWorkspaceClient
+	buildingBlockV2                meshBuildingBlockV2Client
+	buildingBlockRun               meshBuildingBlockRunClient
+	buildingBlockDefinition        meshBuildingBlockDefinitionClient
+	buildingBlockDefinitionVersion meshBuildingBlockDefinitionVersionClient
 }
 
 func (c meshListingClient) Workspaces(ctx context.Context) iter.Seq2[jsontext.Value, error] {
@@ -42,4 +47,16 @@ func (c meshListingClient) BuildingBlocksV2(ctx context.Context, filter MeshBuil
 
 func (c meshListingClient) BuildingBlockRuns(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error] {
 	return c.buildingBlockRun.ListRawSeq(ctx, filter)
+}
+
+func (c meshListingClient) BuildingBlockDefinitions(ctx context.Context, workspaceIdentifier *string) iter.Seq2[jsontext.Value, error] {
+	return c.buildingBlockDefinition.ListRawSeq(ctx, workspaceIdentifier)
+}
+
+func (c meshListingClient) BuildingBlockDefinitionVersions(ctx context.Context, buildingBlockDefinitionUuid string) iter.Seq2[jsontext.Value, error] {
+	return c.buildingBlockDefinitionVersion.ListRawSeq(ctx, buildingBlockDefinitionUuid)
+}
+
+func (c meshListingClient) BuildingBlockRunLogs(ctx context.Context, runUuid string) (jsontext.Value, error) {
+	return c.buildingBlockRun.GetLogsRaw(ctx, runUuid)
 }

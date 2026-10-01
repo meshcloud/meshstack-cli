@@ -58,6 +58,8 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 		EndpointUrl:      endpoint,
 	}
 	buildingBlockV2 := newBuildingBlockV2Client(ctx, authorizedClient)
+	buildingBlockDefinition := newBuildingBlockDefinitionClient(ctx, authorizedClient)
+	buildingBlockDefinitionVersion := newBuildingBlockDefinitionVersionClient(ctx, authorizedClient)
 	buildingBlockRun := newBuildingBlockRunClient(ctx, authorizedClient)
 	workspace := newWorkspaceClient(ctx, authorizedClient)
 	return Client{
@@ -65,8 +67,8 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 		BuildingBlock:                  newBuildingBlockClient(ctx, authorizedClient),
 		BuildingBlockV2:                buildingBlockV2,
 		BuildingBlockRun:               buildingBlockRun,
-		BuildingBlockDefinition:        newBuildingBlockDefinitionClient(ctx, authorizedClient),
-		BuildingBlockDefinitionVersion: newBuildingBlockDefinitionVersionClient(ctx, authorizedClient),
+		BuildingBlockDefinition:        buildingBlockDefinition,
+		BuildingBlockDefinitionVersion: buildingBlockDefinitionVersion,
 		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, authorizedClient),
 		Integration:                    newIntegrationClient(ctx, authorizedClient),
 		LandingZone:                    newLandingZoneClient(ctx, authorizedClient),
@@ -85,9 +87,11 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, authorizedClient),
 		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, authorizedClient),
 		Listing: meshListingClient{
-			workspace:        workspace,
-			buildingBlockV2:  buildingBlockV2,
-			buildingBlockRun: buildingBlockRun,
+			workspace:                      workspace,
+			buildingBlockV2:                buildingBlockV2,
+			buildingBlockRun:               buildingBlockRun,
+			buildingBlockDefinition:        buildingBlockDefinition,
+			buildingBlockDefinitionVersion: buildingBlockDefinitionVersion,
 		},
 
 		Endpoint: endpoint,

@@ -2,8 +2,10 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
@@ -232,7 +234,7 @@ type meshBuildingBlockDefinitionVersionClient struct {
 	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinitionVersion]
 }
 
-func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient internal.HttpClient) MeshBuildingBlockDefinitionVersionClient {
+func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockDefinitionVersionClient {
 	return meshBuildingBlockDefinitionVersionClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinitionVersion](ctx, httpClient, "v1-preview"),
 	}
@@ -244,6 +246,12 @@ type meshBuildingBlockDefinitionVersionListQuery struct {
 
 func (c meshBuildingBlockDefinitionVersionClient) List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error) {
 	return c.meshObject.List(ctx, http.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
+		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
+	}))
+}
+
+func (c meshBuildingBlockDefinitionVersionClient) ListRawSeq(ctx context.Context, buildingBlockDefinitionUuid string) iter.Seq2[jsontext.Value, error] {
+	return c.meshObject.ListSeqAs[jsontext.Value](ctx, http.WithUrlQuery(meshBuildingBlockDefinitionVersionListQuery{
 		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
 	}))
 }
