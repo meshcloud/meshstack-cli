@@ -41,5 +41,5 @@ func (manual *Manual) CachedToken(_ context.Context, _ getWorkspaceFunc) (jwt.JW
 }
 
 func (manual *Manual) RefreshCachedToken(_ context.Context, _ http.Client, _ getWorkspaceFunc) error {
-	return fmt.Errorf("manual method cannot be refreshed; provide new with 'meshstack login --endpoint %s --api-token [--stdin]'", manual.Endpoint)
+	return fmt.Errorf("manual method cannot be refreshed; provide new with 'meshstack login --endpoint %s --apitoken [--stdin]'", manual.Endpoint)
 }

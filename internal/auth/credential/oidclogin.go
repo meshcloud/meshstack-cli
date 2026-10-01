@@ -2,8 +2,10 @@ package credential
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	gohttp "net/http"
 	"time"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
@@ -79,7 +81,12 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 		return err
 	}
 	oidcToken, err := oidcClient.Refresh(ctx, oidcLogin.Cache.RefreshToken, scopesFor(workspace))
-	if err != nil {
+	// OAuth 2.0 answers the refresh token of an ended session with 400 invalid_grant (RFC 6749,
+	// section 5.2).
+	if httpErr, ok := errors.AsType[http.Error](err); ok && httpErr.StatusCode == gohttp.StatusBadRequest {
+		return fmt.Errorf("the browser login at %s cannot be renewed, its session has most likely ended; run 'meshstack login --endpoint %s' again: %w",
+			oidcLogin.Issuer, oidcLogin.Endpoint, err)
+	} else if err != nil {
 		return err
 	}
 	// Stored before the check below, so that the rotated refresh token is kept even when the
