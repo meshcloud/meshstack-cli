@@ -47,9 +47,10 @@ tasks:
       - docker build -t meshstack:dev {{.CLI_ARGS}} .
 
   docs:demo:
-    desc: Record docs/demo.gif with VHS, see docs/demo/README.md
+    desc: Record docs/demo.gif and docs/profile.gif with VHS, see docs/demo/README.md
     cmds:
       - vhs docs/demo/demo.tape
+      - vhs docs/demo/profile.tape
 
   clean:
     desc: Remove build artifacts
