@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"fmt"
+	gohttp "net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -14,9 +16,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
-	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/meshstack"
-	"github.com/meshcloud/meshstack-cli/internal/profile"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
 func executeStatus(t *testing.T, args ...string) string {
@@ -36,14 +36,12 @@ func executeStatus(t *testing.T, args ...string) string {
 
 func withApiToken(t *testing.T) {
 	t.Helper()
-	for _, envKey := range []string{
-		profile.NameSetting.EnvKey(), meshstack.WorkspaceSetting.EnvKey(),
-		auth.ApiKeyClientIdSetting.EnvKey(), auth.ApiKeyClientSecretSetting.EnvKey(),
-	} {
-		t.Setenv(envKey, "")
-	}
-	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
-	t.Setenv(meshstack.EndpointSetting.EnvKey(), "https://meshstack.example.com")
+	meshStack := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		assert.Equal(t, "/mesh/info", r.URL.Path)
+		_, _ = w.Write([]byte(`{"version": "2026.40.0"}`))
+	}))
+	t.Cleanup(meshStack.Close)
+	testlogin.LoggedInTo(t, meshStack.URL)
 	claims := fmt.Appendf(nil, `{"exp":%d,"preferred_username":"runner","MC_CUSTOMER":"ops"}`, time.Now().Add(time.Hour).Unix())
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), "e30."+base64.RawURLEncoding.EncodeToString(claims)+".test-signature")
 }
@@ -56,6 +54,7 @@ func TestStatusShowsTheCredentialAsMarkdownWhereTheOutputIsNoTerminal(t *testing
 	assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n")
 	assert.Contains(t, output, "| Credential | API token, from env MESHSTACK_API_TOKEN |\n")
 	assert.Contains(t, output, "|  | User runner |\n")
+	assert.Contains(t, output, "| meshStack | 2026.40.0 |\n")
 	assert.NotContains(t, output, "\x1b[", "no terminal styling")
 }
 
@@ -63,8 +62,9 @@ func TestStatusWritesJsonForScripts(t *testing.T) {
 	withApiToken(t)
 
 	var status struct {
-		Credential string `json:"credential"`
-		Token      struct {
+		Credential       string `json:"credential"`
+		MeshStackVersion string `json:"meshStackVersion"`
+		Token            struct {
 			User      string `json:"user"`
 			Workspace string `json:"workspace"`
 		} `json:"token"`
@@ -72,6 +72,7 @@ func TestStatusWritesJsonForScripts(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(executeStatus(t, "-o", "json")), &status))
 
 	assert.Equal(t, "manual", status.Credential)
+	assert.Equal(t, "2026.40.0", status.MeshStackVersion)
 	assert.Equal(t, "runner", status.Token.User)
 	assert.Equal(t, "ops", status.Token.Workspace)
 }

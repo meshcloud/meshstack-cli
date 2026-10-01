@@ -2,7 +2,6 @@ package auth
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -19,6 +18,7 @@ func NewLogin() *cobra.Command {
 		openStdinFlag = newStdinFlag()
 		apiKeyFlag    = internal.NewFlagForSetting[string]("apikey", setting.ApiKeyClientId)
 		apiTokenFlag  = internal.NewFlagForSetting[bool]("apitoken", setting.ApiToken)
+		output        internal.ShowFlag
 	)
 
 	cmd := &cobra.Command{
@@ -36,7 +36,9 @@ MESHSTACK_WORKSPACE already says. An API key login asks the same way, but goes o
 where it may not list workspaces, where the input ends before an answer, or where --stdin carries its
 secret. --apitoken asks nothing.
 
-Every question, the secret prompts of --stdin included, fails where no answer comes within a minute.`,
+Every question, the secret prompts of --stdin included, fails where no answer comes within a minute.
+
+It ends with what meshstack auth status shows for the new login.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
@@ -91,16 +93,13 @@ Every question, the secret prompts of --stdin included, fails where no answer co
 			if err != nil {
 				return err
 			}
-			meshInfo, err := session.MeshInfo()
-			if err != nil {
+			if _, err := session.MeshInfo(); err != nil {
 				return err
 			}
 			if err := storeSession(ctx); err != nil {
 				return err
 			}
-			slog.InfoContext(ctx, fmt.Sprintf("%s (version %s) logged in at meshStack %s at %s, current profile is '%s'",
-				meshInfo.CliClientId, internal.Version, meshInfo.Version, session.CurrentProfile.Endpoint, session.CurrentProfile.Name))
-			return nil
+			return showStatus(cmd, output, session)
 		},
 	}
 
@@ -112,6 +111,7 @@ Every question, the secret prompts of --stdin included, fails where no answer co
 	cmd.Flags().Lookup(apiKeyFlag.Name.String()).NoOptDefVal = apiKeyIdDefault
 
 	openStdinFlag.Register(cmd.Flags())
+	output.Register(cmd.Flags())
 
 	return cmd
 }

@@ -80,7 +80,7 @@ func TestAccOidcLogin(t *testing.T) {
 				return
 			}
 			require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
-			assert.Contains(t, run.output.String(), "logged in at meshStack", "the login reports what it reached")
+			assert.Contains(t, run.output.String(), "| meshStack | ", "the login shows the status, with the meshStack it reached")
 			requireStoredLogin(t, c, run.output.String())
 			requireAuthStatus(t, c, "Browser login")
 		})
@@ -138,7 +138,7 @@ func TestAccApiKeyLogin(t *testing.T) {
 	login.Stdin = strings.NewReader("1\n")
 	output, err := login.CombinedOutput()
 	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
-	assert.Contains(t, string(output), "logged in at meshStack", "the login reports what it reached")
+	assert.Contains(t, string(output), "| meshStack | ", "the login shows the status, with the meshStack it reached")
 	requireStoredLogin(t, c, string(output))
 	requireAuthStatus(t, c, "API key")
 
@@ -148,7 +148,7 @@ func TestAccApiKeyLogin(t *testing.T) {
 
 		output, err := withToken.command("login", "--apitoken").CombinedOutput()
 		require.NoErrorf(t, err, "the API token login did not finish:\n%s", output)
-		assert.Contains(t, string(output), "logged in at meshStack", "the login reports what it reached")
+		assert.Contains(t, string(output), "| meshStack | ", "the login shows the status, with the meshStack it reached")
 		require.FileExists(t, withToken.credentialsJson())
 		requireAuthStatus(t, withToken, "API token")
 	})
@@ -199,7 +199,7 @@ type loginRun struct {
 	drained  chan struct{}
 }
 
-// startLogin drains stderr while the command still runs: login writes the URL of its access level
+// startLogin drains stderr, where login asks and logs, while the command still runs: login writes the URL of its access level
 // page and then blocks on the redirect, so nothing about it is readable after the fact.
 func startLogin(t *testing.T, c *cli, workspaceAnswer string) *loginRun {
 	t.Helper()
@@ -207,7 +207,6 @@ func startLogin(t *testing.T, c *cli, workspaceAnswer string) *loginRun {
 	cmd.Stdin = strings.NewReader(workspaceAnswer + "\n")
 	stderr, err := cmd.StderrPipe()
 	require.NoError(t, err)
-	cmd.Stdout = nil
 
 	run := &loginRun{
 		cmd:    cmd,
@@ -216,6 +215,8 @@ func startLogin(t *testing.T, c *cli, workspaceAnswer string) *loginRun {
 		startURL: make(chan string, 1),
 		drained:  make(chan struct{}),
 	}
+	// The status the login ends with goes to stdout.
+	cmd.Stdout = run.output
 	require.NoError(t, cmd.Start())
 
 	printed := regexp.MustCompile(`http://127\.0\.0\.1:\d+\S*`)

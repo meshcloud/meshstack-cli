@@ -1,6 +1,10 @@
 package auth
 
 import (
+	_ "embed"
+	"fmt"
+	"log/slog"
+
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
@@ -8,7 +12,28 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 )
 
-var statusTemplate = markdown.Parse("status", `{{template "credential" .}}`+"\n")
+//go:embed status.md.tmpl
+var statusTemplateText string
+
+var statusTemplate = markdown.Parse("status", statusTemplateText)
+
+// status adds the meshStack version to the credential, which the profiles show without it.
+type status struct {
+	auth.CredentialStatus `json:",inline"`
+
+	MeshStackVersion string `json:"meshStackVersion,omitzero"`
+}
+
+func showStatus(cmd *cobra.Command, output internal.ShowFlag, session auth.Session) error {
+	ctx := cmd.Context()
+	shown := status{CredentialStatus: session.Status(ctx)}
+	meshInfo, err := session.MeshInfo()
+	if err != nil {
+		slog.WarnContext(ctx, fmt.Sprintf("Cannot read the meshStack version: %s", err))
+	}
+	shown.MeshStackVersion = meshInfo.Version
+	return output.Show(cmd.OutOrStdout(), statusTemplate, shown)
+}
 
 func newStatus() *cobra.Command {
 	var output internal.ShowFlag
@@ -22,12 +47,11 @@ A browser login is not renewed for this, so its token may show as expired, and i
 next use. An API key reads its own details from meshStack.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
-			session, err := auth.ResolveSession(ctx, internal.ResolveClientOptions())
+			session, err := auth.ResolveSession(cmd.Context(), internal.ResolveClientOptions())
 			if err != nil {
 				return err
 			}
-			return output.Show(cmd.OutOrStdout(), statusTemplate, session.Status(ctx))
+			return showStatus(cmd, output, session)
 		},
 	}
 	output.Register(cmd.Flags())
