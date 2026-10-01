@@ -10,15 +10,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 // Decoding into MeshWorkspace and encoding again would drop what the model lacks: apiVersion and
 // kind, which a POST of the edited object needs, and _links, which shows an LLM agent how
 // meshObjects relate.
-func TestListRawSeqYieldsEveryWorkspaceOfEveryPageAsSent(t *testing.T) {
+func TestARawListYieldsEveryWorkspaceOfEveryPageAsSent(t *testing.T) {
 	platformTeam := `
 	{
 		"kind": "meshWorkspace",
@@ -48,13 +45,11 @@ func TestListRawSeqYieldsEveryWorkspaceOfEveryPageAsSent(t *testing.T) {
 		}
 		_, _ = fmt.Fprintf(w, `{"_embedded":{"meshWorkspaces":[%s]},"page":{"totalPages":%d,"number":%d}}`, workspaces[page], len(workspaces), page)
 	}))
-	workspaceClient := newWorkspaceClient(t.Context(), internal.HttpClient{
-		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(http.BearerToken("token")),
-		EndpointUrl:      inMemoryServerUrl,
-	})
+	httpClient := newTestHttpClient(server)
+	raw := newRawClient(httpClient).with(newWorkspaceClient(t.Context(), httpClient).meshObject)
 
 	var got []string
-	for workspace, err := range workspaceClient.ListRawSeq(t.Context()) {
+	for workspace, err := range raw.List[MeshWorkspace](t.Context(), MeshWorkspaceListFilter{}, ListOptions{}) {
 		require.NoError(t, err)
 		got = append(got, string(workspace))
 	}

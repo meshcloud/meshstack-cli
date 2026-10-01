@@ -48,8 +48,8 @@ func isRetryable(ctx context.Context) bool {
 // WithUrlQuery sends each field of query as a query parameter named by its `json` tag. A struct
 // passed by value leaves out every field that has the zero value, so an unset filter needs neither
 // a pointer nor `omitempty`. A map is sent as given, so a deliberate zero such as page=0 stays.
-// Each value is sent as the JSON literal it marshals to, with a string unquoted. Nested objects and
-// arrays are not supported.
+// Each value is sent as the JSON literal it marshals to, with a string unquoted, and an array as the
+// parameter repeated. Nested objects are not supported.
 func WithUrlQuery(query any) RequestOption {
 	return appendRequestModifier(func(req *gohttp.Request) error {
 		urlValues, err := convertStructOrMapToUrlValues(query)
@@ -78,21 +78,29 @@ func convertStructOrMapToUrlValues(structOrMap any) (url.Values, error) {
 	skipZero := reflect.ValueOf(structOrMap).Kind() == reflect.Struct
 	result := url.Values{}
 	for key, value := range converted {
-		if value.Kind() == 'n' {
-			continue
-		}
-		// A number goes in as the literal it marshalled to, never through a Go value: decoded into
-		// float64 and printed again, a millisecond timestamp would arrive as 1.2345678901234568e+18.
-		param := value.String()
-		if value.Kind() == '"' {
-			if err := json.Unmarshal(value, &param); err != nil {
-				return nil, fmt.Errorf("cannot read %s of type %T as a string: %w", key, structOrMap, err)
+		values := []jsontext.Value{value}
+		if value.Kind() == '[' {
+			if err := json.Unmarshal(value, &values); err != nil {
+				return nil, fmt.Errorf("cannot read %s of type %T as an array: %w", key, structOrMap, err)
 			}
 		}
-		if skipZero && (param == "" || value.Kind() == 'f') {
-			continue
+		for _, value := range values {
+			if value.Kind() == 'n' {
+				continue
+			}
+			// A number goes in as the literal it marshalled to, never through a Go value: decoded into
+			// float64 and printed again, a millisecond timestamp would arrive as 1.2345678901234568e+18.
+			param := value.String()
+			if value.Kind() == '"' {
+				if err := json.Unmarshal(value, &param); err != nil {
+					return nil, fmt.Errorf("cannot read %s of type %T as a string: %w", key, structOrMap, err)
+				}
+			}
+			if skipZero && (param == "" || value.Kind() == 'f') {
+				continue
+			}
+			result[key] = append(result[key], param)
 		}
-		result[key] = append(result[key], param)
 	}
 	return result, nil
 }

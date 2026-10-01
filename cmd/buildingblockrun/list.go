@@ -23,12 +23,12 @@ func newList() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List building block runs",
-		Long: `List building block runs.
+		Short: "List building block runs, newest first",
+		Long: `List building block runs, newest first.
 
 --building-block lists that block's runs, and cannot be combined with --workspace. Without it
 the runs of every building block the credential can see are listed, one block after the other,
-and --workspace, or MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
+the newest block first, and --workspace, or MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (
@@ -48,13 +48,11 @@ and --workspace, or MESHSTACK_WORKSPACE, narrows those to the building blocks of
 					return fmt.Errorf("--building-block %q is no uuid", buildingBlockUuid)
 				}
 			}
-			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
-				if buildingBlockUuid != "" {
-					return meshStack.Listing.BuildingBlockRuns(ctx, client.MeshBuildingBlockRunListFilter{
-						BuildingBlockUuid: buildingBlockUuid,
-					})
-				}
-				return allRuns(ctx, meshStack, blockFilter)
+			if buildingBlockUuid != "" {
+				return flags.Run[client.MeshBuildingBlockRun](cmd, client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid})
+			}
+			return flags.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error] {
+				return allRuns(ctx, meshStack, blockFilter, options.PageSize)
 			})
 		},
 	}
@@ -67,16 +65,11 @@ and --workspace, or MESHSTACK_WORKSPACE, narrows those to the building blocks of
 
 // allRuns flattens the runs of every building block into one sequence, because the run list
 // endpoint takes one building block at a time and has no list of every run.
-func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error] {
+func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.MeshBuildingBlockV2ListFilter, pageSize int) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
-		runOptions := client.ListOptionsFrom(ctx)
-		runOptions.OnPage = nil
-		blockOptions := runOptions
-		blockOptions.PageSize = 0
-		runsCtx := client.WithListOptions(ctx, runOptions)
 		// The blocks are read raw because only their uuid is needed, and a block the client cannot
 		// fully decode still has runs to list.
-		for rawBlock, err := range meshStack.Listing.BuildingBlocksV2(client.WithListOptions(ctx, blockOptions), blockFilter) {
+		for rawBlock, err := range meshStack.Raw.List[client.MeshBuildingBlockV2](ctx, blockFilter, client.ListOptions{}) {
 			if err != nil {
 				yield(nil, err)
 				return
@@ -95,7 +88,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 				return
 			}
 			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlock.Metadata.Uuid}
-			for blockRun, runErr := range meshStack.Listing.BuildingBlockRuns(runsCtx, filter) {
+			for blockRun, runErr := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, client.ListOptions{PageSize: pageSize}) {
 				if runErr != nil {
 					yield(nil, fmt.Errorf("listing the runs of building block %s: %w", filter.BuildingBlockUuid, runErr))
 					return

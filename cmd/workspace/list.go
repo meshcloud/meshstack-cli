@@ -1,10 +1,6 @@
 package workspace
 
 import (
-	"context"
-	"encoding/json/jsontext"
-	"iter"
-
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
@@ -16,17 +12,15 @@ func newList() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List the workspaces visible from the current workspace",
-		Long: `List the workspaces visible from the current workspace: --workspace, MESHSTACK_WORKSPACE,
-or the profile's default workspace.
+		Short: "List the workspaces visible from the current workspace, newest first",
+		Long: `List the workspaces visible from the current workspace, newest first. The current workspace
+is --workspace, MESHSTACK_WORKSPACE, or the profile's default workspace.
 
 From the workspace behind meshPanel's admin area, a role that may list every workspace, such as
 Organization Admin, lists them all. From any other workspace the list holds that workspace alone.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return flags.Run(cmd, func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error] {
-				return meshStack.Listing.Workspaces(ctx)
-			})
+			return flags.Run[client.MeshWorkspace](cmd, client.MeshWorkspaceListFilter{})
 		},
 	}
 

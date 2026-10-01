@@ -6,7 +6,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"iter"
 	"slices"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
@@ -267,6 +266,7 @@ type MeshBuildingBlockV2ListFilter struct {
 	ProjectIdentifier   *string `json:"projectIdentifier"`
 	PlatformIdentifier  *string `json:"platformIdentifier"`
 	Name                *string `json:"name"`
+	DefinitionName      *string `json:"definitionName"`
 	DefinitionUuid      *string `json:"definitionUuid"`
 	VersionUuid         *string `json:"versionUuid"`
 	// VersionNumber matches version 1 for both "v1" and "1".
@@ -275,10 +275,14 @@ type MeshBuildingBlockV2ListFilter struct {
 	// TargetKind is meshTenant or meshWorkspace.
 	TargetKind *string `json:"targetRefKind"`
 	Status     *string `json:"status"`
+	// HealthStatus and Action match a building block that has any one of the values.
+	HealthStatus []string `json:"healthStatus"`
+	Action       []string `json:"action"`
 	// ManagedByWorkspaceIdentifier and ManagedByDefinitionUuid list the building blocks of the
 	// definitions a platform operator owns, and need the MANAGED_BUILDINGBLOCK_LIST permission.
-	ManagedByWorkspaceIdentifier *string `json:"managedByWorkspaceIdentifier"`
-	ManagedByDefinitionUuid      *string `json:"managedByDefinitionUuid"`
+	ManagedByWorkspaceIdentifier *string      `json:"managedByWorkspaceIdentifier"`
+	ManagedByDefinitionUuid      *string      `json:"managedByDefinitionUuid"`
+	Sort                         SortCriteria `json:"sort"`
 }
 
 type MeshBuildingBlockV2Client interface {
@@ -311,10 +315,6 @@ func (c meshBuildingBlockV2Client) ReadFunc(uuid string) func(ctx context.Contex
 
 func (c meshBuildingBlockV2Client) List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error) {
 	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
-}
-
-func (c meshBuildingBlockV2Client) ListRawSeq(ctx context.Context, filter MeshBuildingBlockV2ListFilter) iter.Seq2[jsontext.Value, error] {
-	return c.meshObject.ListSeqAs[jsontext.Value](ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {

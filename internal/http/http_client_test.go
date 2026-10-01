@@ -289,6 +289,27 @@ func TestHttpClient(t *testing.T) {
 			assert.Equal(t, 1, attempts)
 		})
 	})
+
+	t.Run("DoRequest of []byte returns the retried answer as it came, empty included", func(t *testing.T) {
+		auth := &refreshableAuthorization{token: "stale"}
+		answer := "plain text"
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			if req.Header.Get("Authorization") == "Bearer stale" {
+				resp.WriteHeader(gohttp.StatusUnauthorized)
+				_, _ = io.WriteString(resp, "expired")
+				return
+			}
+			_, _ = io.WriteString(resp, answer)
+		})
+		body, err := client.WithAuthorization(auth).DoRequest[[]byte](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
+		require.NoError(t, err)
+		assert.Equal(t, "plain text", string(body))
+
+		answer = ""
+		body, err = client.DoRequest[[]byte](t.Context(), gohttp.MethodDelete, client.ServerUrl.JoinPath("delete"))
+		require.NoError(t, err)
+		assert.Empty(t, body)
+	})
 }
 
 type refreshableAuthorization struct {
@@ -349,6 +370,16 @@ func TestUrlQueryOptions(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "abc", gotQuery.Get("buildingBlockDefinitionUuid"))
 		assert.Equal(t, "2", gotQuery.Get("page"))
+	})
+
+	t.Run("a slice field is the parameter repeated", func(t *testing.T) {
+		type filter struct {
+			ExcludeTitle []string `json:"excludeTitle"`
+			Other        []string `json:"other"`
+		}
+		got := queryFrom(t, filter{ExcludeTitle: []string{"Workspace Created", "", "Tenant Deleted"}})
+		assert.Equal(t, []string{"Workspace Created", "Tenant Deleted"}, got["excludeTitle"], "an empty string in a struct's slice is dropped like a zero field")
+		assert.False(t, got.Has("other"), "a nil slice field must be dropped")
 	})
 
 	t.Run("map values are kept even when zero", func(t *testing.T) {

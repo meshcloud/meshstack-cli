@@ -23,12 +23,19 @@ type HttpClient struct {
 	EndpointUrl xurl.URL
 }
 
-type MeshObjectClient[M any] struct {
+// MeshObjectApi is the API of one meshObject kind, in one version, with no Go type for its objects:
+// the requests and the paging they share, for a caller that decodes the answers itself.
+type MeshObjectApi struct {
 	http.AuthorizedClient
 
 	Kind       string
 	ApiVersion string
 	ApiUrl     *url.URL
+}
+
+// MeshObjectClient decodes the API's objects into M, whose type name gives the kind.
+type MeshObjectClient[M any] struct {
+	MeshObjectApi
 }
 
 // NewMeshObjectClient takes the API path from the kind of M, in plural and lower case, unless
@@ -43,7 +50,7 @@ func NewMeshObjectClient[M any](ctx context.Context, httpClient HttpClient, apiV
 	explicitApiPathElems = slices.Insert(explicitApiPathElems, 0, "/api/meshobjects")
 	apiUrl := httpClient.EndpointUrl.JoinPath(explicitApiPathElems...)
 	slog.DebugContext(ctx, fmt.Sprintf("initialized %s client", reflect.TypeFor[M]().Name()), "url", apiUrl.String(), "kind", kind, "version", apiVersion)
-	return MeshObjectClient[M]{httpClient.AuthorizedClient, kind, apiVersion, apiUrl}
+	return MeshObjectClient[M]{MeshObjectApi{httpClient.AuthorizedClient, kind, apiVersion, apiUrl}}
 }
 
 var versionSuffixRe = regexp.MustCompile(`V\d+$`)
@@ -69,7 +76,7 @@ func pluralizeKind(kind string) string {
 	return kind + "s"
 }
 
-func (c MeshObjectClient[M]) MeshObjectMimeType() string {
+func (c MeshObjectApi) MeshObjectMimeType() string {
 	return fmt.Sprintf("application/vnd.meshcloud.api.%s.%s.hal+json", c.Kind, c.ApiVersion)
 }
 
@@ -82,7 +89,7 @@ func (c MeshObjectClient[M]) Get(ctx context.Context, id string) (resp *M, err e
 	return
 }
 
-func (c MeshObjectClient[M]) GetAtPath[R any](ctx context.Context, id string, extraPath ...string) (R, error) {
+func (c MeshObjectApi) GetAtPath[R any](ctx context.Context, id string, extraPath ...string) (R, error) {
 	return c.DoRequest[R](ctx, http.MethodGet, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.WithAccept(c.MeshObjectMimeType()))
 }
 
@@ -90,7 +97,7 @@ func (c MeshObjectClient[M]) Post[P any](ctx context.Context, payload P) (*M, er
 	return c.PostAtPath[*M](ctx, payload)
 }
 
-func (c MeshObjectClient[M]) PostAtPath[R, P any](ctx context.Context, payload P, extraPath ...string) (R, error) {
+func (c MeshObjectApi) PostAtPath[R, P any](ctx context.Context, payload P, extraPath ...string) (R, error) {
 	return c.DoRequest[R](ctx, http.MethodPost, c.ApiUrl.JoinPath(extraPath...),
 		http.WithAccept(c.MeshObjectMimeType()), c.withMeshObjectPayload(payload))
 }
@@ -99,34 +106,23 @@ func (c MeshObjectClient[M]) Put[P any](ctx context.Context, id string, payload 
 	return c.DoRequest[*M](ctx, http.MethodPut, c.ApiUrl.JoinPath(id), c.withMeshObjectPayload(payload), http.Retryable())
 }
 
-// withMeshObjectPayload takes P rather than an any because the `,embed` tag takes a struct, a
-// string-keyed map or a jsontext.Value, never an any.
-func (c MeshObjectClient[M]) withMeshObjectPayload[P any](payload P) http.RequestOption {
-	return http.WithJsonPayload(struct {
-		ApiVersion string `json:"apiVersion"`
-		Kind       string `json:"kind"`
-		Payload    P      `json:",embed"`
-	}{c.ApiVersion, c.Kind, payload}, c.MeshObjectMimeType())
-}
-
 func (c MeshObjectClient[M]) Delete(ctx context.Context, id string) (err error) {
 	return c.DeleteAtPath(ctx, id)
 }
 
-func (c MeshObjectClient[M]) DeleteAtPath(ctx context.Context, id string, extraPath ...string) (err error) {
+func (c MeshObjectApi) DeleteAtPath(ctx context.Context, id string, extraPath ...string) (err error) {
 	_, err = c.DoRequest[any](ctx, http.MethodDelete, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.Retryable(), http.WithAccept(c.MeshObjectMimeType()))
 	return
 }
 
 func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.RequestOption) iter.Seq2[M, error] {
-	return c.ListSeqAs[M](ctx, options...)
+	return c.ListSeqAs[M](ctx, ListOptions{}, options...)
 }
 
-func (c MeshObjectClient[M]) ListSeqAs[T any](ctx context.Context, options ...http.RequestOption) iter.Seq2[T, error] {
+func (c MeshObjectApi) ListSeqAs[T any](ctx context.Context, listOptions ListOptions, options ...http.RequestOption) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var noItem T
 		embeddedKey := pluralizeKind(c.Kind)
-		listOptions := ListOptionsFrom(ctx)
 
 		for pageNumber := 0; ; pageNumber++ {
 			response, err := c.getPage[T](ctx, listOptions, pageNumber, options)
@@ -166,7 +162,17 @@ type paginatedResponse[T any] struct {
 	Page     Page           `json:"page"`
 }
 
-func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, listOptions ListOptions, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
+// withMeshObjectPayload takes P rather than an any because the `,embed` tag takes a struct, a
+// string-keyed map or a jsontext.Value, never an any.
+func (c MeshObjectApi) withMeshObjectPayload[P any](payload P) http.RequestOption {
+	return http.WithJsonPayload(struct {
+		ApiVersion string `json:"apiVersion"`
+		Kind       string `json:"kind"`
+		Payload    P      `json:",embed"`
+	}{c.ApiVersion, c.Kind, payload}, c.MeshObjectMimeType())
+}
+
+func (c MeshObjectApi) getPage[T any](ctx context.Context, listOptions ListOptions, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
 	query := map[string]any{"page": pageNumber}
 	if listOptions.PageSize > 0 {
 		query["size"] = listOptions.PageSize
@@ -184,17 +190,6 @@ func (c MeshObjectClient[M]) getPage[T any](ctx context.Context, listOptions Lis
 type ListOptions struct {
 	PageSize int
 	OnPage   func(Page)
-}
-
-type listOptionsKey struct{}
-
-func WithListOptions(ctx context.Context, options ListOptions) context.Context {
-	return context.WithValue(ctx, listOptionsKey{}, options)
-}
-
-func ListOptionsFrom(ctx context.Context) ListOptions {
-	options, _ := ctx.Value(listOptionsKey{}).(ListOptions)
-	return options
 }
 
 func (c MeshObjectClient[M]) List(ctx context.Context, options ...http.RequestOption) ([]M, error) {

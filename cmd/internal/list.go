@@ -39,7 +39,15 @@ func ListWorkspace(ctx context.Context) (*string, error) {
 	return &workspace, nil
 }
 
-func (f *ListFlags) Run(cmd *cobra.Command, list func(ctx context.Context, meshStack client.Client) iter.Seq2[jsontext.Value, error]) error {
+// Run lists the objects of M that filter narrows.
+func (f *ListFlags) Run[M any](cmd *cobra.Command, filter any) error {
+	return f.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error] {
+		return meshStack.Raw.List[M](ctx, filter, options)
+	})
+}
+
+// RunSeq is Run for a listing that is not one kind's, such as the runs of every building block.
+func (f *ListFlags) RunSeq(cmd *cobra.Command, list func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error]) error {
 	ctx := cmd.Context()
 	meshStack, err := ResolveClient(ctx)
 	if err != nil {
@@ -56,7 +64,7 @@ func (f *ListFlags) Run(cmd *cobra.Command, list func(ctx context.Context, meshS
 		},
 	}
 	listed := 0
-	items := counted(First(list(client.WithListOptions(ctx, listOptions), meshStack), limit), &listed)
+	items := counted(First(list(ctx, meshStack, listOptions), limit), &listed)
 	if err := WriteList(cmd.OutOrStdout(), f.output.Format, items); err != nil {
 		return err
 	}

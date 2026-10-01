@@ -2,8 +2,6 @@ package client
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
@@ -34,6 +32,10 @@ type MeshWorkspaceCreateMetadata struct {
 	Tags map[string][]string `json:"tags" tfsdk:"tags"`
 }
 
+type MeshWorkspaceListFilter struct {
+	Sort SortCriteria `json:"sort"`
+}
+
 type MeshWorkspaceClient interface {
 	// List returns every workspace the credential can see. An unscoped user token reaches this and
 	// almost nothing else, which is why `meshstack auth login` prompts for a workspace from it.
@@ -54,10 +56,6 @@ func newWorkspaceClient(ctx context.Context, httpClient internal.HttpClient) mes
 
 func (c meshWorkspaceClient) List(ctx context.Context) ([]MeshWorkspace, error) {
 	return c.meshObject.List(ctx)
-}
-
-func (c meshWorkspaceClient) ListRawSeq(ctx context.Context) iter.Seq2[jsontext.Value, error] {
-	return c.meshObject.ListSeqAs[jsontext.Value](ctx)
 }
 
 func (c meshWorkspaceClient) Read(ctx context.Context, name string) (*MeshWorkspace, error) {

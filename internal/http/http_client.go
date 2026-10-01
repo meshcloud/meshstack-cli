@@ -43,13 +43,18 @@ func NewClient(userAgent string) Client {
 	return Client{sharedClient, userAgent}
 }
 
-// DoRequest sends one request and parses the answer as JSON. A non-2xx status is an Error that
-// carries the response body, because an OIDC endpoint answers a refusal with an error document
-// and that document is the only thing saying which refusal it was.
+// DoRequest sends one request and parses the answer as JSON, or returns it as it came, empty
+// included, for an R of []byte. A non-2xx status is an Error that carries the response body,
+// because an OIDC endpoint answers a refusal with an error document and that document is the only
+// thing saying which refusal it was.
 func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (result R, err error) {
 	var body []byte
 	body, err = c.doRequest(ctx, method, url, options)
 	if err != nil {
+		return
+	}
+	if raw, ok := any(&result).(*[]byte); ok {
+		*raw = body
 		return
 	}
 	if len(body) == 0 {
@@ -68,6 +73,17 @@ func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.UR
 }
 
 func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {
+	res, err := c.send(ctx, method, url, options)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+	return c.readBodyAndCheckSuccess(ctx, res)
+}
+
+func (c Client) send(ctx context.Context, method string, url *url.URL, options []RequestOption) (*gohttp.Response, error) {
 	if c.UserAgent != "" {
 		options = slices.Insert(options, 0,
 			withHeader("User-Agent", c.UserAgent),
@@ -81,14 +97,11 @@ func (c Client) doRequest(ctx context.Context, method string, url *url.URL, opti
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = res.Body.Close()
-	}()
-	return c.readBodyAndCheckSuccess(ctx, res)
+	return c.Do(req)
+}
+
+func isSuccess(statusCode int) bool {
+	return statusCode >= 200 && statusCode <= 299
 }
 
 func (c Client) readBodyAndCheckSuccess(ctx context.Context, res *gohttp.Response) ([]byte, error) {
@@ -98,7 +111,7 @@ func (c Client) readBodyAndCheckSuccess(ctx context.Context, res *gohttp.Respons
 	}
 	slog.DebugContext(ctx, "response", "status", res.StatusCode, "body", loggedBody{bytes.NewBuffer(responseBody)})
 
-	if res.StatusCode >= 200 && res.StatusCode <= 299 {
+	if isSuccess(res.StatusCode) {
 		return responseBody, nil
 	}
 

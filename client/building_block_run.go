@@ -2,11 +2,8 @@ package client
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"iter"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockRun struct {
@@ -43,7 +40,8 @@ type MeshBuildingBlockRunBuildingBlockSpec struct {
 }
 
 type MeshBuildingBlockRunListFilter struct {
-	BuildingBlockUuid string `json:"buildingBlockUuid"`
+	BuildingBlockUuid string       `json:"buildingBlockUuid"`
+	Sort              SortCriteria `json:"sort"`
 }
 
 type MeshBuildingBlockRunLogs struct {
@@ -69,10 +67,6 @@ func newBuildingBlockRunClient(ctx context.Context, httpClient internal.HttpClie
 	return meshBuildingBlockRunClient{
 		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockRun](ctx, httpClient, "v1"),
 	}
-}
-
-func (c meshBuildingBlockRunClient) ListRawSeq(ctx context.Context, filter MeshBuildingBlockRunListFilter) iter.Seq2[jsontext.Value, error] {
-	return c.meshObject.ListSeqAs[jsontext.Value](ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockRunClient) GetLogs(ctx context.Context, runUuid string) (MeshBuildingBlockRunLogs, error) {

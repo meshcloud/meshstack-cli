@@ -95,9 +95,10 @@ There is nothing to pull or push.
 
 **The provider implements the client's interfaces.** Its tests plug the mocks of its
 `internal/clientmock` into `client.Client`, so a method added to a `Mesh…Client` interface stops
-the provider compiling at its next bump. Put a method only the CLI calls behind an interface of its
-own on a new `client.Client` field, as `Listing` does: the provider fills the struct by field name
-and leaves a new field nil.
+the provider compiling at its next bump. Put a method only the CLI calls on a new `client.Client`
+field instead: an interface of its own, or a concrete type such as `*client.RawClient` when nothing
+mocks it. `client.New` sets the field for every caller, while the provider's mock client fills the
+struct by field name and leaves a new field unset.
 
 Reading the pre-import history takes both paths, since the imported history carries the files at
 the repository root and the import merge re-roots them under `client/`:

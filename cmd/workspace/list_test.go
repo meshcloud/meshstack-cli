@@ -2,7 +2,6 @@ package workspace_test
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	gohttp "net/http"
@@ -14,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
 func TestAListCutShortByTheLimitSaysHowManyThereAre(t *testing.T) {
@@ -37,7 +37,7 @@ func TestAListCutShortByTheLimitSaysHowManyThereAre(t *testing.T) {
 		}`, page)
 	}))
 	t.Cleanup(server.Close)
-	loggedInTo(t, server.URL)
+	testlogin.LoggedInTo(t, server.URL)
 	logs := capturedLogs(t)
 	var stdout bytes.Buffer
 	cmd := workspace.New()
@@ -49,16 +49,6 @@ func TestAListCutShortByTheLimitSaysHowManyThereAre(t *testing.T) {
 	assert.JSONEq(t, `[{"metadata":{"name":"workspace-0-a"}}]`, stdout.String())
 	assert.Contains(t, logs.String(), "listed the first 1 of 6")
 	assert.Equal(t, 1, requests)
-}
-
-// loggedInTo points the CLI at endpoint with a token that never expires: one without an expiry
-// counts as expired, and would be refreshed before the first request.
-func loggedInTo(t *testing.T, endpoint string) {
-	t.Helper()
-	t.Setenv("MESHSTACK_ENDPOINT", endpoint)
-	t.Setenv("MESHSTACK_API_TOKEN", "e30."+base64.RawURLEncoding.EncodeToString([]byte(`{"exp":4102444800}`))+".signature")
-	t.Setenv("MESHSTACK_SKIP_VERSION_CHECK", "true")
-	t.Setenv("MESHSTACK_CONFIG_DIR", t.TempDir())
 }
 
 func capturedLogs(t *testing.T) *bytes.Buffer {
