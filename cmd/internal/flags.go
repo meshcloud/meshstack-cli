@@ -12,8 +12,8 @@ import (
 var (
 	SkipVersionCheckFlag = NewFlagForSetting[bool]("skip-version-check", setting.SkipVersionCheck)
 	EndpointFlag         = NewFlagForSetting[string]("endpoint", setting.Endpoint)
-	WorkspaceFlag        = NewFlagForSetting[string]("workspace", setting.Workspace)
-	ProfileFlag          = NewFlagForSetting[string]("profile", setting.Profile)
+	WorkspaceFlag        = NewFlagForSetting[string]("workspace", setting.Workspace).WithShorthand("w")
+	ProfileFlag          = NewFlagForSetting[string]("profile", setting.Profile).WithShorthand("p")
 )
 
 func SettingSources() setting.Sources {
@@ -39,6 +39,7 @@ func (n FlagName) String() string {
 
 type Flag[T string | bool] struct {
 	Name          FlagName
+	Shorthand     string
 	Help          string
 	Value         T
 	SettingEnvKey string
@@ -48,12 +49,17 @@ func NewFlagForSetting[T string | bool](name FlagName, s setting.Setting) Flag[T
 	return Flag[T]{Name: name, Help: s.Help(), SettingEnvKey: s.EnvKey()}
 }
 
+func (flag Flag[T]) WithShorthand(shorthand string) Flag[T] {
+	flag.Shorthand = shorthand
+	return flag
+}
+
 func (flag *Flag[T]) Register(flags *pflag.FlagSet) (flagName string) {
 	switch v := any(&flag.Value).(type) {
 	case *string:
-		flags.StringVar(v, flag.Name.String(), *v, flag.Help)
+		flags.StringVarP(v, flag.Name.String(), flag.Shorthand, *v, flag.Help)
 	case *bool:
-		flags.BoolVar(v, flag.Name.String(), *v, flag.Help)
+		flags.BoolVarP(v, flag.Name.String(), flag.Shorthand, *v, flag.Help)
 	default:
 		panic(fmt.Sprintf("cannot register flag with value type %T", flag.Value))
 	}
