@@ -93,6 +93,12 @@ released version instead. Change the client here; the provider picks the change 
 its `meshstack-cli` requirement, so a break surfaces there, later, and not in this repository's CI.
 There is nothing to pull or push.
 
+**Read the API docs before extending `client/`**:
+[meshstack-openapi-docs.json](https://docs.meshcloud.io/api/meshstack-openapi-docs.json), or the
+[dev variant](https://docs.dev.meshcloud.io/api/meshstack-openapi-docs.json) for what is merged to
+`develop` but not released. The source is the controllers and meshObjects of `../meshfed-release`
+(*meshcloud-internal*).
+
 **The provider implements the client's interfaces.** Its tests plug the mocks of its
 `internal/clientmock` into `client.Client`, so a method added to a `Mesh…Client` interface stops
 the provider compiling at its next bump. Put a method only the CLI calls on a new `client.Client`
