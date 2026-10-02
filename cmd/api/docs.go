@@ -33,7 +33,7 @@ func NewDocs() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "api-docs [<path>]",
+		Use:   "api-docs [<path or URL>]",
 		Short: "Show what the meshStack API docs say about a request or a meshObject kind",
 		Long: `Show what the meshStack API docs say about a request, given as meshstack api takes it, or about
 the operations of a meshObject kind.
@@ -42,7 +42,8 @@ Given a path, it describes the operations that apply to the request: the summary
 the parameters and the fields of the request and response bodies of each, as Markdown. Replacing
 api by api-docs in a command line of meshstack api describes its request. The operations are those
 of every method unless --method names one, each in the latest version it offers unless
---api-version, an Accept or Content-Type header or the body's apiVersion names another.
+--api-version, an Accept or Content-Type header or the body's apiVersion names another. A full URL
+is read as the path below the endpoint of the profile that meshstack api would send it with.
 
 Without a path, it lists every operation of the API, or those of the method and version the flags
 name.
@@ -73,6 +74,18 @@ writable. ` + "`MESHSTACK_API_DOCS_URL`" + ` names another document, such as tha
 			}
 			if describe != "" && len(args) > 0 {
 				return fmt.Errorf("--%s takes no path, see --help", describeFlagName)
+			}
+			if r.target.IsAbs() {
+				endpoint, _, profileErr := profileFor(cmd.Context(), r.target)
+				if profileErr != nil {
+					return profileErr
+				}
+				if endpoint.URL == nil {
+					return fmt.Errorf("no stored profile holds %s; give the path relative to the endpoint", r.target.Redacted())
+				}
+				if err = r.cutTo(endpoint); err != nil {
+					return err
+				}
 			}
 			selector, err := flags.selector(r)
 			if err != nil {

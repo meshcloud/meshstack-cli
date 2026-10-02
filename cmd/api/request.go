@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/client/openapi"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/apidocs"
 )
@@ -75,11 +76,20 @@ func (f *requestFlags) parse(cmd *cobra.Command, args []string) (request, error)
 		if r.target, err = url.Parse(args[0]); err != nil {
 			return r, err
 		}
-		if r.target.Scheme != "" || r.target.Host != "" {
-			return r, fmt.Errorf("'%s' is not a path, write it relative to the endpoint", args[0])
+		if r.target.Host != "" && !r.target.IsAbs() {
+			return r, fmt.Errorf("'%s' names a host but no scheme; give a full URL or a path relative to the endpoint", args[0])
 		}
 	}
 	return r, nil
+}
+
+func (r *request) cutTo(endpoint xurl.URL) error {
+	path, held := endpoint.PathTo(r.target)
+	if !held {
+		return fmt.Errorf("endpoint %s does not hold %s", endpoint, r.target.Redacted())
+	}
+	r.target = &url.URL{Path: path, RawQuery: r.target.RawQuery}
+	return nil
 }
 
 func (f *requestFlags) selector(r request) (openapi.Selector, error) {

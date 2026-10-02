@@ -169,7 +169,7 @@ func TestApi(t *testing.T) {
 		for _, target := range []string{"https://example.com/api/x", "//example.com/api/x"} {
 			_, err := meshStack.run(t, api.New(), "", target)
 
-			require.ErrorContains(t, err, "is not a path")
+			require.ErrorContains(t, err, "example.com")
 			assert.Empty(t, meshStack.requests)
 		}
 	})

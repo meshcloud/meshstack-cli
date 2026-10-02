@@ -19,16 +19,21 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 func New() *cobra.Command {
 	var flags requestFlags
 
 	cmd := &cobra.Command{
-		Use:   "api <path>",
+		Use:   "api <path or URL>",
 		Short: "Send an authorized request to the meshStack API",
 		Long: `Send an authorized request to a path of the meshStack API, and write the answer, as indented JSON
 where it is JSON.
+
+The path is relative to the endpoint. A full URL, such as a _links href in an answer, is sent with
+the profile whose endpoint holds it, the longest one where several do. A URL that no profile holds
+is not sent. A profile or endpoint named by flag or environment must hold the URL.
 
 This reaches what the other commands do not cover, such as deleting a meshObject or reading a newer
 representation of it. meshStack versions a meshObject endpoint through its media type, and the
@@ -45,7 +50,8 @@ An answer outside 2xx still writes its body, and the command then fails.
 The same command line with api-docs in place of api describes the request.`,
 		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace'
   meshstack api -X DELETE /api/meshobjects/meshbuildingblocks/<uuid>/purge
-  meshstack api -X POST /api/meshobjects/meshworkspaces --request-json workspace.json`,
+  meshstack api -X POST /api/meshobjects/meshworkspaces --request-json workspace.json
+  meshstack api https://meshstack.example.com/api/meshobjects/meshworkspaces/my-workspace`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := flags.parse(cmd, args)
@@ -57,11 +63,24 @@ The same command line with api-docs in place of api describes the request.`,
 				return err
 			}
 			ctx := cmd.Context()
+			var profileSources setting.Sources
+			if r.target.IsAbs() {
+				if _, profileSources, err = profileFor(ctx, r.target); err != nil {
+					return err
+				}
+			}
 			// Resolved before the API docs, whose first download takes a while, so that a missing
 			// login fails at once.
-			meshStack, err := internal.ResolveClient(ctx)
+			meshStack, err := internal.ResolveClient(ctx, internal.WithSettingSources(profileSources))
 			if err != nil {
 				return err
+			}
+			if r.target.IsAbs() {
+				if err = r.cutTo(meshStack.Endpoint); err != nil {
+					return err
+				}
+				selector.Path = r.target.Path
+				args = []string{r.target.String()}
 			}
 			spec, wait, err := flags.loadApiDocs(cmd)
 			defer wait()

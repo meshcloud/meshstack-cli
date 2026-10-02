@@ -277,6 +277,12 @@ linters:
             - github.com/meshcloud/meshstack-cli/internal/http
             # the API docs choose the version of a request
             - github.com/meshcloud/meshstack-cli/internal/apidocs
+            # a full URL picks the stored profile whose endpoint holds it, and has to fit an endpoint
+            # or profile named by flag or environment, so api reads the stored profiles and the
+            # source of both settings, which pkg/ leaves out
+            - github.com/meshcloud/meshstack-cli/internal/profile
+            - github.com/meshcloud/meshstack-cli/internal/meshstack
+            - github.com/meshcloud/meshstack-cli/internal/setting
             - github.com/spf13/cobra
             # api-docs renders the flags of a failed request back into a command line
             - github.com/spf13/pflag

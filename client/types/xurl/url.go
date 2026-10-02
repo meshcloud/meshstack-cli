@@ -62,6 +62,20 @@ func (u URL) Clone() URL {
 	return URL{u.URL.Clone()}
 }
 
+// PathTo is the path of target below u, and false where u does not hold target. A near match, such
+// as https://x.io/ab for https://x.io/a, is false as well, because a caller sends u's credential to
+// target.
+func (u URL) PathTo(target *url.URL) (string, bool) {
+	if u.URL == nil || target == nil || !strings.EqualFold(target.Scheme, u.Scheme) || !strings.EqualFold(target.Host, u.Host) {
+		return "", false
+	}
+	path, found := strings.CutPrefix(target.Path, strings.TrimSuffix(u.Path, "/"))
+	if !found || path != "" && !strings.HasPrefix(path, "/") {
+		return "", false
+	}
+	return path, true
+}
+
 func (u URL) isLoopback() bool {
 	hostname := u.Hostname()
 	if hostname == "localhost" {

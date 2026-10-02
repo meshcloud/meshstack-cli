@@ -32,6 +32,12 @@ func SkipVersionCheck(opts *auth.ResolveClientOptions) {
 
 // ResolveClient is the only place a client is built, so every command sends the same user agent
 // and resolves the same global flags as settings.
-func ResolveClient(ctx context.Context) (client.Client, error) {
-	return auth.ResolveClient(ctx, ResolveClientOptions())
+func ResolveClient(ctx context.Context, modifiers ...ResolveClientOptionsModifier) (client.Client, error) {
+	return auth.ResolveClient(ctx, ResolveClientOptions(modifiers...))
+}
+
+func WithSettingSources(sources setting.Sources) ResolveClientOptionsModifier {
+	return func(opts *auth.ResolveClientOptions) {
+		opts.SettingSources = append(opts.SettingSources, sources...)
+	}
 }

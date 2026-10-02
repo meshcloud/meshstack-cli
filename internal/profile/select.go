@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
+	"strings"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 )
@@ -53,6 +55,51 @@ func (ps *Profiles) MatchingEndpoint(endpoint xurl.URL) (matching []Profile) {
 		matching = append(matching, *p)
 	}
 	return matching
+}
+
+// EndpointHolding returns the scheme and host of requestURL where no profile holds it: the endpoint
+// a profile for it would need.
+func (ps *Profiles) EndpointHolding(requestURL *url.URL) (endpoint xurl.URL, held bool) {
+	for _, p := range ps.Profiles {
+		if _, holds := p.Endpoint.PathTo(requestURL); holds && (endpoint.URL == nil || len(p.Endpoint.Path) > len(endpoint.Path)) {
+			endpoint = p.Endpoint
+		}
+	}
+	if endpoint.URL == nil {
+		return xurl.URL{URL: &url.URL{Scheme: requestURL.Scheme, Host: requestURL.Host}}, false
+	}
+	return endpoint, true
+}
+
+func (ps *Profiles) Holding(requestURL *url.URL) (p Profile, current bool, err error) {
+	endpoint, held := ps.EndpointHolding(requestURL)
+	if !held {
+		return Profile{}, false, fmt.Errorf("no stored profile has the endpoint %s of this URL; run 'meshstack login --endpoint %s' to create one",
+			endpoint, endpoint)
+	}
+	return ps.ForEndpoint(endpoint, requestURL)
+}
+
+// ForEndpoint takes the current one of the profiles sharing endpoint, and fails where none of them
+// is current rather than guess, as they can hold different credentials.
+func (ps *Profiles) ForEndpoint(endpoint xurl.URL, requestURL *url.URL) (p Profile, current bool, err error) {
+	matching := ps.MatchingEndpoint(endpoint)
+	isCurrent := func(p Profile) bool { return p.Name == ps.CurrentProfile }
+	switch {
+	case len(matching) == 0:
+		return Profile{}, false, fmt.Errorf("no stored profile has the endpoint %s; run 'meshstack login --endpoint %s' to create one", endpoint, endpoint)
+	case len(matching) == 1:
+		return matching[0], isCurrent(matching[0]), nil
+	}
+	if i := slices.IndexFunc(matching, isCurrent); i >= 0 {
+		return matching[i], true, nil
+	}
+	names := make([]string, 0, len(matching))
+	for _, p := range matching {
+		names = append(names, "'"+string(p.Name)+"'")
+	}
+	return Profile{}, false, fmt.Errorf("profiles %s are all for endpoint %s of %s, and none is the current profile; name one with --profile or %s",
+		strings.Join(names, ", "), endpoint, requestURL.Redacted(), NameSetting.EnvKey())
 }
 
 func (s Selection) Candidates() []*Profile {
