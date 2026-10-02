@@ -93,11 +93,11 @@ var (
 // because a tag key may contain a dot itself.
 const TagInputTargetSeparator = "."
 
-// TagInputTargetsFor follows what a building block sees: a workspace building block runs in the
+// TagInputTargets follows what a building block sees: a workspace building block runs in the
 // context of its workspace only, while a tenant building block also sees its project, and that
 // project's payment method and landing zone.
-func TagInputTargetsFor(targetType MeshBuildingBlockType) enum.Enum[MeshBuildingBlockTagInputTarget] {
-	if targetType == MeshBuildingBlockTypeWorkspaceLevel.Unwrap() {
+func (t MeshBuildingBlockType) TagInputTargets() enum.Enum[MeshBuildingBlockTagInputTarget] {
+	if t == MeshBuildingBlockTypeWorkspaceLevel.Unwrap() {
 		return enum.Of(MeshBuildingBlockTagInputTargetWorkspace)
 	}
 	return MeshBuildingBlockTagInputTargets
