@@ -98,8 +98,8 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 	// a refresh token it has already rotated away.
 	oidcLogin.StoreLogin(oidcToken)
 	if workspaceFromToken := oidcToken.AccessToken.GetClaim(jwt.WorkspaceClaim); workspace != meshstack.NoWorkspace && workspaceFromToken != workspace {
-		return fmt.Errorf("no access to workspace '%s': %s minted a token for workspace '%s' instead; check the workspace identifier, or ask for access to it in meshPanel",
-			workspace, oidcLogin.Issuer, workspaceFromToken)
+		slog.DebugContext(ctx, fmt.Sprintf("%s minted a token for workspace %s, not for %s", oidcLogin.Issuer, workspaceFromToken, workspace))
+		return meshstack.NoRoleInWorkspaceError{Workspace: workspace}
 	}
 	return nil
 }

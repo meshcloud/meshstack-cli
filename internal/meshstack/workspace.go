@@ -41,3 +41,29 @@ func (e NoWorkspaceToWorkInError) Error() string {
 	return "this login has no workspace to work in; ask for access to one in meshPanel"
 }
 
+// NoRoleInWorkspaceError is what a login gets that asks for a token for a workspace in which it has
+// no role. The issuer then mints a token for no workspace.
+type NoRoleInWorkspaceError struct {
+	Workspace Workspace
+	Existence Existence
+}
+
+type Existence int
+
+const (
+	ExistenceUnknown Existence = iota
+	Exists
+	DoesNotExist
+)
+
+func (e NoRoleInWorkspaceError) Error() string {
+	const roleNeeded = "A token for a workspace takes a role in it, also for an Organization Admin, whose login can still read the workspace without --workspace"
+	switch e.Existence {
+	case DoesNotExist:
+		return fmt.Sprintf("workspace '%s' does not exist; check its identifier", e.Workspace)
+	case Exists:
+		return fmt.Sprintf("this login has no role in workspace '%s'. %s", e.Workspace, roleNeeded)
+	default:
+		return fmt.Sprintf("this login has no role in workspace '%s', or the workspace does not exist. %s", e.Workspace, roleNeeded)
+	}
+}

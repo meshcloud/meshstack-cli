@@ -181,8 +181,13 @@ func (c MeshObjectApi) getPage[T any](ctx context.Context, listOptions ListOptio
 		http.WithAccept(c.MeshObjectMimeType()),
 		http.WithUrlQuery(query),
 	)...)
+	if err != nil && pageNumber > 0 {
+		// The first page fails for what fails the whole list, such as a missing role, and a page
+		// number would only distract from it.
+		return response, fmt.Errorf("cannot read page %d of the list: %w", pageNumber, err)
+	}
 	if err != nil {
-		return response, fmt.Errorf("error getting page %d: %w", pageNumber, err)
+		return response, err
 	}
 	return response, nil
 }
