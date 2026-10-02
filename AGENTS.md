@@ -149,6 +149,13 @@ installed that late constrains every log call, and `internal/http/logging.go` st
 - **Lint and format only via `task lint`**, and **never run `gofmt` or `go vet` separately** — a
   differently built gofmt enforces different formatting. A `PostToolUse` hook in
   `.claude/settings.json` formats every `.go` file an agent writes, so it rarely reaches the gate.
+- **Test against a live meshStack.** A command's behaviour is tested by an acceptance test in
+  `cmd/internal/testacc`, and a `client/` method by the provider's or the CLI's acceptance tests, so
+  request plumbing gets no unit test against a fake meshStack. A unit test pins only delicate
+  behaviour an acceptance test cannot reach reliably — concurrency, locking, token refresh, the
+  precedence of settings or credentials, parsing edge cases, exit codes, guards — and never
+  restates the code: many small unit tests cost more to keep than they catch. Write a test as few
+  top-level scenarios whose `t.Run` steps build on each other and share one setup.
 - **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`). While the CLI is at
   0.x, a breaking change, of `client/` included, takes no `!`: every minor release may break.
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
