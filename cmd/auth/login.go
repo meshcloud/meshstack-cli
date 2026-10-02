@@ -3,8 +3,10 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"uuid"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
@@ -15,10 +17,9 @@ import (
 )
 
 func NewLogin() *cobra.Command {
-	const apiKeyIdDefault = "<id>"
 	var (
 		openStdinFlag = newStdinFlag()
-		apiKeyFlag    = internal.NewFlagForSetting[string]("apikey", setting.ApiKeyClientId)
+		apiKeyFlag    = internal.NewFlagForSetting[uuid.UUID]("apikey", setting.ApiKeyClientId)
 		apiTokenFlag  = internal.NewFlagForSetting[bool]("apitoken", setting.ApiToken)
 		output        internal.ShowFlag
 	)
@@ -59,13 +60,9 @@ It ends with what meshstack auth status shows for the new login.`,
 			switch {
 			case cmd.Flags().Changed(apiKeyFlag.Name.String()):
 				authWith = credential.ApiKeyName
-				if apiKeyFlag.Value == "" {
-					return fmt.Errorf("the API key id is empty; --%s= was given without an id; specify --%s to read from env",
-						apiKeyFlag.Name, apiKeyFlag.Name)
-				}
 				opts.SettingSources = append(opts.SettingSources,
-					apiKeyFlag.AsSourceUnless(func(value string) bool {
-						return value == apiKeyIdDefault
+					apiKeyFlag.AsSourceUnless(func(id uuid.UUID) bool {
+						return id == uuid.Nil()
 					}),
 					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), &openStdinFlag, promptedFrom, "API Client Secret"),
 				)
@@ -116,11 +113,27 @@ It ends with what meshstack auth status shows for the new login.`,
 		apiKeyFlag.Register(cmd.Flags()),
 		apiTokenFlag.Register(cmd.Flags()),
 	)
+	apiKeyOption := cmd.Flags().Lookup(apiKeyFlag.Name.String())
 	// NoOptDefVal is what makes a bare --apikey, with no value after it, parse.
-	cmd.Flags().Lookup(apiKeyFlag.Name.String()).NoOptDefVal = apiKeyIdDefault
+	apiKeyOption.NoOptDefVal = apiKeyIdFromEnvironment
+	apiKeyOption.Value = bareApiKeyFlag{apiKeyOption.Value}
 
 	openStdinFlag.Register(cmd.Flags())
 	output.Register(cmd.Flags())
 
 	return cmd
+}
+
+const apiKeyIdFromEnvironment = "<id>"
+
+type bareApiKeyFlag struct{ pflag.Value }
+
+func (f bareApiKeyFlag) Set(id string) error {
+	switch id {
+	case apiKeyIdFromEnvironment:
+		return nil
+	case "":
+		return errors.New("the API key id is empty; give a bare --apikey to read it from the environment")
+	}
+	return f.Value.Set(id)
 }
