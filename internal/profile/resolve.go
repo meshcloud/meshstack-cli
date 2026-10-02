@@ -103,11 +103,11 @@ func resolveProfile(ctx context.Context, opts ResolveProfileOptions, loadProfile
 	} else {
 		slog.InfoContext(ctx, fmt.Sprintf("Creating profile '%s'", name))
 	}
-	created, err := addProfile(ctx, opts, &profiles, name)
+	created, err := profiles.addCurrent(ctx, opts, name)
 	return created, profiles, err
 }
 
-func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts ResolveProfileOptions) (string, error) {
+func (ps *Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts ResolveProfileOptions) (string, error) {
 	endpoint, found, err := opts.resolveEndpointIfAny(ctx)
 	if err != nil || !found {
 		return "", err
@@ -120,7 +120,7 @@ func (ps Profiles) findProfileNameByMatchingEndpoint(ctx context.Context, opts R
 	return "", nil
 }
 
-func (ps Profiles) SelectionFor(ctx context.Context, opts ResolveProfileOptions) (Selection, error) {
+func (ps *Profiles) SelectionFor(ctx context.Context, opts ResolveProfileOptions) (Selection, error) {
 	selection := ps.Selection()
 	endpoint, found, err := opts.resolveEndpointIfAny(ctx)
 	if found {

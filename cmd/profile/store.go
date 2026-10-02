@@ -52,7 +52,7 @@ func put(ctx context.Context, profiles *profile.Profiles, original *profile.Prof
 			profiles.CurrentProfile = edited.Name
 		}
 	}
-	profile.Add(profiles, edited)
+	profiles.Add(edited)
 	if profiles.CurrentProfile == "" {
 		profiles.CurrentProfile = edited.Name
 	}

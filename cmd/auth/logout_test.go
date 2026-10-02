@@ -42,7 +42,7 @@ func TestLogoutRemovesTheCredentialsOfTheProfile(t *testing.T) {
 	withEmptyConfigDir(t)
 	profiles, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{})
 	require.NoError(t, err)
-	dev := profile.Add(&profiles, profile.Profile{Name: "dev", Endpoint: xurl.MustParsef("https://localhost:1")})
+	dev := profiles.Add(profile.Profile{Name: "dev", Endpoint: xurl.MustParsef("https://localhost:1")})
 	require.NoError(t, profiles.Store(t.Context()))
 	creds, err := dev.Credentials(t.Context())
 	require.NoError(t, err)

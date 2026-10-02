@@ -36,7 +36,7 @@ func TestLoadProfilesWithExclusiveLockHoldsTheLockNextToProfilesJsonUntilUnlock(
 	require.NoError(t, err)
 	assert.DirExists(t, dir, "the configuration directory is created, as there is no lock without it")
 	assert.False(t, lockIsFree(t, dir))
-	Add(&profiles, Profile{Name: "dev"})
+	profiles.Add(Profile{Name: "dev"})
 	require.NoError(t, profiles.Store(t.Context()), "the holder stores under its own lock")
 	require.NoError(t, profiles.Unlock())
 	assert.True(t, lockIsFree(t, dir), "Unlock returns once the lock is free")

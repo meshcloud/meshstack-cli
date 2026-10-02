@@ -152,7 +152,7 @@ func TestAddPutsAProfileIntoTheConfigDirectoryOfTheProfiles(t *testing.T) {
 	profiles, err := LoadProfiles(t.Context(), LoadProfilesOptions{})
 	require.NoError(t, err)
 
-	added := Add(&profiles, Profile{Name: "dev", Endpoint: testEndpoint, ConfigDir: "elsewhere"})
+	added := profiles.Add(Profile{Name: "dev", Endpoint: testEndpoint, ConfigDir: "elsewhere"})
 
 	assert.Equal(t, config.Directory(configDir), added.ConfigDir)
 	assert.Same(t, added, profiles.Profiles["dev"])

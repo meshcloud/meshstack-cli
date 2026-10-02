@@ -68,32 +68,31 @@ func LoadProfiles(ctx context.Context, opts LoadProfilesOptions) (profiles Profi
 	return
 }
 
-func (ps Profiles) Store(ctx context.Context) error {
+func (ps *Profiles) Store(ctx context.Context) error {
 	return json.MarshalTo(ctx, ps.configDir.ProfilesJson(), ps)
 }
 
 // Unlock releases the lock of LoadProfilesOptions.ExclusiveLock, and does nothing for profiles
 // loaded without it or unlocked already.
-func (ps Profiles) Unlock() error {
+func (ps *Profiles) Unlock() error {
 	if ps.unlock == nil {
 		return nil
 	}
 	return ps.unlock()
 }
 
-// Add puts p into profiles under its name, replacing any profile of that name.
-func Add(profiles *Profiles, p Profile) *Profile {
-	p.init(p.Name, profiles.configDir)
-	if profiles.Profiles == nil {
-		profiles.Profiles = make(map[Name]*Profile, 1)
+func (ps *Profiles) Add(p Profile) *Profile {
+	p.init(p.Name, ps.configDir)
+	if ps.Profiles == nil {
+		ps.Profiles = make(map[Name]*Profile, 1)
 	}
-	profiles.Profiles[p.Name] = &p
+	ps.Profiles[p.Name] = &p
 	return &p
 }
 
-func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profiles, name Name) (*Profile, error) {
-	added := Add(profiles, Profile{Name: name})
-	profiles.CurrentProfile = name
+func (ps *Profiles) addCurrent(ctx context.Context, opts ResolveProfileOptions, name Name) (*Profile, error) {
+	added := ps.Add(Profile{Name: name})
+	ps.CurrentProfile = name
 
 	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)
 	if opts.EndpointOptional && errors.Is(err, setting.ErrNoSourceProvidedValue) {
@@ -107,7 +106,7 @@ func addProfile(ctx context.Context, opts ResolveProfileOptions, profiles *Profi
 	return added, nil
 }
 
-func (ps Profiles) validate() (err error) {
+func (ps *Profiles) validate() (err error) {
 	if ps.Version != version {
 		err = errors.Join(err, fmt.Errorf("version in %s mismatch %d vs expected %d", ps.configDir, ps.Version, version))
 	}
