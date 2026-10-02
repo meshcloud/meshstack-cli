@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"time"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
@@ -13,8 +14,8 @@ type MeshBuildingBlockRun struct {
 }
 
 type MeshBuildingBlockRunMetadata struct {
-	Uuid      string `json:"uuid"`
-	CreatedOn string `json:"createdOn"`
+	Uuid      string    `json:"uuid"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type MeshBuildingBlockRunSpec struct {
