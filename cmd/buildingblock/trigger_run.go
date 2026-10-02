@@ -33,7 +33,7 @@ The command returns once meshStack has accepted the run, and does not wait for i
 				return err
 			}
 			buildingBlockUuid := args[0]
-			if err := meshStack.BuildingBlockV2.TriggerRun(ctx, buildingBlockUuid); err != nil {
+			if _, err := meshStack.BuildingBlockV2.TriggerRun(ctx, buildingBlockUuid); err != nil {
 				return err
 			}
 			slog.InfoContext(ctx, fmt.Sprintf("meshStack accepted a run of building block %s. Follow it with `meshstack buildingblockrun list --building-block %s`",

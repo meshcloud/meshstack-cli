@@ -1,6 +1,9 @@
 package client
 
 import (
+	"io"
+	gohttp "net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -192,4 +195,48 @@ func TestMeshBuildingBlockV2_CreateSuccessful(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTriggerRunAnswersWithTheBuildingBlockMeshStackAccepted(t *testing.T) {
+	var request string
+	server := httptest.NewTestServer(t, gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		request = r.Method + " " + r.URL.Path + " " + string(body)
+		w.WriteHeader(gohttp.StatusAccepted)
+		_, _ = io.WriteString(w, `{
+			"kind": "meshBuildingBlock",
+			"apiVersion": "v2-preview",
+			"metadata": {"uuid": "87ce02e9-4608-41f2-adf7-3d0aac496d06", "ownedByWorkspace": "my-workspace"},
+			"spec": {
+				"buildingBlockDefinitionVersionRef": {"uuid": "c02cf622-2d9f-47b1-b42a-dff09b5fe1b2", "kind": "meshBuildingBlockDefinitionVersion"},
+				"targetRef": {"uuid": "45f02516-b29e-4df4-b6d2-9d3dbff9ac26", "kind": "meshTenant"},
+				"displayName": "My BuildingBlock",
+				"inputs": {},
+				"parentBuildingBlockRefs": []
+			},
+			"status": {
+				"status": "PENDING",
+				"healthStatus": "FAILED",
+				"action": "PENDING",
+				"outputs": {},
+				"latestRunUuid": "e2e00003-0000-4000-8000-000000000003",
+				"runStartFailure": "meshStack could not start a run for this Building Block.",
+				"runStartFailedOn": "2026-10-01T15:51:39.619819807Z",
+				"forcePurge": false,
+				"lifecycle": {"state": "ACTIVE"}
+			}
+		}`)
+	}))
+	buildingBlocks := newBuildingBlockV2Client(t.Context(), newTestHttpClient(server))
+
+	accepted, err := buildingBlocks.TriggerRun(t.Context(), "87ce02e9-4608-41f2-adf7-3d0aac496d06")
+	require.NoError(t, err)
+
+	assert.Equal(t, `POST /api/meshobjects/meshbuildingblocks/87ce02e9-4608-41f2-adf7-3d0aac496d06/trigger-run {"apiVersion":"v2-preview","kind":"meshBuildingBlock","dryRun":false}`, request)
+	require.NotNil(t, accepted.Status)
+	assert.Equal(t, BuildingBlockStatusPending, accepted.Status.Status)
+	assert.Equal(t, new("e2e00003-0000-4000-8000-000000000003"), accepted.Status.LatestRunUuid)
+	assert.Equal(t, new("meshStack could not start a run for this Building Block."), accepted.Status.RunStartFailure)
+	assert.Equal(t, new("2026-10-01T15:51:39.619819807Z"), accepted.Status.RunStartFailedOn)
 }

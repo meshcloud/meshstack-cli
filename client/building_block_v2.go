@@ -249,6 +249,11 @@ type MeshBuildingBlockV2Status struct {
 	// LatestDryRunUuid is the latest dry (DETECT) run, but only when it is the newest run; nil otherwise.
 	// Ungated like LatestRunUuid.
 	LatestDryRunUuid *string `json:"latestDryRunUuid" tfsdk:"latest_dry_run_uuid"`
+	// RunStartFailure says why meshStack could not start the run it was last asked for, phrased for the
+	// user, and is nil while nothing stands in the way of a run. meshStack records it, and stamps
+	// RunStartFailedOn anew, each time a request for a run fails to start one.
+	RunStartFailure  *string `json:"runStartFailure" tfsdk:"-"`
+	RunStartFailedOn *string `json:"runStartFailedOn" tfsdk:"-"`
 }
 
 type MeshBuildingBlockOutput struct {
@@ -292,7 +297,7 @@ type MeshBuildingBlockV2Client interface {
 	Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
 	Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
 	Delete(ctx context.Context, uuid string, purge bool) error
-	TriggerRun(ctx context.Context, uuid string) error
+	TriggerRun(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
 }
 
 type meshBuildingBlockV2Client struct {
@@ -389,11 +394,13 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 	return
 }
 
-func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (err error) {
+// TriggerRun answers with the building block as meshStack left it on accepting the run: Status.Status
+// is PENDING, while LatestRunUuid, RunStartFailure and RunStartFailedOn still report the request
+// before, because meshStack starts the run, or records why it could not, only after it answered.
+func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (*MeshBuildingBlockV2, error) {
 	// dryRun is not optional to the endpoint once a body is sent, so it goes out as false rather
 	// than being omitted.
-	_, err = c.meshObject.PostAtPath[any](ctx, struct {
+	return c.meshObject.PostAtPath[*MeshBuildingBlockV2](ctx, struct {
 		DryRun bool `json:"dryRun"`
 	}{}, bbUuid, "trigger-run")
-	return
 }
