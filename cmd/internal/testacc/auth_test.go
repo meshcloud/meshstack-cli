@@ -1,6 +1,7 @@
 package testacc
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,6 +30,28 @@ func TestAccApiTokenFromTheEnvironmentWinsOverTheStoredOne(t *testing.T) {
 	c.setEnv(setting.ApiToken.EnvKey(), "")
 	output, err = c.run("", "workspace", "list")
 	assert.NoErrorf(t, err, "the stored token no longer works:\n%s", output)
+}
+
+func TestAccAnInputThatEndsBeforeTheProfileSelectionTakesTheCurrentProfile(t *testing.T) {
+	c := newCLI(t, requireLocalStack(t)).withApiKey()
+	for _, name := range []string{"other", "current"} {
+		c.setEnv(envProfile, name)
+		output, err := c.run("", "login", "--apikey")
+		require.NoErrorf(t, err, "the API key login to profile %s did not finish:\n%s", name, output)
+	}
+	c.setEnv(envProfile, "")
+
+	output, err := c.run("", "login", "--apikey")
+	require.NoErrorf(t, err, "the API key login did not take the current profile:\n%s", output)
+	output, err = c.run("", "auth", "logout")
+	require.NoErrorf(t, err, "the logout did not take the current profile:\n%s", output)
+
+	assert.NoFileExists(t, c.credentialsJsonOf("current"))
+	assert.FileExists(t, c.credentialsJsonOf("other"))
+}
+
+func (c *cli) credentialsJsonOf(profile string) string {
+	return filepath.Join(c.configDir, "credentials", profile+".json")
 }
 
 // apiKeyToken logs in with the API key of this suite, for a token that meshStack honours.
