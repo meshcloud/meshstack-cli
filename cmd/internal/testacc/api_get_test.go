@@ -65,60 +65,33 @@ type objectField struct {
 	kind, field string
 }
 
-// TestAccEveryGetOperationAnswers sends every GET of the API docs of meshStack's develop branch, in
-// the latest version it offers, to the local stack, once as an organization admin of a browser login
-// and once with the API key. A path parameter takes its value from the first object the list of the
-// kind answers with, and an operation whose list answers none is skipped.
-func TestAccEveryGetOperationAnswers(t *testing.T) {
-	endpoint := requireLocalStack(t)
-	spec := devApiDocs(t)
-	admin := organizationAdmin(t, devLogins(t))
-
-	logins := []struct {
-		name   string
-		login  func(t *testing.T) *cli
-		apiKey bool
-	}{
-		{"browser login of " + admin.Username, func(t *testing.T) *cli {
-			t.Helper()
-			c := newCLI(t, endpoint)
-			c.setEnv(envWorkspace, admin.workspace)
-			run := startLogin(t, c, "")
-			completeKeycloakLogin(t, run.awaitStartURL(t), "read", admin.Username, admin.Password)
-			require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
-			return c
-		}, false},
-		{"API key login", loggedInWithApiKey, true},
-	}
-	// The GETs of a login run in parallel once its function returns, and the login ends after they all
-	// have, so the logins, which set the environment, never overlap.
-	for _, login := range logins {
-		t.Run(login.name, func(t *testing.T) {
-			objects := firstObjects{spec: spec, meshStack: login.login(t).client(t)}
-			gets, err := spec.Select(openapi.Selector{Method: gohttp.MethodGet})
-			require.NoError(t, err)
-			require.NotEmpty(t, gets.Operations, "the API docs list no GET operation, so this test would pass without sending one")
-			for _, operation := range gets.Operations {
-				t.Run(strings.TrimSpace("GET "+operation.PathTemplate+" "+operation.LatestApiVersion().String()), func(t *testing.T) {
-					t.Parallel()
-					exception := getExceptions[operation.PathTemplate]
-					if exception.skip != "" {
-						t.Skip(exception.skip)
-					}
-					if exception.apiKeyOnly != "" && !login.apiKey {
-						t.Skip(exception.apiKeyOnly)
-					}
-					r, skip, err := objects.fill(t.Context(), operation, exception)
-					require.NoError(t, err)
-					if skip != "" {
-						t.Skip(skip)
-					}
-					status, body, err := objects.get(t.Context(), r, operation)
-					require.NoError(t, err)
-					assert.Truef(t, status >= 200 && status < 300, "GET %s answered %d: %s", r, status, body)
-				})
-			}
-		})
+func everyGetOperationAnswers(c *cli, apiKey bool) func(*testing.T) {
+	return func(t *testing.T) {
+		spec := devApiDocs(t)
+		objects := firstObjects{spec: spec, meshStack: c.client(t)}
+		gets, err := spec.Select(openapi.Selector{Method: gohttp.MethodGet})
+		require.NoError(t, err)
+		require.NotEmpty(t, gets.Operations, "the API docs list no GET operation, so this test would pass without sending one")
+		for _, operation := range gets.Operations {
+			t.Run(strings.TrimSpace("GET "+operation.PathTemplate+" "+operation.LatestApiVersion().String()), func(t *testing.T) {
+				t.Parallel()
+				exception := getExceptions[operation.PathTemplate]
+				if exception.skip != "" {
+					t.Skip(exception.skip)
+				}
+				if exception.apiKeyOnly != "" && !apiKey {
+					t.Skip(exception.apiKeyOnly)
+				}
+				r, skip, err := objects.fill(t.Context(), operation, exception)
+				require.NoError(t, err)
+				if skip != "" {
+					t.Skip(skip)
+				}
+				status, body, err := objects.get(t.Context(), r, operation)
+				require.NoError(t, err)
+				assert.Truef(t, status >= 200 && status < 300, "GET %s answered %d: %s", r, status, body)
+			})
+		}
 	}
 }
 
@@ -159,7 +132,10 @@ func devApiDocs(t *testing.T) openapi.Spec {
 func (c *cli) client(t *testing.T) client.Client {
 	t.Helper()
 	c.applyEnv()
-	meshStack, err := auth.ResolveClient(t.Context(), resolveOptions())
+	meshStack, err := auth.ResolveClient(t.Context(), auth.ResolveClientOptions{
+		Version:    "testacc",
+		GitHubRepo: "meshcloud/meshstack-cli",
+	})
 	require.NoError(t, err)
 	return meshStack
 }

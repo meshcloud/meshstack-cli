@@ -42,13 +42,16 @@ func devLogins(t *testing.T) []devLogin {
 // keycloak lets a login with no workspace in, and the workspace list then answers 403.
 const refusedWithoutAWorkspace = "cannot list workspaces"
 
-// TestAccOidcLogin drives the authorization code flow with no browser and no terminal, which is the
-// shape CI has: the CLI prints the URL of its access level page to stderr and waits on a loopback
+// TestAccBrowserLogin drives the authorization code flow with no browser and no terminal, which is
+// the shape CI has: the CLI prints the URL of its access level page to stderr and waits on a loopback
 // listener, so anything that can read stderr and speak HTTP can finish the login.
-func TestAccOidcLogin(t *testing.T) {
+func TestAccBrowserLogin(t *testing.T) {
 	endpoint := requireLocalStack(t)
 	issuer := meshInfo(t, endpoint).Issuer.String()
 	logins := devLogins(t)
+	// This has to come before the first command, because every command blanks the API key in the
+	// environment that withApiKey reads.
+	apiKey := newCLI(t, endpoint).withApiKey()
 
 	t.Run("a wrong password logs nobody in", func(t *testing.T) {
 		c := newCLI(t, endpoint)
@@ -65,7 +68,7 @@ func TestAccOidcLogin(t *testing.T) {
 	})
 
 	for _, login := range logins {
-		t.Run(login.Username, func(t *testing.T) {
+		t.Run(login.Username+" logs in, unless it has no workspace", func(t *testing.T) {
 			c := newCLI(t, endpoint)
 			run := startLogin(t, c, "1")
 
@@ -84,13 +87,13 @@ func TestAccOidcLogin(t *testing.T) {
 		})
 	}
 
+	withWorkspace := firstLoginWithAWorkspace(t, logins)
 	t.Run("a changed access level asks for consent again", func(t *testing.T) {
-		login := firstLoginWithAWorkspace(t, logins)
 		c := newCLI(t, endpoint)
 		loginWith := func(level string) (askedForConsent bool) {
 			run := startLogin(t, c, "1")
 			startURL := run.awaitStartURL(t)
-			askedForConsent = completeKeycloakLogin(t, startURL, level, login.Username, login.Password)
+			askedForConsent = completeKeycloakLogin(t, startURL, level, withWorkspace.Username, withWorkspace.Password)
 			require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
 			assert.Equal(t, level, storedAccessLevel(t, c), "the credential keeps the chosen access level")
 			return
@@ -100,6 +103,19 @@ func TestAccOidcLogin(t *testing.T) {
 		assert.True(t, loginWith("write"), "a changed access level must ask for consent again")
 		assert.False(t, loginWith("write"), "the same access level must reuse the consent keycloak remembers")
 	})
+
+	t.Run("a login holds the profiles until the browser comes back", browserLoginHoldsTheProfiles(endpoint, withWorkspace))
+
+	admin := organizationAdmin(t, logins)
+	c := newCLI(t, endpoint)
+	c.setEnv(envWorkspace, admin.workspace)
+	t.Run("an organization admin logs in with read access", func(t *testing.T) {
+		run := startLogin(t, c, "")
+		completeKeycloakLogin(t, run.awaitStartURL(t), "read", admin.Username, admin.Password)
+		require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
+	})
+	t.Run("every GET operation answers the organization admin", everyGetOperationAnswers(c, false))
+	t.Run("tfstate of a browser login says that it takes an API key", tfstateTakesAnApiKey(c, apiKey))
 }
 
 func firstLoginWithAWorkspace(t *testing.T, logins []devLogin) devLogin {
@@ -122,21 +138,23 @@ func storedAccessLevel(t *testing.T, c *cli) string {
 	return credentials.OidcLogin.AccessLevel
 }
 
-// TestAccApiKeyLogin logs in with the API key the Terraform provider's acceptance suite uses, and
-// finishes with the token that login cached: reading it back off disk is the only way to reach
-// --apitoken without minting a token, and a configuration directory is writable in CI too.
+// TestAccApiKeyLogin logs in with the API key the Terraform provider's acceptance suite uses, whose
+// ADM_ rights reach every workspace, and runs the commands that need no person with it.
 func TestAccApiKeyLogin(t *testing.T) {
 	endpoint := requireLocalStack(t)
 	c := newCLI(t, endpoint).withApiKey()
 
-	// A bare --apikey reads the id from the environment, which is what its NoOptDefVal is for.
-	output, err := c.run("1\n", "login", "--apikey")
-	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
-	assert.Contains(t, output, "| meshStack | ", "the login shows the status, with the meshStack it reached")
-	requireStoredLogin(t, c, output)
-	requireAuthStatus(t, c, "API key")
+	t.Run("a bare --apikey logs in with the key of the environment", func(t *testing.T) {
+		output, err := c.run("1\n", "login", "--apikey")
+		require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
+		assert.Contains(t, output, "| meshStack | ", "the login shows the status, with the meshStack it reached")
+		requireStoredLogin(t, c, output)
+		requireAuthStatus(t, c, "API key")
+	})
 
-	t.Run("--apitoken sends the token the API key login cached", func(t *testing.T) {
+	// Reading the token the API key login cached back off disk is the only way to reach --apitoken
+	// without minting a token, and a configuration directory is writable in CI too.
+	t.Run("--apitoken logs in with the token the API key login cached", func(t *testing.T) {
 		withToken := newCLI(t, endpoint)
 		withToken.setEnv(setting.ApiToken.EnvKey(), cachedApiKeyToken(t, c))
 
@@ -146,6 +164,14 @@ func TestAccApiKeyLogin(t *testing.T) {
 		require.FileExists(t, withToken.credentialsJson())
 		requireAuthStatus(t, withToken, "API token")
 	})
+
+	t.Run("every list command answers", everyListCommandAnswers(c))
+	t.Run("every GET operation answers the API key", everyGetOperationAnswers(c, true))
+	t.Run("a meshObject endpoint refuses JSON, and api sends --request-json in its media type", apiAsksForJson(c))
+	t.Run("trigger-run names the run it started", triggerRunNamesTheRunItStarted(c))
+	t.Run("the run list of every building block is newest first", runListIsNewestFirst(c))
+	t.Run("following a finished run writes its logs and ends", followOfAFinishedRunWritesItsLogsAndEnds(c))
+	t.Run("tfstate exec stores and reads a state through the proxy", tfstateStoresAndReadsAState(c))
 }
 
 // withApiKey gives c the API key of this suite, for a login with --apikey.
@@ -153,14 +179,6 @@ func (c *cli) withApiKey() *cli {
 	c.t.Helper()
 	c.setEnv(setting.ApiKeyClientId.EnvKey(), requireEnv(c.t, setting.ApiKeyClientId.EnvKey()))
 	c.setEnv(setting.ApiKeyClientSecret.EnvKey(), requireEnv(c.t, setting.ApiKeyClientSecret.EnvKey()))
-	return c
-}
-
-func loggedInWithApiKey(t *testing.T) *cli {
-	t.Helper()
-	c := newCLI(t, requireLocalStack(t)).withApiKey()
-	output, err := c.run("", "login", "--apikey")
-	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
 	return c
 }
 
