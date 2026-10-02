@@ -27,74 +27,58 @@ func lockIsFree(t *testing.T, dir string) bool {
 
 var exclusively = LoadProfilesOptions{ExclusiveLock: true}
 
-func TestLoadProfilesWithExclusiveLockHoldsTheLockNextToProfilesJsonUntilUnlock(t *testing.T) {
+func TestTheExclusiveLockOfTheProfiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "not-yet")
 	t.Setenv(config.DirectorySetting.EnvKey(), dir)
 
-	profiles, err := LoadProfiles(t.Context(), exclusively)
+	t.Run("is held next to profiles.json until Unlock", func(t *testing.T) {
+		profiles, err := LoadProfiles(t.Context(), exclusively)
 
-	require.NoError(t, err)
-	assert.DirExists(t, dir, "the configuration directory is created, as there is no lock without it")
-	assert.False(t, lockIsFree(t, dir))
-	profiles.Add(Profile{Name: "dev"})
-	require.NoError(t, profiles.Store(t.Context()), "the holder stores under its own lock")
-	require.NoError(t, profiles.Unlock())
-	assert.True(t, lockIsFree(t, dir), "Unlock returns once the lock is free")
-	require.NoError(t, profiles.Unlock(), "a second Unlock releases nothing")
-}
+		require.NoError(t, err)
+		assert.DirExists(t, dir, "the configuration directory is created, as there is no lock without it")
+		assert.False(t, lockIsFree(t, dir))
+		profiles.Add(Profile{Name: "dev"})
+		require.NoError(t, profiles.Store(t.Context()), "the holder stores under its own lock")
+		require.NoError(t, profiles.Unlock())
+		assert.True(t, lockIsFree(t, dir), "Unlock returns once the lock is free")
+		require.NoError(t, profiles.Unlock(), "a second Unlock releases nothing")
+	})
 
-func TestLoadProfilesWithExclusiveLockFailsWhileAnotherCommandHoldsTheLock(t *testing.T) {
-	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
-	held, err := LoadProfiles(t.Context(), exclusively)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, held.Unlock()) }()
+	t.Run("fails another exclusive load after lockWaitTime, and lets a load that only reads go ahead at once", func(t *testing.T) {
+		held, err := LoadProfiles(t.Context(), exclusively)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, held.Unlock()) }()
 
-	synctest.Test(t, func(t *testing.T) {
-		start := time.Now()
+		synctest.Test(t, func(t *testing.T) {
+			start := time.Now()
+			_, err := LoadProfiles(t.Context(), exclusively)
+			require.ErrorIs(t, err, ErrInUse, "a load that takes it fails")
+			assert.Equal(t, lockWaitTime, time.Since(start))
+
+			start = time.Now()
+			profiles, err := LoadProfiles(t.Context(), LoadProfilesOptions{})
+			require.NoError(t, err, "a load without ExclusiveLock only reads, and takes no lock")
+			assert.Zero(t, time.Since(start), "and does not wait")
+			require.NoError(t, profiles.Unlock(), "Unlock does nothing for it")
+		})
+		assert.False(t, lockIsFree(t, dir), "the other command still holds the lock")
+	})
+
+	t.Run("is released where ResolveProfile fails", func(t *testing.T) {
+		t.Setenv(NameSetting.EnvKey(), "missing")
+
+		_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{StoredOnly: true, ExclusiveLock: true})
+
+		require.ErrorIs(t, err, ErrNoStoredProfile)
+		assert.True(t, lockIsFree(t, dir))
+	})
+
+	t.Run("is released where the profiles are invalid", func(t *testing.T) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "profiles.json"), []byte(`{"version":0}`), 0o600))
 
 		_, err := LoadProfiles(t.Context(), exclusively)
 
-		require.ErrorIs(t, err, ErrInUse)
-		assert.Equal(t, lockWaitTime, time.Since(start))
+		require.ErrorContains(t, err, "version in")
+		assert.True(t, lockIsFree(t, dir))
 	})
-}
-
-func TestLoadProfilesWithoutExclusiveLockTakesNoLock(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(config.DirectorySetting.EnvKey(), dir)
-	held, err := LoadProfiles(t.Context(), exclusively)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, held.Unlock()) }()
-
-	synctest.Test(t, func(t *testing.T) {
-		start := time.Now()
-
-		profiles, err := LoadProfiles(t.Context(), LoadProfilesOptions{})
-
-		require.NoError(t, err, "a load without ExclusiveLock only reads, while another command holds the lock")
-		assert.Zero(t, time.Since(start), "and does not wait")
-		require.NoError(t, profiles.Unlock(), "Unlock does nothing for it")
-	})
-	assert.False(t, lockIsFree(t, dir), "the other command still holds the lock")
-}
-
-func TestLoadProfilesWithExclusiveLockReleasesItWhereTheProfilesAreInvalid(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(config.DirectorySetting.EnvKey(), dir)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "profiles.json"), []byte(`{"version":0}`), 0o600))
-
-	_, err := LoadProfiles(t.Context(), exclusively)
-
-	require.ErrorContains(t, err, "version in")
-	assert.True(t, lockIsFree(t, dir))
-}
-
-func TestResolveProfileWithExclusiveLockReleasesItWhereItFails(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(config.DirectorySetting.EnvKey(), dir)
-
-	_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{StoredOnly: true, ExclusiveLock: true})
-
-	require.ErrorIs(t, err, ErrNoStoredProfile)
-	assert.True(t, lockIsFree(t, dir))
 }
