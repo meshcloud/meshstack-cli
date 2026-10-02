@@ -7,12 +7,13 @@ import (
 )
 
 func New() *cobra.Command {
+	const command internal.KindCommand = "workspace"
 	const short = "Work with meshStack workspaces"
 	cmd := &cobra.Command{
-		Use:     "workspace",
-		Aliases: internal.KindAliases("workspace"),
+		Use:     string(command),
+		Aliases: command.Aliases(),
 		Short:   short,
-		Long:    internal.KindLong(short, "workspace"),
+		Long:    command.Long(short),
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()

@@ -9,7 +9,7 @@ import (
 // kindAliases abbreviate the command of a kind by the initials of its words, as long as these
 // stay unambiguous among the kinds the API docs list: bbrun rather than bbr, which could as well
 // be meshBuildingBlockRunner.
-var kindAliases = map[string][]string{
+var kindAliases = map[KindCommand][]string{
 	"buildingblock":                  {"bb"},
 	"buildingblockdefinition":        {"bbd"},
 	"buildingblockdefinitionversion": {"bbdv"},
@@ -18,26 +18,23 @@ var kindAliases = map[string][]string{
 	"workspace":                      {"ws"},
 }
 
-// KindAliases are the aliases of the command of a kind, which meshstack api-docs --describe takes too.
-func KindAliases(command string) []string {
-	return kindAliases[command]
-}
+type KindCommand string
 
-// KindCommand names the command of a meshObject kind: meshBuildingBlock is buildingblock. It takes
-// the command's name or one of its aliases as well.
-func KindCommand(name string) string {
+func KindCommandOf(name string) KindCommand {
 	command := strings.TrimPrefix(strings.ToLower(name), "mesh")
 	for kind, aliases := range kindAliases {
 		if slices.Contains(aliases, command) {
 			return kind
 		}
 	}
-	return command
+	return KindCommand(command)
 }
 
-// KindLong is the help of the command of a kind. It leaves what the kind is to the API docs, and
-// so does every command of the kind.
-func KindLong(short, command string) string {
+func (command KindCommand) Aliases() []string {
+	return kindAliases[command]
+}
+
+func (command KindCommand) Long(short string) string {
 	return fmt.Sprintf(`%s.
 
 The meshStack API docs say what each operation on them takes and returns:

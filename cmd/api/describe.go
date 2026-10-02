@@ -36,9 +36,9 @@ func describeSelector(spec openapi.Spec, value string) (openapi.Selector, error)
 	name, action, _ := strings.Cut(value, ".")
 	var commands []string
 	for _, kind := range spec.Kinds() {
-		command := internal.KindCommand(kind)
-		commands = append(commands, command)
-		if command != internal.KindCommand(name) {
+		command := internal.KindCommandOf(kind)
+		commands = append(commands, string(command))
+		if command != internal.KindCommandOf(name) {
 			continue
 		}
 		if actions := spec.Actions(kind); action != "" && !slices.Contains(actions, action) {

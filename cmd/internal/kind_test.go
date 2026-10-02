@@ -10,7 +10,7 @@ import (
 
 func TestKindCommandTakesTheKindTheCommandOrAnAlias(t *testing.T) {
 	for _, name := range []string{"meshBuildingBlockDefinition", "buildingblockdefinition", "BBD"} {
-		assert.Equal(t, "buildingblockdefinition", internal.KindCommand(name), name)
+		assert.Equal(t, internal.KindCommand("buildingblockdefinition"), internal.KindCommandOf(name), name)
 	}
-	assert.Equal(t, "landingzone", internal.KindCommand("meshLandingZone"), "a kind without aliases")
+	assert.Equal(t, internal.KindCommand("landingzone"), internal.KindCommandOf("meshLandingZone"), "a kind without aliases")
 }

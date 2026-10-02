@@ -7,12 +7,13 @@ import (
 )
 
 func New() *cobra.Command {
+	const command internal.KindCommand = "buildingblockdefinition"
 	const short = "Work with meshStack building block definitions"
 	cmd := &cobra.Command{
-		Use:     "buildingblockdefinition",
-		Aliases: internal.KindAliases("buildingblockdefinition"),
+		Use:     string(command),
+		Aliases: command.Aliases(),
 		Short:   short,
-		Long:    internal.KindLong(short, "buildingblockdefinition"),
+		Long:    command.Long(short),
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()

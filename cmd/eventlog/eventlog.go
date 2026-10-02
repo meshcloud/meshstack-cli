@@ -7,12 +7,13 @@ import (
 )
 
 func New() *cobra.Command {
+	const command internal.KindCommand = "eventlog"
 	const short = "Work with meshStack event logs"
 	cmd := &cobra.Command{
-		Use:     "eventlog",
-		Aliases: internal.KindAliases("eventlog"),
+		Use:     string(command),
+		Aliases: command.Aliases(),
 		Short:   short,
-		Long:    internal.KindLong(short, "eventlog"),
+		Long:    command.Long(short),
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()

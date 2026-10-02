@@ -25,15 +25,15 @@ A command is the meshObject kind, lowercased, without its `mesh` prefix:
 Commands that are no meshObject are the exceptions: `auth` with its `login` and `logout`
 shortcuts, `profile`, `api`.
 
-The parent command takes its `Aliases` from `internal.KindAliases`, and `meshstack api-docs
---describe` takes them too. Add an alias there, by the initials of the kind's words, only while
-no other kind of the API docs has the same initials: `bbrun`, since `bbr` could be
-meshBuildingBlockRunner as well.
+The parent command declares its name as an `internal.KindCommand` and takes its `Aliases` from
+it, and `meshstack api-docs --describe` takes them too. Add an alias to `kindAliases`, by the
+initials of the kind's words, only while no other kind of the API docs has the same initials:
+`bbrun`, since `bbr` could be meshBuildingBlockRunner as well.
 
 ## Help
 
 The help says how to use a command, never what its kind is or does: the parent's `Long` is
-`internal.KindLong`, which points to `meshstack api-docs --describe <kind>`, and a leaf points to
+`KindCommand.Long`, which points to `meshstack api-docs --describe <kind>`, and a leaf points to
 `--describe <kind>.<action>` rather than explain the fields of an answer. Every leaf has an
 `Example`, one line of it through the alias. A leaf checks what it can before it asks meshStack,
 such as that a uuid parses, because meshStack answers a malformed one with an empty list or a 404.
