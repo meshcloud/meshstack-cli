@@ -1,0 +1,106 @@
+package buildingblocktfstate
+
+import (
+	"context"
+	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"uuid"
+
+	"github.com/spf13/cobra"
+
+	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/internal/tfstate"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
+)
+
+const rights = `This command needs an API key login, meshstack login --apikey: meshStack does not give the state
+to a browser login, because no workspace role has the rights that the state needs. Create a temporary
+API key with the rights of one of these rows, and log in with it:
+
+  Workspace                               To read                To write (--mode readwrite)
+  the building block's workspace          TFSTATE_LIST           TFSTATE_SAVE
+  the workspace owning its definition     MANAGED_TFSTATE_LIST   MANAGED_TFSTATE_SAVE
+  the admin workspace                     ADM_TFSTATE_LIST       ADM_TFSTATE_SAVE
+
+To delete the state, the API key needs TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or
+ADM_TFSTATE_DELETE in the same row.`
+
+const backendFile = `terraform {
+    backend "http" {}
+  }`
+
+func New() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "tfstate",
+		Short: "Read and write the OpenTofu state meshStack keeps for a building block",
+		Long: `Read and write the OpenTofu state that meshStack keeps for a building block, which its runner
+reads and writes through tofu's http backend.
+
+` + rights + `
+
+"meshstack buildingblock tfstate exec" serves the state to tofu's http backend, so the module needs
+a backend "http" block. The runner adds one only while it runs, so add the file meshstack_backend.tf
+to the module:
+
+  ` + backendFile + `
+
+and run "meshstack buildingblock tfstate exec <building-block-uuid> -- tofu init" once.`,
+		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources
+  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -- tofu plan
+  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}
+
+	cmd.AddCommand(newShow())
+	cmd.AddCommand(newExec())
+
+	return cmd
+}
+
+type buildingBlock struct {
+	Metadata client.MeshBuildingBlockV2Metadata `json:"metadata"`
+	Status   *client.MeshBuildingBlockV2Status  `json:"status"`
+}
+
+func (block buildingBlock) hasUnfinishedRun() bool {
+	return block.Status != nil &&
+		(block.Status.Status == client.BuildingBlockStatusInProgress || block.Status.Status == client.BuildingBlockStatusPending)
+}
+
+func readBuildingBlock(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID) (block buildingBlock, err error) {
+	read, err := raw.Get[client.MeshBuildingBlockV2](ctx, buildingBlockUuid)
+	if err != nil {
+		return block, err
+	}
+	return block, json.Unmarshal(read, &block)
+}
+
+// openStore ignores the profile's default workspace. Otherwise that workspace would replace the
+// building block's own workspace, which the runner stores the state under, for every user who has a
+// default.
+func openStore(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID) (tfstate.Store, error) {
+	workspace, err := setting.ResolveWorkspace(ctx, internal.SettingSources())
+	if err != nil {
+		return tfstate.Store{}, err
+	}
+	if workspace == "" {
+		block, err := readBuildingBlock(ctx, meshStack.Raw, buildingBlockUuid)
+		if err != nil {
+			return tfstate.Store{}, err
+		}
+		workspace = block.Metadata.OwnedByWorkspace
+	}
+	return tfstate.NewStore(meshStack.Raw, workspace, buildingBlockUuid), nil
+}
+
+func withApiKeyHint(err error) error {
+	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.IsForbidden() {
+		return fmt.Errorf("%w\n\n%s", err, rights)
+	}
+	return err
+}

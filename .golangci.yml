@@ -209,6 +209,7 @@ linters:
             - "!**/cmd/meshstack/*.go"
             - "!**/cmd/api/*.go"
             - "!**/cmd/auth/*.go"
+            - "!**/cmd/buildingblocktfstate/*.go"
             - "!**/cmd/profile/*.go"
             - "!**/cmd/internal/*.go"
             - "!**/cmd/internal/**/*.go"
@@ -279,6 +280,32 @@ linters:
             - github.com/spf13/cobra
             # api-docs renders the flags of a failed request back into a command line
             - github.com/spf13/pflag
+
+        cmd-buildingblocktfstate:
+          files:
+            - "**/cmd/buildingblocktfstate/*.go"
+            - "!$test"
+          list-mode: strict
+          deny:
+            - pkg: log
+              desc: Use log/slog instead
+            - pkg: encoding/json
+              desc: Use encoding/json/v2 and internal/json instead
+          allow:
+            - $gostd
+            - log/slog
+            # the deny on encoding/json matches its subpackages too; a building block names the
+            # workspace its state is stored under
+            - encoding/json/v2
+            # the proxy that serves the state to tofu. It needs the request options of
+            # client.Raw.DoRequest, and pkg/ does not expose them, because they are for the CLI alone.
+            - github.com/meshcloud/meshstack-cli/internal/tfstate
+            - github.com/meshcloud/meshstack-cli/cmd/internal
+            - github.com/meshcloud/meshstack-cli/pkg/setting
+            - github.com/meshcloud/meshstack-cli/client
+            - github.com/spf13/cobra
+            # exec leaves the Ctrl-C of a terminal to the command it runs
+            - github.com/charmbracelet/x/term
 
         cmd-auth:
           files:

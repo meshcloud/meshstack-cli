@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -29,7 +30,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	err := newRootCommand().ExecuteContext(ctx)
 	stop()
-	if err != nil {
+	if exitErr, ok := errors.AsType[internal.ExitError](err); ok {
+		os.Exit(exitErr.Code)
+	} else if err != nil {
 		// cobra has already written the error to stderr.
 		os.Exit(1)
 	}
