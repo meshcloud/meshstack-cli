@@ -1,11 +1,11 @@
 package client
 
 import (
+	"encoding/json/jsontext"
 	"fmt"
+	"io"
 	gohttp "net/http"
-	"net/http/httptest"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,17 +16,13 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
-// inMemoryServerUrl is any URL the client accepts: the client of an [httptest.NewTestServer] sends
-// every request to that server, and its own URL is http://example.com, which the client refuses
-// for not being https.
-var inMemoryServerUrl = xurl.MustParsef("http://localhost")
-
-func newTestHttpClient(server *httptest.Server) internal.HttpClient {
+func newTestHttpClient(server *fakemeshstack.Server) internal.HttpClient {
 	return internal.HttpClient{
-		AuthorizedClient: http.Client{Client: server.Client(), UserAgent: "test-agent"}.WithAuthorization(http.BearerToken("token")),
-		EndpointUrl:      inMemoryServerUrl,
+		AuthorizedClient: http.NewClient("test-agent").WithAuthorization(http.BearerToken(fakemeshstack.Token)),
+		EndpointUrl:      xurl.MustParsef("%s", server.URL),
 	}
 }
 
@@ -34,34 +30,25 @@ func TestRawClient(t *testing.T) {
 	const serverPageSize = 2
 	var workspaces []string
 	for i := range 5 {
-		workspaces = append(workspaces, fmt.Sprintf(`{"kind": "meshWorkspace", "apiVersion": "v2", "metadata": {"name": "workspace-%d"}, `+
-			`"_links": {"self": {"href": "http://localhost:8080/api/meshobjects/meshworkspaces/workspace-%d"}}}`, i, i))
+		workspaces = append(workspaces, fmt.Sprintf(`{"kind":"meshWorkspace","apiVersion":"v2","metadata":{"name":"workspace-%d"},`+
+			`"_links":{"self":{"href":"http://localhost:8080/api/meshobjects/meshworkspaces/workspace-%d"}}}`, i, i))
 	}
-	var requests []*gohttp.Request
-	httpClient := newTestHttpClient(httptest.NewTestServer(t, gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		requests = append(requests, r)
-		if r.URL.Path != "/api/meshobjects/meshworkspaces" {
-			_, _ = w.Write([]byte(`{}`))
-			return
-		}
-		page, err := strconv.Atoi(r.URL.Query().Get("page"))
-		if !assert.NoError(t, err) {
-			w.WriteHeader(gohttp.StatusBadRequest)
-			return
-		}
-		onPage := workspaces[min(page*serverPageSize, len(workspaces)):min((page+1)*serverPageSize, len(workspaces))]
-		totalPages := (len(workspaces) + serverPageSize - 1) / serverPageSize
-		_, _ = fmt.Fprintf(w, `{ "_embedded": { "meshWorkspaces": [ %s ] }, "page": { "size": %d, "totalPages": %d, "number": %d } }`,
-			strings.Join(onPage, ", "), serverPageSize, totalPages, page)
-	})))
+	var items []any
+	for _, workspace := range workspaces {
+		items = append(items, jsontext.Value(workspace))
+	}
+	server := fakemeshstack.Start(t, fakemeshstack.Options{Workspaces: items, PageSize: serverPageSize})
+	httpClient := newTestHttpClient(server)
 	raw := newRawClient(httpClient).with(newWorkspaceClient(t.Context(), httpClient).meshObject)
+	var requests []fakemeshstack.Request
 	list := func(t *testing.T, filter MeshWorkspaceListFilter, options ListOptions) (listed []string) {
 		t.Helper()
-		requests = nil
+		server.TakeRequests()
 		for item, err := range raw.List[MeshWorkspace](t.Context(), filter, options) {
 			require.NoError(t, err)
 			listed = append(listed, string(item))
 		}
+		requests = server.TakeRequests()
 		return listed
 	}
 	asked := func(parameter string) (values []string) {
@@ -104,24 +91,26 @@ func TestRawClient(t *testing.T) {
 	})
 
 	t.Run("a kind without a typed client fails before it asks meshStack", func(t *testing.T) {
-		requests = nil
+		server.TakeRequests()
 		var failed error
 		for _, err := range raw.List[MeshTenant](t.Context(), nil, ListOptions{}) {
 			failed = err
 		}
 		require.ErrorContains(t, failed, "client.MeshTenant")
-		assert.Empty(t, requests)
+		assert.Empty(t, server.TakeRequests())
 	})
 
 	t.Run("DoRequest joins any path onto the endpoint, so the token goes nowhere else", func(t *testing.T) {
-		requests = nil
+		server.Route("/", func(w gohttp.ResponseWriter, _ *gohttp.Request) { _, _ = io.WriteString(w, `{}`) })
+		server.TakeRequests()
 		for _, path := range []string{"https://other.host/api/x", "//other.host/api/x"} {
 			_, err := raw.DoRequest(t.Context(), gohttp.MethodGet, path)
 			require.NoError(t, err)
 		}
+		requests := server.TakeRequests()
 		require.Len(t, requests, 2)
 		for _, r := range requests {
-			assert.Equal(t, inMemoryServerUrl.Host, r.Host)
+			assert.Equal(t, httpClient.EndpointUrl.Host, r.Host)
 		}
 	})
 }

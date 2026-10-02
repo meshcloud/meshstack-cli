@@ -10,14 +10,11 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
-// Token is an unsigned JWT that expires in 2100, so the CLI sends it rather than asking for a new
-// one: a token without an expiry counts as expired.
-const Token = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9." //nolint:gosec // G101: unsigned, it authorizes nothing but a fake meshStack
-
-// LoggedInTo points the CLI at endpoint with Token, and clears every other setting the
-// environment of the test run could carry into the resolution.
+// LoggedInTo points the CLI at endpoint with [fakemeshstack.Token], and clears every other setting
+// the environment of the test run could carry into the resolution.
 func LoggedInTo(t *testing.T, endpoint string) {
 	t.Helper()
 	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
@@ -27,7 +24,7 @@ func LoggedInTo(t *testing.T, endpoint string) {
 	t.Setenv(profile.NameSetting.EnvKey(), "")
 	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), "")
 	t.Setenv(auth.ApiKeyClientSecretSetting.EnvKey(), "")
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), Token)
+	t.Setenv(auth.ApiTokenSetting.EnvKey(), fakemeshstack.Token)
 }
 
 // HoldProfiles holds the profiles as a command that changes them does: meshstack profile while it is

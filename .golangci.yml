@@ -91,10 +91,6 @@ linters:
         linters:
           - forbidigo
         text: one HTTP client
-      - path: internal/testutil/testserver/
-        linters:
-          - forbidigo
-        text: one HTTP client
       # The fake clock is a test's; production code waits on the real one.
       - path-except: _test\.go
         linters:
@@ -510,6 +506,17 @@ linters:
             - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli
             - github.com/stretchr/testify
+
+        # internal/testutil holds fakes and helpers for tests, which no program of the CLI may link.
+        testutil:
+          files:
+            - "**/*.go"
+            - "!$test"
+            - "!**/internal/testutil/**/*.go"
+          list-mode: lax
+          deny:
+            - pkg: github.com/meshcloud/meshstack-cli/internal/testutil
+              desc: internal/testutil is for tests
 
         # A test may use every direct dependency in go.mod: the rules above already confine where
         # production code uses each one, and a test checks that code with the same libraries.

@@ -1,23 +1,18 @@
 package client
 
 import (
-	"io"
-	gohttp "net/http"
-	"net/http/httptest"
-	"net/url"
 	"testing"
 	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 func TestAUuidOfAFilterGoesAsItsTextAndAZeroOneNotAtAll(t *testing.T) {
-	var queries []url.Values
-	httpClient := newTestHttpClient(httptest.NewTestServer(t, gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		queries = append(queries, r.URL.Query())
-		_, _ = io.WriteString(w, `{"_embedded": {"meshBuildingBlockRuns": []}, "page": {"totalPages": 1, "number": 0}}`)
-	})))
+	server := fakemeshstack.Start(t, fakemeshstack.Options{})
+	httpClient := newTestHttpClient(server)
 	raw := newRawClient(httpClient).with(newBuildingBlockRunClient(t.Context(), httpClient).meshObject)
 
 	for _, filter := range []MeshBuildingBlockRunListFilter{
@@ -29,17 +24,18 @@ func TestAUuidOfAFilterGoesAsItsTextAndAZeroOneNotAtAll(t *testing.T) {
 		}
 	}
 
-	require.Len(t, queries, 2)
-	assert.Equal(t, []string{"0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90"}, queries[0]["buildingBlockUuid"])
-	assert.NotContains(t, queries[1], "buildingBlockUuid")
+	requests := server.TakeRequests()
+	require.Len(t, requests, 2)
+	assert.Equal(t, []string{"0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90"}, requests[0].URL.Query()["buildingBlockUuid"])
+	assert.NotContains(t, requests[1].URL.Query(), "buildingBlockUuid")
 }
 
 func TestListingTheVersionsOfADefinitionRejectsAnIdOfNoUuidBeforeItAsksMeshStack(t *testing.T) {
-	versions := newBuildingBlockDefinitionVersionClient(t.Context(), newTestHttpClient(httptest.NewTestServer(t, gohttp.HandlerFunc(func(gohttp.ResponseWriter, *gohttp.Request) {
-		t.Error("the client asked meshStack for the versions of a definition of no uuid")
-	}))))
+	server := fakemeshstack.Start(t, fakemeshstack.Options{})
+	versions := newBuildingBlockDefinitionVersionClient(t.Context(), newTestHttpClient(server))
 
 	_, err := versions.List(t.Context(), "my-definition")
 
-	assert.EqualError(t, err, `building block definition "my-definition": invalid uuid`)
+	require.EqualError(t, err, `building block definition "my-definition": invalid uuid`)
+	assert.Empty(t, server.TakeRequests())
 }

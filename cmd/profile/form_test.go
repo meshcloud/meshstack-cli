@@ -1,8 +1,6 @@
 package profile
 
 import (
-	"fmt"
-	gohttp "net/http"
 	"testing"
 	"uuid"
 
@@ -12,7 +10,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
-	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 func TestTheSuggestedNameIsTheHostWithoutTheLabelsEveryMeshStackHas(t *testing.T) {
@@ -39,17 +37,15 @@ func TestTheLocalEndpointIsTheLastSuggestion(t *testing.T) {
 }
 
 func TestTheWorkspacesThatTheProfilesAtTheEndpointReachAreSuggested(t *testing.T) {
-	apiKey := testserver.ApiKey{ClientId: "11111111-45bf-42ba-a965-2097b9d0d181", ClientSecret: "test-secret"}
-	server := testserver.New(t, apiKey)
-	server.Route(t, "/api/meshobjects/meshworkspaces", func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-		if !assert.NotEmpty(t, req.Header.Get("Authorization")) {
-			resp.WriteHeader(gohttp.StatusUnauthorized)
-			return
-		}
-		_, _ = fmt.Fprint(resp, `{"_embedded":{"meshWorkspaces":[{"metadata":{"name":"platform-team"}},{"metadata":{"name":"app-team"}}]},`+
-			`"page":{"totalPages":1,"number":0}}`)
+	apiKey := fakemeshstack.ApiKey{ClientId: "11111111-45bf-42ba-a965-2097b9d0d181", ClientSecret: "test-secret"}
+	server := fakemeshstack.Start(t, fakemeshstack.Options{
+		ApiKeys: []fakemeshstack.ApiKey{apiKey},
+		Workspaces: []any{
+			map[string]any{"metadata": map[string]string{"name": "platform-team"}},
+			map[string]any{"metadata": map[string]string{"name": "app-team"}},
+		},
 	})
-	endpoint := xurl.URL{URL: server.Url(t)}
+	endpoint := xurl.MustParsef("%s", server.URL)
 	profiles := storedProfiles(t,
 		profile.Profile{Name: "ci", Endpoint: endpoint, Credential: credential.ApiKeyName},
 		profile.Profile{Name: "logged-out", Endpoint: endpoint},
@@ -63,5 +59,5 @@ func TestTheWorkspacesThatTheProfilesAtTheEndpointReachAreSuggested(t *testing.T
 	// The logged-out profile is asked as well, and fails without a call.
 	assert.Equal(t, []string{"app-team", "platform-team"}, knownWorkspaces(t.Context(), profiles.MatchingEndpoint(endpoint)))
 	assert.Empty(t, profiles.MatchingEndpoint(xurl.MustParsef("https://unknown.example.io")))
-	assert.Equal(t, int64(1), server.Counts(t).Logins)
+	assert.Equal(t, int64(1), server.Counts().Logins)
 }

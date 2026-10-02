@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	gohttp "net/http"
 	"testing"
 	"time"
 
@@ -27,8 +28,9 @@ func TestLoginRefusesAnUnknownCredential(t *testing.T) {
 
 // The source stands in for the workspace selection of 'meshstack login', which needs the list.
 func TestLoginListsWorkspacesWithoutWaitingOnItsOwnWorkspace(t *testing.T) {
-	newTestServer(t)
-	testApiKey1.SetEnv(t)
+	server := newTestServer(t)
+	server.Route("GET /api/meshobjects/meshworkspaces", gohttp.NotFound)
+	setApiKeyEnv(t, testApiKey1)
 	opts := testSessionOpts
 	opts.SettingSources = setting.Sources{setting.FallbackSource{Source: setting.LookupSource{
 		MatchingKey: meshstack.WorkspaceSetting.EnvKey(),
@@ -45,7 +47,6 @@ func TestLoginListsWorkspacesWithoutWaitingOnItsOwnWorkspace(t *testing.T) {
 	go func() { stored <- store(t.Context()) }()
 	select {
 	case err := <-stored:
-		// The test server serves no workspace list, so the listing fails with its own error.
 		require.Error(t, err)
 		require.NotContains(t, err.Error(), "no workspaces found")
 	case <-time.After(10 * time.Second):

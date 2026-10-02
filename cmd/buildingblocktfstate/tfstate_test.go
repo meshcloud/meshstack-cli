@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 	gohttp "net/http"
 	"net/http/httptest"
@@ -22,12 +20,12 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
 const (
 	buildingBlockUuid = "b1d2c3e4-0000-4000-8000-000000000001"
-	buildingBlockPath = "/api/meshobjects/meshbuildingblocks/" + buildingBlockUuid
 	state             = `{"version":4,"serial":1,"lineage":"lineage-1","resources":[]}`
 	childSteps        = "MESHSTACK_TFSTATE_TEST_CHILD"
 )
@@ -60,33 +58,34 @@ func runChild(steps string) int {
 }
 
 type fakeMeshStack struct {
-	blockStatus     string
-	refuseStateWith int
-	requests        []string
+	*fakemeshstack.Server
+
+	blockStatus map[string]any
 }
 
 func newFakeMeshStack(t *testing.T) *fakeMeshStack {
 	t.Helper()
-	f := &fakeMeshStack{blockStatus: "SUCCEEDED"}
-	server := httptest.NewServer(f)
-	t.Cleanup(server.Close)
+	blockStatus := map[string]any{"status": "SUCCEEDED"}
+	server := fakemeshstack.Start(t, fakemeshstack.Options{
+		BuildingBlocks: []any{map[string]any{
+			"metadata": map[string]any{"uuid": buildingBlockUuid, "ownedByWorkspace": "my-workspace"},
+			"spec":     map[string]any{},
+			"status":   blockStatus,
+		}},
+		TfStates: map[fakemeshstack.TfState][]byte{
+			{Workspace: "my-workspace", BuildingBlockUuid: buildingBlockUuid}:    []byte(state),
+			{Workspace: "other-workspace", BuildingBlockUuid: buildingBlockUuid}: []byte(state),
+		},
+	})
 	testlogin.LoggedInTo(t, server.URL)
-	return f
+	return &fakeMeshStack{server, blockStatus}
 }
 
-func (f *fakeMeshStack) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) {
-	f.requests = append(f.requests, r.Method+" "+r.URL.Path)
-	switch {
-	case r.URL.Path == buildingBlockPath:
-		_, _ = fmt.Fprintf(w, `{"metadata": {"uuid": %q, "ownedByWorkspace": "my-workspace"}, "spec": {}, "status": {"status": %q}}`,
-			buildingBlockUuid, f.blockStatus)
-	case strings.HasPrefix(r.URL.Path, "/api/terraform/state/") && f.refuseStateWith != 0:
-		w.WriteHeader(f.refuseStateWith)
-	case r.URL.Path == statePath("my-workspace") || r.URL.Path == statePath("other-workspace"):
-		_, _ = io.WriteString(w, state)
-	default:
-		gohttp.NotFound(w, r)
+func (f *fakeMeshStack) requests() (requests []string) {
+	for _, request := range f.TakeRequests() {
+		requests = append(requests, request.Method+" "+request.URL.Path)
 	}
+	return requests
 }
 
 type result struct {
@@ -122,13 +121,13 @@ func TestTfstate(t *testing.T) {
 
 	t.Run("show takes the state of the workspace given, rather than the building block's", func(t *testing.T) {
 		t.Setenv(meshstack.WorkspaceSetting.EnvKey(), "other-workspace")
-		meshStack.requests = nil
+		meshStack.TakeRequests()
 
 		shown := run(t, "show", buildingBlockUuid)
 
 		require.NoError(t, shown.err)
 		assert.Equal(t, state, shown.stdout, "the state as it came, not merely the same JSON") //nolint:testifylint // encoded-compare: JSONEq would take the state reformatted
-		assert.Equal(t, []string{"GET " + statePath("other-workspace")}, meshStack.requests)
+		assert.Equal(t, []string{"GET " + statePath("other-workspace")}, meshStack.requests())
 	})
 
 	t.Run("exec exits with the exit code of the command", func(t *testing.T) {
@@ -150,19 +149,19 @@ func TestTfstate(t *testing.T) {
 	})
 
 	t.Run("exec in read mode says how to store the state", func(t *testing.T) {
-		meshStack.requests = nil
+		meshStack.TakeRequests()
 
 		ran := execChild(t, "POST")
 
 		require.Error(t, ran.err)
 		assert.Contains(t, ran.err.Error(), "the state is read-only, run again with --mode readwrite")
-		assert.NotContains(t, meshStack.requests, "POST "+statePath("my-workspace"))
+		assert.NotContains(t, meshStack.requests(), "POST "+statePath("my-workspace"))
 	})
 
 	t.Run("exec in readwrite mode refuses while a run is in progress, unless forced", func(t *testing.T) {
-		defer func() { meshStack.blockStatus = "SUCCEEDED" }()
+		defer func() { meshStack.blockStatus["status"] = "SUCCEEDED" }()
 		for _, status := range []string{"IN_PROGRESS", "PENDING"} {
-			meshStack.blockStatus = status
+			meshStack.blockStatus["status"] = status
 
 			refused := execChild(t, "exit=0", "--mode", "readwrite")
 			require.Error(t, refused.err, status)
@@ -175,7 +174,9 @@ func TestTfstate(t *testing.T) {
 	})
 
 	t.Run("a refusal of meshStack says that the state takes an API key", func(t *testing.T) {
-		meshStack.refuseStateWith = gohttp.StatusForbidden
+		meshStack.Route("/api/terraform/state/", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+			w.WriteHeader(gohttp.StatusForbidden)
+		})
 
 		err := execChild(t, "GET").err
 

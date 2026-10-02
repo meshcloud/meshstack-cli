@@ -16,12 +16,12 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
-	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 const (
 	workersPerSession = 5
-	greetingsPerRound = 3
+	requestsPerRound  = 3
 	revokeEvery       = 50 * time.Millisecond
 )
 
@@ -38,7 +38,7 @@ func TestConcurrentSessionsShareOneMintedToken(t *testing.T) {
 	// internal/lock reports that as acquired, so the first writer would otherwise be unguarded.
 	warmUp, storeWarmUp, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, sessionOptsFor(testApiKey1))
 	require.NoError(t, err)
-	server.RequireGreeting(t, greetingClient(warmUp))
+	requireAnswer(t, server, warmUp)
 	require.NoError(t, storeWarmUp(t.Context()))
 	require.NoError(t, unlock())
 
@@ -80,19 +80,19 @@ func TestConcurrentSessionsShareOneMintedToken(t *testing.T) {
 		completed += resolver.completed.Load()
 	}
 
-	counts := server.Counts(t)
+	counts := server.Counts()
 	t.Logf("%d rounds started, %d completed, %+v", started, completed, counts)
 
 	assert.Zero(t, counts.UnknownTokens, "every request carried a token this server had minted")
 	assert.Positive(t, counts.RevokedTokens, "no revocation reached a session still using the token")
-	assert.GreaterOrEqual(t, counts.Greetings, completed*workersPerSession*greetingsPerRound,
-		"every worker of every completed round got its greetings")
+	assert.GreaterOrEqual(t, counts.Authorized, completed*workersPerSession*requestsPerRound,
+		"every worker of every completed round got its answers")
 	// One mint for the warm-up, one per started session at most, and one per rejected request at most.
 	assert.LessOrEqual(t, counts.Logins, 1+started+counts.RevokedTokens,
 		"a session minted more than once without having been rejected")
 	// The bound above still allows one mint per round, so this is the tighter check: five
 	// concurrent callers share one token, and so do the sessions that follow them.
-	assert.Less(t, counts.Logins, counts.Greetings/10,
+	assert.Less(t, counts.Logins, counts.Authorized/10,
 		"the token cache saved far fewer logins than it should have")
 }
 
@@ -100,14 +100,14 @@ func TestConcurrentSessionsShareOneMintedToken(t *testing.T) {
 // overlapping every other resolver's rounds.
 type stressResolver struct {
 	name   string
-	apiKey testserver.ApiKey
+	apiKey fakemeshstack.ApiKey
 	every  time.Duration
 
 	started   atomic.Int64
 	completed atomic.Int64
 }
 
-func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserver.Server, storing *sync.Mutex, inFlight *atomic.Int64, failures *stressFailures) {
+func (r *stressResolver) run(t *testing.T, ctx context.Context, server *fakemeshstack.Server, storing *sync.Mutex, inFlight *atomic.Int64, failures *stressFailures) {
 	t.Helper()
 	ticker := time.NewTicker(r.every)
 	defer ticker.Stop()
@@ -123,9 +123,9 @@ func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserv
 		r.started.Add(1)
 		inFlight.Add(1)
 		session, err := auth.ResolveSession(ctx, sessionOptsFor(r.apiKey))
-		greeted := false
+		answered := false
 		if err == nil {
-			greeted = r.greetConcurrently(t, ctx, server, session, failures)
+			answered = r.askConcurrently(t, ctx, server, session, failures)
 
 			// Storing is serialized across resolvers because concurrent writers of one profile
 			// are not something the CLI has to support, while concurrent authorization is.
@@ -141,16 +141,15 @@ func (r *stressResolver) run(t *testing.T, ctx context.Context, server *testserv
 			}
 			return
 		}
-		if !greeted {
+		if !answered {
 			return
 		}
 		r.completed.Add(1)
 	}
 }
 
-func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, server *testserver.Server, session auth.Session, failures *stressFailures) bool {
+func (r *stressResolver) askConcurrently(t *testing.T, ctx context.Context, server *fakemeshstack.Server, session auth.Session, failures *stressFailures) bool {
 	t.Helper()
-	greet := greetingClient(session)
 	// Closing the channel releases every worker in the same instant, so they all reach the
 	// freshly resolved session's empty cache together.
 	release := make(chan struct{})
@@ -159,8 +158,8 @@ func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, se
 	for worker := range workersPerSession {
 		workers.Go(func() {
 			<-release
-			for range greetingsPerRound {
-				if err := server.Greeting(t, ctx, greet); err != nil {
+			for range requestsPerRound {
+				if err := ask(ctx, server, session); err != nil {
 					if ctx.Err() == nil {
 						failures.add(fmt.Errorf("%s worker %d: %w", r.name, worker, err))
 					}
@@ -179,8 +178,8 @@ func (r *stressResolver) greetConcurrently(t *testing.T, ctx context.Context, se
 // its five callers all meet a 401 at once and go through auth.Session.RefreshBearerToken
 // together. Exactly one of them may then mint, which is what the login count checks.
 //
-// It revokes only between rounds, as [testserver.Server.RevokeNewestToken] requires.
-func revokeTokens(t *testing.T, ctx context.Context, server *testserver.Server, inFlight *atomic.Int64) {
+// It revokes only between rounds, as [fakemeshstack.Server.RevokeNewestToken] requires.
+func revokeTokens(t *testing.T, ctx context.Context, server *fakemeshstack.Server, inFlight *atomic.Int64) {
 	t.Helper()
 	ticker := time.NewTicker(revokeEvery)
 	defer ticker.Stop()
@@ -190,7 +189,7 @@ func revokeTokens(t *testing.T, ctx context.Context, server *testserver.Server, 
 			return
 		case <-ticker.C:
 			if inFlight.Load() == 0 {
-				server.RevokeNewestToken(t)
+				server.RevokeNewestToken()
 			}
 		}
 	}
@@ -223,7 +222,7 @@ func (f *stressFailures) requireNone(t *testing.T) {
 // sessionOptsFor supplies the api key as a front end setting source rather than through the
 // environment. The resolvers run at the same time, and one process cannot hold two values of
 // MESHSTACK_API_KEY at once.
-func sessionOptsFor(key testserver.ApiKey) auth.ResolveSessionOptions {
+func sessionOptsFor(key fakemeshstack.ApiKey) auth.ResolveSessionOptions {
 	opts := testSessionOpts
 	opts.SettingSources = setting.Sources{
 		setting.FrontendSource{Source: staticSetting(auth.ApiKeyClientIdSetting.EnvKey(), key.ClientId)},
@@ -243,7 +242,7 @@ func staticSetting(envKey, value string) setting.Source {
 }
 
 // storeByLogin stores what a session resolved the only way there is, which is a login.
-func storeByLogin(ctx context.Context, key testserver.ApiKey) error {
+func storeByLogin(ctx context.Context, key fakemeshstack.ApiKey) error {
 	_, store, unlock, err := auth.Login(ctx, credential.ApiKeyName, sessionOptsFor(key))
 	if err != nil {
 		return err

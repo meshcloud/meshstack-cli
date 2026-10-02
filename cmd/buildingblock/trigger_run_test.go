@@ -2,16 +2,17 @@ package buildingblock_test
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"fmt"
 	"io"
 	gohttp "net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
@@ -20,7 +21,6 @@ import (
 func TestTriggerRunPrintsTheBuildingBlockAndFailsWithTheReasonMeshStackCouldNotStartTheRun(t *testing.T) {
 	const (
 		buildingBlockUuid = "b1d2c3e4-0000-4000-8000-000000000001"
-		buildingBlockPath = "/api/meshobjects/meshbuildingblocks/" + buildingBlockUuid
 		reason            = "meshStack could not start a run for this Building Block.\n\nAsk your platform team to look up the details in the meshStack logs."
 	)
 	failure := func(failedOn string) string {
@@ -28,18 +28,11 @@ func TestTriggerRunPrintsTheBuildingBlockAndFailsWithTheReasonMeshStackCouldNotS
 			`"status": {"status": "PENDING", "latestRunUuid": "a0000000-0000-4000-8000-000000000001", "runStartFailure": %q, "runStartFailedOn": %q}}`,
 			buildingBlockUuid, reason, failedOn)
 	}
-	meshStack := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		switch {
-		case r.Method == gohttp.MethodPost && r.URL.Path == buildingBlockPath+"/trigger-run":
-			w.WriteHeader(gohttp.StatusAccepted)
-			_, _ = io.WriteString(w, failure("2026-10-01T10:00:00Z"))
-		case r.Method == gohttp.MethodGet && r.URL.Path == buildingBlockPath:
-			_, _ = io.WriteString(w, failure("2026-10-01T10:05:00Z"))
-		default:
-			gohttp.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(meshStack.Close)
+	meshStack := fakemeshstack.Start(t, fakemeshstack.Options{BuildingBlocks: []any{jsontext.Value(failure("2026-10-01T10:05:00Z"))}})
+	meshStack.Route("POST /api/meshobjects/meshbuildingblocks/{uuid}/trigger-run", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		w.WriteHeader(gohttp.StatusAccepted)
+		_, _ = io.WriteString(w, failure("2026-10-01T10:00:00Z"))
+	})
 	testlogin.LoggedInTo(t, meshStack.URL)
 
 	cmd := buildingblock.New()

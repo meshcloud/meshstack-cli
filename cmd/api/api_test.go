@@ -5,10 +5,8 @@ import (
 	"cmp"
 	"io"
 	gohttp "net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -20,6 +18,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
@@ -32,13 +31,10 @@ const (
 func TestApi(t *testing.T) {
 	meshStack := newFakeMeshStack(t)
 	testlogin.LoggedInTo(t, meshStack.URL)
-	var docsDownloads atomic.Int32
-	docs := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		docsDownloads.Add(1)
-		gohttp.ServeFile(w, r, apiDocsFile)
-	}))
-	t.Cleanup(docs.Close)
-	t.Setenv("MESHSTACK_API_DOCS_URL", docs.URL)
+	apiDocs, err := os.ReadFile(apiDocsFile)
+	require.NoError(t, err)
+	docs := fakemeshstack.Start(t, fakemeshstack.Options{ApiDocs: apiDocs})
+	t.Setenv("MESHSTACK_API_DOCS_URL", docs.URL+fakemeshstack.ApiDocsPath)
 	postBlock := func(t *testing.T, body string, args ...string) (recordedRequest, error) {
 		t.Helper()
 		_, err := meshStack.run(t, api.New(), body, append([]string{"-X", "POST", "/api/meshobjects/meshbuildingblocks", "--request-json", "-"}, args...)...)
@@ -63,19 +59,19 @@ func TestApi(t *testing.T) {
 			method:        gohttp.MethodDelete,
 			pathAndQuery:  "/api/meshobjects/meshbuildingblocks/b1/purge?dry=true",
 			accept:        blockV2Preview,
-			authorization: "Bearer " + testlogin.Token,
+			authorization: "Bearer " + fakemeshstack.Token,
 		}}, meshStack.requests)
 	})
 
 	t.Run("fails without a login before it downloads the API docs", func(t *testing.T) {
 		t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 		t.Setenv(auth.ApiTokenSetting.EnvKey(), "")
-		docsDownloads.Store(0)
+		docs.TakeRequests()
 
 		_, err := meshStack.run(t, api.New(), "", "/api/meshobjects/meshbuildingblocks")
 
 		require.ErrorContains(t, err, "selects no credential")
-		assert.Zero(t, docsDownloads.Load())
+		assert.Empty(t, docs.TakeRequests())
 		assert.Empty(t, meshStack.requests)
 	})
 
@@ -184,9 +180,7 @@ func TestApi(t *testing.T) {
 		stdout, err = meshStack.run(t, api.NewDocs(), "", "-o", "json")
 
 		require.NoError(t, err)
-		document, err := os.ReadFile(apiDocsFile)
-		require.NoError(t, err)
-		assert.JSONEq(t, string(document), stdout)
+		assert.JSONEq(t, string(apiDocs), stdout)
 	})
 
 	t.Run("api-docs lists the operations of the method and version the flags name", func(t *testing.T) {
@@ -313,41 +307,28 @@ type recordedRequest struct {
 }
 
 type fakeMeshStack struct {
-	*httptest.Server
+	*fakemeshstack.Server
 
-	status   int
-	body     string
 	requests []recordedRequest
 }
 
 func newFakeMeshStack(t *testing.T) *fakeMeshStack {
 	t.Helper()
-	meshStack := &fakeMeshStack{status: gohttp.StatusOK, body: `{}`}
-	meshStack.Server = httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		body, err := io.ReadAll(r.Body)
-		assert.NoError(t, err)
-		meshStack.requests = append(meshStack.requests, recordedRequest{
-			method:        r.Method,
-			pathAndQuery:  r.URL.RequestURI(),
-			accept:        strings.Join(r.Header["Accept"], ","),
-			contentType:   strings.Join(r.Header["Content-Type"], ","),
-			authorization: strings.Join(r.Header["Authorization"], ","),
-			body:          string(body),
-		})
-		w.WriteHeader(meshStack.status)
-		_, _ = io.WriteString(w, meshStack.body)
-	}))
-	t.Cleanup(meshStack.Close)
+	meshStack := &fakeMeshStack{Server: fakemeshstack.Start(t, fakemeshstack.Options{})}
+	meshStack.answer(gohttp.StatusOK, `{}`)
 	return meshStack
 }
 
 func (f *fakeMeshStack) answer(status int, body string) {
-	f.status, f.body = status, body
+	f.Route("/", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	})
 }
 
 func (f *fakeMeshStack) run(t *testing.T, cmd *cobra.Command, stdin string, args ...string) (string, error) {
 	t.Helper()
-	f.requests = nil
+	f.TakeRequests()
 	var stdout bytes.Buffer
 	// as the root command does
 	cmd.SilenceUsage = true
@@ -356,5 +337,16 @@ func (f *fakeMeshStack) run(t *testing.T, cmd *cobra.Command, stdin string, args
 	cmd.SetOut(&stdout)
 	cmd.SetErr(io.Discard)
 	err := cmd.ExecuteContext(t.Context())
+	f.requests = nil
+	for _, r := range f.TakeRequests() {
+		f.requests = append(f.requests, recordedRequest{
+			method:        r.Method,
+			pathAndQuery:  r.URL.RequestURI(),
+			accept:        strings.Join(r.Header["Accept"], ","),
+			contentType:   strings.Join(r.Header["Content-Type"], ","),
+			authorization: strings.Join(r.Header["Authorization"], ","),
+			body:          string(r.Body),
+		})
+	}
 	return stdout.String(), err
 }

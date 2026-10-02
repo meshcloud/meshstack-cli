@@ -107,13 +107,13 @@ func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTestServer(t)
-			// The test server answers neither /mesh/info nor GitHub, as for auth status --skip-version-check.
+			// The version check would ask GitHub for the latest release.
 			t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
-			server.Route(t, "/api/meshobjects/meshapikeys/self", func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+			server.Route("/api/meshobjects/meshapikeys/self", func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				resp.WriteHeader(tt.status)
 				_, _ = fmt.Fprint(resp, tt.body)
 			})
-			testApiKey1.SetEnv(t)
+			setApiKeyEnv(t, testApiKey1)
 			captured := logs.Capture(t)
 
 			session, err := auth.ResolveSession(t.Context(), testSessionOpts)
@@ -138,7 +138,7 @@ func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
 func TestStatusOfAnApiToken(t *testing.T) {
 	server := newTestServer(t)
 	t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
-	server.Route(t, "/api/meshobjects/meshapikeys/self", func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+	server.Route("/api/meshobjects/meshapikeys/self", func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 		_, _ = fmt.Fprint(resp, `{"metadata":{"uuid":"`+testApiKey1.ClientId+`","ownedByWorkspace":"ops"},`+
 			`"spec":{"displayName":"run 42","permissions":["BUILDINGBLOCK_SAVE"]}}`)
 	})

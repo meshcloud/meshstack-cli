@@ -6,8 +6,6 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"io"
-	gohttp "net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -17,6 +15,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
@@ -47,12 +46,7 @@ func executeStatus(t *testing.T, args ...string) string {
 
 func withApiToken(t *testing.T) {
 	t.Helper()
-	meshStack := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
-		assert.Equal(t, "/mesh/info", r.URL.Path)
-		_, _ = w.Write([]byte(`{"version": "2026.40.0"}`))
-	}))
-	t.Cleanup(meshStack.Close)
-	testlogin.LoggedInTo(t, meshStack.URL)
+	testlogin.LoggedInTo(t, fakemeshstack.Start(t, fakemeshstack.Options{Version: "2026.40.0"}).URL)
 	claims := fmt.Appendf(nil, `{"exp":%d,"preferred_username":"runner","MC_CUSTOMER":"ops"}`, time.Now().Add(time.Hour).Unix())
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), "e30."+base64.RawURLEncoding.EncodeToString(claims)+".test-signature")
 }

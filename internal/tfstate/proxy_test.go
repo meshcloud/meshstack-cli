@@ -3,7 +3,6 @@ package tfstate
 import (
 	"context"
 	"errors"
-	"io"
 	"io/fs"
 	gohttp "net/http"
 	"net/http/httptest"
@@ -18,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 const (
@@ -28,52 +28,32 @@ const (
 
 var buildingBlockUuid = uuid.MustParse("b1d2c3e4-0000-4000-8000-000000000001")
 
-type fakeMeshStack struct {
-	state     []byte
-	forbidden bool
-	requests  []string
-}
-
-func (f *fakeMeshStack) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) {
-	f.requests = append(f.requests, r.Method+" "+r.URL.Path)
-	switch {
-	case f.forbidden:
-		w.WriteHeader(gohttp.StatusForbidden)
-	case r.Method == gohttp.MethodPost:
-		f.state, _ = io.ReadAll(r.Body)
-	case r.Method == gohttp.MethodDelete:
-		f.state = nil
-	case f.state == nil:
-		w.WriteHeader(gohttp.StatusNotFound)
-	default:
-		_, _ = w.Write(f.state)
-	}
-}
-
 type requester struct {
 	endpoint *url.URL
 }
 
 func (r requester) DoRequest(ctx context.Context, method, path string, opts ...http.RequestOption) ([]byte, error) {
-	return http.NewClient("").DoRequest[[]byte](ctx, method, r.endpoint.JoinPath(path), opts...)
+	return http.NewClient("").WithAuthorization(http.BearerToken(fakemeshstack.Token)).
+		DoRequest[[]byte](ctx, method, r.endpoint.JoinPath(path), opts...)
 }
 
 type proxyUnderTest struct {
 	*Proxy
 
-	meshStack *fakeMeshStack
+	meshStack *fakemeshstack.Server
 	problems  []error
 }
 
+var storedState = fakemeshstack.TfState{Workspace: "my-workspace", BuildingBlockUuid: buildingBlockUuid.String()}
+
 func newProxy(t *testing.T, stored string, writable bool) *proxyUnderTest {
 	t.Helper()
-	meshStack := &fakeMeshStack{}
+	states := map[fakemeshstack.TfState][]byte{}
 	if stored != "" {
-		meshStack.state = []byte(stored)
+		states[storedState] = []byte(stored)
 	}
-	server := httptest.NewServer(meshStack)
-	t.Cleanup(server.Close)
-	endpoint, err := url.Parse(server.URL)
+	meshStack := fakemeshstack.Start(t, fakemeshstack.Options{TfStates: states})
+	endpoint, err := url.Parse(meshStack.URL)
 	require.NoError(t, err)
 	p := &proxyUnderTest{meshStack: meshStack}
 	p.Proxy = &Proxy{
@@ -84,6 +64,13 @@ func newProxy(t *testing.T, stored string, writable bool) *proxyUnderTest {
 		password:  testPassword,
 	}
 	return p
+}
+
+func (p *proxyUnderTest) requests() (requests []string) {
+	for _, request := range p.meshStack.TakeRequests() {
+		requests = append(requests, request.Method+" "+request.URL.Path)
+	}
+	return requests
 }
 
 func (p *proxyUnderTest) send(method, body string) *httptest.ResponseRecorder {
@@ -121,7 +108,7 @@ func TestAWritableProxy(t *testing.T) {
 	})
 
 	t.Run("takes only the basic auth it handed out", func(t *testing.T) {
-		p.meshStack.requests = nil
+		p.meshStack.TakeRequests()
 		for name, authorize := range map[string]func(r *gohttp.Request){
 			"no auth":          func(*gohttp.Request) {},
 			"another password": func(r *gohttp.Request) { r.SetBasicAuth(username, "guessed") },
@@ -134,13 +121,13 @@ func TestAWritableProxy(t *testing.T) {
 			p.ServeHTTP(w, r)
 			assert.Equal(t, gohttp.StatusUnauthorized, w.Code, name)
 		}
-		assert.Empty(t, p.meshStack.requests)
+		assert.Empty(t, p.meshStack.TakeRequests())
 		p.problems = nil
 	})
 
 	t.Run("stores the first state, and backs up nothing before it", func(t *testing.T) {
 		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, firstState).Code)
-		assert.JSONEq(t, firstState, string(p.meshStack.state))
+		assert.JSONEq(t, firstState, string(p.meshStack.TfState(storedState)))
 		assert.Empty(t, p.backups(t))
 		assert.Empty(t, p.problems)
 	})
@@ -156,7 +143,7 @@ func TestAWritableProxy(t *testing.T) {
 			assert.Equal(t, gohttp.StatusConflict, p.send(gohttp.MethodPost, written).Code, written)
 			assert.Equal(t, []string{wantProblem}, errorTexts(p.problems))
 		}
-		assert.JSONEq(t, firstState, string(p.meshStack.state))
+		assert.JSONEq(t, firstState, string(p.meshStack.TfState(storedState)))
 		assert.Empty(t, p.backups(t))
 	})
 
@@ -164,13 +151,13 @@ func TestAWritableProxy(t *testing.T) {
 		refused := errors.New("a run is in progress")
 		p.BeforeWrite = func(context.Context) error { return refused }
 		defer func() { p.BeforeWrite = nil }()
-		p.meshStack.requests = nil
+		p.meshStack.TakeRequests()
 		for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
 			p.problems = nil
 			assert.Equal(t, gohttp.StatusConflict, p.send(method, nextState).Code, method)
 			assert.Equal(t, []error{refused}, p.problems, method)
 		}
-		assert.Empty(t, p.meshStack.requests)
+		assert.Empty(t, p.meshStack.TakeRequests())
 	})
 
 	t.Run("stores a state of a higher serial, a skipped one included, and backs up the one it replaces", func(t *testing.T) {
@@ -188,12 +175,12 @@ func TestAWritableProxy(t *testing.T) {
 
 	t.Run("backs up the state it deletes", func(t *testing.T) {
 		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodDelete, "").Code)
-		assert.Nil(t, p.meshStack.state)
+		assert.Nil(t, p.meshStack.TfState(storedState))
 		assert.Equal(t, []string{firstState, nextState, `{"version":4,"serial":7,"lineage":"lineage-1"}`}, p.backups(t))
 	})
 
 	t.Run("passes on the refusal of meshStack", func(t *testing.T) {
-		p.meshStack.forbidden = true
+		p.meshStack.Route("/", func(w gohttp.ResponseWriter, _ *gohttp.Request) { w.WriteHeader(gohttp.StatusForbidden) })
 		p.problems = nil
 
 		assert.Equal(t, gohttp.StatusForbidden, p.send(gohttp.MethodGet, "").Code)
@@ -212,18 +199,18 @@ func TestAReadOnlyProxy(t *testing.T) {
 
 		assert.Equal(t, gohttp.StatusOK, w.Code)
 		assert.JSONEq(t, firstState, w.Body.String())
-		assert.Equal(t, []string{"GET /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()}, p.meshStack.requests)
+		assert.Equal(t, []string{"GET /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()}, p.requests())
 	})
 
 	t.Run("refuses every write before it reaches meshStack", func(t *testing.T) {
-		p.meshStack.requests = nil
+		p.meshStack.TakeRequests()
 		for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
 			p.problems = nil
 			assert.Equal(t, gohttp.StatusForbidden, p.send(method, nextState).Code, method)
 			require.Len(t, p.problems, 1)
 			require.ErrorIs(t, p.problems[0], ErrReadOnly)
 		}
-		assert.Empty(t, p.meshStack.requests)
+		assert.Empty(t, p.meshStack.TakeRequests())
 	})
 }
 
