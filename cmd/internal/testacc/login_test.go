@@ -78,6 +78,7 @@ func TestAccBrowserLogin(t *testing.T) {
 				require.Errorf(t, run.wait(), "the login stored a credential it cannot use:\n%s", run.output.String())
 				assert.Contains(t, run.output.String(), refusedWithoutAWorkspace)
 				assert.NoFileExists(t, c.credentialsJson())
+				assert.NoFileExists(t, c.credentialsCacheJson("oidcLogin"), "the failed login left its tokens behind")
 				return
 			}
 			require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
@@ -105,6 +106,9 @@ func TestAccBrowserLogin(t *testing.T) {
 	})
 
 	t.Run("a login holds the profiles until the browser comes back", browserLoginHoldsTheProfiles(endpoint, withWorkspace))
+	if without := slices.IndexFunc(logins, func(login devLogin) bool { return len(login.Workspaces) == 0 }); without != -1 {
+		t.Run("a failed login keeps the earlier login of the profile", failedLoginKeepsTheEarlierLogin(endpoint, withWorkspace, logins[without]))
+	}
 
 	admin := organizationAdmin(t, logins)
 	c := newCLI(t, endpoint)
@@ -116,6 +120,22 @@ func TestAccBrowserLogin(t *testing.T) {
 	})
 	t.Run("every GET operation answers the organization admin", everyGetOperationAnswers(c, false))
 	t.Run("tfstate of a browser login says that it takes an API key", tfstateTakesAnApiKey(c, apiKey))
+}
+
+func failedLoginKeepsTheEarlierLogin(endpoint string, withWorkspace, withoutWorkspace devLogin) func(*testing.T) {
+	return func(t *testing.T) {
+		c := newCLI(t, endpoint)
+		run := startLogin(t, c, "1")
+		completeKeycloakLogin(t, run.awaitStartURL(t), "full", withWorkspace.Username, withWorkspace.Password)
+		require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
+
+		run = startLogin(t, c, "1")
+		completeKeycloakLogin(t, run.awaitStartURL(t), "full", withoutWorkspace.Username, withoutWorkspace.Password)
+		require.Errorf(t, run.wait(), "the login stored a credential it cannot use:\n%s", run.output.String())
+
+		output, err := c.run("", "workspace", "list", "-o", "ndjson")
+		require.NoErrorf(t, err, "the earlier login no longer works:\n%s", output)
+	}
 }
 
 func firstLoginWithAWorkspace(t *testing.T, logins []devLogin) devLogin {

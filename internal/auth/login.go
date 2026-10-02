@@ -19,7 +19,8 @@ type StoreFunc func(context.Context) error
 
 // Login holds the profiles it stores until unlock, so that no other command that stores them, such
 // as meshstack profile, stores over the profile of a login waiting for the browser. Where Login
-// fails, it holds nothing.
+// fails, it holds nothing. An unlock before the credential is stored also takes back the tokens
+// that the login cached.
 func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOptions) (_ Session, _ StoreFunc, unlock func() error, err error) {
 	session, profiles, err := newSession(ctx, opts, true)
 	if err != nil {
@@ -58,7 +59,8 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 
 	resolved.Sources, resolved.Stored = []string{"file " + creds.FilePath}, true
 	session.Credential = resolved
-	if err := session.Credential.Write(ctx); err != nil {
+	restoreCache, err := session.Credential.WriteOver(ctx)
+	if err != nil {
 		return Session{}, nil, nil, err
 	}
 
@@ -70,6 +72,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 		return session.resolveWorkspaceForLogin(ctx, opts)
 	})
 
+	var credentialStored bool
 	storeSession := func(ctx context.Context) error {
 		// A login that fails stores nothing, so it neither switches the current profile nor leaves a
 		// credential behind that a later command would use.
@@ -82,9 +85,19 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 
 		// CurrentProfile points into the map profiles holds, so the default workspace set above is
 		// stored as well.
-		return errors.Join(creds.Store(ctx), profiles.SetCurrent(ctx, session.CurrentProfile.Name))
+		storeErr := creds.Store(ctx)
+		credentialStored = storeErr == nil
+		return errors.Join(storeErr, profiles.SetCurrent(ctx, session.CurrentProfile.Name))
 	}
-	return session, storeSession, profiles.Unlock, nil
+	unlockAndRestore := func() error {
+		var restoreErr error
+		if !credentialStored {
+			// Not cancelled with ctx, so that a login cut off with Ctrl+C still takes its tokens back.
+			restoreErr = restoreCache(context.WithoutCancel(ctx))
+		}
+		return errors.Join(restoreErr, profiles.Unlock())
+	}
+	return session, storeSession, unlockAndRestore, nil
 }
 
 func (s Session) resolveWorkspaceForLogin(ctx context.Context, opts ResolveSessionOptions) (meshstack.Workspace, error) {

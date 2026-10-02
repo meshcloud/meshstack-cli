@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"reflect"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
@@ -87,6 +88,34 @@ func (c Credential) Write(ctx context.Context) error {
 	return c.locker.WithLock(ctx, func() error {
 		return c.write(ctx)
 	})
+}
+
+// WriteOver is Write for a login, whose restore puts back the cache file it replaced, or removes the
+// one it created, so that a failed login leaves no token behind. The file it replaced may belong to
+// an earlier login of the profile, which stays stored when the new one fails.
+func (c Credential) WriteOver(ctx context.Context) (restore func(context.Context) error, err error) {
+	var previous []byte
+	err = c.locker.WithLock(ctx, func() error {
+		previous, err = os.ReadFile(c.cachePath)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		return c.write(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) error {
+		return c.locker.WithLock(ctx, func() error {
+			if previous == nil {
+				if err := os.Remove(c.cachePath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return err
+				}
+				return nil
+			}
+			return json.MarshalTo(ctx, c.cachePath, jsontext.Value(previous), json.UserOnlyFilePerms())
+		})
+	}, nil
 }
 
 func (c Credential) read(ctx context.Context) (matched bool, err error) {
