@@ -62,6 +62,14 @@ func TestUsesTerminal(t *testing.T) {
 	assert.Equal(t, "  [1] label of a\n  [2] label of b\nSelect a thing [1-2]: ", asked.String(), "the selection asked line by line")
 }
 
+func TestForcedColorUsesNoTerminal(t *testing.T) {
+	t.Setenv("FORCE_COLOR", "1")
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("TTY_FORCE", "1")
+
+	assert.False(t, New(strings.NewReader("\n"), io.Discard).UsesTerminal(), "a CI job would wait for a key forever")
+}
+
 func TestAskTakesTheDefaultForAnEmptyAnswerAndAsksAgainUntilValid(t *testing.T) {
 	notEmpty := func(answer string) error {
 		if answer == "" {

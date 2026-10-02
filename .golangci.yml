@@ -355,6 +355,7 @@ linters:
             # and a command that shows one object marshals it, or writes it as Markdown
             - encoding/json/v2
             - github.com/meshcloud/meshstack-cli/cmd/internal/markdown
+            - github.com/meshcloud/meshstack-cli/cmd/internal/color
             - github.com/meshcloud/meshstack-cli/pkg
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
@@ -367,6 +368,9 @@ linters:
             - github.com/charmbracelet/x/ansi
             # renders the Markdown a command shows on a terminal
             - charm.land/glamour/v2
+            # what lipgloss and charm.land/log decide color with, which cmd/internal/color
+            # extends by FORCE_COLOR and the CIs
+            - github.com/charmbracelet/colorprofile
 
         # The package the Terraform provider consumes most directly, so it reaches nothing
         # beyond the standard library and the three packages below.
@@ -493,6 +497,7 @@ linters:
             - charm.land/glamour/v2
             - charm.land/huh/v2
             - charm.land/log/v2
+            - github.com/charmbracelet/colorprofile
             - github.com/charmbracelet/x/ansi
             - github.com/charmbracelet/x/term
             - github.com/gofrs/flock

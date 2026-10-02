@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -180,4 +181,29 @@ func TestRenderInlineStylesOneLineWithoutMarginOrPadding(t *testing.T) {
 
 	assert.Contains(t, rendered, "\x1b[", "the bold text is styled")
 	assert.Equal(t, "ADMIN (admin)", ansi.Strip(rendered))
+}
+
+func TestWriteRendersTheMarkdownToNoTerminalOnlyWhereColorIsForced(t *testing.T) {
+	t.Setenv("GLAMOUR_STYLE", "dark")
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR_FORCE", "")
+	const text = "Some **bold** text.\n"
+	write := func() string {
+		var out bytes.Buffer
+		require.NoError(t, Write(&out, Parse("test", text), nil))
+		return out.String()
+	}
+
+	t.Setenv("FORCE_COLOR", "")
+	assert.Equal(t, text, write(), "a pipe gets the Markdown as it is")
+
+	t.Setenv("FORCE_COLOR", "1")
+	forced := write()
+	assert.Contains(t, forced, "\x1b[", "the Markdown is rendered")
+	assert.NotContains(t, forced, "\x1b[38;5;", "the colors are reduced to the 16 that FORCE_COLOR=1 asks for")
+	assert.Equal(t, "Some bold text.", strings.TrimSpace(ansi.Strip(forced)))
+	assert.LessOrEqual(t, widestLine(forced), maxWidth)
+
+	t.Setenv("NO_COLOR", "1")
+	assert.Equal(t, text, write(), "NO_COLOR outranks FORCE_COLOR")
 }

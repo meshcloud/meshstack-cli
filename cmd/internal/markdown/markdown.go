@@ -15,8 +15,11 @@ import (
 
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/styles"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
+
+	"github.com/meshcloud/meshstack-cli/cmd/internal/color"
 )
 
 //go:embed credential.md.tmpl
@@ -60,22 +63,28 @@ func relative(d time.Duration) string {
 	return "in " + amount
 }
 
-// Write wraps at the narrowest width that takes no more lines than the terminal's does, because
-// glamour stretches a table to the width it wraps at, and a short table reads badly across a wide
-// terminal.
+// Write renders the Markdown where [color.Output] allows any styling, and writes it as it is
+// otherwise. It wraps at the narrowest width that takes no more lines than the terminal's does,
+// because glamour stretches a table to the width it wraps at, and a short table reads badly across
+// a wide terminal. Forced color without a terminal takes maxWidth for the terminal's width.
 func Write(w io.Writer, t *template.Template, data any) error {
 	text, err := Execute(t, data)
 	if err != nil {
 		return err
 	}
-	if file, ok := w.(*os.File); ok && term.IsTerminal(file.Fd()) {
-		width, _, sizeErr := term.GetSize(file.Fd())
-		if sizeErr != nil {
-			width = maxWidth
+	if profile := color.Output(w, os.Environ()); profile > colorprofile.NoTTY {
+		width := maxWidth
+		if file, ok := w.(*os.File); ok {
+			if terminalWidth, _, sizeErr := term.GetSize(file.Fd()); sizeErr == nil {
+				width = terminalWidth
+			}
 		}
 		if text, err = renderFitting(text, width); err != nil {
 			return err
 		}
+		// glamour leaves it to the writer to reduce its colors to the profile, or drop them for
+		// NO_COLOR.
+		w = &colorprofile.Writer{Forward: w, Profile: profile}
 	}
 	_, err = io.WriteString(w, text)
 	return err

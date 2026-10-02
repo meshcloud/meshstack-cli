@@ -19,6 +19,11 @@ Commands meant for people, such as `meshstack auth status` and `meshstack profil
 The other commands write JSON, or one item per line with `--output ndjson`, for scripts and agentic AI
 workflows that read it through a `| jq ...` pipe. A listing stops at 100 items unless `--limit` says otherwise.
 
+On a terminal, the Markdown is rendered and the log is colored. [`NO_COLOR`](https://no-color.org) turns the
+colors off, and `FORCE_COLOR` or [`CLICOLOR_FORCE`](https://bixense.com/clicolors/) turns them on where the
+output is no terminal, such as in a CI job. GitHub Actions, GitLab CI and Azure Pipelines get a colored log
+without being asked, and the log of a building block run stays plain, since meshPanel shows it as plain text.
+
 `meshstack api` sends an authenticated, `curl`-like request to any path of the API. For a meshObject
 endpoint it picks the latest version the [OpenAPI docs](https://docs.meshcloud.io/api/introduction/) list,
 and `meshstack api-docs` shows what those docs say about a request.

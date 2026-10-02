@@ -17,6 +17,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/eventlog"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/cmd/internal/color"
 	"github.com/meshcloud/meshstack-cli/cmd/profile"
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
@@ -39,6 +40,9 @@ func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "meshstack",
 		Short: "Command line interface for meshStack",
+		Long: `Command line interface for meshStack.
+
+Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 		// RunE has to be set for cobra to render the usage block at all: its help template
 		// skips usage while the command is neither runnable nor a parent of subcommands.
 		Args: cobra.NoArgs,
@@ -85,5 +89,7 @@ func setupLogging(debug bool) {
 	if debug {
 		options.Level = clog.DebugLevel
 	}
-	slog.SetDefault(slog.New(clog.NewWithOptions(os.Stderr, options)))
+	logger := clog.NewWithOptions(os.Stderr, options)
+	logger.SetColorProfile(color.Log(os.Stderr, os.Environ()))
+	slog.SetDefault(slog.New(logger))
 }

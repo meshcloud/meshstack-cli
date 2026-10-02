@@ -106,8 +106,8 @@ func (c *cli) setEnv(key, value string) {
 	c.extraEnv = append(c.extraEnv, key+"="+value)
 }
 
-// environ blanks every MESHSTACK_* name this suite does not set on purpose, so that a developer's
-// .env cannot decide what a test proves.
+// environ blanks every MESHSTACK_* name this suite does not set on purpose, and the names that
+// force color, so that a developer's .env or a CI cannot decide what a test proves.
 func (c *cli) environ() []string {
 	return append([]string{
 		envConfigDir + "=" + c.configDir,
@@ -119,6 +119,9 @@ func (c *cli) environ() []string {
 		setting.ApiKeyClientId.EnvKey() + "=",
 		setting.ApiKeyClientSecret.EnvKey() + "=",
 		setting.ApiToken.EnvKey() + "=",
+		"FORCE_COLOR=",
+		"CLICOLOR_FORCE=",
+		"TTY_FORCE=",
 	}, c.extraEnv...)
 }
 
