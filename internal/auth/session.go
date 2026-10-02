@@ -39,7 +39,7 @@ type (
 )
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {
-	session, _, err := newSession(ctx, opts)
+	session, _, err := newSession(ctx, opts, false)
 	if err != nil {
 		return Session{}, err
 	}
@@ -68,13 +68,20 @@ func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionO
 	return session.withCredential(ctx, stored, opts)
 }
 
-func newSession(ctx context.Context, opts ResolveSessionOptions) (Session, profile.Profiles, error) {
+// newSession leaves the profiles locked with exclusiveLock only where it succeeds.
+func newSession(ctx context.Context, opts ResolveSessionOptions, exclusiveLock bool) (_ Session, _ profile.Profiles, err error) {
 	currentProfile, profiles, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{
 		SettingSources: opts.SettingSources,
+		ExclusiveLock:  exclusiveLock,
 	})
 	if err != nil {
 		return Session{}, profile.Profiles{}, err
 	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, profiles.Unlock())
+		}
+	}()
 
 	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting, currentProfile.EndpointSource())
 	if err != nil {

@@ -19,7 +19,9 @@ default workspace.
 
 On a terminal, this lists the profiles to add, edit, delete, or make the current one, starting at
 the first one for the endpoint where --endpoint or MESHSTACK_ENDPOINT gives one. Elsewhere it shows
-this help: list and show print the profiles, and add, edit and delete ask line by line.`,
+this help: list and show print the profiles, and add, edit and delete ask line by line.
+
+While it is open, and while add, edit or delete runs, a login fails, and the other way round.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -28,19 +30,17 @@ this help: list and show print the profiles, and add, edit and delete ask line b
 			if !p.UsesTerminal() {
 				return cmd.Help()
 			}
-			profiles, err := profile.LoadProfiles(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
-			if err != nil {
-				return err
-			}
-			selection, err := profiles.SelectionFor(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
-			if err != nil {
-				return err
-			}
-			m := newModel(ctx, profiles)
-			if candidates := selection.Candidates(); selection.Endpoint != nil && len(candidates) > 0 {
-				m = m.withRows(candidates[0].Name)
-			}
-			return run(ctx, p, m)
+			return withLockedProfiles(ctx, func(profiles profile.Profiles) error {
+				selection, err := profiles.SelectionFor(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+				if err != nil {
+					return err
+				}
+				m := newModel(ctx, profiles)
+				if candidates := selection.Candidates(); selection.Endpoint != nil && len(candidates) > 0 {
+					m = m.withRows(candidates[0].Name)
+				}
+				return run(ctx, p, m)
+			})
 		},
 	}
 

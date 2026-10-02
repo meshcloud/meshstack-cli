@@ -101,10 +101,11 @@ func TestSessionReusesAStoredTokenUntilTheApiKeyChanges(t *testing.T) {
 	t.Run("login", func(t *testing.T) {
 		testApiKey1.SetEnv(t)
 
-		login, store, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
+		login, store, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
 		require.NoError(t, err)
 		server.RequireGreeting(t, greetingClient(login))
 		require.NoError(t, store(t.Context()))
+		require.NoError(t, unlock())
 	})
 
 	t.Run("reloaded without env", func(t *testing.T) {
@@ -141,9 +142,10 @@ func TestSessionReusesAStoredTokenUntilTheApiKeyChanges(t *testing.T) {
 func TestSessionStoresTheFirstTokenMintedAfterALoginThatMintedNone(t *testing.T) {
 	server := newTestServer(t)
 	testApiKey1.SetEnv(t)
-	_, store, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
+	_, store, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
 	require.NoError(t, err)
 	require.NoError(t, store(t.Context()))
+	require.NoError(t, unlock())
 	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), "")
 	t.Setenv(auth.ApiKeyClientSecretSetting.EnvKey(), "")
 
@@ -159,9 +161,10 @@ func TestSessionStoresTheFirstTokenMintedAfterALoginThatMintedNone(t *testing.T)
 func TestSessionSendsTheManualTokenFromTheEnvironmentOverTheStoredOne(t *testing.T) {
 	server := newTestServer(t)
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
-	_, store, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
+	_, store, unlock, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
 	require.NoError(t, err)
 	require.NoError(t, store(t.Context()))
+	require.NoError(t, unlock())
 	require.True(t, server.RevokeNewestToken(t), "the token the login stored")
 
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
@@ -174,9 +177,10 @@ func TestSessionSendsTheManualTokenFromTheEnvironmentOverTheStoredOne(t *testing
 func TestSessionKeepsTheStoredManualTokenApartFromARejectedOneFromTheEnvironment(t *testing.T) {
 	server := newTestServer(t)
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
-	_, store, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
+	_, store, unlock, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
 	require.NoError(t, err)
 	require.NoError(t, store(t.Context()))
+	require.NoError(t, unlock())
 
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
 	require.True(t, server.RevokeNewestToken(t), "the token in the environment")
@@ -195,14 +199,16 @@ func TestLoginCreatesAndStoresTheProfileItNames(t *testing.T) {
 	testApiKey1.SetEnv(t)
 	// The first login writes profiles.json, so the name below is one missing from a file that
 	// does exist.
-	_, storeFirst, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
+	_, storeFirst, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
 	require.NoError(t, err)
 	require.NoError(t, storeFirst(t.Context()))
+	require.NoError(t, unlock())
 
 	t.Setenv(profile.NameSetting.EnvKey(), "dev")
-	_, store, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
+	_, store, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
 	require.NoError(t, err)
 	require.NoError(t, store(t.Context()))
+	require.NoError(t, unlock())
 
 	_, err = auth.ResolveSession(t.Context(), testSessionOpts)
 	require.NoError(t, err, "the created profile is on disk for every later command")

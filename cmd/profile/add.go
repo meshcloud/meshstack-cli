@@ -19,14 +19,12 @@ func newAdd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
-			profiles, err := profile.LoadProfiles(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
-			if err != nil {
-				return err
-			}
-			return edit(ctx, p, profiles, draft{
-				name:      internal.ProfileFlag.Value,
-				endpoint:  internal.EndpointFlag.Value,
-				workspace: workspaceFlag.Value,
+			return withLockedProfiles(ctx, func(profiles profile.Profiles) error {
+				return edit(ctx, p, profiles, draft{
+					name:      internal.ProfileFlag.Value,
+					endpoint:  internal.EndpointFlag.Value,
+					workspace: workspaceFlag.Value,
+				})
 			})
 		},
 	}

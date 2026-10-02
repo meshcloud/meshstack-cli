@@ -10,14 +10,19 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 func TestLoginRefusesAnUnknownCredential(t *testing.T) {
 	newTestServer(t)
 
-	_, _, err := auth.Login(t.Context(), "nope", testSessionOpts)
+	_, _, _, err := auth.Login(t.Context(), "nope", testSessionOpts)
 	require.ErrorContains(t, err, "cannot authenticate with credential 'nope'; pick one of [apiKey manual oidcLogin]")
+
+	profiles, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{ExclusiveLock: true})
+	require.NoError(t, err, "a login that fails holds no lock on the profiles")
+	require.NoError(t, profiles.Unlock())
 }
 
 // The source stands in for the workspace selection of 'meshstack login', which needs the list.
@@ -33,7 +38,7 @@ func TestLoginListsWorkspacesWithoutWaitingOnItsOwnWorkspace(t *testing.T) {
 			return "", err
 		},
 	}}}
-	_, store, err := auth.Login(t.Context(), credential.ApiKeyName, opts)
+	_, store, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, opts)
 	require.NoError(t, err)
 
 	stored := make(chan error, 1)
@@ -46,4 +51,5 @@ func TestLoginListsWorkspacesWithoutWaitingOnItsOwnWorkspace(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the store is still waiting for the workspace list")
 	}
+	require.NoError(t, unlock())
 }

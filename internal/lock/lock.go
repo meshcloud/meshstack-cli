@@ -18,8 +18,9 @@ func New(path string) Locker {
 
 // Locker guards one file against other goroutines with an RWMutex, and against other
 // processes with a lock file. Both spin on a try-lock, so neither is fair: a writer cannot
-// preempt a steady stream of readers, and every holder has to release quickly. That is the
-// bargain the token cache is built on — a read is one field, a write is one token refresh.
+// preempt a steady stream of readers. The token cache relies on every holder releasing quickly,
+// as a read is one field and a write is one token refresh. A holder of Lock may keep it for as
+// long as a person takes, so whoever waits for such a lock gives up after a short timeout.
 type Locker struct {
 	m        *sync.RWMutex
 	pathLock string
@@ -33,10 +34,34 @@ func (l Locker) WithRLock(ctx context.Context, fn func() error) error {
 	return l.with(ctx, true, fn)
 }
 
-func (l Locker) with(ctx context.Context, read bool, fn func() error) error {
-	return l.inMemoryLocker(read).With(ctx, func() error {
-		return l.fileLocker(read).With(ctx, fn)
-	})
+// Lock holds the exclusive lock until unlock, which releases it on its first call only.
+func (l Locker) Lock(ctx context.Context) (unlock func() error, err error) {
+	return l.lock(ctx, false)
+}
+
+func (l Locker) with(ctx context.Context, read bool, fn func() error) (err error) {
+	unlock, err := l.lock(ctx, read)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, unlock())
+	}()
+	return fn()
+}
+
+func (l Locker) lock(ctx context.Context, read bool) (unlock func() error, err error) {
+	inMemory := l.inMemoryLocker(read)
+	if err := inMemory.SpinLock(ctx); err != nil {
+		return nil, err
+	}
+	file := l.fileLocker(read)
+	if err := file.SpinLock(ctx); err != nil {
+		return nil, errors.Join(err, inMemory.Unlock())
+	}
+	return sync.OnceValue(func() error {
+		return errors.Join(file.Unlock(), inMemory.Unlock())
+	}), nil
 }
 
 func (l Locker) inMemoryLocker(read bool) delegatingLocker {
@@ -99,16 +124,6 @@ type (
 type delegatingLocker struct {
 	DelegateTryLock tryLockFunc
 	DelegateUnlock  unlockFunc
-}
-
-func (l delegatingLocker) With(ctx context.Context, fn func() error) (err error) {
-	if lockErr := l.SpinLock(ctx); lockErr != nil {
-		return lockErr
-	}
-	defer func() {
-		err = errors.Join(err, l.Unlock())
-	}()
-	return fn()
 }
 
 func (l delegatingLocker) SpinLock(ctx context.Context) error {

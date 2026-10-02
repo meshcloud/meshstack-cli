@@ -23,14 +23,34 @@ type Profiles struct {
 	Profiles       map[Name]*Profile `json:"profiles,omitzero"`
 
 	configDir config.Directory
+	unlock    func() error
+}
+
+type LoadProfilesOptions struct {
+	SettingSources
+
+	// ExclusiveLock holds the profiles until Profiles.Unlock, for a command that stores them, so
+	// that no other such command stores over what this one changes. Where another one holds them,
+	// LoadProfiles fails with ErrInUse within lockWaitTime.
+	ExclusiveLock bool
 }
 
 // LoadProfiles only reads, and resolves nothing but the configuration directory: ResolveProfile
 // creates the first profile, as it creates any other.
-func LoadProfiles(ctx context.Context, opts ResolveProfileOptions) (profiles Profiles, err error) {
+func LoadProfiles(ctx context.Context, opts LoadProfilesOptions) (profiles Profiles, err error) {
 	profiles.configDir, err = opts.ResolveSetting(ctx, config.DirectorySetting)
 	if err != nil {
 		return
+	}
+	if opts.ExclusiveLock {
+		if profiles.unlock, err = lockExclusively(ctx, profiles.configDir); err != nil {
+			return
+		}
+		defer func() {
+			if err != nil {
+				err = errors.Join(err, profiles.Unlock())
+			}
+		}()
 	}
 	err = json.UnmarshalFrom(ctx, profiles.configDir.ProfilesJson(), &profiles, json.ModifyAfterUnmarshal(func(target *map[Name]*Profile) {
 		for name, profile := range *target {
@@ -50,6 +70,15 @@ func LoadProfiles(ctx context.Context, opts ResolveProfileOptions) (profiles Pro
 
 func (ps Profiles) Store(ctx context.Context) error {
 	return json.MarshalTo(ctx, ps.configDir.ProfilesJson(), ps)
+}
+
+// Unlock releases the lock of LoadProfilesOptions.ExclusiveLock, and does nothing for profiles
+// loaded without it or unlocked already.
+func (ps Profiles) Unlock() error {
+	if ps.unlock == nil {
+		return nil
+	}
+	return ps.unlock()
 }
 
 // Add puts p into profiles under its name, replacing any profile of that name.

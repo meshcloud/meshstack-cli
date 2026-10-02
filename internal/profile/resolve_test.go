@@ -140,7 +140,7 @@ func TestLoadProfilesRejectsANullProfile(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.Directory(configDir).ProfilesJson(),
 		[]byte(`{"version":1,"profiles":{"broken":null}}`), 0o600))
 
-	_, err := LoadProfiles(t.Context(), ResolveProfileOptions{})
+	_, err := LoadProfiles(t.Context(), LoadProfilesOptions{})
 
 	require.ErrorContains(t, err, "'broken'")
 }
@@ -149,7 +149,7 @@ func TestAddPutsAProfileIntoTheConfigDirectoryOfTheProfiles(t *testing.T) {
 	givenNoMeshstackEnvironment(t)
 	configDir := t.TempDir()
 	t.Setenv(config.DirectorySetting.EnvKey(), configDir)
-	profiles, err := LoadProfiles(t.Context(), ResolveProfileOptions{})
+	profiles, err := LoadProfiles(t.Context(), LoadProfilesOptions{})
 	require.NoError(t, err)
 
 	added := Add(&profiles, Profile{Name: "dev", Endpoint: testEndpoint, ConfigDir: "elsewhere"})

@@ -22,6 +22,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblockdefinitionversion"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/eventlog"
+	"github.com/meshcloud/meshstack-cli/cmd/profile"
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
@@ -127,7 +128,7 @@ func newRootCommand() *cobra.Command {
 	root := &cobra.Command{Use: "meshstack", SilenceUsage: true}
 	root.AddCommand(api.New(), auth.New(), auth.NewLogin(),
 		buildingblock.New(), buildingblockdefinition.New(), buildingblockdefinitionversion.New(),
-		buildingblockrun.New(), eventlog.New(), workspace.New())
+		buildingblockrun.New(), eventlog.New(), profile.New(), workspace.New())
 	return root
 }
 

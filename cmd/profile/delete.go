@@ -31,32 +31,30 @@ profile is for.`,
 				return fmt.Errorf("--%s deletes only the profile --%s or --%s names", yesFlag.Name, internal.ProfileFlag.Name, internal.EndpointFlag.Name)
 			}
 			p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
-			profiles, err := profile.LoadProfiles(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
-			if err != nil {
-				return err
-			}
-			deleted, named, err := selectProfile(cmd, p, profiles)
-			if err != nil {
-				return err
-			}
-			if !yesFlag.Value || !named {
-				if err := p.Printf("Delete profile '%s' and its stored credentials? [y/N]: ", deleted.Name); err != nil {
-					return err
-				}
-				answer, err := p.Next(ctx, "confirmation")
+			return withLockedProfiles(ctx, func(profiles profile.Profiles) error {
+				deleted, named, err := selectProfile(ctx, cmd, p, profiles)
 				if err != nil {
 					return err
 				}
-				if !confirmed(answer) {
-					slog.InfoContext(ctx, fmt.Sprintf("Kept profile '%s'.", deleted.Name))
-					return nil
+				if !yesFlag.Value || !named {
+					if err := p.Printf("Delete profile '%s' and its stored credentials? [y/N]: ", deleted.Name); err != nil {
+						return err
+					}
+					answer, err := p.Next(ctx, "confirmation")
+					if err != nil {
+						return err
+					}
+					if !confirmed(answer) {
+						slog.InfoContext(ctx, fmt.Sprintf("Kept profile '%s'.", deleted.Name))
+						return nil
+					}
 				}
-			}
-			if err := remove(ctx, &profiles, deleted.Name); err != nil {
-				return err
-			}
-			slog.InfoContext(ctx, fmt.Sprintf("Deleted profile '%s'.", deleted.Name))
-			return nil
+				if err := remove(ctx, &profiles, deleted.Name); err != nil {
+					return err
+				}
+				slog.InfoContext(ctx, fmt.Sprintf("Deleted profile '%s'.", deleted.Name))
+				return nil
+			})
 		},
 	}
 	yesFlag.Register(cmd.Flags())

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
@@ -49,7 +51,7 @@ It ends with what meshstack auth status shows for the new login.`,
 			}
 			return fmt.Errorf("%s takes no arguments such as %q; everything comes from flags and the environment", cmd.CommandPath(), args[0])
 		},
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			ctx := cmd.Context()
 			opts := internal.ResolveClientOptions()
 			promptedFrom := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
@@ -85,10 +87,17 @@ It ends with what meshstack auth status shows for the new login.`,
 
 			opts.SettingSources = append(opts.SettingSources, newProfileSelectionSource(promptedFrom, openStdinFlag.Value))
 
-			session, storeSession, err := auth.Login(ctx, authWith, opts)
+			session, storeSession, unlock, err := auth.Login(ctx, authWith, opts)
+			if errors.Is(err, profile.ErrInUse) {
+				// Only the cause, as the setting a lookup failed for adds nothing to do about it.
+				return fmt.Errorf("cannot log in while %w, such as meshstack profile or another login; quit it and try again", profile.ErrInUse)
+			}
 			if err != nil {
 				return err
 			}
+			defer func() {
+				err = errors.Join(err, unlock())
+			}()
 			_, err = session.GetBearerToken(ctx)
 			if err != nil {
 				return err

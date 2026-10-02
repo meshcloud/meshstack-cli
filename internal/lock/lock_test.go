@@ -310,3 +310,24 @@ func TestAnExpiredContextTakesNoLock(t *testing.T) {
 	require.True(t, fileLockIsFree(t, path))
 	require.NoError(t, l.WithLock(t.Context(), noop), "the mutex must not be left held")
 }
+
+func TestLockHoldsTheLockUntilTheFirstUnlock(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "profiles.json")
+
+		a := lock.New(path)
+		b := lock.New(path)
+
+		unlock, err := a.Lock(t.Context())
+		require.NoError(t, err)
+		require.False(t, fileLockIsFree(t, path))
+		require.True(t, lockBlocked(t, a))
+		require.True(t, lockBlocked(t, b))
+
+		require.NoError(t, unlock())
+		require.True(t, fileLockIsFree(t, path))
+		require.NoError(t, unlock(), "a second unlock releases nothing it does not hold")
+		require.False(t, lockBlocked(t, a))
+		require.False(t, lockBlocked(t, b))
+	})
+}

@@ -4,6 +4,8 @@ package testlogin
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
@@ -26,4 +28,13 @@ func LoggedInTo(t *testing.T, endpoint string) {
 	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), "")
 	t.Setenv(auth.ApiKeyClientSecretSetting.EnvKey(), "")
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), Token)
+}
+
+// HoldProfiles holds the profiles as a command that changes them does: meshstack profile while it is
+// open, and a login until the browser comes back.
+func HoldProfiles(t *testing.T) (release func()) {
+	t.Helper()
+	held, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{ExclusiveLock: true})
+	require.NoError(t, err)
+	return func() { require.NoError(t, held.Unlock()) }
 }

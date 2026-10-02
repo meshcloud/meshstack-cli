@@ -22,7 +22,7 @@ var (
 func emptyConfigDir(t *testing.T) profile.Profiles {
 	t.Helper()
 	t.Setenv("MESHSTACK_CONFIG_DIR", t.TempDir())
-	profiles, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+	profiles, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 	require.NoError(t, err)
 	return profiles
 }
@@ -55,7 +55,7 @@ func TestPutAddsOrReplacesAProfile(t *testing.T) {
 	t.Run("the first profile added becomes the current one", func(t *testing.T) {
 		profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA}, profile.Profile{Name: "prod", Endpoint: endpointB})
 
-		reloaded, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+		reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 		require.NoError(t, err)
 		assert.Equal(t, profile.Name("dev"), reloaded.CurrentProfile)
 		assert.Equal(t, []profile.Name{"dev", "prod"}, names(reloaded))
@@ -147,7 +147,7 @@ func TestRemovingTheCurrentProfile(t *testing.T) {
 
 			require.NoError(t, remove(t.Context(), &profiles, "dev"))
 
-			reloaded, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+			reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCurrent, reloaded.CurrentProfile)
 			if tt.wantWarning == "" {
@@ -175,7 +175,7 @@ func TestUseMakesAProfileTheCurrentOne(t *testing.T) {
 
 	require.NoError(t, use(t.Context(), &profiles, "prod"))
 
-	reloaded, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+	reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 	require.NoError(t, err)
 	assert.Equal(t, profile.Name("prod"), reloaded.CurrentProfile)
 	require.EqualError(t, use(t.Context(), &profiles, "staging"), "there is no profile 'staging'")

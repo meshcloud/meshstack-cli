@@ -23,6 +23,9 @@ type (
 		// StoredOnly makes ResolveProfile return ErrNoStoredProfile rather than create a profile, for a
 		// command that only acts on a stored one.
 		StoredOnly bool
+		// ExclusiveLock is LoadProfilesOptions.ExclusiveLock for the profiles ResolveProfile
+		// returns, and holds nothing where it fails.
+		ExclusiveLock bool
 	}
 )
 
@@ -31,10 +34,19 @@ var ErrNoStoredProfile = errors.New("no stored profile")
 // ResolveProfile returns a *Profile that points into Profiles.Profiles, so a change through the
 // pointer is persisted by a later Profiles.Store.
 func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, Profiles, error) {
-	loadProfiles := sync.OnceValues(func() (Profiles, error) {
-		return LoadProfiles(ctx, opts)
-	})
+	var loaded Profiles
+	current, profiles, err := resolveProfile(ctx, opts, sync.OnceValues(func() (Profiles, error) {
+		var err error
+		loaded, err = LoadProfiles(ctx, LoadProfilesOptions{SettingSources: opts.SettingSources, ExclusiveLock: opts.ExclusiveLock})
+		return loaded, err
+	}))
+	if err != nil {
+		err = errors.Join(err, loaded.Unlock())
+	}
+	return current, profiles, err
+}
 
+func resolveProfile(ctx context.Context, opts ResolveProfileOptions, loadProfiles func() (Profiles, error)) (*Profile, Profiles, error) {
 	// Both are fallback sources, so a name given in MESHSTACK_PROFILE wins over what is on disk,
 	// as NameSetting's own help text says it does. The endpoint match comes first, so that a run
 	// against a known endpoint picks its profile rather than the one last selected.

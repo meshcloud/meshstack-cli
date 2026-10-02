@@ -36,10 +36,11 @@ func TestConcurrentSessionsShareOneMintedToken(t *testing.T) {
 	// The warm-up writes profiles.json, the credentials file and the token cache before any
 	// goroutine starts. A lock file whose directory does not exist yet cannot be taken, and
 	// internal/lock reports that as acquired, so the first writer would otherwise be unguarded.
-	warmUp, storeWarmUp, err := auth.Login(t.Context(), credential.ApiKeyName, sessionOptsFor(testApiKey1))
+	warmUp, storeWarmUp, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, sessionOptsFor(testApiKey1))
 	require.NoError(t, err)
 	server.RequireGreeting(t, greetingClient(warmUp))
 	require.NoError(t, storeWarmUp(t.Context()))
+	require.NoError(t, unlock())
 
 	resolvers := []*stressResolver{
 		{name: "first-key-1", apiKey: testApiKey1, every: 100 * time.Millisecond},
@@ -243,11 +244,11 @@ func staticSetting(envKey, value string) setting.Source {
 
 // storeByLogin stores what a session resolved the only way there is, which is a login.
 func storeByLogin(ctx context.Context, key testserver.ApiKey) error {
-	_, store, err := auth.Login(ctx, credential.ApiKeyName, sessionOptsFor(key))
+	_, store, unlock, err := auth.Login(ctx, credential.ApiKeyName, sessionOptsFor(key))
 	if err != nil {
 		return err
 	}
-	return store(ctx)
+	return errors.Join(store(ctx), unlock())
 }
 
 func stressDuration(t *testing.T) time.Duration {

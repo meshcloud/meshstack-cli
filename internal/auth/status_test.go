@@ -183,9 +183,10 @@ func TestStatusShowsTheApiTokenFromTheEnvironmentAndTheStoredOneAsUnused(t *test
 	newTestServer(t)
 	t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "preferred_username": "stored"}).String())
-	_, store, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
+	_, store, unlock, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
 	require.NoError(t, err)
 	require.NoError(t, store(t.Context()))
+	require.NoError(t, unlock())
 
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "preferred_username": "env"}).String())
 	session, err := auth.ResolveSession(t.Context(), testSessionOpts)

@@ -22,7 +22,7 @@ func newList() *cobra.Command {
 		Short: "List the stored profiles",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			profiles, err := profile.LoadProfiles(cmd.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+			profiles, err := profile.LoadProfiles(cmd.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 			if err != nil {
 				return err
 			}

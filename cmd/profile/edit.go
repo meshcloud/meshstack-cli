@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -27,19 +26,17 @@ A new endpoint removes the stored credentials, and a new name takes them along.`
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
-			profiles, err := profile.LoadProfiles(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
-			if err != nil {
-				return err
-			}
-			edited, _, err := selectProfile(cmd, p, profiles)
-			if err != nil {
-				return err
-			}
-			d := draftOf(edited)
-			if cmd.Flags().Changed(workspaceFlag.Name.String()) {
-				d.workspace = workspaceFlag.Value
-			}
-			return edit(ctx, p, profiles, d)
+			return withLockedProfiles(ctx, func(profiles profile.Profiles) error {
+				edited, _, err := selectProfile(ctx, cmd, p, profiles)
+				if err != nil {
+					return err
+				}
+				d := draftOf(edited)
+				if cmd.Flags().Changed(workspaceFlag.Name.String()) {
+					d.workspace = workspaceFlag.Value
+				}
+				return edit(ctx, p, profiles, d)
+			})
 		},
 	}
 	workspaceFlag.Register(cmd.Flags())

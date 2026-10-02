@@ -156,7 +156,7 @@ func TestShowsTheProfileAFirstCommandWouldCreateWithoutStoringIt(t *testing.T) {
 
 func requireStoredNames(t *testing.T, want ...profile.Name) {
 	t.Helper()
-	stored, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+	stored, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, want, slices.Collect(maps.Keys(stored.Profiles)))
 }

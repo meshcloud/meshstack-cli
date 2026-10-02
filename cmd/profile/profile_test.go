@@ -2,8 +2,10 @@ package profile
 
 import (
 	"bytes"
+	"cmp"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -12,6 +14,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
 // execute runs meshstack profile with args, answering from input, which is no terminal.
@@ -121,7 +124,7 @@ func TestAddAsksLineByLineWithTheFlagsAsDefaults(t *testing.T) {
 				require.NoError(t, err)
 			}
 			assert.Equal(t, tt.wantAsked, output)
-			reloaded, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+			reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 			require.NoError(t, err)
 			if tt.want == nil {
 				assert.Equal(t, []profile.Name{"dev", "prod"}, names(reloaded))
@@ -182,7 +185,7 @@ func TestEditAsksLineByLineWhereAnEmptyAnswerKeepsTheValue(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantAsked, output)
-			reloaded, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+			reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 			require.NoError(t, err)
 			assert.Equal(t, endpointB, reloaded.Profiles["prod"].Endpoint)
 			assert.Equal(t, tt.wantWorkspace, string(reloaded.Profiles["prod"].DefaultWorkspace))
@@ -279,7 +282,7 @@ func TestDeleteAsksUnlessYesGoesWithAFlagThatNamesTheProfile(t *testing.T) {
 				require.NoError(t, err)
 			}
 			assert.Equal(t, tt.wantAsked, output)
-			reloaded, err := profile.LoadProfiles(t.Context(), profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+			reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantNames, names(reloaded))
 		})
@@ -294,6 +297,43 @@ func TestCommandsWithoutADefaultWorkspaceToStoreRefuseWorkspace(t *testing.T) {
 			_, err := execute(t, "", append(args, "-w", "ops")...)
 
 			require.ErrorContains(t, err, `invalid argument "ops" for "-w, --workspace" flag: has no effect here`)
+		})
+	}
+}
+
+func TestTheCommandsThatChangeTheProfilesFailWhileALoginHoldsThem(t *testing.T) {
+	for _, args := range [][]string{
+		{"add", "--profile", "staging", "--endpoint", "https://c.example.io"},
+		{"edit", "--profile", "dev"},
+		{"delete", "--profile", "dev", "--yes"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			twoProfiles(t)
+			release := testlogin.HoldProfiles(t)
+			defer release()
+
+			synctest.Test(t, func(t *testing.T) {
+				_, err := execute(t, "", args...)
+
+				require.ErrorIs(t, err, profile.ErrInUse)
+				require.EqualError(t, err, "another meshstack command is changing the profiles, "+
+					"such as a login or another meshstack profile; let it finish and try again")
+			})
+			requireStoredNames(t, "dev", "prod")
+		})
+	}
+}
+
+func TestTheCommandsThatOnlyReadTheProfilesRunWhileALoginHoldsThem(t *testing.T) {
+	for _, args := range [][]string{{"list"}, {"show"}, {}} {
+		t.Run(cmp.Or(strings.Join(args, " "), "the help"), func(t *testing.T) {
+			twoProfiles(t)
+			release := testlogin.HoldProfiles(t)
+			defer release()
+
+			_, err := execute(t, "", args...)
+
+			require.NoError(t, err)
 		})
 	}
 }

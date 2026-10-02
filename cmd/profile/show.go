@@ -87,7 +87,7 @@ Where meshStack does not answer within ` + statusReadTime.String() + `, it shows
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			opts := profile.ResolveProfileOptions{SettingSources: internal.SettingSources(), EndpointOptional: true}
-			stored, err := profile.LoadProfiles(ctx, opts)
+			stored, err := profile.LoadProfiles(ctx, profile.LoadProfilesOptions{SettingSources: opts.SettingSources})
 			if err != nil {
 				return err
 			}

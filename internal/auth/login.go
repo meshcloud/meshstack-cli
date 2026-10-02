@@ -17,16 +17,24 @@ import (
 
 type StoreFunc func(context.Context) error
 
-func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOptions) (Session, StoreFunc, error) {
-	session, profiles, err := newSession(ctx, opts)
+// Login holds the profiles it stores until unlock, so that no other command that stores them, such
+// as meshstack profile, stores over the profile of a login waiting for the browser. Where Login
+// fails, it holds nothing.
+func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOptions) (_ Session, _ StoreFunc, unlock func() error, err error) {
+	session, profiles, err := newSession(ctx, opts, true)
 	if err != nil {
-		return Session{}, nil, err
+		return Session{}, nil, nil, err
 	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, profiles.Unlock())
+		}
+	}()
 
 	var creds profile.Credentials
 	creds, err = session.CurrentProfile.Credentials(ctx)
 	if err != nil {
-		return Session{}, nil, err
+		return Session{}, nil, nil, err
 	}
 
 	var resolved Credential
@@ -38,10 +46,10 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	case credential.ApiKeyName:
 		resolved, err = session.resolveApiKeyCredential(ctx, opts.SettingSources)
 	default:
-		return Session{}, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", withAuth, credential.Names)
+		return Session{}, nil, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", withAuth, credential.Names)
 	}
 	if err != nil {
-		return Session{}, nil, err
+		return Session{}, nil, nil, err
 	}
 	creds.Set(resolved.Credential)
 
@@ -51,7 +59,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	resolved.Sources, resolved.Stored = []string{"file " + creds.FilePath}, true
 	session.Credential = resolved
 	if err := session.Credential.Write(ctx); err != nil {
-		return Session{}, nil, err
+		return Session{}, nil, nil, err
 	}
 
 	session.Client = sync.OnceValues(func() (client.Client, error) {
@@ -77,7 +85,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 		profiles.CurrentProfile = session.CurrentProfile.Name
 		return errors.Join(creds.Store(ctx), profiles.Store(ctx))
 	}
-	return session, storeSession, nil
+	return session, storeSession, profiles.Unlock, nil
 }
 
 func (s Session) resolveWorkspaceForLogin(ctx context.Context, opts ResolveSessionOptions) (meshstack.Workspace, error) {
