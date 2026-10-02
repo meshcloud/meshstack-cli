@@ -149,7 +149,8 @@ installed that late constrains every log call, and `internal/http/logging.go` st
 - **Lint and format only via `task lint`**, and **never run `gofmt` or `go vet` separately** — a
   differently built gofmt enforces different formatting. A `PostToolUse` hook in
   `.claude/settings.json` formats every `.go` file an agent writes, so it rarely reaches the gate.
-- **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`, `feat!:` for breaking).
+- **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`). While the CLI is at
+  0.x, a breaking change, of `client/` included, takes no `!`: every minor release may break.
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
   decision tree and settle every open question with a recommended answer first. (*meshcloud-internal*:
   the `grill-me` skill of `../meshfed-release`.)
