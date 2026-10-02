@@ -55,13 +55,13 @@ Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 		Version:      internal.Version,
 		SilenceUsage: true,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			setupLogging(debug)
+			setupLogging(os.Stderr, debug)
 			cmd.SetContext(io.WithStderr(cmd.Context(), cmd.ErrOrStderr()))
 		},
 	}
 
 	persistentFlags := cmd.PersistentFlags()
-	persistentFlags.BoolVar(&debug, "debug", false, "log at debug level")
+	persistentFlags.BoolVar(&debug, "debug", false, "log at debug level, and give every line its time and level")
 	internal.EndpointFlag.Register(persistentFlags)
 	internal.WorkspaceFlag.Register(persistentFlags)
 	internal.SkipVersionCheckFlag.Register(persistentFlags)
@@ -84,15 +84,20 @@ Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 	return cmd
 }
 
-func setupLogging(debug bool) {
-	options := clog.Options{
-		ReportTimestamp: true,
-		Level:           clog.InfoLevel,
-	}
+// setupLogging writes an INFO record as a plain line, since most of them tell the user what a
+// command did. With --debug the log becomes a trace, and every line gets its time and level back.
+func setupLogging(stderr *os.File, debug bool) {
+	options := clog.Options{ReportTimestamp: debug, Level: clog.InfoLevel}
 	if debug {
 		options.Level = clog.DebugLevel
 	}
-	logger := clog.NewWithOptions(os.Stderr, options)
-	logger.SetColorProfile(color.Log(os.Stderr, os.Environ()))
+	logger := clog.NewWithOptions(stderr, options)
+	if !debug {
+		styles := clog.DefaultStyles()
+		// The text formatter writes no level for a level without a style.
+		delete(styles.Levels, clog.InfoLevel)
+		logger.SetStyles(styles)
+	}
+	logger.SetColorProfile(color.Log(stderr, os.Environ()))
 	slog.SetDefault(slog.New(logger))
 }
