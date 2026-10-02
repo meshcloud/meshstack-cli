@@ -38,18 +38,10 @@ func (u *URL) UnmarshalText(text []byte) (err error) {
 		return fmt.Errorf("unmarshaled URL '%s' is not absolute", u)
 	}
 	u.Host = strings.ToLower(u.Host)
-	if u.Scheme != "https" && (u.Scheme != "http" || !isLoopback(u.Hostname())) {
+	if u.Scheme != "https" && (u.Scheme != "http" || !u.isLoopback()) {
 		return errors.New("URLs must start with 'https://' unless the host is localhost or another loopback address")
 	}
 	return
-}
-
-func isLoopback(hostname string) bool {
-	if hostname == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(hostname)
-	return ip != nil && ip.IsLoopback()
 }
 
 func (u URL) Equal(other URL) bool {
@@ -68,4 +60,13 @@ func (u URL) MarshalText() ([]byte, error) {
 
 func (u URL) Clone() URL {
 	return URL{u.URL.Clone()}
+}
+
+func (u URL) isLoopback() bool {
+	hostname := u.Hostname()
+	if hostname == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	return ip != nil && ip.IsLoopback()
 }

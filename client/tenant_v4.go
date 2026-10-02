@@ -164,12 +164,12 @@ func (tenant *MeshTenant) DeletionState() string {
 	if tenant == nil {
 		return tenantNotObserved
 	}
-	return tenantDeletionState(tenant.Status.Lifecycle)
+	return tenant.Status.Lifecycle.deletionState()
 }
 
 const tenantNotObserved = "no successful read after the delete request"
 
-func tenantDeletionState(lifecycle MeshTenantLifecycle) string {
+func (lifecycle MeshTenantLifecycle) deletionState() string {
 	switch {
 	case lifecycle.State == TenantLifecycleStateDeleted:
 		return "DELETED"

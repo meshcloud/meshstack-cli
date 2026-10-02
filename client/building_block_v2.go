@@ -347,13 +347,6 @@ func (bb *MeshBuildingBlockV2) IsWaitingForInput() bool {
 		bb.Status.Status == BuildingBlockStatusWaitingForApproval
 }
 
-func bbUuidOrUnknown(bb *MeshBuildingBlockV2) string {
-	if bb != nil && bb.Metadata.Uuid != nil {
-		return *bb.Metadata.Uuid
-	}
-	return "<unknown>"
-}
-
 func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
 	switch {
 	case bb == nil:
@@ -362,7 +355,7 @@ func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
 		// keep polling
 	case bb.Status.Status == BuildingBlockStatusFailed,
 		bb.Status.Status == BuildingBlockStatusAborted:
-		err = fmt.Errorf("building block %s reached %s state, check run logs in meshStack", bbUuidOrUnknown(bb), bb.Status.Status)
+		err = fmt.Errorf("building block %s reached %s state, check run logs in meshStack", bb.uuidOrUnknown(), bb.Status.Status)
 	case bb.IsWaitingForInput():
 		// A waiting run does not go on by itself, so stop polling and leave the warning to the caller.
 		done = true
@@ -370,7 +363,7 @@ func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
 		done = true
 	case !slices.Contains(BuildingBlockStatuses, bb.Status.Status):
 		// Fail now: a status this client does not know would keep the poll going until it times out.
-		err = fmt.Errorf("unknown building block status %q for building block %s; provider may be out of date", bb.Status.Status, bbUuidOrUnknown(bb))
+		err = fmt.Errorf("unknown building block status %q for building block %s; provider may be out of date", bb.Status.Status, bb.uuidOrUnknown())
 	}
 	return
 }
@@ -388,10 +381,17 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 		// A force purge (definition deletion_mode PURGE, or an admin purge) deletes the block whatever
 		// its delete run reports, so FAILED passes and the lifecycle still reaches DELETED.
 		if !bb.Status.ForcePurge {
-			err = fmt.Errorf("building block %s reached FAILED state during deletion. For more details, check the building block run logs in meshStack", bbUuidOrUnknown(bb))
+			err = fmt.Errorf("building block %s reached FAILED state during deletion. For more details, check the building block run logs in meshStack", bb.uuidOrUnknown())
 		}
 	}
 	return
+}
+
+func (bb *MeshBuildingBlockV2) uuidOrUnknown() string {
+	if bb != nil && bb.Metadata.Uuid != nil {
+		return *bb.Metadata.Uuid
+	}
+	return "<unknown>"
 }
 
 // TriggerRun answers with the building block as meshStack left it on accepting the run: Status.Status
