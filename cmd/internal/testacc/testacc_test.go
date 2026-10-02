@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/cmd/api"
 	"github.com/meshcloud/meshstack-cli/cmd/auth"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblockdefinition"
@@ -124,7 +125,7 @@ func (c *cli) environ() []string {
 // no test can import, and adds only persistent flags, which this suite sets through the environment.
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{Use: "meshstack", SilenceUsage: true}
-	root.AddCommand(auth.New(), auth.NewLogin(),
+	root.AddCommand(api.New(), auth.New(), auth.NewLogin(),
 		buildingblock.New(), buildingblockdefinition.New(), buildingblockdefinitionversion.New(),
 		buildingblockrun.New(), eventlog.New(), workspace.New())
 	return root
