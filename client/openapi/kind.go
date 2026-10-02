@@ -41,16 +41,17 @@ var actionOfMethod = map[string]string{
 // path: POST .../meshbuildingblockruns/create as well as GET .../meshbuildingblockruns/{uuid}/logs.
 // An operation without media types of its own, such as a DELETE, belongs to the kind of the
 // longest path its template starts with.
-func assignKinds(operations []Operation) {
+func (s Spec) assignKinds() {
+	operations := s.Operations
 	type kind struct {
 		name string
-		path []string
+		path []segment
 	}
 	// The key is in lower case, because a media type writes the kind in lower case where its
 	// operationId does not start with the kind.
 	kinds := map[string]*kind{}
 	for _, operation := range operations {
-		path := literalStart(operation.PathTemplate)
+		path := operation.PathTemplate.literalStart()
 		for _, mediaType := range operation.MediaTypes {
 			if mediaType.Kind == "" {
 				continue
@@ -82,7 +83,7 @@ func assignKinds(operations []Operation) {
 
 	byKind := map[string][]int{}
 	for i, operation := range operations {
-		segments := segments(operation.PathTemplate)
+		segments := operation.PathTemplate.segments()
 		var owner *kind
 		for _, k := range kinds {
 			if startsWith(segments, k.path) && (owner == nil || len(k.path) > len(owner.path)) {
@@ -117,8 +118,13 @@ func assignKinds(operations []Operation) {
 }
 
 // action takes the rest of the template after the kind's path.
-func action(method string, rest []string) string {
-	literals := slices.DeleteFunc(slices.Clone(rest), isParameter)
+func action(method string, rest []segment) string {
+	var literals []string
+	for _, segment := range rest {
+		if !segment.isParameter() {
+			literals = append(literals, string(segment))
+		}
+	}
 	switch {
 	case len(literals) > 0:
 		return strings.Join(literals, "-")
@@ -138,14 +144,6 @@ func methodAction(method string) string {
 	return strings.ToLower(method)
 }
 
-func literalStart(template string) []string {
-	segments := segments(template)
-	if i := slices.IndexFunc(segments, isParameter); i >= 0 {
-		return segments[:i]
-	}
-	return segments
-}
-
-func startsWith(segments, prefix []string) bool {
+func startsWith(segments, prefix []segment) bool {
 	return len(segments) >= len(prefix) && slices.Equal(segments[:len(prefix)], prefix)
 }

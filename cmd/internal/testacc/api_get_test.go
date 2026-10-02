@@ -27,7 +27,7 @@ import (
 
 // getExceptions adapt the GET of a path template where the API docs do not say enough to send it,
 // or skip it.
-var getExceptions = map[string]getException{
+var getExceptions = map[openapi.PathTemplate]getException{
 	"/api/meshobjects/meshbuildingblockdefinitionversions": {
 		query: map[string]objectField{"buildingBlockDefinitionUuid": {"meshBuildingBlockDefinition", "uuid"}},
 	},
@@ -73,7 +73,7 @@ func everyGetOperationAnswers(c *cli, apiKey bool) func(*testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, gets.Operations, "the API docs list no GET operation, so this test would pass without sending one")
 		for _, operation := range gets.Operations {
-			t.Run(strings.TrimSpace("GET "+operation.PathTemplate+" "+operation.LatestApiVersion().String()), func(t *testing.T) {
+			t.Run(strings.TrimSpace("GET "+string(operation.PathTemplate)+" "+operation.LatestApiVersion().String()), func(t *testing.T) {
 				t.Parallel()
 				exception := getExceptions[operation.PathTemplate]
 				if exception.skip != "" {
@@ -184,7 +184,7 @@ func (o *firstObjects) get(ctx context.Context, r getRequest, operation openapi.
 // fill replaces each path parameter by a field of the first object's metadata. skip says why there
 // is no request to send.
 func (o *firstObjects) fill(ctx context.Context, operation openapi.Operation, exception getException) (r getRequest, skip string, err error) {
-	segments := strings.Split(operation.PathTemplate, "/")
+	segments := strings.Split(string(operation.PathTemplate), "/")
 	for i, segment := range segments {
 		parameter, isParameter := strings.CutPrefix(segment, "{")
 		if !isParameter {

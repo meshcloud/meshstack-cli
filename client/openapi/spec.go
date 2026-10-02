@@ -24,7 +24,7 @@ type Spec struct {
 
 type Operation struct {
 	Method       string
-	PathTemplate string
+	PathTemplate PathTemplate
 	// Kind is the meshObject kind below whose path the operation is, such as meshBuildingBlock, or
 	// empty outside the path of a kind.
 	Kind string
@@ -78,7 +78,7 @@ func Parse(r io.Reader) (Spec, error) {
 			spec.Operations = append(spec.Operations, operation)
 		}
 	}
-	assignKinds(spec.Operations)
+	spec.assignKinds()
 	for _, kind := range slices.Sorted(maps.Keys(parsed.Components)) {
 		for _, c := range parsed.Components[kind] {
 			spec.components = append(spec.components, component{kind: kind, member: c})
@@ -104,7 +104,7 @@ func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation,
 		names = slices.AppendSeq(names, maps.Keys(response.Content))
 	}
 	slices.Sort(names)
-	operation := Operation{Method: method, PathTemplate: pathTemplate, raw: raw}
+	operation := Operation{Method: method, PathTemplate: PathTemplate(pathTemplate), raw: raw}
 	for _, name := range slices.Compact(names) {
 		operation.MediaTypes = append(operation.MediaTypes, newMediaType(name, parsed.OperationId))
 	}
@@ -112,14 +112,14 @@ func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation,
 }
 
 // ApiVersions are oldest first.
-func (o Operation) ApiVersions() []ApiVersion {
-	var versions []ApiVersion
+func (o Operation) ApiVersions() ApiVersions {
+	var versions ApiVersions
 	for _, mediaType := range o.MediaTypes {
 		if !mediaType.ApiVersion.IsZero() {
 			versions = append(versions, mediaType.ApiVersion)
 		}
 	}
-	return sortedUnique(versions)
+	return versions.SortedUnique()
 }
 
 // LatestApiVersion is zero for an operation of no version.
@@ -170,7 +170,7 @@ func (s Selector) IsZero() bool {
 
 func (s Selector) matches(operation Operation) bool {
 	return (s.Method == "" || strings.EqualFold(operation.Method, s.Method)) &&
-		(s.Path == "" || templateMatches(operation.PathTemplate, s.Path)) &&
+		(s.Path == "" || operation.PathTemplate.matches(s.Path)) &&
 		(s.Kind == "" || strings.EqualFold(operation.Kind, s.Kind)) &&
 		(s.Action == "" || operation.Action == s.Action)
 }
@@ -193,18 +193,18 @@ func (s Spec) Select(selector Selector) (Spec, error) {
 		case operation.Kind != "":
 			return operation.Kind + " " + operation.Method + " " + operation.Action
 		default:
-			return operation.Method + " " + operation.PathTemplate
+			return operation.Method + " " + string(operation.PathTemplate)
 		}
 	}
 
 	selected := Spec{components: s.components}
 	for _, operations := range groupBy(matched, operationKey) {
 		operations = mostLiteral(operations)
-		var offered []ApiVersion
+		var offered ApiVersions
 		for _, operation := range operations {
 			offered = append(offered, operation.ApiVersions()...)
 		}
-		offered = sortedUnique(offered)
+		offered = offered.SortedUnique()
 		version := selector.ApiVersion
 		if len(offered) > 0 {
 			if version.IsZero() {
@@ -214,7 +214,7 @@ func (s Spec) Select(selector Selector) (Spec, error) {
 				if selector.Path == "" {
 					continue
 				}
-				return Spec{}, fmt.Errorf("%s %s offers %s, not %s", operations[0].Method, selector.Path, joinVersions(offered), version)
+				return Spec{}, fmt.Errorf("%s %s offers %s, not %s", operations[0].Method, selector.Path, offered, version)
 			}
 			operations = slices.DeleteFunc(operations, func(operation Operation) bool {
 				return !slices.Contains(operation.ApiVersions(), version)
@@ -231,28 +231,14 @@ func (s Spec) Select(selector Selector) (Spec, error) {
 	return selected, nil
 }
 
-func templateMatches(template, path string) bool {
-	return slices.EqualFunc(segments(template), segments(path), func(templateSegment, pathSegment string) bool {
-		return pathSegment != "" && (isParameter(templateSegment) || templateSegment == pathSegment)
-	})
-}
-
-func segments(path string) []string {
-	return strings.Split(strings.Trim(path, "/"), "/")
-}
-
-func isParameter(segment string) bool {
-	return strings.HasPrefix(segment, "{") && strings.HasSuffix(segment, "}")
-}
-
 // mostLiteral keeps the templates that have a literal segment where the others have a parameter.
 func mostLiteral(operations []Operation) []Operation {
 	// The templates all match one path, so they agree on every literal segment, and a parameter
 	// written as "" sorts below it.
-	literals := func(operation Operation) []string {
-		literal := segments(operation.PathTemplate)
+	literals := func(operation Operation) []segment {
+		literal := operation.PathTemplate.segments()
 		for i, segment := range literal {
-			if isParameter(segment) {
+			if segment.isParameter() {
 				literal[i] = ""
 			}
 		}
@@ -265,19 +251,6 @@ func mostLiteral(operations []Operation) []Operation {
 	return slices.DeleteFunc(operations, func(operation Operation) bool {
 		return compare(operation, most) < 0
 	})
-}
-
-func sortedUnique(versions []ApiVersion) []ApiVersion {
-	slices.SortFunc(versions, ApiVersion.Compare)
-	return slices.Compact(versions)
-}
-
-func joinVersions(versions []ApiVersion) string {
-	names := make([]string, len(versions))
-	for i, version := range versions {
-		names[i] = version.String()
-	}
-	return strings.Join(names, ", ")
 }
 
 func (o Operation) withVersion(version ApiVersion) (Operation, error) {
@@ -326,7 +299,7 @@ func (s Spec) MarshalJSONTo(enc *jsontext.Encoder) error {
 		return enc.WriteValue(s.document)
 	}
 	paths := nestedObject(s.Operations,
-		func(operation Operation) string { return operation.PathTemplate },
+		func(operation Operation) string { return string(operation.PathTemplate) },
 		func(operation Operation) member { return member{strings.ToLower(operation.Method), operation.raw} }).mustMarshal()
 	document := object{{"paths", paths}}
 	if referenced := s.referencedComponents(paths); len(referenced) > 0 {

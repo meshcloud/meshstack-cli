@@ -26,7 +26,7 @@ func TestSpec(t *testing.T) {
 			for _, mediaType := range operation.MediaTypes {
 				mediaTypes = append(mediaTypes, mediaType.Name)
 			}
-			operations = append(operations, operation.Method+" "+operation.PathTemplate+" "+jsonString(t, mediaTypes))
+			operations = append(operations, operation.Method+" "+string(operation.PathTemplate)+" "+jsonString(t, mediaTypes))
 		}
 		return operations
 	}

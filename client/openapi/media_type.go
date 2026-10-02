@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -118,4 +119,20 @@ func (v ApiVersion) Compare(other ApiVersion) int {
 		return -1
 	}
 	return 1
+}
+
+type ApiVersions []ApiVersion
+
+// SortedUnique sorts in place, oldest first.
+func (vs ApiVersions) SortedUnique() ApiVersions {
+	slices.SortFunc(vs, ApiVersion.Compare)
+	return slices.Compact(vs)
+}
+
+func (vs ApiVersions) String() string {
+	names := make([]string, len(vs))
+	for i, version := range vs {
+		names[i] = version.String()
+	}
+	return strings.Join(names, ", ")
 }

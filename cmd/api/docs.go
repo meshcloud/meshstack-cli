@@ -129,14 +129,14 @@ func noOperationError(selector openapi.Selector) error {
 var methodOrder = []string{gohttp.MethodGet, gohttp.MethodPut, gohttp.MethodPost, gohttp.MethodDelete}
 
 type path struct {
-	Template    string
+	Template    openapi.PathTemplate
 	Methods     []string
-	ApiVersions []openapi.ApiVersion
+	ApiVersions openapi.ApiVersions
 }
 
 func pathsOf(spec openapi.Spec) []path {
 	var paths []path
-	indexOf := map[string]int{}
+	indexOf := map[openapi.PathTemplate]int{}
 	for _, operation := range spec.Operations {
 		i, ok := indexOf[operation.PathTemplate]
 		if !ok {
@@ -155,8 +155,7 @@ func pathsOf(spec openapi.Spec) []path {
 	}
 	for i := range paths {
 		slices.SortStableFunc(paths[i].Methods, func(a, b string) int { return cmp.Compare(rank(a), rank(b)) })
-		slices.SortFunc(paths[i].ApiVersions, openapi.ApiVersion.Compare)
-		paths[i].ApiVersions = slices.Compact(paths[i].ApiVersions)
+		paths[i].ApiVersions = paths[i].ApiVersions.SortedUnique()
 	}
 	return paths
 }
