@@ -52,16 +52,16 @@ changelog:
   use: github
   sort: asc
   groups:
+    # The Terraform provider imports client/, and while the CLI is at 0.x a breaking change takes no
+    # `!`. This group is where the provider's maintainers find what they have to adapt to.
+    - title: Client API
+      regexp: '^(feat|fix|refactor|perf)\(client\)!?:'
+      order: 0
     - title: Features
       regexp: '^feat(\(.+\))?!?:'
-      order: 0
+      order: 1
     - title: Fixes
       regexp: '^fix(\(.+\))?!?:'
-      order: 1
+      order: 2
     - title: Others
       order: 99
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'

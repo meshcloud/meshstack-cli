@@ -164,6 +164,10 @@ installed that late constrains every log call, and `internal/http/logging.go` st
   `internal.KindCommand` is.
 - **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`). While the CLI is at
   0.x, a breaking change, of `client/` included, takes no `!`: every minor release may break.
+  goreleaser writes the release notes from these subjects, as `changelog:` in `.goreleaser.yml`
+  sets out, so the subject is what a user reads there. Give every change of `client/` the `client`
+  scope, as in `refactor(client): …`: it puts the change in the group the Terraform provider's
+  maintainers read before they bump the module.
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
   decision tree and settle every open question with a recommended answer first. (*meshcloud-internal*:
   the `grill-me` skill of `../meshfed-release`.)
