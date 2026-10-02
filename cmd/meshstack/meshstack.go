@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 
 	clog "charm.land/log/v2"
 	"github.com/spf13/cobra"
@@ -90,7 +92,59 @@ Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 	cmd.AddCommand(profile.New())
 	cmd.AddCommand(workspace.New())
 
+	showUsageOnMisuse(cmd)
 	return cmd
+}
+
+// showUsageOnMisuse lets cobra print the usage after the error where an argument or a flag is
+// wrong, and keeps it silent for an error of the command itself, which the usage does not help with.
+// The usage rather than the full help keeps the error on the screen.
+func showUsageOnMisuse(root *cobra.Command) {
+	showUsage := func(err error) error {
+		root.SilenceUsage = false
+		// cobra prints the usage to the root's output, which a caller may have set to stdout.
+		// Nothing but the usage is written there once the command failed.
+		root.SetOut(root.ErrOrStderr())
+		return err
+	}
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return showUsage(err)
+	})
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if args := cmd.Args; args != nil {
+			cmd.Args = func(cmd *cobra.Command, positional []string) error {
+				if cmd.HasSubCommands() && len(positional) > 0 {
+					return showUsage(unknownSubcommand(cmd, positional[0]))
+				}
+				if err := args(cmd, positional); err != nil {
+					return showUsage(err)
+				}
+				return nil
+			}
+		}
+		for _, child := range cmd.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
+}
+
+// unknownSubcommand is cobra's own error for an unknown subcommand, with its suggestions. Cobra
+// only suggests for a root that sets no Args, while every parent here sets Args and RunE, so that
+// its help shows the usage.
+func unknownSubcommand(parent *cobra.Command, name string) error {
+	if parent.SuggestionsMinimumDistance <= 0 {
+		parent.SuggestionsMinimumDistance = 2
+	}
+	var suggestions strings.Builder
+	if suggested := parent.SuggestionsFor(name); len(suggested) > 0 {
+		suggestions.WriteString("\n\nDid you mean this?\n")
+		for _, s := range suggested {
+			_, _ = fmt.Fprintf(&suggestions, "\t%s\n", s)
+		}
+	}
+	return fmt.Errorf("unknown command %q for %q%s", name, parent.CommandPath(), suggestions.String())
 }
 
 // setupLogging writes an INFO record as a plain line, since most of them tell the user what a
