@@ -19,8 +19,9 @@ import (
 
 func newLogs() *cobra.Command {
 	var (
-		output internal.OutputFlag
-		follow bool
+		output  internal.OutputFlag
+		follow  bool
+		runUuid uuid.UUID
 	)
 
 	cmd := &cobra.Command{
@@ -39,12 +40,8 @@ script can wait on a run with it. --follow takes no --output.`,
 		Example: `  meshstack buildingblockrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c -o ndjson
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c --follow`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			runUuid, err := uuid.Parse(args[0])
-			if err != nil {
-				return fmt.Errorf("%q is no uuid", args[0])
-			}
+		Args: internal.UuidArg(&runUuid),
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			meshStack, err := internal.ResolveClient(ctx)
 			if err != nil {

@@ -25,7 +25,10 @@ const (
 )
 
 func newTriggerRun() *cobra.Command {
-	var output internal.OutputFlag
+	var (
+		output            internal.OutputFlag
+		buildingBlockUuid uuid.UUID
+	)
 
 	cmd := &cobra.Command{
 		Use:   "trigger-run <building-block-uuid>",
@@ -40,13 +43,8 @@ the run, the command fails with the reason it gives, status.runStartFailure.
 "meshstack api-docs --describe buildingblock.trigger-run" shows the fields of the answer.`,
 		Example: `  meshstack buildingblock trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -o ndjson | jq -r .status.latestRunUuid`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// The backend answers a uuid it does not know with 404, which says nothing about a typo.
-			buildingBlockUuid, err := uuid.Parse(args[0])
-			if err != nil {
-				return fmt.Errorf("%q is no uuid", args[0])
-			}
+		Args: internal.UuidArg(&buildingBlockUuid),
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			meshStack, err := internal.ResolveClient(ctx)
 			if err != nil {

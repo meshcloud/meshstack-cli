@@ -102,5 +102,5 @@ func TestTriggerRunRejectsANameOfNoUuidBeforeItAsksMeshStack(t *testing.T) {
 	cmd := buildingblock.New()
 	cmd.SetArgs([]string{"trigger-run", "my-building-block"})
 
-	assert.EqualError(t, cmd.ExecuteContext(t.Context()), `"my-building-block" is no uuid`)
+	assert.EqualError(t, cmd.ExecuteContext(t.Context()), `invalid argument "my-building-block": invalid uuid`)
 }

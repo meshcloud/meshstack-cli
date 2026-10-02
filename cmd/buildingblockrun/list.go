@@ -20,7 +20,7 @@ import (
 func newList() *cobra.Command {
 	var (
 		flags             internal.ListFlags
-		buildingBlockUuid string
+		buildingBlockUuid uuid.UUID
 	)
 
 	cmd := &cobra.Command{
@@ -37,11 +37,7 @@ the command then asks for the first runs of every one of them before it lists th
   meshstack bbrun list --workspace my-workspace --limit 20`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if buildingBlockUuid != "" {
-				// The backend answers a uuid it does not know, or no uuid at all, with an empty list.
-				if _, err := uuid.Parse(buildingBlockUuid); err != nil {
-					return fmt.Errorf("--building-block %q is no uuid", buildingBlockUuid)
-				}
+			if buildingBlockUuid != uuid.Nil() {
 				return flags.Run[client.MeshBuildingBlockRun](cmd, client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid})
 			}
 			var (
@@ -57,7 +53,7 @@ the command then asks for the first runs of every one of them before it lists th
 		},
 	}
 
-	cmd.Flags().StringVar(&buildingBlockUuid, "building-block", "", "list the runs of the building block with this uuid")
+	cmd.Flags().Var((*internal.UuidFlag)(&buildingBlockUuid), "building-block", "list the runs of the building block with this uuid")
 	flags.Register(cmd.Flags())
 
 	return cmd
@@ -86,14 +82,14 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 			}
 			var buildingBlock struct {
 				Metadata struct {
-					Uuid string `json:"uuid"`
+					Uuid uuid.UUID `json:"uuid"`
 				} `json:"metadata"`
 			}
 			if err := json.Unmarshal(rawBlock, &buildingBlock); err != nil {
 				yield(nil, err)
 				return
 			}
-			if buildingBlock.Metadata.Uuid == "" {
+			if buildingBlock.Metadata.Uuid == uuid.Nil() {
 				yield(nil, errors.New("building block has no metadata.uuid: this must be a bug in the meshStack CLI or meshStack"))
 				return
 			}
@@ -103,7 +99,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 	}
 }
 
-func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid string, pageSize int) iter.Seq2[jsontext.Value, error] {
+func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID, pageSize int) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
 		filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid}
 		for run, err := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, client.ListOptions{PageSize: pageSize}) {

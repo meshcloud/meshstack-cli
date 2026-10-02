@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
+	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
@@ -226,12 +228,16 @@ func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient int
 }
 
 type MeshBuildingBlockDefinitionVersionListFilter struct {
-	BuildingBlockDefinitionUuid string `json:"buildingBlockDefinitionUuid"`
+	BuildingBlockDefinitionUuid uuid.UUID `json:"buildingBlockDefinitionUuid,omitzero"`
 }
 
 func (c meshBuildingBlockDefinitionVersionClient) List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error) {
+	definitionUuid, err := uuid.Parse(buildingBlockDefinitionUuid)
+	if err != nil {
+		return nil, fmt.Errorf("building block definition %q: %w", buildingBlockDefinitionUuid, err)
+	}
 	return c.meshObject.List(ctx, http.WithUrlQuery(MeshBuildingBlockDefinitionVersionListFilter{
-		BuildingBlockDefinitionUuid: buildingBlockDefinitionUuid,
+		BuildingBlockDefinitionUuid: definitionUuid,
 	}))
 }
 

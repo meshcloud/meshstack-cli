@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"time"
+	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
 )
@@ -41,7 +42,7 @@ type MeshBuildingBlockRunBuildingBlockSpec struct {
 }
 
 type MeshBuildingBlockRunListFilter struct {
-	BuildingBlockUuid string       `json:"buildingBlockUuid"`
+	BuildingBlockUuid uuid.UUID    `json:"buildingBlockUuid,omitzero"`
 	Sort              SortCriteria `json:"sort"`
 }
 
