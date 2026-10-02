@@ -2,8 +2,10 @@ package testacc
 
 import (
 	"encoding/json/v2"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +25,8 @@ func ndjsonObjects[T any](output string) []T {
 
 type listedRun struct {
 	Metadata struct {
-		Uuid string `json:"uuid"`
+		Uuid      string    `json:"uuid"`
+		CreatedAt time.Time `json:"createdAt"`
 	} `json:"metadata"`
 }
 
@@ -53,4 +56,15 @@ func TestAccTriggerRunNamesTheRunItStarted(t *testing.T) {
 	runs := ndjsonObjects[listedRun](output)
 	require.Lenf(t, runs, 1, "the run list listed no run:\n%s", output)
 	assert.Equal(t, started, runs[0].Metadata.Uuid, "the run the trigger-run named is the newest run of the building block")
+}
+
+func TestAccRunListOfEveryBuildingBlockIsNewestFirst(t *testing.T) {
+	c := loggedInWithApiKey(t)
+	output, err := c.run("", "buildingblockrun", "list", "--limit", "unlimited", "-o", "ndjson")
+	require.NoErrorf(t, err, "the run list failed:\n%s", output)
+
+	runs := ndjsonObjects[listedRun](output)
+	assert.Truef(t, slices.IsSortedFunc(runs, func(a, b listedRun) int {
+		return b.Metadata.CreatedAt.Compare(a.Metadata.CreatedAt)
+	}), "the runs are not listed newest first:\n%s", output)
 }

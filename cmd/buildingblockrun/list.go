@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"slices"
+	"time"
 	"uuid"
 
 	"github.com/spf13/cobra"
@@ -28,8 +30,9 @@ func newList() *cobra.Command {
 
 --building-block lists that block's runs. --workspace, or MESHSTACK_WORKSPACE, then only picks
 the workspace a login acts in. Without --building-block the runs of every building block the
-credential can see are listed, one block after the other, the newest block first, and
---workspace, or MESHSTACK_WORKSPACE, narrows those to the building blocks of that workspace.`,
+credential can see are listed, and --workspace, or MESHSTACK_WORKSPACE, narrows those to the
+building blocks of that workspace. meshStack lists the runs of one building block at a time, so
+the command then asks for the first runs of every one of them before it lists the newest.`,
 		Example: `  meshstack buildingblockrun list --building-block 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bbrun list --workspace my-workspace --limit 20`,
 		Args: cobra.NoArgs,
@@ -60,10 +63,20 @@ credential can see are listed, one block after the other, the newest block first
 	return cmd
 }
 
-// allRuns flattens the runs of every building block into one sequence, because the run list
-// endpoint takes one building block at a time and has no list of every run.
+// runsPageSizeOfEachBlock caps the page size a limited listing asks for, which is its limit, for the
+// runs of each building block: a listing of every building block reads the first page of each one
+// before it lists a single run. An unlimited listing reads every page anyway, and takes meshStack's
+// default page size.
+const runsPageSizeOfEachBlock = 10
+
+// allRuns merges the runs of every building block, because the run list endpoint takes one building
+// block at a time and has no list of every run.
 func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.MeshBuildingBlockV2ListFilter, pageSize int) iter.Seq2[jsontext.Value, error] {
+	if pageSize > 0 {
+		pageSize = min(pageSize, runsPageSizeOfEachBlock)
+	}
 	return func(yield func(jsontext.Value, error) bool) {
+		var runsOfEachBlock []iter.Seq2[jsontext.Value, error]
 		// The blocks are read raw because only their uuid is needed, and a block the client cannot
 		// fully decode still has runs to list.
 		for rawBlock, err := range meshStack.Raw.List[client.MeshBuildingBlockV2](ctx, blockFilter, client.ListOptions{}) {
@@ -84,16 +97,86 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 				yield(nil, errors.New("building block has no metadata.uuid: this must be a bug in the meshStack CLI or meshStack"))
 				return
 			}
-			filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlock.Metadata.Uuid}
-			for blockRun, runErr := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, client.ListOptions{PageSize: pageSize}) {
-				if runErr != nil {
-					yield(nil, fmt.Errorf("listing the runs of building block %s: %w", filter.BuildingBlockUuid, runErr))
-					return
-				}
-				if !yield(blockRun, nil) {
-					return
-				}
+			runsOfEachBlock = append(runsOfEachBlock, runsOf(ctx, meshStack, buildingBlock.Metadata.Uuid, pageSize))
+		}
+		mergeNewestFirst(runsOfEachBlock)(yield)
+	}
+}
+
+func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid string, pageSize int) iter.Seq2[jsontext.Value, error] {
+	return func(yield func(jsontext.Value, error) bool) {
+		filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid}
+		for run, err := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, client.ListOptions{PageSize: pageSize}) {
+			if err != nil {
+				err = fmt.Errorf("listing the runs of building block %s: %w", buildingBlockUuid, err)
+			}
+			if !yield(run, err) || err != nil {
+				return
 			}
 		}
 	}
+}
+
+// mergeNewestFirst merges runs that each come newest first. It reads the first run of every one
+// before it yields any, and after that reads on only in the runs it yielded the head of. Runs created
+// at the same time keep the order of the sequences they come from.
+func mergeNewestFirst(runs []iter.Seq2[jsontext.Value, error]) iter.Seq2[jsontext.Value, error] {
+	return func(yield func(jsontext.Value, error) bool) {
+		heads := make([]*runHead, 0, len(runs))
+		stops := make([]func(), 0, len(runs))
+		defer func() {
+			for _, stop := range stops {
+				stop()
+			}
+		}()
+		for _, sequence := range runs {
+			next, stop := iter.Pull2(sequence)
+			stops = append(stops, stop)
+			head := &runHead{next: next}
+			if ok, err := head.advance(); err != nil {
+				yield(nil, err)
+				return
+			} else if ok {
+				heads = append(heads, head)
+			}
+		}
+		for len(heads) > 0 {
+			newest := 0
+			for i, head := range heads {
+				if head.createdAt.After(heads[newest].createdAt) {
+					newest = i
+				}
+			}
+			if !yield(heads[newest].run, nil) {
+				return
+			}
+			if ok, err := heads[newest].advance(); err != nil {
+				yield(nil, err)
+				return
+			} else if !ok {
+				heads = slices.Delete(heads, newest, newest+1)
+			}
+		}
+	}
+}
+
+type runHead struct {
+	next      func() (jsontext.Value, error, bool)
+	run       jsontext.Value
+	createdAt time.Time
+}
+
+func (h *runHead) advance() (bool, error) {
+	run, err, ok := h.next()
+	if !ok || err != nil {
+		return false, err
+	}
+	var created struct {
+		Metadata client.MeshBuildingBlockRunMetadata `json:"metadata"`
+	}
+	if err := json.Unmarshal(run, &created); err != nil {
+		return false, fmt.Errorf("reading the metadata.createdAt of a building block run: %w", err)
+	}
+	h.run, h.createdAt = run, created.Metadata.CreatedAt
+	return true, nil
 }
