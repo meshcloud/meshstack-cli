@@ -94,168 +94,137 @@ func (p *proxyUnderTest) send(method, body string) *httptest.ResponseRecorder {
 	return w
 }
 
-func (p *proxyUnderTest) backups(t *testing.T) map[string]string {
+func (p *proxyUnderTest) backups(t *testing.T) []string {
 	t.Helper()
 	backups := os.DirFS(string(p.Backups))
 	files, err := fs.Glob(backups, "*")
 	require.NoError(t, err)
-	contents := map[string]string{}
+	var contents []string
 	for _, file := range files {
+		assert.True(t, strings.HasPrefix(file, buildingBlockUuid.String()+"-"), file)
+		info, err := fs.Stat(backups, file)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 		content, err := fs.ReadFile(backups, file)
 		require.NoError(t, err)
-		contents[file] = string(content)
+		contents = append(contents, string(content))
 	}
 	return contents
 }
 
-func TestProxyServesTheStoredState(t *testing.T) {
-	p := newProxy(t, firstState, false)
+func TestAWritableProxy(t *testing.T) {
+	p := newProxy(t, "", true)
 
-	w := p.send(gohttp.MethodGet, "")
+	t.Run("answers no state with 404, as tofu expects", func(t *testing.T) {
+		assert.Equal(t, gohttp.StatusNotFound, p.send(gohttp.MethodGet, "").Code)
+		assert.Empty(t, p.problems)
+	})
 
-	assert.Equal(t, gohttp.StatusOK, w.Code)
-	assert.JSONEq(t, firstState, w.Body.String())
-	assert.Equal(t, []string{"GET /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()}, p.meshStack.requests)
-}
-
-func TestProxyAnswersNoStateWith404AsTofuExpects(t *testing.T) {
-	p := newProxy(t, "", false)
-
-	assert.Equal(t, gohttp.StatusNotFound, p.send(gohttp.MethodGet, "").Code)
-	assert.Empty(t, p.problems)
-}
-
-func TestReadOnlyProxyRefusesEveryWrite(t *testing.T) {
-	for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
-		t.Run(method, func(t *testing.T) {
-			p := newProxy(t, firstState, false)
-
-			assert.Equal(t, gohttp.StatusForbidden, p.send(method, nextState).Code)
-			assert.Empty(t, p.meshStack.requests, "the write never reaches meshStack")
-			require.Len(t, p.problems, 1)
-			assert.ErrorIs(t, p.problems[0], ErrReadOnly)
-		})
-	}
-}
-
-func TestProxyTakesOnlyTheBasicAuthItHandedOut(t *testing.T) {
-	tests := map[string]func(r *gohttp.Request){
-		"no auth":          func(*gohttp.Request) {},
-		"another password": func(r *gohttp.Request) { r.SetBasicAuth(username, "guessed") },
-		"another user":     func(r *gohttp.Request) { r.SetBasicAuth("admin", testPassword) },
-		"a bearer token":   func(r *gohttp.Request) { r.Header.Set("Authorization", "Bearer "+testPassword) },
-	}
-	for name, authorize := range tests {
-		t.Run(name, func(t *testing.T) {
-			p := newProxy(t, firstState, true)
+	t.Run("takes only the basic auth it handed out", func(t *testing.T) {
+		p.meshStack.requests = nil
+		for name, authorize := range map[string]func(r *gohttp.Request){
+			"no auth":          func(*gohttp.Request) {},
+			"another password": func(r *gohttp.Request) { r.SetBasicAuth(username, "guessed") },
+			"another user":     func(r *gohttp.Request) { r.SetBasicAuth("admin", testPassword) },
+			"a bearer token":   func(r *gohttp.Request) { r.Header.Set("Authorization", "Bearer "+testPassword) },
+		} {
 			r := httptest.NewRequestWithContext(t.Context(), gohttp.MethodGet, statePath, nil)
 			authorize(r)
 			w := httptest.NewRecorder()
-
 			p.ServeHTTP(w, r)
+			assert.Equal(t, gohttp.StatusUnauthorized, w.Code, name)
+		}
+		assert.Empty(t, p.meshStack.requests)
+		p.problems = nil
+	})
 
-			assert.Equal(t, gohttp.StatusUnauthorized, w.Code)
-			assert.Empty(t, p.meshStack.requests)
-		})
-	}
+	t.Run("stores the first state, and backs up nothing before it", func(t *testing.T) {
+		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, firstState).Code)
+		assert.JSONEq(t, firstState, string(p.meshStack.state))
+		assert.Empty(t, p.backups(t))
+		assert.Empty(t, p.problems)
+	})
+
+	t.Run("refuses a state that does not follow the stored one", func(t *testing.T) {
+		for written, wantProblem := range map[string]string{
+			`{"version":4,"serial":2,"lineage":"lineage-2"}`: "the state written has the lineage lineage-2, but the stored state lineage-1, so it is another state",
+			firstState: "the state written has the serial 1, which is not above the serial 1 of the stored state, so it misses a write",
+			`{"version":4,"serial":0,"lineage":"lineage-1"}`: "the state written has the serial 0, which is not above the serial 1 of the stored state, so it misses a write",
+			`{"version":4,"serial":2}`:                       "the state written is no state of tofu, as it has no lineage",
+		} {
+			p.problems = nil
+			assert.Equal(t, gohttp.StatusConflict, p.send(gohttp.MethodPost, written).Code, written)
+			assert.Equal(t, []string{wantProblem}, errorTexts(p.problems))
+		}
+		assert.JSONEq(t, firstState, string(p.meshStack.state))
+		assert.Empty(t, p.backups(t))
+	})
+
+	t.Run("refuses a write that BeforeWrite refuses", func(t *testing.T) {
+		refused := errors.New("a run is in progress")
+		p.BeforeWrite = func(context.Context) error { return refused }
+		defer func() { p.BeforeWrite = nil }()
+		p.meshStack.requests = nil
+		for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
+			p.problems = nil
+			assert.Equal(t, gohttp.StatusConflict, p.send(method, nextState).Code, method)
+			assert.Equal(t, []error{refused}, p.problems, method)
+		}
+		assert.Empty(t, p.meshStack.requests)
+	})
+
+	t.Run("stores a state of a higher serial, a skipped one included, and backs up the one it replaces", func(t *testing.T) {
+		const skipped = `{"version":4,"serial":7,"lineage":"lineage-1"}`
+		p.problems = nil
+		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, nextState).Code)
+		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, skipped).Code)
+		assert.Empty(t, p.problems)
+
+		w := p.send(gohttp.MethodGet, "")
+		assert.Equal(t, gohttp.StatusOK, w.Code)
+		assert.JSONEq(t, skipped, w.Body.String())
+		assert.Equal(t, []string{firstState, nextState}, p.backups(t))
+	})
+
+	t.Run("backs up the state it deletes", func(t *testing.T) {
+		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodDelete, "").Code)
+		assert.Nil(t, p.meshStack.state)
+		assert.Equal(t, []string{firstState, nextState, `{"version":4,"serial":7,"lineage":"lineage-1"}`}, p.backups(t))
+	})
+
+	t.Run("passes on the refusal of meshStack", func(t *testing.T) {
+		p.meshStack.forbidden = true
+		p.problems = nil
+
+		assert.Equal(t, gohttp.StatusForbidden, p.send(gohttp.MethodGet, "").Code)
+		require.Len(t, p.problems, 1)
+		httpErr, ok := errors.AsType[http.Error](p.problems[0])
+		require.True(t, ok, "the problem is the refusal of meshStack: %v", p.problems[0])
+		assert.True(t, httpErr.IsForbidden())
+	})
 }
 
-func TestProxyStoresAStateThatFollowsTheStoredOne(t *testing.T) {
-	tests := map[string]struct{ stored, written string }{
-		"the first state":  {"", firstState},
-		"the serial above": {firstState, nextState},
-		"a serial skipped": {firstState, `{"version":4,"serial":7,"lineage":"lineage-1"}`},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			p := newProxy(t, test.stored, true)
+func TestAReadOnlyProxy(t *testing.T) {
+	p := newProxy(t, firstState, false)
 
-			assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, test.written).Code)
-			assert.Equal(t, test.written, string(p.meshStack.state))
-			assert.Empty(t, p.problems)
-		})
-	}
-}
+	t.Run("serves the stored state of the building block", func(t *testing.T) {
+		w := p.send(gohttp.MethodGet, "")
 
-func TestProxyRefusesAStateThatDoesNotFollowTheStoredOne(t *testing.T) {
-	tests := map[string]struct{ written, wantProblem string }{
-		"another lineage": {
-			`{"version":4,"serial":2,"lineage":"lineage-2"}`,
-			"the state written has the lineage lineage-2, but the stored state lineage-1, so it is another state",
-		},
-		"the same serial": {
-			firstState,
-			"the state written has the serial 1, which is not above the serial 1 of the stored state, so it misses a write",
-		},
-		"a lower serial": {
-			`{"version":4,"serial":0,"lineage":"lineage-1"}`,
-			"the state written has the serial 0, which is not above the serial 1 of the stored state, so it misses a write",
-		},
-		"no lineage": {`{"version":4,"serial":2}`, "the state written is no state of tofu, as it has no lineage"},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			p := newProxy(t, firstState, true)
+		assert.Equal(t, gohttp.StatusOK, w.Code)
+		assert.JSONEq(t, firstState, w.Body.String())
+		assert.Equal(t, []string{"GET /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()}, p.meshStack.requests)
+	})
 
-			assert.Equal(t, gohttp.StatusConflict, p.send(gohttp.MethodPost, test.written).Code)
-			assert.JSONEq(t, firstState, string(p.meshStack.state))
-			assert.Empty(t, p.backups(t))
+	t.Run("refuses every write before it reaches meshStack", func(t *testing.T) {
+		p.meshStack.requests = nil
+		for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
+			p.problems = nil
+			assert.Equal(t, gohttp.StatusForbidden, p.send(method, nextState).Code, method)
 			require.Len(t, p.problems, 1)
-			assert.EqualError(t, p.problems[0], test.wantProblem)
-		})
-	}
-}
-
-func TestProxyRefusesAWriteThatBeforeWriteRefuses(t *testing.T) {
-	refused := errors.New("a run is in progress")
-	for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
-		t.Run(method, func(t *testing.T) {
-			p := newProxy(t, firstState, true)
-			p.BeforeWrite = func(context.Context) error { return refused }
-
-			assert.Equal(t, gohttp.StatusConflict, p.send(method, nextState).Code)
-			assert.Empty(t, p.meshStack.requests)
-			assert.Equal(t, []error{refused}, p.problems)
-		})
-	}
-}
-
-func TestProxyBacksUpTheStateItReplacesOrDeletes(t *testing.T) {
-	for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
-		t.Run(method, func(t *testing.T) {
-			p := newProxy(t, firstState, true)
-
-			assert.Equal(t, gohttp.StatusOK, p.send(method, nextState).Code)
-
-			backups := p.backups(t)
-			require.Len(t, backups, 1)
-			for name, content := range backups {
-				assert.True(t, strings.HasPrefix(name, buildingBlockUuid.String()+"-"), name)
-				assert.JSONEq(t, firstState, content)
-				info, err := os.Stat(filepath.Join(string(p.Backups), name))
-				require.NoError(t, err)
-				assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
-			}
-		})
-	}
-}
-
-func TestProxyBacksUpNothingBeforeTheFirstState(t *testing.T) {
-	p := newProxy(t, "", true)
-
-	assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, firstState).Code)
-	assert.Empty(t, p.backups(t))
-}
-
-func TestProxyPassesOnTheRefusalOfMeshStack(t *testing.T) {
-	p := newProxy(t, firstState, true)
-	p.meshStack.forbidden = true
-
-	assert.Equal(t, gohttp.StatusForbidden, p.send(gohttp.MethodGet, "").Code)
-	require.Len(t, p.problems, 1)
-	httpErr, ok := errors.AsType[http.Error](p.problems[0])
-	require.True(t, ok, "the problem is the refusal of meshStack: %v", p.problems[0])
-	assert.True(t, httpErr.IsForbidden())
+			require.ErrorIs(t, p.problems[0], ErrReadOnly)
+		}
+		assert.Empty(t, p.meshStack.requests)
+	})
 }
 
 func TestServeCountsTheRequestsUntilTheCommandEnds(t *testing.T) {
@@ -281,6 +250,14 @@ func TestServeCountsTheRequestsUntilTheCommandEnds(t *testing.T) {
 	assert.Equal(t, 1, requests)
 	assert.JSONEq(t, firstState, string(served))
 	assert.NotEqual(t, testPassword, p.password, "every Serve hands out a password of its own")
+}
+
+func errorTexts(errs []error) []string {
+	texts := make([]string, 0, len(errs))
+	for _, err := range errs {
+		texts = append(texts, err.Error())
+	}
+	return texts
 }
 
 func basicAuth(user, password string) string {
