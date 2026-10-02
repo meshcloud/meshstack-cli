@@ -23,104 +23,92 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
-func TestListShowsEveryProfileAndMarksTheCurrentOne(t *testing.T) {
-	twoProfiles(t)
-
-	output, err := execute(t, "", "list")
-
-	require.NoError(t, err)
-	assert.Equal(t, "| | Profile | Endpoint | Default workspace | Credential |\n"+
-		"| --- | --- | --- | --- | --- |\n"+
-		"| current | dev | https://a.example.io |  |  |\n"+
-		"|  | prod | https://b.example.io | ops |  |\n", output)
-}
-
-func TestListWithoutProfilesSaysHowToAddOne(t *testing.T) {
+func TestList(t *testing.T) {
 	emptyConfigDir(t)
+	t.Run("without profiles says how to add one", func(t *testing.T) {
+		output, err := execute(t, "", "list")
 
-	output, err := execute(t, "", "list")
+		require.NoError(t, err)
+		assert.Contains(t, output, "No profiles yet.")
+	})
 
-	require.NoError(t, err)
-	assert.Contains(t, output, "No profiles yet.")
-}
-
-func TestListWritesJson(t *testing.T) {
 	twoProfiles(t)
+	t.Run("shows every profile and marks the current one", func(t *testing.T) {
+		output, err := execute(t, "", "list")
 
-	output, err := execute(t, "", "list", "-o", "json")
+		require.NoError(t, err)
+		assert.Equal(t, "| | Profile | Endpoint | Default workspace | Credential |\n"+
+			"| --- | --- | --- | --- | --- |\n"+
+			"| current | dev | https://a.example.io |  |  |\n"+
+			"|  | prod | https://b.example.io | ops |  |\n", output)
+	})
 
-	require.NoError(t, err)
-	var listed []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(output), &listed))
-	assert.Equal(t, []map[string]any{
-		{"name": "dev", "endpoint": "https://a.example.io", "current": true},
-		{"name": "prod", "endpoint": "https://b.example.io", "default_workspace": "ops", "current": false},
-	}, listed)
+	t.Run("writes JSON", func(t *testing.T) {
+		output, err := execute(t, "", "list", "-o", "json")
+
+		require.NoError(t, err)
+		var listed []map[string]any
+		require.NoError(t, json.Unmarshal([]byte(output), &listed))
+		assert.Equal(t, []map[string]any{
+			{"name": "dev", "endpoint": "https://a.example.io", "current": true},
+			{"name": "prod", "endpoint": "https://b.example.io", "default_workspace": "ops", "current": false},
+		}, listed)
+	})
 }
 
-func TestShowTakesTheCurrentProfileWithItsStoredCredential(t *testing.T) {
+func TestShow(t *testing.T) {
 	t.Setenv("MESHSTACK_ENDPOINT", "")
 	profiles := twoProfiles(t)
-	dev := profiles.Profiles["dev"]
-	storeCredentials(t, dev)
-	dev.Credential = credential.ManualName
-	require.NoError(t, profiles.Store(t.Context()))
 
-	output, err := execute(t, "", "show")
+	t.Run("takes the profile the environment names", func(t *testing.T) {
+		t.Setenv("MESHSTACK_PROFILE", "prod")
 
-	require.NoError(t, err)
-	assert.Contains(t, output, "| Profile | dev |\n")
-	assert.Contains(t, output, "| Credential | API token, from file ")
-	assert.Contains(t, output, "|  | No token cached yet |\n")
-	assert.Contains(t, output, "This is the current profile.")
-}
+		output, err := execute(t, "", "show")
 
-func TestShowWarnsWhereTheCurrentProfileIsForAnotherEndpoint(t *testing.T) {
-	storedProfiles(t,
-		profile.Profile{Name: "dev", Endpoint: endpointA},
-		profile.Profile{Name: "prod", Endpoint: endpointB},
-		profile.Profile{Name: "staging", Endpoint: endpointB},
-	)
-	captured := logs.Capture(t)
+		require.NoError(t, err)
+		assert.Contains(t, output, "| Profile | prod |\n")
+	})
 
-	output, err := execute(t, "", "show", "--endpoint", "https://b.example.io")
+	t.Run("writes JSON for the only profile of the endpoint", func(t *testing.T) {
+		captured := logs.Capture(t)
 
-	require.NoError(t, err)
-	assert.Contains(t, output, "| Profile | dev |\n")
-	assert.Contains(t, captured.String(), "Profile 'dev' is for endpoint 'https://a.example.io', so a command for endpoint 'https://b.example.io' (from flag --endpoint) fails with it")
-}
+		output, err := execute(t, "", "show", "--endpoint", "https://b.example.io", "-o", "json")
 
-func TestShowTakesTheProfileTheEnvironmentNames(t *testing.T) {
-	twoProfiles(t)
-	t.Setenv("MESHSTACK_PROFILE", "prod")
+		require.NoError(t, err)
+		var shown map[string]any
+		require.NoError(t, json.Unmarshal([]byte(output), &shown))
+		assert.Equal(t, "prod", shown["name"])
+		assert.NotContains(t, shown, "status", "a profile without a credential has no status")
+		assert.Empty(t, captured.Lines(slog.LevelInfo), "a profile never logged in is no reason to warn")
+	})
 
-	output, err := execute(t, "", "show")
+	t.Run("takes the current profile with its stored credential", func(t *testing.T) {
+		dev := profiles.Profiles["dev"]
+		storeCredentials(t, dev)
+		dev.Credential = credential.ManualName
+		require.NoError(t, profiles.Store(t.Context()))
 
-	require.NoError(t, err)
-	assert.Contains(t, output, "| Profile | prod |\n")
-}
+		output, err := execute(t, "", "show")
 
-func TestShowWritesJsonForTheOnlyProfileOfTheEndpoint(t *testing.T) {
-	twoProfiles(t)
-	captured := logs.Capture(t)
+		require.NoError(t, err)
+		assert.Contains(t, output, "| Profile | dev |\n")
+		assert.Contains(t, output, "| Credential | API token, from file ")
+		assert.Contains(t, output, "|  | No token cached yet |\n")
+		assert.Contains(t, output, "This is the current profile.")
+	})
 
-	output, err := execute(t, "", "show", "--endpoint", "https://b.example.io", "-o", "json")
+	t.Run("shows the current profile with a warning where it is for another endpoint, and that endpoint has several profiles", func(t *testing.T) {
+		require.NoError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "staging", Endpoint: endpointB}))
+		captured := logs.Capture(t)
 
-	require.NoError(t, err)
-	var shown map[string]any
-	require.NoError(t, json.Unmarshal([]byte(output), &shown))
-	assert.Equal(t, "prod", shown["name"])
-	assert.NotContains(t, shown, "status", "a profile without a credential has no status")
-	assert.Empty(t, captured.Lines(slog.LevelInfo), "a profile never logged in is no reason to warn")
-}
+		output, err := execute(t, "", "show", "--endpoint", "https://b.example.io")
 
-func TestShowsTheProfileAFirstCommandWouldCreateWithoutStoringIt(t *testing.T) {
-	t.Run("for an endpoint of several profiles, none of them current", func(t *testing.T) {
-		profiles := storedProfiles(t,
-			profile.Profile{Name: "dev", Endpoint: endpointA},
-			profile.Profile{Name: "prod", Endpoint: endpointB},
-			profile.Profile{Name: "staging", Endpoint: endpointB},
-		)
+		require.NoError(t, err)
+		assert.Contains(t, output, "| Profile | dev |\n")
+		assert.Contains(t, captured.String(), "Profile 'dev' is for endpoint 'https://a.example.io', so a command for endpoint 'https://b.example.io' (from flag --endpoint) fails with it")
+	})
+
+	t.Run("shows the profile a first command would create, without storing it, where no profile is current", func(t *testing.T) {
 		profiles.CurrentProfile = ""
 		require.NoError(t, profiles.Store(t.Context()))
 
@@ -132,9 +120,8 @@ func TestShowsTheProfileAFirstCommandWouldCreateWithoutStoringIt(t *testing.T) {
 		requireStoredNames(t, "dev", "prod", "staging")
 	})
 
-	t.Run("without any profile or endpoint", func(t *testing.T) {
+	t.Run("shows the profile a first command would create without any profile or endpoint", func(t *testing.T) {
 		emptyConfigDir(t)
-		t.Setenv("MESHSTACK_ENDPOINT", "")
 
 		output, err := execute(t, "", "show")
 

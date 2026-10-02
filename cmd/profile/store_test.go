@@ -2,6 +2,7 @@ package profile
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,20 +54,28 @@ func loadedCredentials(t *testing.T, profiles profile.Profiles, name profile.Nam
 	return credentials.Manual
 }
 
-func TestPutAddsOrReplacesAProfile(t *testing.T) {
-	t.Run("the first profile added becomes the current one", func(t *testing.T) {
-		profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA}, profile.Profile{Name: "prod", Endpoint: endpointB})
-
+func TestTheStoredProfiles(t *testing.T) {
+	profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA, DefaultWorkspace: "ws"}, profile.Profile{Name: "prod", Endpoint: endpointB})
+	reloadedCurrent := func(t *testing.T) profile.Name {
+		t.Helper()
 		reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 		require.NoError(t, err)
-		assert.Equal(t, profile.Name("dev"), reloaded.CurrentProfile)
-		assert.Equal(t, []profile.Name{"dev", "prod"}, names(reloaded))
+		return reloaded.CurrentProfile
+	}
+	removeWarning := func(t *testing.T, name profile.Name) string {
+		t.Helper()
+		captured := logs.Capture(t)
+		require.NoError(t, remove(t.Context(), &profiles, name))
+		return strings.Join(captured.Lines(slog.LevelInfo), "\n")
+	}
+
+	t.Run("the first profile added becomes the current one", func(t *testing.T) {
+		assert.Equal(t, profile.Name("dev"), reloadedCurrent(t))
+		assert.Equal(t, []profile.Name{"dev", "prod"}, names(profiles))
 		assert.NotEmpty(t, profiles.Profiles["prod"].ConfigDir, "an added profile knows its configuration directory")
 	})
 
 	t.Run("a name that is taken is refused", func(t *testing.T) {
-		profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA}, profile.Profile{Name: "prod", Endpoint: endpointB})
-
 		require.EqualError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "dev", Endpoint: endpointB}),
 			"a profile named 'dev' exists already")
 		require.EqualError(t, put(t.Context(), &profiles, profiles.Profiles["prod"], profile.Profile{Name: "dev", Endpoint: endpointB}),
@@ -74,14 +83,13 @@ func TestPutAddsOrReplacesAProfile(t *testing.T) {
 	})
 
 	t.Run("a rename takes the credentials and the current profile along", func(t *testing.T) {
-		profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA, DefaultWorkspace: "ws"})
 		storeCredentials(t, profiles.Profiles["dev"])
 		renamed := *profiles.Profiles["dev"]
 		renamed.Name = "development"
 
 		require.NoError(t, put(t.Context(), &profiles, profiles.Profiles["dev"], renamed))
 
-		assert.Equal(t, []profile.Name{"development"}, names(profiles))
+		assert.Equal(t, []profile.Name{"development", "prod"}, names(profiles))
 		assert.Equal(t, profile.Name("development"), profiles.CurrentProfile)
 		assert.Equal(t, "ws", string(profiles.Profiles["development"].DefaultWorkspace))
 		require.NotNil(t, loadedCredentials(t, profiles, "development"))
@@ -93,94 +101,58 @@ func TestPutAddsOrReplacesAProfile(t *testing.T) {
 	})
 
 	t.Run("a new endpoint removes the credentials", func(t *testing.T) {
-		profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA, Credential: credential.ManualName})
+		moved := *profiles.Profiles["development"]
+		moved.Endpoint = endpointC
+		moved.Credential = credential.ManualName
+
+		require.NoError(t, put(t.Context(), &profiles, profiles.Profiles["development"], moved))
+
+		assert.Equal(t, endpointC, profiles.Profiles["development"].Endpoint)
+		assert.Nil(t, loadedCredentials(t, profiles, "development"))
+		assert.Empty(t, profiles.Profiles["development"].Credential)
+	})
+
+	t.Run("use makes a profile the current one, and refuses one there is not", func(t *testing.T) {
+		require.NoError(t, use(t.Context(), &profiles, "prod"))
+
+		assert.Equal(t, profile.Name("prod"), reloadedCurrent(t))
+		require.EqualError(t, use(t.Context(), &profiles, "staging"), "there is no profile 'staging'")
+	})
+
+	t.Run("removing another profile than the current one keeps the current one", func(t *testing.T) {
+		assert.Empty(t, removeWarning(t, "development"))
+		assert.Equal(t, profile.Name("prod"), reloadedCurrent(t))
+	})
+
+	t.Run("removing the current profile of several left makes none the current one", func(t *testing.T) {
+		require.NoError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "staging", Endpoint: endpointC}))
+		require.NoError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "dev", Endpoint: endpointA}))
+
+		assert.Contains(t, removeWarning(t, "prod"), "No profile is current now. Make one the current one in meshstack profile, "+
+			"or log in to it with meshstack login --profile <name>.")
+		assert.Empty(t, reloadedCurrent(t))
+	})
+
+	t.Run("removing the current profile of one left makes that the current one", func(t *testing.T) {
+		require.NoError(t, use(t.Context(), &profiles, "staging"))
+
+		assert.Contains(t, removeWarning(t, "staging"), "Profile 'dev' is the current one now, as it is the only one left.")
+		assert.Equal(t, profile.Name("dev"), reloadedCurrent(t))
+	})
+
+	t.Run("removing the last profile deletes its credentials, warns of nothing, and leaves nothing to remove again", func(t *testing.T) {
 		storeCredentials(t, profiles.Profiles["dev"])
-		moved := *profiles.Profiles["dev"]
-		moved.Endpoint = endpointB
+		removed := *profiles.Profiles["dev"]
 
-		require.NoError(t, put(t.Context(), &profiles, profiles.Profiles["dev"], moved))
+		assert.Empty(t, removeWarning(t, "dev"))
 
-		assert.Equal(t, endpointB, profiles.Profiles["dev"].Endpoint)
-		assert.Nil(t, loadedCredentials(t, profiles, "dev"))
-		assert.Empty(t, profiles.Profiles["dev"].Credential)
+		assert.Empty(t, names(profiles))
+		assert.Empty(t, reloadedCurrent(t))
+		credentials, err := removed.Credentials(t.Context())
+		require.NoError(t, err)
+		assert.Nil(t, credentials.Manual)
+		require.EqualError(t, remove(t.Context(), &profiles, "dev"), "there is no profile 'dev'")
 	})
-}
-
-func TestRemoveDeletesTheProfileWithItsCredentials(t *testing.T) {
-	profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA}, profile.Profile{Name: "prod", Endpoint: endpointB})
-	storeCredentials(t, profiles.Profiles["dev"])
-	removed := *profiles.Profiles["dev"]
-
-	require.NoError(t, remove(t.Context(), &profiles, "prod"))
-	require.NoError(t, remove(t.Context(), &profiles, "dev"))
-
-	assert.Empty(t, names(profiles))
-	assert.Empty(t, profiles.CurrentProfile, "the current profile went with it")
-	credentials, err := removed.Credentials(t.Context())
-	require.NoError(t, err)
-	assert.Nil(t, credentials.Manual)
-	require.EqualError(t, remove(t.Context(), &profiles, "dev"), "there is no profile 'dev'")
-}
-
-func TestRemovingTheCurrentProfile(t *testing.T) {
-	tests := []struct {
-		name        string
-		left        []profile.Profile
-		wantCurrent profile.Name
-		wantWarning string
-	}{
-		{
-			name: "makes the only profile left the current one", left: []profile.Profile{{Name: "prod", Endpoint: endpointB}},
-			wantCurrent: "prod", wantWarning: "Profile 'prod' is the current one now, as it is the only one left.",
-		},
-		{
-			name: "of several left, makes none the current one",
-			left: []profile.Profile{{Name: "prod", Endpoint: endpointB}, {Name: "staging", Endpoint: endpointC}},
-			wantWarning: "No profile is current now. Make one the current one in meshstack profile, " +
-				"or log in to it with meshstack login --profile <name>.",
-		},
-		{name: "of none left, warns of nothing"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			profiles := storedProfiles(t, append([]profile.Profile{{Name: "dev", Endpoint: endpointA}}, tt.left...)...)
-			require.Equal(t, profile.Name("dev"), profiles.CurrentProfile)
-			captured := logs.Capture(t)
-
-			require.NoError(t, remove(t.Context(), &profiles, "dev"))
-
-			reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantCurrent, reloaded.CurrentProfile)
-			if tt.wantWarning == "" {
-				assert.Empty(t, captured.Lines(slog.LevelInfo))
-			} else {
-				assert.Contains(t, captured.String(), "level=WARN msg=\""+tt.wantWarning+"\"")
-			}
-		})
-	}
-
-	t.Run("does not change the current profile where another one goes", func(t *testing.T) {
-		profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA}, profile.Profile{Name: "prod", Endpoint: endpointB},
-			profile.Profile{Name: "staging", Endpoint: endpointC})
-		captured := logs.Capture(t)
-
-		require.NoError(t, remove(t.Context(), &profiles, "prod"))
-
-		assert.Equal(t, profile.Name("dev"), profiles.CurrentProfile)
-		assert.Empty(t, captured.Lines(slog.LevelInfo))
-	})
-}
-
-func TestUseMakesAProfileTheCurrentOne(t *testing.T) {
-	profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA}, profile.Profile{Name: "prod", Endpoint: endpointB})
-
-	require.NoError(t, use(t.Context(), &profiles, "prod"))
-
-	reloaded, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
-	require.NoError(t, err)
-	assert.Equal(t, profile.Name("prod"), reloaded.CurrentProfile)
-	require.EqualError(t, use(t.Context(), &profiles, "staging"), "there is no profile 'staging'")
 }
 
 func names(profiles profile.Profiles) (names []profile.Name) {
