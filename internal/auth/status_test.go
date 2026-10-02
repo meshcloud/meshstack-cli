@@ -25,7 +25,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
-func TestStatusOfABrowserLoginIsReadFromTheCacheAlone(t *testing.T) {
+func TestStatusOfABrowserLogin(t *testing.T) {
 	newTestServer(t)
 	sessionEnd := time.Now().Add(20 * time.Hour).Truncate(time.Second)
 	tokenExpiry := time.Now().Add(5 * time.Minute).Truncate(time.Second)
@@ -38,39 +38,37 @@ func TestStatusOfABrowserLoginIsReadFromTheCacheAlone(t *testing.T) {
 			"preferred_username": "jane", "email": "jane@example.com", "MC_CUSTOMER": "ops",
 		}),
 	})
+	status := func(t *testing.T) auth.CredentialStatus {
+		t.Helper()
+		session, err := auth.StoredSession(t.Context(), p, testSessionOpts)
+		require.NoError(t, err)
+		return session.Status(t.Context())
+	}
 
-	session, err := auth.StoredSession(t.Context(), p, testSessionOpts)
-	require.NoError(t, err)
-	status := session.Status(t.Context())
+	t.Run("is read from the cache alone", func(t *testing.T) {
+		status := status(t)
 
-	assert.Equal(t, credential.OidcLoginName, status.Kind)
-	assert.Equal(t, []string{"file " + p.ConfigDir.CredentialsJsonFor(p.Name)}, status.Sources)
-	assert.Equal(t, meshstack.Workspace("ops"), status.Workspace)
-	require.NotNil(t, status.OidcLogin)
-	assert.Equal(t, meshstack.AccessFull, status.OidcLogin.AccessLevel, "a login of an older CLI stored no level, and had full access")
-	assert.True(t, sessionEnd.Equal(status.OidcLogin.SessionEndsAt))
-	assert.Equal(t, &auth.TokenStatus{
-		ExpiresAt: tokenExpiry, User: "jane", Email: "jane@example.com", Workspace: "ops", AccessLevel: meshstack.AccessRead,
-	}, status.Token)
-	assert.Nil(t, status.ApiKey)
-	assert.Empty(t, status.Unused, "the only stored credential is the one in use")
-}
-
-func TestStatusListsTheStoredCredentialsBesidesTheOneInUse(t *testing.T) {
-	newTestServer(t)
-	p := storedOidcLogin(t, xurl.MustParsef("https://localhost:1/realms/meshfed"), "", oidc.Token{
-		RefreshToken: "refresh-token",
-		AccessToken:  testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix()}),
+		assert.Equal(t, credential.OidcLoginName, status.Kind)
+		assert.Equal(t, []string{"file " + p.ConfigDir.CredentialsJsonFor(p.Name)}, status.Sources)
+		assert.Equal(t, meshstack.Workspace("ops"), status.Workspace)
+		require.NotNil(t, status.OidcLogin)
+		assert.Equal(t, meshstack.AccessFull, status.OidcLogin.AccessLevel, "a login of an older CLI stored no level, and had full access")
+		assert.True(t, sessionEnd.Equal(status.OidcLogin.SessionEndsAt))
+		assert.Equal(t, &auth.TokenStatus{
+			ExpiresAt: tokenExpiry, User: "jane", Email: "jane@example.com", Workspace: "ops", AccessLevel: meshstack.AccessRead,
+		}, status.Token)
+		assert.Nil(t, status.ApiKey)
+		assert.Empty(t, status.Unused, "the only stored credential is the one in use")
 	})
-	creds, err := p.Credentials(t.Context())
-	require.NoError(t, err)
-	creds.Set(&credential.ApiKey{Endpoint: p.Endpoint, ClientId: uuid.MustParse(testApiKey2.ClientId), ClientSecret: testApiKey2.ClientSecret})
-	require.NoError(t, creds.Store(t.Context()))
 
-	session, err := auth.StoredSession(t.Context(), p, testSessionOpts)
-	require.NoError(t, err)
+	t.Run("lists the stored credentials besides the one in use", func(t *testing.T) {
+		creds, err := p.Credentials(t.Context())
+		require.NoError(t, err)
+		creds.Set(&credential.ApiKey{Endpoint: p.Endpoint, ClientId: uuid.MustParse(testApiKey2.ClientId), ClientSecret: testApiKey2.ClientSecret})
+		require.NoError(t, creds.Store(t.Context()))
 
-	assert.Equal(t, []auth.UnusedCredential{{Kind: credential.ApiKeyName, ClientId: testApiKey2.ClientId}}, session.Status(t.Context()).Unused)
+		assert.Equal(t, []auth.UnusedCredential{{Kind: credential.ApiKeyName, ClientId: testApiKey2.ClientId}}, status(t).Unused)
+	})
 }
 
 func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
@@ -137,69 +135,58 @@ func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
 	}
 }
 
-func TestStatusOfAnApiTokenOfABuildingBlockRunReadsItsEphemeralKey(t *testing.T) {
+func TestStatusOfAnApiToken(t *testing.T) {
 	server := newTestServer(t)
 	t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
 	server.Route(t, "/api/meshobjects/meshapikeys/self", func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 		_, _ = fmt.Fprint(resp, `{"metadata":{"uuid":"`+testApiKey1.ClientId+`","ownedByWorkspace":"ops"},`+
 			`"spec":{"displayName":"run 42","permissions":["BUILDINGBLOCK_SAVE"]}}`)
 	})
-	token := testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "client_id": testApiKey1.ClientId})
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), token.String())
+	statusWithTokenInTheEnvironment := func(t *testing.T, claims map[string]any) auth.CredentialStatus {
+		t.Helper()
+		t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, claims).String())
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		return session.Status(t.Context())
+	}
+	validFor := func(d time.Duration) int64 { return time.Now().Add(d).Unix() }
+	t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, map[string]any{"exp": validFor(time.Hour), "preferred_username": "stored"}).String())
+	storeLogin(t, credential.ManualName)
 
-	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err)
-	status := session.Status(t.Context())
+	t.Run("a token from the environment shows the stored one as unused", func(t *testing.T) {
+		status := statusWithTokenInTheEnvironment(t, map[string]any{"exp": validFor(time.Hour), "preferred_username": "env"})
 
-	assert.Equal(t, credential.ManualName, status.Kind)
-	require.NotNil(t, status.ApiKey)
-	assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId.String())
-	require.NotNil(t, status.ApiKey.Details)
-	assert.Equal(t, "run 42", status.ApiKey.Details.DisplayName)
-	assert.Equal(t, []string{"BUILDINGBLOCK_SAVE"}, status.ApiKey.Details.Permissions)
-}
+		assert.Equal(t, []string{"env MESHSTACK_API_TOKEN"}, status.Sources)
+		require.NotNil(t, status.Token)
+		assert.Equal(t, "env", status.Token.User)
+		require.Len(t, status.Unused, 1)
+		assert.True(t, status.Unused[0].Selected)
+		require.NotNil(t, status.Unused[0].Token)
+		assert.Equal(t, "stored", status.Unused[0].Token.User)
+	})
 
-func TestStatusOfAnExpiredApiTokenSaysSo(t *testing.T) {
-	newTestServer(t)
-	token := testToken(t, map[string]any{"exp": time.Now().Add(-time.Hour).Unix(), "client_id": testApiKey1.ClientId})
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), token.String())
-	captured := logs.Capture(t)
+	t.Run("the token of a building block run reads its ephemeral API key", func(t *testing.T) {
+		status := statusWithTokenInTheEnvironment(t, map[string]any{"exp": validFor(time.Hour), "client_id": testApiKey1.ClientId})
 
-	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err)
-	status := session.Status(t.Context())
+		assert.Equal(t, credential.ManualName, status.Kind)
+		require.NotNil(t, status.ApiKey)
+		assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId.String())
+		require.NotNil(t, status.ApiKey.Details)
+		assert.Equal(t, "run 42", status.ApiKey.Details.DisplayName)
+		assert.Equal(t, []string{"BUILDINGBLOCK_SAVE"}, status.ApiKey.Details.Permissions)
+	})
 
-	assert.Equal(t, credential.ManualName, status.Kind)
-	assert.Equal(t, []string{"env MESHSTACK_API_TOKEN"}, status.Sources)
-	require.NotNil(t, status.Token)
-	assert.True(t, status.Token.Expired())
-	assert.Equal(t, testApiKey1.ClientId, status.Token.ClientId)
-	require.NotNil(t, status.ApiKey)
-	assert.Nil(t, status.ApiKey.Details, "an expired token cannot read its key")
-	assert.Empty(t, captured.Records(slog.LevelWarn))
-}
+	t.Run("an expired token says so, and cannot read its API key", func(t *testing.T) {
+		captured := logs.Capture(t)
+		status := statusWithTokenInTheEnvironment(t, map[string]any{"exp": validFor(-time.Hour), "client_id": testApiKey1.ClientId})
 
-func TestStatusShowsTheApiTokenFromTheEnvironmentAndTheStoredOneAsUnused(t *testing.T) {
-	newTestServer(t)
-	t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "preferred_username": "stored"}).String())
-	_, store, unlock, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
-	require.NoError(t, err)
-	require.NoError(t, store(t.Context()))
-	require.NoError(t, unlock())
-
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "preferred_username": "env"}).String())
-	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err)
-	status := session.Status(t.Context())
-
-	assert.Equal(t, []string{"env MESHSTACK_API_TOKEN"}, status.Sources)
-	require.NotNil(t, status.Token)
-	assert.Equal(t, "env", status.Token.User)
-	require.Len(t, status.Unused, 1)
-	assert.True(t, status.Unused[0].Selected)
-	require.NotNil(t, status.Unused[0].Token)
-	assert.Equal(t, "stored", status.Unused[0].Token.User)
+		require.NotNil(t, status.Token)
+		assert.True(t, status.Token.Expired())
+		assert.Equal(t, testApiKey1.ClientId, status.Token.ClientId)
+		require.NotNil(t, status.ApiKey)
+		assert.Nil(t, status.ApiKey.Details)
+		assert.Empty(t, captured.Records(slog.LevelWarn))
+	})
 }
 
 func storedOidcLogin(t *testing.T, issuer xurl.URL, level meshstack.AccessLevel, token oidc.Token) *profile.Profile {

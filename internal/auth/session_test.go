@@ -23,200 +23,147 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testserver"
 )
 
-func TestSessionAuthorizesWithAnApiKey(t *testing.T) {
+func TestSessionWithAnApiKeyFromTheEnvironment(t *testing.T) {
 	server := newTestServer(t)
-
 	testApiKey1.SetEnv(t)
 	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
 	require.NoError(t, err)
 	greet := greetingClient(session)
 
-	server.RequireGreeting(t, greet)
-	assert.EqualValues(t, 1, server.Counts(t).Logins, "one login mints the token every request then reuses")
-
-	server.RequireGreeting(t, greet)
-	assert.EqualValues(t, 1, server.Counts(t).Logins, "the cached token is still valid, so nothing is re-minted")
-}
-
-func TestSessionRefreshesARejectedToken(t *testing.T) {
-	server := newTestServer(t)
-
-	testApiKey1.SetEnv(t)
-	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err)
-	greet := greetingClient(session)
-
-	server.RequireGreeting(t, greet)
-	require.EqualValues(t, 1, server.Counts(t).Logins)
-
-	require.True(t, server.RevokeNewestToken(t), "the token the session just minted")
-	server.RequireGreeting(t, greet)
-
-	assert.EqualValues(t, 2, server.Counts(t).Logins, "a 401 mints once more, on demand")
-}
-
-func TestSessionOnAFreshConfigDirectoryWithoutEndpointNamesTheSetting(t *testing.T) {
-	newTestServer(t)
-	t.Setenv(meshstack.EndpointSetting.EnvKey(), "")
-
-	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.ErrorContains(t, err, meshstack.EndpointSetting.EnvKey())
-}
-
-func TestSessionWithoutAnyCredentialNamesTheSettingsItLookedFor(t *testing.T) {
-	newTestServer(t)
-
-	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.ErrorContains(t, err, "selects no credential")
-	require.ErrorContains(t, err, auth.ApiTokenSetting.EnvKey())
-	require.ErrorContains(t, err, auth.ApiKeyClientIdSetting.EnvKey())
-	require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
-}
-
-func TestSessionWithHalfAnApiKeySaysWhichHalfIsMissing(t *testing.T) {
-	newTestServer(t)
-
-	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), testApiKey1.ClientId)
-
-	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.ErrorContains(t, err, "together")
-	require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
-}
-
-func TestSessionRefusesTwoCredentialsAtOnce(t *testing.T) {
-	server := newTestServer(t)
-
-	testApiKey1.SetEnv(t)
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
-
-	_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	assert.ErrorContains(t, err, "more than one credential")
-}
-
-func TestSessionReusesAStoredTokenUntilTheApiKeyChanges(t *testing.T) {
-	// The config directory newTestServer sets is the parent's, so every subtest below shares
-	// it while each one decides its own credential environment.
-	server := newTestServer(t)
-
-	t.Run("login", func(t *testing.T) {
-		testApiKey1.SetEnv(t)
-
-		login, store, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
-		require.NoError(t, err)
-		server.RequireGreeting(t, greetingClient(login))
-		require.NoError(t, store(t.Context()))
-		require.NoError(t, unlock())
-	})
-
-	t.Run("reloaded without env", func(t *testing.T) {
-		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-		require.NoError(t, err)
-		server.RequireGreeting(t, greetingClient(session))
+	t.Run("two requests log in only once", func(t *testing.T) {
+		server.RequireGreeting(t, greet)
+		server.RequireGreeting(t, greet)
 		assert.EqualValues(t, 1, server.Counts(t).Logins)
 	})
 
-	t.Run("reloaded with same env", func(t *testing.T) {
-		testApiKey1.SetEnv(t)
-		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-		require.NoError(t, err)
-		server.RequireGreeting(t, greetingClient(session))
-		assert.EqualValues(t, 1, server.Counts(t).Logins)
-	})
-
-	t.Run("reloaded with different env, minting its own token", func(t *testing.T) {
-		testApiKey2.SetEnv(t)
-		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-		require.NoError(t, err)
-		server.RequireGreeting(t, greetingClient(session))
-		assert.EqualValues(t, 2, server.Counts(t).Logins)
-	})
-
-	t.Run("reloaded without env again, finding the stored api key's cache untouched", func(t *testing.T) {
-		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-		require.NoError(t, err)
-		server.RequireGreeting(t, greetingClient(session))
+	t.Run("a request that gets a 401 logs in once more", func(t *testing.T) {
+		require.True(t, server.RevokeNewestToken(t), "the token the session minted")
+		server.RequireGreeting(t, greet)
 		assert.EqualValues(t, 2, server.Counts(t).Logins)
 	})
 }
 
-func TestSessionStoresTheFirstTokenMintedAfterALoginThatMintedNone(t *testing.T) {
+func TestSessionResolutionSaysWhyItFails(t *testing.T) {
 	server := newTestServer(t)
-	testApiKey1.SetEnv(t)
-	_, store, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
-	require.NoError(t, err)
-	require.NoError(t, store(t.Context()))
-	require.NoError(t, unlock())
-	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), "")
-	t.Setenv(auth.ApiKeyClientSecretSetting.EnvKey(), "")
 
-	for range 2 {
+	t.Run("without an endpoint", func(t *testing.T) {
+		t.Setenv(meshstack.EndpointSetting.EnvKey(), "")
+		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.ErrorContains(t, err, meshstack.EndpointSetting.EnvKey())
+	})
+
+	t.Run("without any credential", func(t *testing.T) {
+		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.ErrorContains(t, err, "selects no credential")
+		require.ErrorContains(t, err, auth.ApiTokenSetting.EnvKey())
+		require.ErrorContains(t, err, auth.ApiKeyClientIdSetting.EnvKey())
+		require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
+	})
+
+	t.Run("with half an API key", func(t *testing.T) {
+		t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), testApiKey1.ClientId)
+		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.ErrorContains(t, err, "together")
+		require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
+	})
+
+	t.Run("with two credentials at once", func(t *testing.T) {
+		testApiKey1.SetEnv(t)
+		t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
+		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		assert.ErrorContains(t, err, "more than one credential")
+	})
+}
+
+func TestSessionOfAStoredApiKey(t *testing.T) {
+	server := newTestServer(t)
+	greetWithResolvedSession := func(t *testing.T) {
+		t.Helper()
 		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
 		require.NoError(t, err)
 		server.RequireGreeting(t, greetingClient(session))
 	}
 
-	assert.EqualValues(t, 1, server.Counts(t).Logins)
+	t.Run("a login stores the token it minted", func(t *testing.T) {
+		testApiKey1.SetEnv(t)
+		server.RequireGreeting(t, greetingClient(storeLogin(t, credential.ApiKeyName)))
+		assert.EqualValues(t, 1, server.Counts(t).Logins)
+	})
+
+	t.Run("the next command reuses that token", func(t *testing.T) {
+		greetWithResolvedSession(t)
+		assert.EqualValues(t, 1, server.Counts(t).Logins)
+	})
+
+	t.Run("the same API key in the environment reuses it too", func(t *testing.T) {
+		testApiKey1.SetEnv(t)
+		greetWithResolvedSession(t)
+		assert.EqualValues(t, 1, server.Counts(t).Logins)
+	})
+
+	t.Run("another API key in the environment mints its own token", func(t *testing.T) {
+		testApiKey2.SetEnv(t)
+		greetWithResolvedSession(t)
+		assert.EqualValues(t, 2, server.Counts(t).Logins)
+	})
+
+	t.Run("without the environment again, the stored API key reuses its own token", func(t *testing.T) {
+		greetWithResolvedSession(t)
+		assert.EqualValues(t, 2, server.Counts(t).Logins)
+	})
+
+	t.Run("a login to the profile it names creates and selects that profile", func(t *testing.T) {
+		testApiKey1.SetEnv(t)
+		t.Setenv(profile.NameSetting.EnvKey(), "dev")
+		storeLogin(t, credential.ApiKeyName)
+
+		t.Setenv(profile.NameSetting.EnvKey(), "")
+		current, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, profile.Name("dev"), current.Name)
+	})
+
+	t.Run("the first token minted after a login that minted none is stored", func(t *testing.T) {
+		greetWithResolvedSession(t)
+		greetWithResolvedSession(t)
+		assert.EqualValues(t, 3, server.Counts(t).Logins)
+	})
 }
 
-func TestSessionSendsTheManualTokenFromTheEnvironmentOverTheStoredOne(t *testing.T) {
+func TestSessionOfAStoredManualToken(t *testing.T) {
 	server := newTestServer(t)
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
-	_, store, unlock, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
-	require.NoError(t, err)
-	require.NoError(t, store(t.Context()))
-	require.NoError(t, unlock())
-	require.True(t, server.RevokeNewestToken(t), "the token the login stored")
+	storeLogin(t, credential.ManualName)
 
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
-	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err)
+	t.Run("the stored token does not stand in for a rejected one from the environment", func(t *testing.T) {
+		t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
+		require.True(t, server.RevokeNewestToken(t), "the token in the environment")
+		fromEnvironment, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		require.Error(t, server.Greeting(t, t.Context(), greetingClient(fromEnvironment)))
 
-	server.RequireGreeting(t, greetingClient(session))
+		t.Setenv(auth.ApiTokenSetting.EnvKey(), "")
+		stored, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		server.RequireGreeting(t, greetingClient(stored))
+	})
+
+	t.Run("a token from the environment is sent over the stored one", func(t *testing.T) {
+		require.True(t, server.RevokeNewestToken(t), "the token the login stored")
+		t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		server.RequireGreeting(t, greetingClient(session))
+	})
 }
 
-func TestSessionKeepsTheStoredManualTokenApartFromARejectedOneFromTheEnvironment(t *testing.T) {
-	server := newTestServer(t)
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
-	_, store, unlock, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
+func storeLogin(t *testing.T, credentialName credential.Name) auth.Session {
+	t.Helper()
+	session, store, unlock, err := auth.Login(t.Context(), credentialName, testSessionOpts)
 	require.NoError(t, err)
 	require.NoError(t, store(t.Context()))
 	require.NoError(t, unlock())
-
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
-	require.True(t, server.RevokeNewestToken(t), "the token in the environment")
-	fromEnvironment, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err)
-	require.Error(t, server.Greeting(t, t.Context(), greetingClient(fromEnvironment)), "the stored token does not stand in for a rejected one")
-
-	t.Setenv(auth.ApiTokenSetting.EnvKey(), "")
-	stored, err := auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err)
-	server.RequireGreeting(t, greetingClient(stored))
-}
-
-func TestLoginCreatesAndStoresTheProfileItNames(t *testing.T) {
-	newTestServer(t)
-	testApiKey1.SetEnv(t)
-	// The first login writes profiles.json, so the name below is one missing from a file that
-	// does exist.
-	_, storeFirst, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
-	require.NoError(t, err)
-	require.NoError(t, storeFirst(t.Context()))
-	require.NoError(t, unlock())
-
-	t.Setenv(profile.NameSetting.EnvKey(), "dev")
-	_, store, unlock, err := auth.Login(t.Context(), credential.ApiKeyName, testSessionOpts)
-	require.NoError(t, err)
-	require.NoError(t, store(t.Context()))
-	require.NoError(t, unlock())
-
-	_, err = auth.ResolveSession(t.Context(), testSessionOpts)
-	require.NoError(t, err, "the created profile is on disk for every later command")
-
-	t.Setenv(profile.NameSetting.EnvKey(), "")
-	current, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
-	require.NoError(t, err)
-	assert.Equal(t, profile.Name("dev"), current.Name, "the login selected the profile it created")
+	return session
 }
 
 var (
