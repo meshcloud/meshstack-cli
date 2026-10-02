@@ -45,7 +45,16 @@ func newRootCommand() *cobra.Command {
 		Short: "Command line interface for meshStack",
 		Long: `Command line interface for meshStack.
 
+Start with meshstack login. It logs you in and keeps the login in a profile.
+
+AI agents and scripts: add -o json to a list or show command to read JSON. meshstack api sends a
+request to any path of the meshStack API, and meshstack api-docs describes that path.
+
 Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
+		Example: `  meshstack login
+  meshstack bb list -o json
+  meshstack api-docs --describe bb.list
+  meshstack api /api/meshobjects/meshworkspaces`,
 		// RunE has to be set for cobra to render the usage block at all: its help template
 		// skips usage while the command is neither runnable nor a parent of subcommands.
 		Args: cobra.NoArgs,
@@ -70,9 +79,9 @@ Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 	cmd.AddCommand(api.New())
 	cmd.AddCommand(api.NewDocs())
 	cmd.AddCommand(auth.New())
-	// `meshstack login` is a shortcut for `meshstack auth login`. Calling the constructor a second
-	// time is the only way to get one: cobra's Aliases rename a command inside its own parent.
-	cmd.AddCommand(auth.NewLogin())
+	// Calling the constructor a second time is the only way to get a shortcut: cobra's Aliases
+	// rename a command inside its own parent.
+	cmd.AddCommand(auth.NewLoginShortcut())
 	cmd.AddCommand(buildingblock.New())
 	cmd.AddCommand(buildingblockdefinition.New())
 	cmd.AddCommand(buildingblockdefinitionversion.New())

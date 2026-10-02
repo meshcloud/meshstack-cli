@@ -27,7 +27,7 @@ func execute(t *testing.T, args ...string) (stdout string, err error) {
 		flag.Value = ""
 		flag.Register(root.PersistentFlags())
 	}
-	root.AddCommand(New(), NewLogin())
+	root.AddCommand(New(), NewLoginShortcut())
 	var out bytes.Buffer
 	root.SetIn(&bytes.Buffer{})
 	root.SetOut(&out)

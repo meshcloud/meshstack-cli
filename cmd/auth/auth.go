@@ -14,7 +14,7 @@ func New() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(NewLogin())
+	cmd.AddCommand(newLogin())
 	cmd.AddCommand(newLogout())
 	cmd.AddCommand(newStatus())
 

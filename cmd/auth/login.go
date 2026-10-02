@@ -16,7 +16,13 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-func NewLogin() *cobra.Command {
+func NewLoginShortcut() *cobra.Command {
+	cmd := newLogin()
+	cmd.Short += " (same as auth login)"
+	return cmd
+}
+
+func newLogin() *cobra.Command {
 	var (
 		openStdinFlag = newStdinFlag()
 		apiKeyFlag    = internal.NewFlagForSetting[uuid.UUID]("apikey", setting.ApiKeyClientId)
