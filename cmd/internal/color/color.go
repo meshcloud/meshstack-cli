@@ -57,7 +57,7 @@ func parse(environ []string) env {
 // disablesColor reads NO_COLOR as https://no-color.org defines it, where any value but the empty
 // one counts, and FORCE_COLOR=0 or false as Node.js and chalk do.
 func (e env) disablesColor() bool {
-	return e["NO_COLOR"] != "" || isOff(e["FORCE_COLOR"])
+	return e["NO_COLOR"] != "" || e.isOff("FORCE_COLOR")
 }
 
 // forcedProfile reads FORCE_COLOR as Node.js and chalk do, where 2 asks for 256 colors and 3 for
@@ -69,17 +69,17 @@ func (e env) forcedProfile() colorprofile.Profile {
 		return colorprofile.ANSI256
 	case force == "3":
 		return colorprofile.TrueColor
-	case force != "" && !isOff(force):
+	case force != "" && !e.isOff("FORCE_COLOR"):
 		return colorprofile.ANSI
 	}
-	if force := e["CLICOLOR_FORCE"]; force != "" && !isOff(force) {
+	if e["CLICOLOR_FORCE"] != "" && !e.isOff("CLICOLOR_FORCE") {
 		return colorprofile.ANSI
 	}
 	return colorprofile.NoTTY
 }
 
-func isOff(value string) bool {
-	return value == "0" || strings.EqualFold(value, "false")
+func (e env) isOff(name string) bool {
+	return e[name] == "0" || strings.EqualFold(e[name], "false")
 }
 
 // ciProfile follows supports-color (https://github.com/chalk/supports-color), which chalk and

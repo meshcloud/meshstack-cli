@@ -58,7 +58,7 @@ func (f *OutputFlag) Type() string {
 // WriteList leaves a listing that fails part way through unterminated, so that json output which
 // stopped early does not parse as a complete array.
 func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value, error]) error {
-	list, err := listFormatOf(format)
+	list, err := format.listing()
 	if err != nil {
 		return err
 	}
@@ -87,16 +87,12 @@ func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value,
 	return err
 }
 
-func unknownFormat(format OutputFormat) error {
-	return fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
-}
-
 type listFormat struct {
 	begin, between, after, end, empty string
 	format                            func(item *jsontext.Value) error
 }
 
-func listFormatOf(format OutputFormat) (listFormat, error) {
+func (format OutputFormat) listing() (listFormat, error) {
 	switch format {
 	case OutputNdjson:
 		return listFormat{
@@ -111,7 +107,7 @@ func listFormatOf(format OutputFormat) (listFormat, error) {
 			},
 		}, nil
 	default:
-		return listFormat{}, unknownFormat(format)
+		return listFormat{}, format.unknown()
 	}
 }
 
@@ -167,11 +163,15 @@ func WriteItem(w io.Writer, format OutputFormat, item jsontext.Value) error {
 	case OutputJson:
 		err = item.Indent(jsontext.WithIndent("  "))
 	default:
-		err = unknownFormat(format)
+		err = format.unknown()
 	}
 	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(w, "%s\n", item)
 	return err
+}
+
+func (format OutputFormat) unknown() error {
+	return fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
 }
