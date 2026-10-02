@@ -56,7 +56,7 @@ script can wait on a run with it. --follow takes no --output.`,
 			if err != nil {
 				return err
 			}
-			return internal.WriteItem(cmd.OutOrStdout(), output.Format, logs)
+			return output.Format.WriteItem(cmd.OutOrStdout(), logs)
 		},
 	}
 

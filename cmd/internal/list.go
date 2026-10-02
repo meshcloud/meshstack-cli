@@ -53,40 +53,45 @@ func (f *ListFlags) RunSeq(cmd *cobra.Command, list func(ctx context.Context, me
 	if err != nil {
 		return err
 	}
-	limit := int(f.limit)
-	var total *int
+	result := ListResult{Limit: int(f.limit), Defaulted: !cmd.Flags().Changed(limitFlagName)}
 	listOptions := client.ListOptions{
-		PageSize: limit,
+		PageSize: result.Limit,
 		OnPage: func(page client.Page) {
-			if total == nil {
-				total = &page.TotalElements
+			if result.Total == nil {
+				result.Total = &page.TotalElements
 			}
 		},
 	}
-	listed := 0
-	items := counted(First(list(ctx, meshStack, listOptions), limit), &listed)
-	if err := WriteList(cmd.OutOrStdout(), f.output.Format, items); err != nil {
+	items := counted(First(list(ctx, meshStack, listOptions), result.Limit), &result.Listed)
+	if err := f.output.Format.WriteList(cmd.OutOrStdout(), items); err != nil {
 		return err
 	}
-	if note := CutShortNote(limit, listed, total, !cmd.Flags().Changed(limitFlagName)); note != "" {
+	if note := result.CutShortNote(); note != "" {
 		slog.InfoContext(ctx, note)
 	}
 	return nil
 }
 
-func CutShortNote(limit, listed int, total *int, defaulted bool) string {
+type ListResult struct {
+	// Limit is 0 for unlimited.
+	Limit, Listed int
+	Total         *int
+	Defaulted     bool
+}
+
+func (r ListResult) CutShortNote() string {
 	const howToListMore = "raise --limit, or pass --limit unlimited to list all of them"
 	switch {
-	case limit == 0 || listed < limit:
+	case r.Limit == 0 || r.Listed < r.Limit:
 		return ""
-	case total == nil && defaulted:
-		return fmt.Sprintf("stopped at the default limit of %d, there may be more; %s", limit, howToListMore)
-	case total == nil:
-		return fmt.Sprintf("stopped at the limit of %d, there may be more; %s", limit, howToListMore)
-	case *total > limit && defaulted:
-		return fmt.Sprintf("listed the first %d of %d, the default limit; %s", limit, *total, howToListMore)
-	case *total > limit:
-		return fmt.Sprintf("listed the first %d of %d; %s", limit, *total, howToListMore)
+	case r.Total == nil && r.Defaulted:
+		return fmt.Sprintf("stopped at the default limit of %d, there may be more; %s", r.Limit, howToListMore)
+	case r.Total == nil:
+		return fmt.Sprintf("stopped at the limit of %d, there may be more; %s", r.Limit, howToListMore)
+	case *r.Total > r.Limit && r.Defaulted:
+		return fmt.Sprintf("listed the first %d of %d, the default limit; %s", r.Limit, *r.Total, howToListMore)
+	case *r.Total > r.Limit:
+		return fmt.Sprintf("listed the first %d of %d; %s", r.Limit, *r.Total, howToListMore)
 	default:
 		return ""
 	}

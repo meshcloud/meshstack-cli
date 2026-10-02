@@ -30,7 +30,7 @@ func (f *OutputFlag) Register(flags *pflag.FlagSet) {
 	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for one array, %s for one item per line", OutputJson, OutputNdjson))
 }
 
-// RegisterForItem is Register for a command that writes one object through [WriteItem].
+// RegisterForItem is Register for a command that writes one object through [OutputFormat.WriteItem].
 func (f *OutputFlag) RegisterForItem(flags *pflag.FlagSet) {
 	f.Format = OutputJson
 	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s, or %s for one line", OutputJson, OutputNdjson))
@@ -57,7 +57,7 @@ func (f *OutputFlag) Type() string {
 
 // WriteList leaves a listing that fails part way through unterminated, so that json output which
 // stopped early does not parse as a complete array.
-func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value, error]) error {
+func (format OutputFormat) WriteList(w io.Writer, items iter.Seq2[jsontext.Value, error]) error {
 	list, err := format.listing()
 	if err != nil {
 		return err
@@ -84,6 +84,23 @@ func WriteList(w io.Writer, format OutputFormat, items iter.Seq2[jsontext.Value,
 		end = list.empty
 	}
 	_, err = io.WriteString(w, end)
+	return err
+}
+
+func (format OutputFormat) WriteItem(w io.Writer, item jsontext.Value) error {
+	var err error
+	switch format {
+	case OutputNdjson:
+		err = item.Compact()
+	case OutputJson:
+		err = item.Indent(jsontext.WithIndent("  "))
+	default:
+		err = format.unknown()
+	}
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "%s\n", item)
 	return err
 }
 
@@ -152,24 +169,6 @@ func (f *ShowFlag) Show(w io.Writer, markdownTemplate *template.Template, data a
 		return err
 	}
 	return markdown.Write(w, markdownTemplate, data)
-}
-
-// WriteItem is for a command that answers with one object rather than a listing.
-func WriteItem(w io.Writer, format OutputFormat, item jsontext.Value) error {
-	var err error
-	switch format {
-	case OutputNdjson:
-		err = item.Compact()
-	case OutputJson:
-		err = item.Indent(jsontext.WithIndent("  "))
-	default:
-		err = format.unknown()
-	}
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(w, "%s\n", item)
-	return err
 }
 
 func (format OutputFormat) unknown() error {

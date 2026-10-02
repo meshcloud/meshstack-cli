@@ -74,6 +74,10 @@ func (v Version) Compare(other Version) int {
 	return strings.Compare(v.Extra, other.Extra)
 }
 
+func (v Version) IsRelease() bool {
+	return v.Extra == ""
+}
+
 func (v Version) Less(other Version) bool {
 	return v.Compare(other) < 0
 }

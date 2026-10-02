@@ -101,7 +101,7 @@ func TestCutShortNote(t *testing.T) {
 		"no total to tell there are more by default": {limit: 100, listed: 100, defaulted: true, want: "stopped at the default limit of 100, there may be more; raise --limit, or pass --limit unlimited to list all of them"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tt.want, internal.CutShortNote(tt.limit, tt.listed, tt.total, tt.defaulted))
+			assert.Equal(t, tt.want, internal.ListResult{Limit: tt.limit, Listed: tt.listed, Total: tt.total, Defaulted: tt.defaulted}.CutShortNote())
 		})
 	}
 }

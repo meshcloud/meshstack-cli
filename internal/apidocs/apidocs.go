@@ -54,7 +54,7 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 	}
 
 	url, path, conditionalGet := releasedUrl, dir.Join("api-docs.json"), false
-	if opts.Dev || !isRelease(opts.Version) {
+	if cliVersion, parseErr := version.Parse(opts.Version); opts.Dev || parseErr != nil || !cliVersion.IsRelease() {
 		url, path, conditionalGet = devUrl, dir.Join("api-docs-dev.json"), true
 	}
 	if customEnv := os.Getenv(urlEnv); customEnv != "" {
@@ -84,11 +84,6 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 			path, errors.Join(err, os.Remove(path)))
 	}
 	return spec, wait, nil
-}
-
-func isRelease(cliVersion string) bool {
-	parsed, err := version.Parse(cliVersion)
-	return err == nil && parsed.Extra == ""
 }
 
 func writable(dir config.Directory) bool {

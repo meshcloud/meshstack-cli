@@ -37,7 +37,7 @@ func TestJsonWritesOneArrayOfTheItemsAsTheServerSentThem(t *testing.T) {
 	appTeam := `{"kind": "meshWorkspace", "apiVersion": "v2", "metadata": {"name": "app-team"}}`
 	var out strings.Builder
 
-	err := internal.WriteList(&out, internal.OutputJson, items(platformTeam, appTeam))
+	err := internal.OutputJson.WriteList(&out, items(platformTeam, appTeam))
 
 	require.NoError(t, err)
 	want := strings.TrimPrefix(`
@@ -90,7 +90,7 @@ func TestNdjsonWritesEachItemOnALineOfItsOwn(t *testing.T) {
 	}`
 	var out strings.Builder
 
-	err := internal.WriteList(&out, internal.OutputNdjson, items(platformTeam, appTeam))
+	err := internal.OutputNdjson.WriteList(&out, items(platformTeam, appTeam))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{
@@ -108,7 +108,7 @@ func TestAnEmptyListing(t *testing.T) {
 		t.Run(string(format), func(t *testing.T) {
 			var out strings.Builder
 
-			err := internal.WriteList(&out, format, items())
+			err := format.WriteList(&out, items())
 
 			require.NoError(t, err)
 			assert.Equal(t, want, out.String())
@@ -130,7 +130,7 @@ func TestAFailingPageStopsTheListing(t *testing.T) {
 		t.Run(string(format), func(t *testing.T) {
 			var out strings.Builder
 
-			err := internal.WriteList(&out, format, failing)
+			err := format.WriteList(&out, failing)
 
 			require.ErrorIs(t, err, pageErr)
 			assert.Equal(t, want, strings.Split(out.String(), "\n"))
@@ -158,7 +158,7 @@ func TestASingleItemIsWrittenAsAnObjectOfItsOwn(t *testing.T) {
 		t.Run(string(format), func(t *testing.T) {
 			var out strings.Builder
 
-			require.NoError(t, internal.WriteItem(&out, format, jsontext.Value(item)))
+			require.NoError(t, format.WriteItem(&out, jsontext.Value(item)))
 
 			assert.Equal(t, want, out.String())
 		})

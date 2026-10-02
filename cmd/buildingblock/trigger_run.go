@@ -58,7 +58,7 @@ the run, the command fails with the reason it gives, status.runStartFailure.
 			if err != nil {
 				return err
 			}
-			if err := internal.WriteItem(cmd.OutOrStdout(), output.Format, started.raw); err != nil {
+			if err := output.Format.WriteItem(cmd.OutOrStdout(), started.raw); err != nil {
 				return err
 			}
 			if started.failure != "" {
