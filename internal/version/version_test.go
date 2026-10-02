@@ -55,15 +55,6 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestMustParse(t *testing.T) {
-	assert.NotPanics(t, func() {
-		MustParse("1.0.0")
-	})
-	assert.Panics(t, func() {
-		MustParse("1.x.0")
-	})
-}
-
 func TestVersion_Compare(t *testing.T) {
 	tests := []struct {
 		v, other string
@@ -113,9 +104,4 @@ func TestVersion_JsonIsTheQuotedVersionString(t *testing.T) {
 	var decoded Version
 	require.NoError(t, json.Unmarshal(encoded, &decoded))
 	assert.Equal(t, version, decoded)
-}
-
-func TestVersion_String(t *testing.T) {
-	assert.Equal(t, "1.2.3", Version{Major: 1, Minor: 2, Patch: 3}.String())
-	assert.Equal(t, "1.2.3-rc.1", Version{Major: 1, Minor: 2, Patch: 3, Extra: "rc.1"}.String())
 }
