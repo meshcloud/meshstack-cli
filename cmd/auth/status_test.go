@@ -57,33 +57,33 @@ func withApiToken(t *testing.T) {
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), "e30."+base64.RawURLEncoding.EncodeToString(claims)+".test-signature")
 }
 
-func TestStatusShowsTheCredentialAsMarkdownWhereTheOutputIsNoTerminal(t *testing.T) {
+func TestStatusOfAnApiTokenFromTheEnvironment(t *testing.T) {
 	withApiToken(t)
 
-	output := executeStatus(t)
+	t.Run("is Markdown where the output is no terminal", func(t *testing.T) {
+		output := executeStatus(t)
 
-	assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n")
-	assert.Contains(t, output, "| Credential | API token, from env MESHSTACK_API_TOKEN |\n")
-	assert.Contains(t, output, "|  | User runner |\n")
-	assert.Contains(t, output, "| meshStack | 2026.40.0 |\n")
-	assert.NotContains(t, output, "\x1b[", "no terminal styling")
-}
+		assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n")
+		assert.Contains(t, output, "| Credential | API token, from env MESHSTACK_API_TOKEN |\n")
+		assert.Contains(t, output, "|  | User runner |\n")
+		assert.Contains(t, output, "| meshStack | 2026.40.0 |\n")
+		assert.NotContains(t, output, "\x1b[", "no terminal styling")
+	})
 
-func TestStatusWritesJsonForScripts(t *testing.T) {
-	withApiToken(t)
+	t.Run("is JSON for scripts", func(t *testing.T) {
+		var status struct {
+			Credential       string `json:"credential"`
+			MeshStackVersion string `json:"meshStackVersion"`
+			Token            struct {
+				User      string `json:"user"`
+				Workspace string `json:"workspace"`
+			} `json:"token"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(executeStatus(t, "-o", "json")), &status))
 
-	var status struct {
-		Credential       string `json:"credential"`
-		MeshStackVersion string `json:"meshStackVersion"`
-		Token            struct {
-			User      string `json:"user"`
-			Workspace string `json:"workspace"`
-		} `json:"token"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(executeStatus(t, "-o", "json")), &status))
-
-	assert.Equal(t, "manual", status.Credential)
-	assert.Equal(t, "2026.40.0", status.MeshStackVersion)
-	assert.Equal(t, "runner", status.Token.User)
-	assert.Equal(t, "ops", status.Token.Workspace)
+		assert.Equal(t, "manual", status.Credential)
+		assert.Equal(t, "2026.40.0", status.MeshStackVersion)
+		assert.Equal(t, "runner", status.Token.User)
+		assert.Equal(t, "ops", status.Token.Workspace)
+	})
 }

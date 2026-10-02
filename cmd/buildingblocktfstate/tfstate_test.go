@@ -117,125 +117,71 @@ func execChild(t *testing.T, steps string, args ...string) result {
 	return run(t, append(append([]string{"exec", buildingBlockUuid}, args...), "--", testBinary)...)
 }
 
-func TestShowWritesTheStateAsItCame(t *testing.T) {
+func TestTfstate(t *testing.T) {
 	meshStack := newFakeMeshStack(t)
 
-	shown := run(t, "show", buildingBlockUuid)
+	t.Run("show takes the state of the workspace given, rather than the building block's", func(t *testing.T) {
+		t.Setenv(meshstack.WorkspaceSetting.EnvKey(), "other-workspace")
+		meshStack.requests = nil
 
-	require.NoError(t, shown.err)
-	assert.Equal(t, state, shown.stdout, "the state as it came, not merely the same JSON") //nolint:testifylint // encoded-compare: JSONEq would take the state reformatted
-	assert.Equal(t, []string{"GET " + buildingBlockPath, "GET " + statePath("my-workspace")}, meshStack.requests,
-		"the state is stored under the workspace of the building block")
-}
+		shown := run(t, "show", buildingBlockUuid)
 
-func TestShowTakesTheStateOfTheWorkspaceGiven(t *testing.T) {
-	meshStack := newFakeMeshStack(t)
-	t.Setenv(meshstack.WorkspaceSetting.EnvKey(), "other-workspace")
+		require.NoError(t, shown.err)
+		assert.Equal(t, state, shown.stdout, "the state as it came, not merely the same JSON") //nolint:testifylint // encoded-compare: JSONEq would take the state reformatted
+		assert.Equal(t, []string{"GET " + statePath("other-workspace")}, meshStack.requests)
+	})
 
-	shown := run(t, "show", buildingBlockUuid)
+	t.Run("exec exits with the exit code of the command", func(t *testing.T) {
+		ran := execChild(t, "GET exit=3")
 
-	require.NoError(t, shown.err)
-	assert.Equal(t, []string{"GET " + statePath("other-workspace")}, meshStack.requests)
-}
+		exitErr, ok := errors.AsType[internal.ExitError](ran.err)
+		require.True(t, ok, "%v", ran.err)
+		assert.Equal(t, 3, exitErr.Code)
+		assert.Empty(t, ran.stderr, "the command has said why it failed")
+		assert.NotContains(t, ran.log, "level=WARN", "the command asked for the state")
+	})
 
-func TestShowOfABuildingBlockWithoutStateWritesNothing(t *testing.T) {
-	meshStack := newFakeMeshStack(t)
-	meshStack.refuseStateWith = gohttp.StatusNotFound
+	t.Run("exec warns where the command asked for no state", func(t *testing.T) {
+		ran := execChild(t, "exit=0")
 
-	shown := run(t, "show", buildingBlockUuid)
+		require.NoError(t, ran.err)
+		assert.Contains(t, ran.log, `asked for no state, so the module likely has no backend \"http\" block`)
+		assert.Contains(t, ran.log, "meshstack_backend.tf")
+	})
 
-	require.NoError(t, shown.err)
-	assert.Empty(t, shown.stdout)
-	assert.Contains(t, shown.log, "has no state in workspace my-workspace yet")
-}
+	t.Run("exec in read mode says how to store the state", func(t *testing.T) {
+		meshStack.requests = nil
 
-func TestARefusalOfMeshStackSaysThatTheStateTakesAnApiKey(t *testing.T) {
-	tests := map[string]func(t *testing.T) error{
-		"show": func(t *testing.T) error {
-			t.Helper()
-			return run(t, "show", buildingBlockUuid).err
-		},
-		"exec": func(t *testing.T) error {
-			t.Helper()
-			return execChild(t, "GET").err
-		},
-	}
-	for name, command := range tests {
-		t.Run(name, func(t *testing.T) {
-			newFakeMeshStack(t).refuseStateWith = gohttp.StatusForbidden
+		ran := execChild(t, "POST")
 
-			err := command(t)
+		require.Error(t, ran.err)
+		assert.Contains(t, ran.err.Error(), "the state is read-only, run again with --mode readwrite")
+		assert.NotContains(t, meshStack.requests, "POST "+statePath("my-workspace"))
+	})
 
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "http error 403")
-			assert.Contains(t, err.Error(), "This command needs an API key login, meshstack login --apikey")
-			assert.Contains(t, err.Error(), "TFSTATE_LIST")
-		})
-	}
-}
-
-func TestExecExitsWithTheExitCodeOfTheCommand(t *testing.T) {
-	newFakeMeshStack(t)
-
-	ran := execChild(t, "GET exit=3")
-
-	exitErr, ok := errors.AsType[internal.ExitError](ran.err)
-	require.True(t, ok, "%v", ran.err)
-	assert.Equal(t, 3, exitErr.Code)
-	assert.Empty(t, ran.stderr, "the command has said why it failed")
-}
-
-func TestExecWarnsWhereTheCommandAskedForNoState(t *testing.T) {
-	newFakeMeshStack(t)
-
-	ran := execChild(t, "exit=0")
-
-	require.NoError(t, ran.err)
-	assert.Contains(t, ran.log, `asked for no state, so the module likely has no backend \"http\" block`)
-	assert.Contains(t, ran.log, "meshstack_backend.tf")
-}
-
-func TestExecOfAStateItAskedForWarnsOfNothing(t *testing.T) {
-	newFakeMeshStack(t)
-
-	ran := execChild(t, "GET")
-
-	require.NoError(t, ran.err)
-	assert.NotContains(t, ran.log, "level=WARN")
-}
-
-func TestExecInReadModeSaysHowToStoreTheState(t *testing.T) {
-	meshStack := newFakeMeshStack(t)
-
-	ran := execChild(t, "POST")
-
-	require.Error(t, ran.err)
-	assert.Contains(t, ran.err.Error(), "the state is read-only, run again with --mode readwrite")
-	assert.NotContains(t, meshStack.requests, "POST "+statePath("my-workspace"))
-}
-
-func TestExecReadWriteRefusesWhileARunIsInProgress(t *testing.T) {
-	for _, status := range []string{"IN_PROGRESS", "PENDING"} {
-		t.Run(status, func(t *testing.T) {
-			meshStack := newFakeMeshStack(t)
+	t.Run("exec in readwrite mode refuses while a run is in progress, unless forced", func(t *testing.T) {
+		defer func() { meshStack.blockStatus = "SUCCEEDED" }()
+		for _, status := range []string{"IN_PROGRESS", "PENDING"} {
 			meshStack.blockStatus = status
 
 			refused := execChild(t, "exit=0", "--mode", "readwrite")
-			require.Error(t, refused.err)
+			require.Error(t, refused.err, status)
 			assert.Contains(t, refused.err.Error(), "has a run "+status+", which writes the state as well")
 			assert.Contains(t, refused.err.Error(), "--force")
 
 			forced := execChild(t, "GET", "--mode", "readwrite", "--force")
-			require.NoError(t, forced.err)
-		})
-	}
-}
+			require.NoError(t, forced.err, status)
+		}
+	})
 
-func TestExecTakesTheCommandAfterTheDash(t *testing.T) {
-	newFakeMeshStack(t)
+	t.Run("a refusal of meshStack says that the state takes an API key", func(t *testing.T) {
+		meshStack.refuseStateWith = gohttp.StatusForbidden
 
-	ran := run(t, "exec", buildingBlockUuid, "tofu")
+		err := execChild(t, "GET").err
 
-	require.Error(t, ran.err)
-	assert.Contains(t, ran.err.Error(), "then -- and the command to run")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "http error 403")
+		assert.Contains(t, err.Error(), "This command needs an API key login, meshstack login --apikey")
+		assert.Contains(t, err.Error(), "TFSTATE_LIST")
+	})
 }

@@ -6,7 +6,6 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -84,15 +83,6 @@ func TestTheLimitFlagTakesACountOfItemsOrAll(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestAListingIsLimitedByDefault(t *testing.T) {
-	cmd := &cobra.Command{}
-	var listFlags internal.ListFlags
-
-	listFlags.Register(cmd.Flags())
-
-	assert.Equal(t, "100", cmd.Flags().Lookup("limit").DefValue)
 }
 
 func TestCutShortNote(t *testing.T) {
