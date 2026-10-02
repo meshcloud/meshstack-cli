@@ -35,7 +35,7 @@
         src = self;
 
         # No subPackages, so that doCheck below runs the whole suite rather than one
-        # directory's tests. docs/demo is a module of its own.
+        # directory's tests. docs/demo holds the demo's fake meshStack, which is no part of the CLI.
         excludedPackages = [ "docs/demo" ];
 
         vendorHash = "sha256-tQ9LvCSoYwwCnOH9XKOVbTfibAP5QSiuCNy0JnV18S0=";

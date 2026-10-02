@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
+	gohttp "net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -24,9 +26,9 @@ func browse(startURL string) error {
 	if err != nil {
 		return err
 	}
-	browser := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+	browser := &gohttp.Client{Jar: jar, Timeout: 30 * time.Second}
 
-	page, err := read(browser.Get(startURL))
+	page, err := load(browser, gohttp.MethodGet, startURL, nil)
 	if err != nil {
 		return err
 	}
@@ -34,17 +36,25 @@ func browse(startURL string) error {
 	if nonce == nil {
 		return errors.New("the start page carries no nonce: " + page)
 	}
-	_, err = read(browser.PostForm(startURL, url.Values{"nonce": {nonce[1]}, "access": {"full"}}))
+	_, err = load(browser, gohttp.MethodPost, startURL, url.Values{"nonce": {nonce[1]}, "access": {"full"}})
 	return err
 }
 
-func read(resp *http.Response, err error) (string, error) {
+func load(browser *gohttp.Client, method, pageUrl string, form url.Values) (string, error) {
+	request, err := gohttp.NewRequestWithContext(context.Background(), method, pageUrl, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	if form != nil {
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	resp, err := browser.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
-	if err == nil && resp.StatusCode != http.StatusOK {
+	if err == nil && resp.StatusCode != gohttp.StatusOK {
 		err = fmt.Errorf("%s answered %s: %s", resp.Request.URL, resp.Status, body)
 	}
 	return string(body), err

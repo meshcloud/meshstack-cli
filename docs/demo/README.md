@@ -16,4 +16,6 @@ task docs:demo
 No meshStack and no network is needed: [`setup.sh`](setup.sh) builds the CLI and
 [`fakemeshstack`](fakemeshstack), which serves three meshStack installations and a cut-down copy
 of the API docs under `example.com` through a local HTTPS proxy and plays the browser as a fake
-`xdg-open`. The CLI's configuration goes into a temp directory, never into your own.
+`xdg-open`. Each installation is an
+[`internal/testutil/fakemeshstack`](../../internal/testutil/fakemeshstack) server. The CLI's
+configuration goes into a temp directory, never into your own.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -15,11 +16,13 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/http"
+	gohttp "net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 // lifetime ends a server that the tape failed to stop.
@@ -33,24 +36,26 @@ func serve(dir string) error {
 	if err != nil {
 		return err
 	}
-	backend, err := net.Listen("tcp", "127.0.0.1:0")
+	var listener net.ListenConfig
+	backend, err := listener.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
-	proxy, err := net.Listen("tcp", "127.0.0.1:0")
+	proxy, err := listener.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
 
-	mux := http.NewServeMux()
-	idp := newIdentityProvider()
+	mux := gohttp.NewServeMux()
 	for _, i := range installations {
-		i.register(mux, idp)
+		meshStack := i.meshStack()
+		mux.Handle(i.api+"/", meshStack)
+		mux.Handle(i.sso+"/", meshStack)
 	}
-	mux.HandleFunc("GET "+docsHost+apiDocsPath, serveApiDocs(time.Now()))
+	mux.Handle(docsHost+"/", fakemeshstack.New(fakemeshstack.Options{ApiDocs: apiDocs}))
 	failed := make(chan error, 2)
 	go func() {
-		server := &http.Server{
+		server := &gohttp.Server{
 			Handler:           logRequests(mux),
 			TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 			ReadHeaderTimeout: 10 * time.Second,
@@ -58,7 +63,7 @@ func serve(dir string) error {
 		failed <- server.ServeTLS(backend, "", "")
 	}()
 	go func() {
-		server := &http.Server{Handler: tunnel(backend.Addr().String()), ReadHeaderTimeout: 10 * time.Second}
+		server := &gohttp.Server{Handler: tunnel(backend.Addr().String()), ReadHeaderTimeout: 10 * time.Second}
 		failed <- server.Serve(proxy)
 	}()
 
@@ -82,26 +87,27 @@ func hostNames() (hosts []string) {
 
 // tunnel is an HTTPS proxy for the installations' host names only. Refusing every other host,
 // such as api.github.com for the CLI's release check, keeps the demo off the network.
-func tunnel(backendAddr string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func tunnel(backendAddr string) gohttp.Handler {
+	return gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		host, _, _ := net.SplitHostPort(r.Host)
-		if r.Method != http.MethodConnect || !slices.Contains(hostNames(), host) {
+		if r.Method != gohttp.MethodConnect || !slices.Contains(hostNames(), host) {
 			log.Printf("proxy refused %s %s", r.Method, r.Host)
-			http.Error(w, "this proxy only reaches the demo's meshStack installations", http.StatusForbidden)
+			gohttp.Error(w, "this proxy only reaches the demo's meshStack installations", gohttp.StatusForbidden)
 			return
 		}
-		upstream, err := net.Dial("tcp", backendAddr)
+		var dialer net.Dialer
+		upstream, err := dialer.DialContext(r.Context(), "tcp", backendAddr)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			gohttp.Error(w, err.Error(), gohttp.StatusBadGateway)
 			return
 		}
-		defer upstream.Close()
-		client, _, err := http.NewResponseController(w).Hijack()
+		defer func() { _ = upstream.Close() }()
+		client, _, err := gohttp.NewResponseController(w).Hijack()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			gohttp.Error(w, err.Error(), gohttp.StatusInternalServerError)
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 		if _, err := io.WriteString(client, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 			return
 		}
@@ -113,8 +119,8 @@ func tunnel(backendAddr string) http.Handler {
 	})
 }
 
-func logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func logRequests(next gohttp.Handler) gohttp.Handler {
+	return gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		log.Printf("%s https://%s%s", r.Method, r.Host, r.URL.RequestURI())
 		next.ServeHTTP(w, r)
 	})
@@ -179,7 +185,7 @@ func writeDemoConfig(dir string, certPEM []byte, proxyAddr string) error {
 	}
 
 	env := fmt.Sprintf("export MESHSTACK_CONFIG_DIR=%q\nexport HTTPS_PROXY=%q\nexport SSL_CERT_FILE=%q\nexport MESHSTACK_API_DOCS_URL=%q\n",
-		configDir, "http://"+proxyAddr, caFile, "https://"+docsHost+apiDocsPath)
+		configDir, "http://"+proxyAddr, caFile, "https://"+docsHost+fakemeshstack.ApiDocsPath)
 	if err := os.WriteFile(filepath.Join(dir, "env.tmp"), []byte(env), 0o600); err != nil {
 		return err
 	}

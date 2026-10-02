@@ -105,6 +105,15 @@ linters:
       - path: cmd/internal/testacc/
         linters:
           - gosec
+      # The demo's fake xdg-open plays the browser, with a cookie jar of its own. Every input of
+      # the demo is its own command line, or a request of the CLI it records.
+      - path: docs/demo/
+        linters:
+          - forbidigo
+        text: one HTTP client
+      - path: docs/demo/
+        linters:
+          - gosec
 
   settings:
     # The process has one HTTP client, built in internal/http.
@@ -507,16 +516,27 @@ linters:
             - github.com/meshcloud/meshstack-cli
             - github.com/stretchr/testify
 
-        # internal/testutil holds fakes and helpers for tests, which no program of the CLI may link.
+        # The demo's fake meshStack may link internal/testutil, as it is no part of the CLI: flake.nix
+        # excludes docs/demo, and .goreleaser.yml builds cmd/meshstack alone.
         testutil:
           files:
             - "**/*.go"
             - "!$test"
             - "!**/internal/testutil/**/*.go"
+            - "!**/docs/demo/fakemeshstack/*.go"
           list-mode: lax
           deny:
             - pkg: github.com/meshcloud/meshstack-cli/internal/testutil
-              desc: internal/testutil is for tests
+              desc: internal/testutil is for tests; only the demo's fake meshStack may link it
+
+        docs-demo:
+          files:
+            - "**/docs/demo/fakemeshstack/*.go"
+            - "!$test"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack
 
         # A test may use every direct dependency in go.mod: the rules above already confine where
         # production code uses each one, and a test checks that code with the same libraries.

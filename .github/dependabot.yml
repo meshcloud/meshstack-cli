@@ -4,7 +4,7 @@
 version: 2
 updates:
   # dependabot-vendor-hash.yml keeps vendorHash in flake.nix in step with go.sum on these pull
-  # requests. Not docs/demo/fakemeshstack: that module requires nothing.
+  # requests.
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:

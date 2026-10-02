@@ -4,8 +4,7 @@
 # and a longer path takes more lines than the gif has.
 demo_setup() {
 	demo_dir=$(mktemp -d /tmp/meshstack-demo.XXXXXX) || return
-	# A go.work above this checkout would not list the demo module.
-	GOWORK=off go build -C docs/demo/fakemeshstack -o "$demo_dir/bin/fakemeshstack" . || return
+	go build -o "$demo_dir/bin/fakemeshstack" ./docs/demo/fakemeshstack || return
 	ln -s fakemeshstack "$demo_dir/bin/xdg-open" || return
 	go build -o "$demo_dir/bin/meshstack" \
 		-ldflags "-X github.com/meshcloud/meshstack-cli/cmd/internal.Version=$(git describe --tags --abbrev=0)" \
