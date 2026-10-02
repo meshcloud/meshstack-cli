@@ -156,6 +156,12 @@ installed that late constrains every log call, and `internal/http/logging.go` st
   precedence of settings or credentials, parsing edge cases, exit codes, guards — and never
   restates the code: many small unit tests cost more to keep than they catch. Write a test as few
   top-level scenarios whose `t.Run` steps build on each other and share one setup.
+- **Behaviour goes on its type.** A function whose main parameter is a type of its own package is a
+  method of that type: `status.IsTerminal()`, not `isTerminal(status)`. A package-level function
+  needs a reason: it is a constructor, it has no natural receiver (`auth.Login`), or it has type
+  parameters, which a Go method cannot have. Inline a helper of a few lines that has one caller. A
+  string or map that several functions pass around gets a named type with methods, as
+  `internal.KindCommand` is.
 - **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`). While the CLI is at
   0.x, a breaking change, of `client/` included, takes no `!`: every minor release may break.
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
