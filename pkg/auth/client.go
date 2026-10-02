@@ -20,3 +20,10 @@ func ResolveClient(ctx context.Context, opts ResolveClientOptions) (client.Clien
 	}
 	return session.Client()
 }
+
+// ResolveWorkspace resolves the workspace that the client of ResolveClient works in: the one a
+// setting names, else the profile's default workspace. It is empty where neither names one.
+func ResolveWorkspace(ctx context.Context, opts ResolveClientOptions) (string, error) {
+	workspace, err := auth.ResolveWorkspace(ctx, opts)
+	return string(workspace), err
+}

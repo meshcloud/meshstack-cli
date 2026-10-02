@@ -29,8 +29,8 @@ func newList() *cobra.Command {
 		Long: `List building block runs, newest first.
 
 --building-block lists that block's runs. Without it, the list holds the runs of every building
-block the credential can see, or with --workspace of those in that workspace. The profile's default
-workspace does not narrow it.`,
+block of the workspace, or, in a session that works in no workspace, of every building block the
+credential can see.`,
 		Example: `  meshstack buildingblockrun list --building-block 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bbrun list --workspace my-workspace --limit 20`,
 		Args: cobra.NoArgs,

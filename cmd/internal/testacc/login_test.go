@@ -185,6 +185,10 @@ func TestAccApiKeyLogin(t *testing.T) {
 		requireAuthStatus(t, withToken, "API token")
 	})
 
+	t.Run("a listing keeps to the profile's default workspace", listingKeepsToTheDefaultWorkspace(c))
+	if workspace := c.workspaceHoldingABuildingBlock(t); workspace != "" {
+		c.setEnv(envWorkspace, workspace)
+	}
 	t.Run("every list command answers", everyListCommandAnswers(c))
 	t.Run("every GET operation answers the API key", everyGetOperationAnswers(c, true))
 	t.Run("a meshObject endpoint refuses JSON, and api sends --request-json in its media type", apiAsksForJson(c))

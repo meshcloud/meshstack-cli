@@ -38,8 +38,8 @@ The help says how to use a command, never what its kind is or does: the parent's
 `Example`, one line of it through the alias. A leaf checks what it can before it asks meshStack,
 such as that a uuid parses, because meshStack answers a malformed one with an empty list or a 404.
 The root help says once where the endpoint, the profile and the workspace come from, so a leaf
-names them only where it deviates, as a listing does, which leaves out the profile's default
-workspace. The `Long` stays a few lines that get a user started; the errors say the rest.
+names them only where it deviates, as tfstate does, which takes the building block's own workspace.
+The `Long` stays a few lines that get a user started; the errors say the rest.
 
 ## Leaf
 
@@ -60,7 +60,7 @@ and a `cmd/internal/markdown` template next to the command.
 
 - Flags come from `cmd/internal`: `internal.Flag` and `NewFlagForSetting` for one that is a
   setting, and the global `WorkspaceFlag` and `ProfileFlag`. `internal.ListWorkspace` gives the
-  workspace a listing narrows to.
+  workspace a listing narrows to, which is the session's.
 - A command gets its client from `internal.ResolveClient`, or for the session itself from
   `auth.ResolveSession(ctx, internal.ResolveClientOptions(...))` and `Session.Client`. A
   `ResolveClientOptionsModifier` such as `internal.SkipVersionCheck` adapts the resolution.

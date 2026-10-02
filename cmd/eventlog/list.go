@@ -26,9 +26,8 @@ func newList() *cobra.Command {
 --from and --until take a date such as 2026-07-01, which means midnight UTC, or an instant such as
 2026-07-01T12:00:00Z.
 
-An admin credential lists the event logs of every workspace, unless --workspace names one: the
-profile's default workspace does not narrow the list. Any other credential lists those of its own
-workspace.`,
+The list holds the event logs of the workspace. An admin credential in a session that works in no
+workspace lists those of every workspace.`,
 		Example: `  meshstack eventlog list --from 2026-07-01 --until 2026-07-02
   meshstack elog list --title "Building Block Run" --exclude-title "Building Block Run Executed"
   meshstack elog list --workspace my-workspace --limit unlimited -o ndjson`,

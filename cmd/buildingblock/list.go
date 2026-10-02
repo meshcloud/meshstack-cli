@@ -13,10 +13,8 @@ func newList() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List building blocks, newest first",
-		Long: `List building blocks, newest first.
-
---workspace lists that workspace's building blocks. Without it, the list holds every building
-block the credential can see, as the profile's default workspace does not narrow it.`,
+		Long: `List the building blocks of the workspace, newest first. A session that works in no workspace
+lists every building block the credential can see.`,
 		Example: `  meshstack buildingblock list --workspace my-workspace
   meshstack bb list --limit unlimited -o ndjson`,
 		Args: cobra.NoArgs,

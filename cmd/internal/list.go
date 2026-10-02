@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/pkg/setting"
+	"github.com/meshcloud/meshstack-cli/pkg/auth"
 )
 
 type ListFlags struct {
@@ -29,10 +29,10 @@ func (f *ListFlags) Register(flags *pflag.FlagSet) {
 	flags.Var(&f.limit, limitFlagName, "list at most this many items, or unlimited for all of them")
 }
 
-// ListWorkspace leaves out the profile's default workspace, so that a listing asked for no
-// workspace shows what the credential can see.
+// ListWorkspace is the workspace the session works in, which a listing keeps to as every other
+// command does, and nil where the session works in none.
 func ListWorkspace(ctx context.Context) (*string, error) {
-	workspace, err := setting.ResolveWorkspace(ctx, SettingSources())
+	workspace, err := auth.ResolveWorkspace(ctx, ResolveClientOptions())
 	if err != nil || workspace == "" {
 		return nil, err
 	}

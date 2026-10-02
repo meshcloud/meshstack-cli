@@ -169,3 +169,21 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 	}
 	return c, nil
 }
+
+// ResolveWorkspace resolves the workspace that a session of opts works in, as ResolveSession does,
+// and is NoWorkspace where no setting names one and the profile has no default workspace.
+func ResolveWorkspace(ctx context.Context, opts ResolveSessionOptions) (meshstack.Workspace, error) {
+	stored, _, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{SettingSources: opts.SettingSources, StoredOnly: true})
+	var defaultWorkspace setting.Source
+	switch {
+	case err == nil:
+		defaultWorkspace = stored.WorkspaceSource()
+	case !errors.Is(err, profile.ErrNoStoredProfile):
+		return meshstack.NoWorkspace, err
+	}
+	workspace, err := opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, defaultWorkspace)
+	if errors.Is(err, setting.ErrNoSourceProvidedValue) {
+		return meshstack.NoWorkspace, nil
+	}
+	return workspace, err
+}
