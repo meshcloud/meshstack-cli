@@ -24,10 +24,10 @@ func TestLogRenderingWaitsForTheSink(t *testing.T) {
 	assert.Equal(t, 1, rendered, "the written record did not render its body")
 }
 
-func TestLoggedBodyRedactsCredentials(t *testing.T) {
+func TestLoggedBodyRedactsCredentialsAndKeepsTheRest(t *testing.T) {
 	const secret = "s3cr3t"
 	tests := map[string]string{
-		"api key login":   `{"clientId":"an-id","clientSecret":"` + secret + `"}`,
+		"api key login":   `{"clientId":"an-id","clientSecret":"` + secret + `","at":1234567890123456789}`,
 		"login answer":    `{"access_token":"` + secret + `"}`,
 		"nested secret":   `{"spec":{"config":{"clientSecret":{"plaintext":"` + secret + `"}}}}`,
 		"oidc grant form": `grant_type=refresh_token&refresh_token=` + secret + `&client_id=an-id`,
@@ -40,15 +40,10 @@ func TestLoggedBodyRedactsCredentials(t *testing.T) {
 			assert.Contains(t, rendered, redactedValue)
 		})
 	}
-}
 
-func TestLoggedBodyKeepsWhatIsNoCredential(t *testing.T) {
-	rendered := loggedBody{bytes.NewBufferString(`{"clientId":"an-id","clientSecret":"s3cr3t"}`)}.String()
-	assert.Contains(t, rendered, "an-id")
-}
-
-func TestLoggedBodyKeepsALargeIntegerExact(t *testing.T) {
-	assert.Contains(t, loggedBody{bytes.NewBufferString(`{"at":1234567890123456789}`)}.String(), "1234567890123456789")
+	rendered := loggedBody{bytes.NewBufferString(tests["api key login"])}.String()
+	assert.Contains(t, rendered, "an-id", "what is no credential stays")
+	assert.Contains(t, rendered, "1234567890123456789", "a large integer stays exact")
 }
 
 type countingReader struct {

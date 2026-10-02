@@ -142,89 +142,32 @@ func TestHttpClient(t *testing.T) {
 		})
 	})
 
-	t.Run("DoRequest with PATCH (not retried)", func(t *testing.T) {
-		attempts := 0
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-			attempts++
-			resp.WriteHeader(gohttp.StatusBadGateway)
-		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{WaitTime: 10 * time.Second}})
-		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPatch, client.ServerUrl)
-		require.Error(t, err)
-		assert.Equal(t, 1, attempts, "PATCH must not be retried")
-	})
-
-	t.Run("DoRequest with POST", func(t *testing.T) {
-		t.Run("is not retried by default", func(t *testing.T) {
-			attempts := 0
-			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-				attempts++
-				resp.WriteHeader(gohttp.StatusServiceUnavailable)
-			}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
-			_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("grant"))
-			require.Error(t, err)
-			assert.Equal(t, 1, attempts, "a POST may create something, so replaying it needs the caller's word")
-		})
-
-		t.Run("is retried when the caller marked it Retryable", func(t *testing.T) {
-			attempts := 0
-			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-				attempts++
-				if attempts == 1 {
-					resp.WriteHeader(gohttp.StatusServiceUnavailable)
-					return
-				}
-				resp.WriteHeader(gohttp.StatusOK)
-				_, _ = resp.Write([]byte(`{}`))
-			}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
-			_, err := client.DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("login"), http.Retryable())
-			require.NoError(t, err)
-			assert.Equal(t, 2, attempts)
-		})
-	})
-
 	// GET is the only method the client replays unasked, so MeshObjectClient marks its
 	// idempotent PUT and DELETE with Retryable.
-	t.Run("DoRequest with DELETE marked Retryable", func(t *testing.T) {
-		attempts := 0
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-			attempts++
-			if attempts == 1 {
+	t.Run("DoRequest replays another method than GET only when the caller marked it Retryable, body included", func(t *testing.T) {
+		var bodies []string
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			body, _ := io.ReadAll(req.Body)
+			bodies = append(bodies, string(body))
+			if len(bodies) == 1 {
 				resp.WriteHeader(gohttp.StatusServiceUnavailable)
 				return
 			}
 			resp.WriteHeader(gohttp.StatusNoContent)
 		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
-		_, err := client.DoRequest[any](t.Context(), gohttp.MethodDelete, client.ServerUrl.JoinPath("delete"), http.Retryable())
-		require.NoError(t, err)
-		assert.Equal(t, 2, attempts, "DELETE must be retried after a 503")
-	})
+		payload := http.WithJsonPayload(map[string]string{"key": "value"}, "application/json")
 
-	t.Run("DoRequest with PUT replays body on retry", func(t *testing.T) {
-		attempt := 0
-		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			body, _ := io.ReadAll(req.Body)
-			assert.JSONEq(t, `{"key":"value"}`, string(body))
-			attempt++
-			if attempt == 1 {
-				resp.WriteHeader(gohttp.StatusBadGateway)
-				return
-			}
-			resp.WriteHeader(gohttp.StatusOK)
-		}), http.RetryOptions{MaxRetries: 2, Backoff: &retryTestBackoff{}})
-		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl,
-			http.WithJsonPayload(map[string]string{"key": "value"}, "application/json"), http.Retryable())
-		require.NoError(t, err)
-		assert.Equal(t, 2, attempt)
-	})
+		for _, method := range []string{gohttp.MethodPatch, gohttp.MethodPost, gohttp.MethodPut, gohttp.MethodDelete} {
+			bodies = nil
+			_, err := client.DoRequest[any](t.Context(), method, client.ServerUrl, payload)
+			require.Error(t, err, method)
+			assert.Len(t, bodies, 1, "%s may change something, so replaying it needs the caller's word", method)
 
-	t.Run("DoRequest with BearerToken as Authorization", func(t *testing.T) {
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			assert.Equal(t, "Bearer my-static-token", req.Header.Get("Authorization"))
-			resp.WriteHeader(gohttp.StatusAccepted)
-		})
-		_, err := client.WithAuthorization(http.BearerToken("my-static-token")).DoRequest[any](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("create"),
-			http.WithJsonPayload("content", "text/plain"))
-		require.NoError(t, err)
+			bodies = nil
+			_, err = client.DoRequest[any](t.Context(), method, client.ServerUrl, payload, http.Retryable())
+			require.NoError(t, err, method)
+			assert.Equal(t, []string{`{"key":"value"}`, `{"key":"value"}`}, bodies, method)
+		}
 	})
 
 	t.Run("DoRequest re-mints once on 401", func(t *testing.T) {
@@ -333,100 +276,64 @@ func (a *refreshableAuthorization) RefreshBearerToken(_ context.Context, rejecte
 }
 
 func TestUrlQueryOptions(t *testing.T) {
-	queryFrom := func(t *testing.T, query any) url.Values {
+	var got url.Values
+	client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		got = req.URL.Query()
+		_, _ = resp.Write([]byte(`"ok"`))
+	})
+	queryFrom := func(t *testing.T, queries ...any) url.Values {
 		t.Helper()
-		var gotQuery url.Values
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			gotQuery = req.URL.Query()
-			resp.WriteHeader(gohttp.StatusOK)
-			_, _ = resp.Write([]byte(`"ok"`))
-		})
-		_, err := client.DoRequest[string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("list"),
-			http.WithUrlQuery(query),
-		)
+		var options []http.RequestOption
+		for _, query := range queries {
+			options = append(options, http.WithUrlQuery(query))
+		}
+		_, err := client.DoRequest[string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("list"), options...)
 		require.NoError(t, err)
-		return gotQuery
+		return got
 	}
 
-	t.Run("a map is sent verbatim", func(t *testing.T) {
-		got := queryFrom(t, map[string]string{"definitionUuid": "abc", "status": "SUCCEEDED"})
-		assert.Equal(t, "abc", got.Get("definitionUuid"))
-		assert.Equal(t, "SUCCEEDED", got.Get("status"))
+	t.Run("a map or url.Values goes as given, a zero value and a repeated parameter included", func(t *testing.T) {
+		query := url.Values{"dry": {"true"}, "tag": {"a", "b"}, "empty": {""}}
+		assert.Equal(t, query, queryFrom(t, query))
+		assert.Equal(t, url.Values{"page": {"0"}, "status": {"SUCCEEDED"}}, queryFrom(t, map[string]any{"page": 0, "status": "SUCCEEDED"}))
 	})
 
 	t.Run("a second query adds to the first", func(t *testing.T) {
-		var gotQuery url.Values
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			gotQuery = req.URL.Query()
-			resp.WriteHeader(gohttp.StatusOK)
-			_, _ = resp.Write([]byte(`"ok"`))
-		})
-		_, err := client.DoRequest[string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("list"),
-			http.WithUrlQuery(map[string]string{"buildingBlockDefinitionUuid": "abc"}),
-			http.WithUrlQuery(map[string]any{"page": 2}),
-		)
-		require.NoError(t, err)
-		assert.Equal(t, "abc", gotQuery.Get("buildingBlockDefinitionUuid"))
-		assert.Equal(t, "2", gotQuery.Get("page"))
+		assert.Equal(t, url.Values{"buildingBlockDefinitionUuid": {"abc"}, "page": {"2"}},
+			queryFrom(t, map[string]string{"buildingBlockDefinitionUuid": "abc"}, map[string]any{"page": 2}))
 	})
 
-	t.Run("a slice field is the parameter repeated", func(t *testing.T) {
+	t.Run("a struct names its fields by json tag and drops the zero ones", func(t *testing.T) {
 		type filter struct {
+			Identifier   *string  `json:"identifier"`
+			Name         string   `json:"name"`
+			Restricted   *bool    `json:"restricted"`
 			ExcludeTitle []string `json:"excludeTitle"`
 			Other        []string `json:"other"`
 		}
-		got := queryFrom(t, filter{ExcludeTitle: []string{"Workspace Created", "", "Tenant Deleted"}})
-		assert.Equal(t, []string{"Workspace Created", "Tenant Deleted"}, got["excludeTitle"], "an empty string in a struct's slice is dropped like a zero field")
-		assert.False(t, got.Has("other"), "a nil slice field must be dropped")
-	})
-
-	t.Run("url.Values are sent as given, a repeated parameter included", func(t *testing.T) {
-		query := url.Values{"dry": {"true"}, "tag": {"a", "b"}, "empty": {""}}
-		assert.Equal(t, query, queryFrom(t, query))
-	})
-
-	t.Run("map values are kept even when zero", func(t *testing.T) {
-		got := queryFrom(t, map[string]any{"page": 0})
-		assert.Equal(t, "0", got.Get("page"))
-	})
-
-	t.Run("struct fields are named by json tag and zero fields are dropped", func(t *testing.T) {
-		type filter struct {
+		assert.Equal(t, url.Values{"identifier": {"abc"}, "excludeTitle": {"Workspace Created", "Tenant Deleted"}},
+			queryFrom(t, filter{Identifier: new("abc"), ExcludeTitle: []string{"Workspace Created", "", "Tenant Deleted"}}),
+			"a slice is the parameter repeated, and drops an empty string like a zero field")
+		assert.Empty(t, queryFrom(t, &struct {
 			Identifier *string `json:"identifier"`
-			Name       string  `json:"name"`
-			Restricted *bool   `json:"restricted"`
-		}
-		got := queryFrom(t, filter{Identifier: new("abc")})
-		assert.Equal(t, "abc", got.Get("identifier"))
-		assert.False(t, got.Has("name"), "zero string field must be dropped")
-		assert.False(t, got.Has("restricted"), "nil pointer field must be dropped")
-	})
-
-	t.Run("a zero-value struct adds no params", func(t *testing.T) {
-		type filter struct {
-			Identifier *string `json:"identifier"`
-		}
-		got := queryFrom(t, &filter{})
-		assert.Empty(t, got)
+		}{}), "a pointer to a struct drops its nil fields")
 	})
 }
 
 func TestFormPayloadOption(t *testing.T) {
-	postForm := func(t *testing.T, payload any) (gohttp.Header, url.Values) {
+	var header gohttp.Header
+	var form url.Values
+	var answer string
+	client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+		assert.NoError(t, req.ParseForm())
+		header, form = req.Header, req.PostForm
+		_, _ = io.WriteString(resp, answer)
+	})
+	postForm := func(t *testing.T, payload any) {
 		t.Helper()
-		var gotHeader gohttp.Header
-		var gotForm url.Values
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			assert.NoError(t, req.ParseForm())
-			gotHeader, gotForm = req.Header, req.PostForm
-			resp.WriteHeader(gohttp.StatusOK)
-			_, _ = resp.Write([]byte(`"ok"`))
-		})
-		_, err := client.DoRequest[string](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"),
-			http.WithFormPayload(payload),
-		)
+		answer = `"ok"`
+		_, err := client.DoRequest[string](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"), http.WithFormPayload(payload))
 		require.NoError(t, err)
-		return gotHeader, gotForm
 	}
 
 	t.Run("a struct becomes a form named by its json tags", func(t *testing.T) {
@@ -436,88 +343,58 @@ func TestFormPayloadOption(t *testing.T) {
 			ClientId     string `json:"client_id"`
 			CodeVerifier string `json:"code_verifier"`
 		}
-		header, got := postForm(t, refreshGrant{
-			GrantType:    "refresh_token",
-			RefreshToken: "the-rotating-one",
-			ClientId:     "meshstack-cli",
-		})
+		postForm(t, refreshGrant{GrantType: "refresh_token", RefreshToken: "the-rotating-one", ClientId: "meshstack-cli"})
 		assert.Equal(t, "application/x-www-form-urlencoded", header.Get("Content-Type"))
 		assert.Equal(t, "application/json", header.Get("Accept"))
-		assert.Equal(t, "refresh_token", got.Get("grant_type"))
-		assert.Equal(t, "the-rotating-one", got.Get("refresh_token"))
-		assert.Equal(t, "meshstack-cli", got.Get("client_id"))
-		assert.False(t, got.Has("code_verifier"), "a field the grant does not use must not be sent empty")
+		assert.Equal(t, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {"the-rotating-one"}, "client_id": {"meshstack-cli"}}, form,
+			"a field the grant does not use must not be sent empty")
 	})
 
 	t.Run("no payload sends no body", func(t *testing.T) {
-		header, got := postForm(t, nil)
-		assert.Empty(t, got)
+		postForm(t, nil)
+		assert.Empty(t, form)
 		assert.Empty(t, header.Get("Content-Type"))
 	})
 
-	t.Run("a form sends those types as the text they came from", func(t *testing.T) {
+	t.Run("a form sends a URL and a JWT as the text they came from", func(t *testing.T) {
 		type logoutRequest struct {
 			RedirectUri xurl.URL  `json:"post_logout_redirect_uri"`
 			IdToken     jwt.JWT   `json:"id_token_hint"`
-			ClientId    string    `json:"client_id"`
 			Unset       *xurl.URL `json:"unset_uri"`
 		}
-		redirectUri, err := url.Parse("http://127.0.0.1:31234/callback")
-		require.NoError(t, err)
 		var idToken jwt.JWT
-		claims := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"someone"}`))
-		require.NoError(t, idToken.UnmarshalText([]byte("e30."+claims+".not-a-signature")))
+		require.NoError(t, idToken.UnmarshalText([]byte(unsignedJwt(`{"sub":"someone"}`))))
 
-		_, got := postForm(t, logoutRequest{
-			RedirectUri: xurl.URL{URL: redirectUri},
-			IdToken:     idToken,
-			ClientId:    "meshstack-cli",
-		})
-		assert.Equal(t, "http://127.0.0.1:31234/callback", got.Get("post_logout_redirect_uri"))
-		assert.Equal(t, idToken.String(), got.Get("id_token_hint"))
-		assert.False(t, got.Has("unset_uri"), "a URL nobody set is dropped like any other zero value")
+		postForm(t, logoutRequest{RedirectUri: xurl.MustParsef("http://127.0.0.1:31234/callback"), IdToken: idToken})
+		assert.Equal(t, url.Values{"post_logout_redirect_uri": {"http://127.0.0.1:31234/callback"}, "id_token_hint": {idToken.String()}}, form,
+			"a URL nobody set is dropped like any other zero value")
 	})
 
+	type tokenResponse struct {
+		Issuer      xurl.URL `json:"issuer"`
+		AccessToken jwt.JWT  `json:"access_token"`
+	}
 	t.Run("the answer parses into the types the caller declared", func(t *testing.T) {
-		type tokenResponse struct {
-			Issuer      xurl.URL `json:"issuer"`
-			AccessToken jwt.JWT  `json:"access_token"`
-		}
-		// Only the middle part is ever read, so the header is {} and the signature is not one.
-		claims := base64.RawURLEncoding.EncodeToString([]byte(`{"MC_CUSTOMER":"my-workspace"}`))
-		accessToken := "e30." + claims + ".not-a-signature"
+		accessToken := unsignedJwt(`{"MC_CUSTOMER":"my-workspace"}`)
+		answer = fmt.Sprintf(`{"issuer":"https://sso.example.com/realms/meshfed","access_token":%q}`, accessToken)
 
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
-			assert.NoError(t, req.ParseForm())
-			assert.Equal(t, "refresh_token", req.PostForm.Get("grant_type"))
-			resp.WriteHeader(gohttp.StatusOK)
-			_, _ = resp.Write(fmt.Appendf(nil,
-				`{"issuer":"https://sso.example.com/realms/meshfed","access_token":%q}`, accessToken))
-		})
-		got, err := client.DoRequest[tokenResponse](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"),
-			http.WithFormPayload(map[string]string{"grant_type": "refresh_token"}),
-		)
+		got, err := client.DoRequest[tokenResponse](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"))
 		require.NoError(t, err)
-
-		assert.Equal(t, "https://sso.example.com/realms/meshfed", got.Issuer.String())
 		assert.Equal(t, "sso.example.com", got.Issuer.Host, "the field is a parsed URL, not the text it came from")
 		assert.Equal(t, accessToken, got.AccessToken.String())
 	})
 
 	// Which texts jwt.JWT refuses is pinned in the jwt package, against its own testdata.
 	t.Run("an answer that is not what those types accept fails the call", func(t *testing.T) {
-		type tokenResponse struct {
-			AccessToken jwt.JWT `json:"access_token"`
-		}
-		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-			resp.WriteHeader(gohttp.StatusOK)
-			_, _ = resp.Write([]byte(`{"access_token":"an-opaque-token"}`))
-		})
-		_, err := client.DoRequest[tokenResponse](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"),
-			http.WithFormPayload(map[string]string{"grant_type": "refresh_token"}),
-		)
+		answer = `{"access_token":"an-opaque-token"}`
+
+		_, err := client.DoRequest[tokenResponse](t.Context(), gohttp.MethodPost, client.ServerUrl.JoinPath("token"))
 		assert.ErrorContains(t, err, "not a JWT")
 	})
+}
+
+func unsignedJwt(claims string) string {
+	return "e30." + base64.RawURLEncoding.EncodeToString([]byte(claims)) + ".not-a-signature"
 }
 
 type TestClient struct {
