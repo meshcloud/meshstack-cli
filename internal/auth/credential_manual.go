@@ -32,6 +32,6 @@ func (s Session) resolveManualCredential(ctx context.Context, settingSources set
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using setting %s as manual credential", ApiTokenSetting.EnvKey()))
 	manual := CacheFor(s.CurrentProfile, credential.NewManual(s.CurrentProfile.Endpoint, apiToken))
-	manual.Sources = []string{source.Describe(ApiTokenSetting.EnvKey())}
+	manual.Sources, manual.bringsItsToken = []string{source.Describe(ApiTokenSetting.EnvKey())}, true
 	return manual, nil
 }

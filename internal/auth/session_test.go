@@ -156,9 +156,22 @@ func TestSessionStoresTheFirstTokenMintedAfterALoginThatMintedNone(t *testing.T)
 	assert.EqualValues(t, 1, server.Counts(t).Logins)
 }
 
-// A manual credential's identity is its endpoint alone, so the token a login stored wins over
-// another one from the environment.
-func TestSessionSendsTheStoredManualTokenOverOneFromTheEnvironment(t *testing.T) {
+func TestSessionSendsTheManualTokenFromTheEnvironmentOverTheStoredOne(t *testing.T) {
+	server := newTestServer(t)
+	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
+	_, store, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
+	require.NoError(t, err)
+	require.NoError(t, store(t.Context()))
+	require.True(t, server.RevokeNewestToken(t), "the token the login stored")
+
+	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
+	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	require.NoError(t, err)
+
+	server.RequireGreeting(t, greetingClient(session))
+}
+
+func TestSessionKeepsTheStoredManualTokenApartFromARejectedOneFromTheEnvironment(t *testing.T) {
 	server := newTestServer(t)
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
 	_, store, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
@@ -167,10 +180,14 @@ func TestSessionSendsTheStoredManualTokenOverOneFromTheEnvironment(t *testing.T)
 
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(t, time.Hour))
 	require.True(t, server.RevokeNewestToken(t), "the token in the environment")
-	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	fromEnvironment, err := auth.ResolveSession(t.Context(), testSessionOpts)
 	require.NoError(t, err)
+	require.Error(t, server.Greeting(t, t.Context(), greetingClient(fromEnvironment)), "the stored token does not stand in for a rejected one")
 
-	server.RequireGreeting(t, greetingClient(session))
+	t.Setenv(auth.ApiTokenSetting.EnvKey(), "")
+	stored, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	require.NoError(t, err)
+	server.RequireGreeting(t, greetingClient(stored))
 }
 
 func TestLoginCreatesAndStoresTheProfileItNames(t *testing.T) {

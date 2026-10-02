@@ -34,6 +34,10 @@ type Credential struct {
 	Sources []string
 	// Stored is set for the credential the profile stores, and not for one that settings provide.
 	Stored bool
+	// bringsItsToken is set for an API token that settings provide. A manual credential's identity
+	// is its endpoint alone, so the profile's cache would match it and replace that token with the
+	// one a login stored.
+	bringsItsToken bool
 
 	profile   profile.Name
 	locker    lock.Locker
@@ -86,6 +90,9 @@ func (c Credential) Write(ctx context.Context) error {
 }
 
 func (c Credential) read(ctx context.Context) (matched bool, err error) {
+	if c.bringsItsToken {
+		return false, nil
+	}
 	var file cacheFile
 	err = json.UnmarshalFrom(ctx, c.cachePath, &file)
 	if errors.Is(err, fs.ErrNotExist) {

@@ -179,6 +179,28 @@ func TestStatusOfAnExpiredApiTokenSaysSo(t *testing.T) {
 	assert.NotContains(t, logs.String(), "level=WARN")
 }
 
+func TestStatusShowsTheApiTokenFromTheEnvironmentAndTheStoredOneAsUnused(t *testing.T) {
+	newTestServer(t)
+	t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
+	t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "preferred_username": "stored"}).String())
+	_, store, err := auth.Login(t.Context(), credential.ManualName, testSessionOpts)
+	require.NoError(t, err)
+	require.NoError(t, store(t.Context()))
+
+	t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "preferred_username": "env"}).String())
+	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	require.NoError(t, err)
+	status := session.Status(t.Context())
+
+	assert.Equal(t, []string{"env MESHSTACK_API_TOKEN"}, status.Sources)
+	require.NotNil(t, status.Token)
+	assert.Equal(t, "env", status.Token.User)
+	require.Len(t, status.Unused, 1)
+	assert.True(t, status.Unused[0].Selected)
+	require.NotNil(t, status.Unused[0].Token)
+	assert.Equal(t, "stored", status.Unused[0].Token.User)
+}
+
 func capturedLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var logs bytes.Buffer
