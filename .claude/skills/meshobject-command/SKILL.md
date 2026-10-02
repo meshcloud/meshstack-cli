@@ -37,6 +37,9 @@ The help says how to use a command, never what its kind is or does: the parent's
 `--describe <kind>.<action>` rather than explain the fields of an answer. Every leaf has an
 `Example`, one line of it through the alias. A leaf checks what it can before it asks meshStack,
 such as that a uuid parses, because meshStack answers a malformed one with an empty list or a 404.
+The root help says once where the endpoint, the profile and the workspace come from, so a leaf
+names them only where it deviates, as a listing does, which leaves out the profile's default
+workspace. The `Long` stays a few lines that get a user started; the errors say the rest.
 
 ## Leaf
 
