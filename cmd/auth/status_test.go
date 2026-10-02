@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	gohttp "net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,19 +20,29 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
-func executeStatus(t *testing.T, args ...string) string {
+// execute runs a command line of meshstack auth, or of the login shortcut, with no input.
+func execute(t *testing.T, args ...string) (stdout string, err error) {
 	t.Helper()
 	root := &cobra.Command{Use: "meshstack", SilenceUsage: true, SilenceErrors: true}
 	for _, flag := range []*internal.Flag[string]{&internal.ProfileFlag, &internal.EndpointFlag, &internal.WorkspaceFlag} {
 		flag.Value = ""
 		flag.Register(root.PersistentFlags())
 	}
-	root.AddCommand(New())
+	root.AddCommand(New(), NewLogin())
 	var out bytes.Buffer
+	root.SetIn(&bytes.Buffer{})
 	root.SetOut(&out)
-	root.SetArgs(append([]string{"auth", "status"}, args...))
-	require.NoError(t, root.ExecuteContext(t.Context()))
-	return out.String()
+	root.SetErr(io.Discard)
+	root.SetArgs(args)
+	err = root.ExecuteContext(t.Context())
+	return out.String(), err
+}
+
+func executeStatus(t *testing.T, args ...string) string {
+	t.Helper()
+	stdout, err := execute(t, append([]string{"auth", "status"}, args...)...)
+	require.NoError(t, err)
+	return stdout
 }
 
 func withApiToken(t *testing.T) {

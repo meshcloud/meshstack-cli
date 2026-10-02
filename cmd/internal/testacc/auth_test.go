@@ -45,6 +45,7 @@ func TestAccAnInputThatEndsBeforeTheProfileSelectionTakesTheCurrentProfile(t *te
 	require.NoErrorf(t, err, "the API key login did not take the current profile:\n%s", output)
 	output, err = c.run("", "auth", "logout")
 	require.NoErrorf(t, err, "the logout did not take the current profile:\n%s", output)
+	assert.Contains(t, output, "Logged out of profile 'current'")
 
 	assert.NoFileExists(t, c.credentialsJsonOf("current"))
 	assert.FileExists(t, c.credentialsJsonOf("other"))

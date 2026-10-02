@@ -20,8 +20,13 @@ type (
 		// EndpointOptional lets a profile that ResolveProfile creates go without an endpoint, for a
 		// command that only shows it.
 		EndpointOptional bool
+		// StoredOnly makes ResolveProfile return ErrNoStoredProfile rather than create a profile, for a
+		// command that only acts on a stored one.
+		StoredOnly bool
 	}
 )
+
+var ErrNoStoredProfile = errors.New("no stored profile")
 
 // ResolveProfile returns a *Profile that points into Profiles.Profiles, so a change through the
 // pointer is persisted by a later Profiles.Store.
@@ -77,6 +82,9 @@ func ResolveProfile(ctx context.Context, opts ResolveProfileOptions) (*Profile, 
 	}
 	if currentProfile, ok := profiles.Profiles[name]; ok {
 		return currentProfile, profiles, nil
+	}
+	if opts.StoredOnly {
+		return nil, profiles, fmt.Errorf("%w is named '%s'", ErrNoStoredProfile, name)
 	}
 	if len(profiles.Profiles) == 0 {
 		slog.InfoContext(ctx, fmt.Sprintf("Initializing first-time use profile '%s'", name))

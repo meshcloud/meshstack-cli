@@ -121,6 +121,18 @@ func TestResolveProfileCreatesAMissingProfileAndUpdatesItOnTheNextRun(t *testing
 	assertProfiles(t, reloadedProfiles, dev, &Profile{Name: "default", Endpoint: testEndpoint})
 }
 
+func TestResolveProfileOfStoredOnlyCreatesNoProfile(t *testing.T) {
+	givenNoMeshstackEnvironment(t)
+	t.Setenv(config.DirectorySetting.EnvKey(), "testdata/configdir")
+	t.Setenv(NameSetting.EnvKey(), "missing")
+
+	_, profiles, err := ResolveProfile(t.Context(), ResolveProfileOptions{StoredOnly: true})
+
+	require.ErrorIs(t, err, ErrNoStoredProfile)
+	require.ErrorContains(t, err, "'missing'")
+	assert.NotContains(t, profiles.Profiles, Name("missing"))
+}
+
 func TestLoadProfilesRejectsANullProfile(t *testing.T) {
 	givenNoMeshstackEnvironment(t)
 	configDir := t.TempDir()
