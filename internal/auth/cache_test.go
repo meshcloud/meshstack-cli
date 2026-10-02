@@ -14,6 +14,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -89,12 +90,12 @@ func TestCacheOfAnotherVersionIsIgnoredWithAWarningUntilALoginWritesItAnew(t *te
 	path := p.ConfigDir.CredentialsCacheJsonFor(p.Name, loggedIn.Name())
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 	require.NoError(t, os.WriteFile(path, []byte(`{"version":2,"identity":"minted by a later meshstack"}`), 0o600))
-	logs := capturedLogs(t)
+	captured := logs.Capture(t)
 
 	require.NoError(t, auth.CacheFor(p, loggedIn).Load(t.Context()))
 	assert.Nil(t, loggedIn.Cache)
-	assert.Contains(t, logs.String(), "level=WARN")
-	assert.Contains(t, logs.String(), "run 'meshstack login -p cache-test' to update it")
+	assert.Contains(t, captured.String(), "level=WARN")
+	assert.Contains(t, captured.String(), "run 'meshstack login -p cache-test' to update it")
 
 	loggedIn.Cache = &struct {
 		Token jwt.JWT `json:"token,omitzero"`

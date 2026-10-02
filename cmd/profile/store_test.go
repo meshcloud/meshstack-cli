@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +10,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
@@ -143,7 +145,7 @@ func TestRemovingTheCurrentProfile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			profiles := storedProfiles(t, append([]profile.Profile{{Name: "dev", Endpoint: endpointA}}, tt.left...)...)
 			require.Equal(t, profile.Name("dev"), profiles.CurrentProfile)
-			logs := capturedLogs(t)
+			captured := logs.Capture(t)
 
 			require.NoError(t, remove(t.Context(), &profiles, "dev"))
 
@@ -151,9 +153,9 @@ func TestRemovingTheCurrentProfile(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCurrent, reloaded.CurrentProfile)
 			if tt.wantWarning == "" {
-				assert.Empty(t, logs.String())
+				assert.Empty(t, captured.Lines(slog.LevelInfo))
 			} else {
-				assert.Contains(t, logs.String(), "level=WARN msg=\""+tt.wantWarning+"\"")
+				assert.Contains(t, captured.String(), "level=WARN msg=\""+tt.wantWarning+"\"")
 			}
 		})
 	}
@@ -161,12 +163,12 @@ func TestRemovingTheCurrentProfile(t *testing.T) {
 	t.Run("does not change the current profile where another one goes", func(t *testing.T) {
 		profiles := storedProfiles(t, profile.Profile{Name: "dev", Endpoint: endpointA}, profile.Profile{Name: "prod", Endpoint: endpointB},
 			profile.Profile{Name: "staging", Endpoint: endpointC})
-		logs := capturedLogs(t)
+		captured := logs.Capture(t)
 
 		require.NoError(t, remove(t.Context(), &profiles, "prod"))
 
 		assert.Equal(t, profile.Name("dev"), profiles.CurrentProfile)
-		assert.Empty(t, logs.String())
+		assert.Empty(t, captured.Lines(slog.LevelInfo))
 	})
 }
 

@@ -3,7 +3,6 @@ package workspace_test
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	gohttp "net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
@@ -38,7 +38,7 @@ func TestAListCutShortByTheLimitSaysHowManyThereAre(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	testlogin.LoggedInTo(t, server.URL)
-	logs := capturedLogs(t)
+	captured := logs.Capture(t)
 	var stdout bytes.Buffer
 	cmd := workspace.New()
 	cmd.SetOut(&stdout)
@@ -47,15 +47,6 @@ func TestAListCutShortByTheLimitSaysHowManyThereAre(t *testing.T) {
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
 
 	assert.JSONEq(t, `[{"metadata":{"name":"workspace-0-a"}}]`, stdout.String())
-	assert.Contains(t, logs.String(), "listed the first 1 of 6")
+	assert.Contains(t, captured.String(), "listed the first 1 of 6")
 	assert.Equal(t, 1, requests)
-}
-
-func capturedLogs(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
-	return &logs
 }

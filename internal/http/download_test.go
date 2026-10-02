@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"compress/gzip"
+	"log/slog"
 	gohttp "net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 )
 
 type fakeDocument struct {
@@ -67,7 +69,7 @@ func TestDownload(t *testing.T) {
 
 	t.Run("stores the document, and checks once a day for a newer one, even after a failed check", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			testLogger := installTestLogger(t)
+			captured := logs.Capture(t)
 
 			download(t)()
 			assert.Equal(t, []string{"gzip"}, document.contentEncodings, "the 4.7MB of the API docs come as 0.5MB")
@@ -83,30 +85,30 @@ func TestDownload(t *testing.T) {
 			synctest.Sleep(time.Hour)
 			download(t)()
 			assert.Equal(t, []int{gohttp.StatusOK, gohttp.StatusNotModified}, document.answers)
-			assert.Empty(t, testLogger.Warns)
+			assert.Empty(t, captured.Records(slog.LevelWarn))
 
 			synctest.Sleep(24 * time.Hour)
 			document.missing = true
 			download(t)()
 			download(t)()
 			assert.Equal(t, []int{gohttp.StatusOK, gohttp.StatusNotModified, gohttp.StatusNotFound}, document.answers)
-			require.Len(t, testLogger.Warns, 1)
-			assert.Contains(t, testLogger.Warns[0], "Cannot update "+path)
+			require.Len(t, captured.Records(slog.LevelWarn), 1)
+			assert.Contains(t, captured.Lines(slog.LevelWarn)[0], "Cannot update "+path)
 			assert.JSONEq(t, `{"version": 1}`, readDocument(t, path))
 		})
 	})
 
 	t.Run("goes on with the stored document while a slow download finishes", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			testLogger := installTestLogger(t)
+			captured := logs.Capture(t)
 			document.missing = false
 			document.body, document.modified = `{"version": 2}`, document.modified.Add(time.Hour)
 			document.release = make(chan struct{})
 
 			wait := download(t, http.WithConditionalGet(true))
 			assert.JSONEq(t, `{"version": 1}`, readDocument(t, path), "the caller reads the stored document")
-			require.Len(t, testLogger.Warns, 1)
-			assert.Contains(t, testLogger.Warns[0], "The command ends once the download has finished.")
+			require.Len(t, captured.Records(slog.LevelWarn), 1)
+			assert.Contains(t, captured.Lines(slog.LevelWarn)[0], "The command ends once the download has finished.")
 
 			close(document.release)
 			wait()

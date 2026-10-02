@@ -1,7 +1,6 @@
 package auth_test
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json/v2"
 	"fmt"
@@ -19,6 +18,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
@@ -116,7 +116,7 @@ func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
 				_, _ = fmt.Fprint(resp, tt.body)
 			})
 			testApiKey1.SetEnv(t)
-			logs := capturedLogs(t)
+			captured := logs.Capture(t)
 
 			session, err := auth.ResolveSession(t.Context(), testSessionOpts)
 			require.NoError(t, err)
@@ -127,10 +127,10 @@ func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
 			assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId.String())
 			assert.Equal(t, tt.want, status.ApiKey.Details)
 			if tt.wantWarn != "" {
-				assert.Contains(t, logs.String(), "level=WARN")
-				assert.Contains(t, logs.String(), tt.wantWarn)
+				assert.Contains(t, captured.String(), "level=WARN")
+				assert.Contains(t, captured.String(), tt.wantWarn)
 			} else {
-				assert.NotContains(t, logs.String(), "level=WARN")
+				assert.Empty(t, captured.Records(slog.LevelWarn))
 			}
 			assert.NotNil(t, status.Token, "reading the key minted a token")
 		})
@@ -163,7 +163,7 @@ func TestStatusOfAnExpiredApiTokenSaysSo(t *testing.T) {
 	newTestServer(t)
 	token := testToken(t, map[string]any{"exp": time.Now().Add(-time.Hour).Unix(), "client_id": testApiKey1.ClientId})
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), token.String())
-	logs := capturedLogs(t)
+	captured := logs.Capture(t)
 
 	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
 	require.NoError(t, err)
@@ -176,7 +176,7 @@ func TestStatusOfAnExpiredApiTokenSaysSo(t *testing.T) {
 	assert.Equal(t, testApiKey1.ClientId, status.Token.ClientId)
 	require.NotNil(t, status.ApiKey)
 	assert.Nil(t, status.ApiKey.Details, "an expired token cannot read its key")
-	assert.NotContains(t, logs.String(), "level=WARN")
+	assert.Empty(t, captured.Records(slog.LevelWarn))
 }
 
 func TestStatusShowsTheApiTokenFromTheEnvironmentAndTheStoredOneAsUnused(t *testing.T) {
@@ -200,15 +200,6 @@ func TestStatusShowsTheApiTokenFromTheEnvironmentAndTheStoredOneAsUnused(t *test
 	assert.True(t, status.Unused[0].Selected)
 	require.NotNil(t, status.Unused[0].Token)
 	assert.Equal(t, "stored", status.Unused[0].Token.User)
-}
-
-func capturedLogs(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
-	return &logs
 }
 
 func storedOidcLogin(t *testing.T, issuer xurl.URL, level meshstack.AccessLevel, token oidc.Token) *profile.Profile {

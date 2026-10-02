@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"io"
-	"log/slog"
 	gohttp "net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/apidocs"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/config"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
@@ -289,10 +289,7 @@ func TestApi(t *testing.T) {
 		// G302 counts a directory's x bit, without which nothing can enter it.
 		require.NoError(t, os.Chmod(dir, 0o500))       //nolint:gosec // G302: see above
 		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // G302: see above
-		var logs bytes.Buffer
-		previous := slog.Default()
-		slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-		t.Cleanup(func() { slog.SetDefault(previous) })
+		captured := logs.Capture(t)
 		meshStack.answer(gohttp.StatusOK, `{}`)
 
 		_, err := meshStack.run(t, api.New(), `{"spec": {}}`, "-X", "POST", "/api/meshobjects/meshbuildingblocks", "--request-json", "-")
@@ -301,8 +298,8 @@ func TestApi(t *testing.T) {
 		require.Len(t, meshStack.requests, 1)
 		assert.Empty(t, meshStack.requests[0].accept, "a meshObject endpoint answers application/json with a 406 that names no version")
 		assert.Equal(t, "application/json", meshStack.requests[0].contentType)
-		assert.Contains(t, logs.String(), "Sending the request as given, without the API docs")
-		assert.Contains(t, logs.String(), "Run meshstack api-docs /api/meshobjects/meshbuildingblocks -X POST to see why.")
+		assert.Contains(t, captured.String(), "Sending the request as given, without the API docs")
+		assert.Contains(t, captured.String(), "Run meshstack api-docs /api/meshobjects/meshbuildingblocks -X POST to see why.")
 
 		_, err = meshStack.run(t, api.NewDocs(), "")
 

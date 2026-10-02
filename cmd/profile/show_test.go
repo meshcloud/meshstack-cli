@@ -1,7 +1,6 @@
 package profile
 
 import (
-	"bytes"
 	"context"
 	"encoding/json/v2"
 	"log/slog"
@@ -20,6 +19,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
@@ -81,13 +81,13 @@ func TestShowWarnsWhereTheCurrentProfileIsForAnotherEndpoint(t *testing.T) {
 		profile.Profile{Name: "prod", Endpoint: endpointB},
 		profile.Profile{Name: "staging", Endpoint: endpointB},
 	)
-	logs := capturedLogs(t)
+	captured := logs.Capture(t)
 
 	output, err := execute(t, "", "show", "--endpoint", "https://b.example.io")
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "| Profile | dev |\n")
-	assert.Contains(t, logs.String(), "Profile 'dev' is for endpoint 'https://a.example.io', so a command for endpoint 'https://b.example.io' (from flag --endpoint) fails with it")
+	assert.Contains(t, captured.String(), "Profile 'dev' is for endpoint 'https://a.example.io', so a command for endpoint 'https://b.example.io' (from flag --endpoint) fails with it")
 }
 
 func TestShowTakesTheProfileTheEnvironmentNames(t *testing.T) {
@@ -102,7 +102,7 @@ func TestShowTakesTheProfileTheEnvironmentNames(t *testing.T) {
 
 func TestShowWritesJsonForTheOnlyProfileOfTheEndpoint(t *testing.T) {
 	twoProfiles(t)
-	logs := capturedLogs(t)
+	captured := logs.Capture(t)
 
 	output, err := execute(t, "", "show", "--endpoint", "https://b.example.io", "-o", "json")
 
@@ -111,16 +111,7 @@ func TestShowWritesJsonForTheOnlyProfileOfTheEndpoint(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(output), &shown))
 	assert.Equal(t, "prod", shown["name"])
 	assert.NotContains(t, shown, "status", "a profile without a credential has no status")
-	assert.Empty(t, logs.String(), "a profile never logged in is no reason to warn")
-}
-
-func capturedLogs(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
-	return &logs
+	assert.Empty(t, captured.Lines(slog.LevelInfo), "a profile never logged in is no reason to warn")
 }
 
 func TestShowsTheProfileAFirstCommandWouldCreateWithoutStoringIt(t *testing.T) {
@@ -172,7 +163,7 @@ func TestShowSaysWhereTheStatusCannotBeReadInTime(t *testing.T) {
 	require.NoError(t, err)
 	credentials.Set(&credential.ApiKey{Endpoint: endpoint, ClientId: uuid.MustParse("11111111-45bf-42ba-a965-2097b9d0d181"), ClientSecret: "test-secret"})
 	require.NoError(t, credentials.Store(t.Context()))
-	capturedLogs(t)
+	logs.Capture(t)
 	// A deadline of the caller stands in for statusReadTime, which a test would wait for in full.
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()

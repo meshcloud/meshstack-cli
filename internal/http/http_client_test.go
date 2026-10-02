@@ -21,12 +21,13 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
 func TestHttpClient(t *testing.T) {
 	t.Run("DoRequest success", func(t *testing.T) {
-		testLogger := installTestLogger(t)
+		captured := logs.Capture(t)
 		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusOK)
 			_, _ = resp.Write([]byte(`"some-answer"`))
@@ -38,10 +39,9 @@ func TestHttpClient(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "some-answer", resp)
 		assert.Equal(t, []string{
-			fmt.Sprintf("request [url %s/get method GET headers User-Agent=test-agent body <empty>]", client.ServerUrl),
-			`response [status 200 body "some-answer"]`,
-		}, testLogger.Debugs)
-		assert.Empty(t, testLogger.Warns)
+			fmt.Sprintf(`level=DEBUG msg=request url=%s/get method=GET headers="User-Agent=test-agent" body=<empty>`, client.ServerUrl),
+			`level=DEBUG msg=response status=200 body="\"some-answer\""`,
+		}, captured.Lines(slog.LevelDebug))
 	})
 
 	t.Run("DoRequest object call with empty 2xx body errors", func(t *testing.T) {
@@ -65,7 +65,7 @@ func TestHttpClient(t *testing.T) {
 		for _, retryableStatusCode := range []int{429, 502, 503, 504} {
 			t.Run(fmt.Sprintf("after code %d", retryableStatusCode), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					testLogger := installTestLogger(t)
+					captured := logs.Capture(t)
 					retryTestBackoff := retryTestBackoff{WaitTime: 1 * time.Second}
 					retried := false
 					client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
@@ -95,15 +95,15 @@ func TestHttpClient(t *testing.T) {
 						assert.Equal(t, 1, retryTestBackoff.Called)
 					}
 					assert.Equal(t, []string{
-						fmt.Sprintf("retrying request [status %d method GET path /get attempt 1/3 waitTime 1s]", retryableStatusCode),
-					}, testLogger.Warns)
+						fmt.Sprintf(`level=WARN msg="retrying request" status=%d method=GET path=/get attempt=1/3 waitTime=1s`, retryableStatusCode),
+					}, captured.Lines(slog.LevelWarn))
 				})
 			})
 		}
 	})
 
 	t.Run("DoRequest with 2 retries exhausted", func(t *testing.T) {
-		testLogger := installTestLogger(t)
+		captured := logs.Capture(t)
 		backoff := retryTestBackoff{}
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusBadGateway)
@@ -114,13 +114,11 @@ func TestHttpClient(t *testing.T) {
 		assert.Equal(t, 502, httpErr.StatusCode)
 		assert.Equal(t, 2, backoff.Called)
 		assert.Equal(t, []string{
-			"retrying request [status 502 method GET path /get attempt 1/2 waitTime 0s]",
-			"retrying request [status 502 method GET path /get attempt 2/2 waitTime 0s]",
-		}, testLogger.Warns)
-		assert.Equal(t, []string{
-			fmt.Sprintf("request [url %s/get method GET headers User-Agent=test-agent body <empty>]", client.ServerUrl),
-			"response [status 502 body <empty>]",
-		}, testLogger.Debugs)
+			fmt.Sprintf(`level=DEBUG msg=request url=%s/get method=GET headers="User-Agent=test-agent" body=<empty>`, client.ServerUrl),
+			`level=WARN msg="retrying request" status=502 method=GET path=/get attempt=1/2 waitTime=0s`,
+			`level=WARN msg="retrying request" status=502 method=GET path=/get attempt=2/2 waitTime=0s`,
+			`level=DEBUG msg=response status=502 body=<empty>`,
+		}, captured.Lines(slog.LevelDebug))
 	})
 
 	t.Run("DoRequest with context cancelled during backoff", func(t *testing.T) {
@@ -544,50 +542,6 @@ func withTestRetry(c TestClient, options http.RetryOptions) TestClient {
 	options.ApplyTo(c.Client.Client)
 	return c
 }
-
-func installTestLogger(t *testing.T) *testLogger {
-	t.Helper()
-	testLogger := &testLogger{}
-	previous := slog.Default()
-	slog.SetDefault(slog.New(testLogger))
-	t.Cleanup(func() {
-		slog.SetDefault(previous)
-	})
-	return testLogger
-}
-
-// testLogger is the slog handler these tests read records back from. It formats a record as the
-// message followed by its attributes, so that a test asserts the line a person reads in the log.
-type testLogger struct {
-	Debugs []string
-	Infos  []string
-	Warns  []string
-}
-
-var _ slog.Handler = (*testLogger)(nil)
-
-func (c *testLogger) Enabled(context.Context, slog.Level) bool { return true }
-
-func (c *testLogger) Handle(_ context.Context, record slog.Record) error {
-	var args []any
-	record.Attrs(func(attr slog.Attr) bool {
-		args = append(args, attr.Key, attr.Value.Any())
-		return true
-	})
-	line := fmt.Sprintf("%s %v", record.Message, args)
-	switch {
-	case record.Level >= slog.LevelWarn:
-		c.Warns = append(c.Warns, line)
-	case record.Level >= slog.LevelInfo:
-		c.Infos = append(c.Infos, line)
-	default:
-		c.Debugs = append(c.Debugs, line)
-	}
-	return nil
-}
-
-func (c *testLogger) WithAttrs([]slog.Attr) slog.Handler { return c }
-func (c *testLogger) WithGroup(string) slog.Handler      { return c }
 
 type retryTestBackoff struct {
 	WaitTime time.Duration
