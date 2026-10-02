@@ -35,15 +35,8 @@ func NewDocs() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api-docs [<path or URL>]",
 		Short: "Show what the meshStack API docs say about a request or a meshObject kind",
-		Long: `Show what the meshStack API docs say about a request, given as meshstack api takes it, or about
+		Long: `Show what the meshStack API docs say about a request, given as 'meshstack api' takes it, or about
 the operations of a meshObject kind.
-
-Given a path, it describes the operations that apply to the request: the summary, the description,
-the parameters and the fields of the request and response bodies of each, as Markdown. Replacing
-api by api-docs in a command line of meshstack api describes its request. The operations are those
-of every method unless --method names one, each in the latest version it offers unless
---api-version, an Accept or Content-Type header or the body's apiVersion names another. A full URL
-is read as the path below the endpoint of the profile that meshstack api would send it with.
 
 Without a path, it lists every operation of the API, or those of the method and version the flags
 name.
@@ -52,12 +45,9 @@ name.
 its actions after a dot, as in bb.list. It describes each operation of the kind, in the latest
 version it offers. It takes no path, and no flag of the request.
 
---output json writes the part of the OpenAPI document instead: the operations and the schemas they
-reference, or the whole document without a path or a flag.
+--output json writes the part of the OpenAPI document instead.
 
-The docs are those of the latest meshStack release, or of meshStack's develop branch with --dev or
-for a build of the CLI that is no release. They are kept in the config directory, which must be
-writable. ` + "`MESHSTACK_API_DOCS_URL`" + ` names another document, such as that of an older meshStack.`,
+--dev uses the development API docs.`,
 		Example: `  meshstack api-docs
   meshstack api-docs -X DELETE
   meshstack api-docs /api/meshobjects/meshtenants/<uuid>

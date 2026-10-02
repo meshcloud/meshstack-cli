@@ -28,26 +28,19 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api <path or URL>",
 		Short: "Send an authorized request to the meshStack API",
-		Long: `Send an authorized request to a path of the meshStack API, and write the answer, as indented JSON
-where it is JSON.
+		Long: `Send an authorized request to a path of the meshStack API, and return the response (typically JSON).
+The path is relative to the endpoint but can also be an absolute one, as long as a matching profile with authentication credentials can be found.
 
-The path is relative to the endpoint. A full URL, such as a _links href in an answer, is sent with
-the profile whose endpoint holds it, the longest one where several do. A URL that no profile holds
-is not sent. A profile or endpoint named by flag or environment must hold the URL.
+This exposes everything that the other CLI commands do not cover.
+It supports you by taking over versioned content negotiation of meshStack's public API unless you specify it explicitly.
 
-This reaches what the other commands do not cover, such as deleting a meshObject or reading a newer
-representation of it. meshStack versions a meshObject endpoint through its media type, and the
-command reads the version from the API docs, which meshstack api-docs shows: the latest one the path
-offers, previews included, unless --api-version, an Accept or Content-Type header or the body's
-apiVersion names another. A meshObject body then gets the kind and apiVersion it lacks.
-
---request-json sends a JSON file, or stdin for '-', typed with the version's media type. For a path
+--request-json sends a JSON file, or stdin for '-'. For a path
 of no version in the API docs, the Content-Type and Accept headers default to application/json, and
 without the API docs the Content-Type alone does.
 
-An answer outside 2xx still writes its body, and the command then fails.
+An answer outside 2xx still writes its body but the command then fails.
 
-The same command line with api-docs in place of api describes the request.`,
+Replace the same command line with 'api-docs' in place of 'api' to describe the request.`,
 		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace'
   meshstack api -X DELETE /api/meshobjects/meshbuildingblocks/<uuid>/purge
   meshstack api -X POST /api/meshobjects/meshworkspaces --request-json workspace.json
