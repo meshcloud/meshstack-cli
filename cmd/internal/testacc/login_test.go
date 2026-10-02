@@ -40,7 +40,7 @@ func devLogins(t *testing.T) []devLogin {
 }
 
 // keycloak lets a login with no workspace in, and the workspace list then answers 403.
-const refusedWithoutAWorkspace = "cannot list workspaces"
+const refusedWithoutAWorkspace = "this login has no workspace to work in"
 
 // TestAccBrowserLogin drives the authorization code flow with no browser and no terminal, which is
 // the shape CI has: the CLI prints the URL of its access level page to stderr and waits on a loopback

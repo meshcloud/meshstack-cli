@@ -27,3 +27,17 @@ var WorkspaceSetting = setting.Setting[Workspace]{
 	},
 	Parse: setting.ParseText[Workspace],
 }
+
+// NoWorkspaceToWorkInError is what a login gets whose workspace list holds nothing to choose from.
+type NoWorkspaceToWorkInError struct {
+	// MayNotList is set where meshStack refused the list, rather than answering an empty one.
+	MayNotList bool
+}
+
+func (e NoWorkspaceToWorkInError) Error() string {
+	if e.MayNotList {
+		return "this login has no workspace to work in, as it may not list workspaces; ask for access to one in meshPanel, or name one with --workspace"
+	}
+	return "this login has no workspace to work in; ask for access to one in meshPanel"
+}
+

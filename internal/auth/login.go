@@ -122,9 +122,10 @@ func (s Session) resolveWorkspaceForLogin(ctx context.Context, opts ResolveSessi
 		}
 		r.Items, err = c.Workspace.List(ctx)
 		if httpError, ok := errors.AsType[http.Error](err); ok && httpError.IsForbidden() {
-			err = fmt.Errorf("cannot list workspaces; try logging into meshPanel UI first, got: %w", httpError)
+			slog.DebugContext(ctx, "meshStack refused the workspace list: "+httpError.Error())
+			err = meshstack.NoWorkspaceToWorkInError{MayNotList: true}
 		} else if err == nil && len(r.Items) == 0 {
-			err = errors.New("no workspaces found; try logging into meshPanel UI first and/or become member of a workspace")
+			err = meshstack.NoWorkspaceToWorkInError{}
 		}
 		return
 	}))

@@ -73,8 +73,12 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 		return fmt.Errorf("no refresh token available for %T; run 'meshstack login --endpoint %s'", oidcLogin, oidcLogin.Endpoint)
 	}
 	workspace, err := getWorkspace()
-	if err != nil {
-		return fmt.Errorf("a workspace is required for %T; configure one, or give the profile a default workspace with 'meshstack profile edit' or 'meshstack login --endpoint %s': %w", oidcLogin, oidcLogin.Endpoint, err)
+	if noWorkspace, ok := errors.AsType[meshstack.NoWorkspaceToWorkInError](err); ok {
+		// The setting resolution around it only adds the sources a workspace could come from, and
+		// noWorkspace already says which of them helps.
+		return noWorkspace
+	} else if err != nil {
+		return fmt.Errorf("a browser login needs a workspace; name one, or give the profile a default workspace with 'meshstack profile edit' or 'meshstack login --endpoint %s': %w", oidcLogin.Endpoint, err)
 	}
 	oidcClient, err := oidc.NewClient(ctx, client, oidcLogin.Issuer, oidcLogin.ClientId)
 	if err != nil {

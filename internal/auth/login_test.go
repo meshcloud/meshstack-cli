@@ -48,7 +48,7 @@ func TestLoginListsWorkspacesWithoutWaitingOnItsOwnWorkspace(t *testing.T) {
 	select {
 	case err := <-stored:
 		require.Error(t, err)
-		require.NotContains(t, err.Error(), "no workspaces found")
+		require.NotErrorAs(t, err, &meshstack.NoWorkspaceToWorkInError{})
 	case <-time.After(10 * time.Second):
 		t.Fatal("the store is still waiting for the workspace list")
 	}
