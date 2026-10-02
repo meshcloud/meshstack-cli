@@ -16,12 +16,11 @@ func newEdit() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit a profile",
-		Long: `Edit the profile --profile names, or the one selected from a list without it: in a form on a
-terminal, and line by line otherwise, where an empty answer keeps the value. The list offers only the
-profiles for the endpoint where --endpoint or MESHSTACK_ENDPOINT gives one. --workspace gives the
-default answer for the default workspace.
+		Long: `Edit a profile, in a form on a terminal and line by line otherwise, where an empty answer keeps
+the value. Without --profile, it asks which profile to edit, among those for the endpoint.
+--workspace gives the default answer for the default workspace.
 
-A new endpoint removes the stored credentials, and a new name takes them along.`,
+A new endpoint removes the stored credentials.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

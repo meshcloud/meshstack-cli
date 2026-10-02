@@ -14,7 +14,7 @@ func newAdd() *cobra.Command {
 		Use:   "add",
 		Short: "Add a profile",
 		Long: `Add a profile, in a form on a terminal and line by line otherwise. --profile, --endpoint and
---workspace give the default answers, which an empty answer takes, as does an input that ends.`,
+--workspace give the default answers.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

@@ -21,17 +21,14 @@ func newList() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List event logs, newest first",
-		Long: `List event logs, newest first. Without --until, the list ends when the command starts.
+		Long: `List event logs, newest first.
 
---title keeps the event logs whose title contains the text, so compare the title yourself if you
-need an exact match. --exclude-title leaves out the event logs of a title, and can be repeated.
+--from and --until take a date such as 2026-07-01, which means midnight UTC, or an instant such as
+2026-07-01T12:00:00Z.
 
---from includes its instant and --until excludes it. Both take a date such as 2026-07-01, which
-means midnight UTC, or an instant such as 2026-07-01T12:00:00Z.
-
-A credential with the admin permission to list event logs lists the event logs of every workspace,
-and --workspace, or MESHSTACK_WORKSPACE, narrows the list to one workspace. Any other credential
-lists the event logs of its own workspace only.`,
+An admin credential lists the event logs of every workspace, unless --workspace names one: the
+profile's default workspace does not narrow the list. Any other credential lists those of its own
+workspace.`,
 		Example: `  meshstack eventlog list --from 2026-07-01 --until 2026-07-02
   meshstack elog list --title "Building Block Run" --exclude-title "Building Block Run Executed"
   meshstack elog list --workspace my-workspace --limit unlimited -o ndjson`,

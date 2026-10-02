@@ -17,11 +17,8 @@ func New() *cobra.Command {
 		Long: `Manage the profiles that meshstack auth login stores, each an endpoint with its credential and
 default workspace.
 
-On a terminal, this lists the profiles to add, edit, delete, or make the current one, starting at
-the first one for the endpoint where --endpoint or MESHSTACK_ENDPOINT gives one. Elsewhere it shows
-this help: list and show print the profiles, and add, edit and delete ask line by line.
-
-While it is open, and while add, edit or delete runs, a login fails, and the other way round.`,
+On a terminal, this lists the profiles to add, edit, delete, or make the current one. Elsewhere it
+shows this help: list and show print the profiles, and add, edit and delete ask line by line.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

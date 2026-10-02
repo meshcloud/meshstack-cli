@@ -13,8 +13,7 @@ func newList() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the workspaces visible from the current workspace, newest first",
-		Long: `List the workspaces visible from the current workspace, newest first. The current workspace
-is --workspace, MESHSTACK_WORKSPACE, or the profile's default workspace.
+		Long: `List the workspaces visible from the current workspace, newest first.
 
 From the workspace behind meshPanel's admin area, a role that may list every workspace, such as
 Organization Admin, lists them all. From any other workspace the list holds that workspace alone.`,

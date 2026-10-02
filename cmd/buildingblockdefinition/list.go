@@ -15,9 +15,9 @@ func newList() *cobra.Command {
 		Short: "List building block definitions, newest first",
 		Long: `List building block definitions, newest first.
 
---workspace, or MESHSTACK_WORKSPACE, lists the definitions that workspace owns, and without either
-meshStack lists those the credential can see. Both add the definitions published to the whole
-platform.`,
+--workspace lists the definitions that workspace owns. Without it, the list holds those the
+credential can see, as the profile's default workspace does not narrow it. Both add the
+definitions published to the whole platform.`,
 		Example: `  meshstack buildingblockdefinition list
   meshstack bbd list --workspace my-workspace`,
 		Args: cobra.NoArgs,

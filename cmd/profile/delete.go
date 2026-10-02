@@ -17,13 +17,10 @@ func newDelete() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a profile and its stored credentials",
-		Long: `Delete the profile --profile names, or the one selected from a list without it, together
-with its stored credentials. The list offers only the profiles for the endpoint where --endpoint or
-MESHSTACK_ENDPOINT gives one. Where it deletes the current profile and one is left, that one
-becomes the current profile.
+		Long: `Delete a profile and its stored credentials.
 
-It asks before it deletes, unless --yes goes with --profile, or with an --endpoint that only one
-profile is for.`,
+Without --profile, it asks which profile to delete, among those for the endpoint. It asks before it
+deletes, unless --yes goes with --profile, or with an --endpoint that only one profile is for.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

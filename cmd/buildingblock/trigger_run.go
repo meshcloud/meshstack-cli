@@ -36,10 +36,8 @@ func newTriggerRun() *cobra.Command {
 		Long: `Ask meshStack to run a building block, named by its uuid, which "meshstack buildingblock list"
 reports as metadata.uuid.
 
-The command waits until meshStack has started the run, and writes the building block as it is
-then, whose status.latestRunUuid names the run. It does not wait for the run to finish:
-"meshstack buildingblockrun logs <run-uuid>" shows how far it got. When meshStack could not start
-the run, the command fails with the reason it gives, status.runStartFailure.
+The command waits until meshStack has started the run, and writes the building block, whose
+status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>" shows how far it got.
 "meshstack api-docs --describe buildingblock.trigger-run" shows the fields of the answer.`,
 		Example: `  meshstack buildingblock trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -o ndjson | jq -r .status.latestRunUuid`,

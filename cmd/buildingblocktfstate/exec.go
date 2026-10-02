@@ -58,21 +58,18 @@ func newExec() *cobra.Command {
 		Short: "Run tofu against the state of a building block",
 		Long: `Run a command, such as tofu plan, against the state of a building block, named by its uuid.
 
-While the command runs, exec serves the state on a loopback port, and passes the command the
-environment it was given plus TF_HTTP_ADDRESS, TF_HTTP_USERNAME and TF_HTTP_PASSWORD, which point
-tofu's http backend there. The module needs a backend "http" block, and exec writes nothing into it:
-"meshstack buildingblock tfstate --help" shows the file to add. The state is the one stored under
-the workspace of the building block, metadata.ownedByWorkspace, unless --workspace names another one.
+exec serves the state to tofu's http backend through TF_HTTP_ADDRESS, TF_HTTP_USERNAME and
+TF_HTTP_PASSWORD, and exits with the exit code of the command. The module needs a backend "http"
+block: "meshstack buildingblock tfstate --help" shows the file to add. The state is the one stored
+under the workspace of the building block, metadata.ownedByWorkspace, unless --workspace names
+another one.
 
---mode read, the default, serves the state and refuses to store one. --mode readwrite stores what the
-command writes, and since meshStack keeps no lock on the state, it refuses
+--mode read, the default, refuses to store a state. --mode readwrite stores what the command writes,
+and since meshStack keeps no lock on the state, it refuses
   - while a run of the building block is pending or in progress, unless --force;
   - a state whose lineage is not that of the stored state, or whose serial is not above it.
 Before it replaces or deletes the stored state, it copies it to tfstate-backups in the configuration
-directory.
-
-Ctrl-C reaches the command, which can then store what it has done, and exec exits with the exit code
-of the command.`,
+directory.`,
 		Example: `  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if cmd.ArgsLenAtDash() != 1 || len(args) < 2 {

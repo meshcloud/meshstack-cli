@@ -32,11 +32,8 @@ func newLogs() *cobra.Command {
 The run is named by its uuid, which "meshstack buildingblockrun list" reports as metadata.uuid.
 "meshstack api-docs --describe buildingblockrun.logs" shows the fields of the answer.
 
---follow reads the run again every few seconds until it has finished, and writes as text what
-is new since the last read: a line "<step>: <status>" when a step's status changes, and each new
-line of a step's log as "<step> | <line>", or "<step> (system) | <line>" for its system message.
-It ends with exit status 0 when the run succeeded, and 1 when it failed or was aborted, so a
-script can wait on a run with it. --follow takes no --output.`,
+--follow writes what is new as text until the run has finished, and ends with exit status 0 when
+the run succeeded and 1 otherwise, so a script can wait on a run with it.`,
 		Example: `  meshstack buildingblockrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c -o ndjson
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c --follow`,

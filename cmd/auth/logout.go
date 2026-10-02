@@ -18,11 +18,7 @@ func newLogout() *cobra.Command {
 		Short: "Remove this profile's stored credentials",
 		Long: `Remove the stored credentials of a profile.
 
-Unless --profile or MESHSTACK_PROFILE names the profile, it asks which of the stored profiles to log
-out of, and offers only those for the endpoint where --endpoint or MESHSTACK_ENDPOINT gives one.
-Where the input ends before an answer, it logs out of the current profile if that is one of them.
-
-A profile that does not exist only gets a warning, as there is nothing to log out of.`,
+Without a profile named, it asks which stored profile to log out of, among those for the endpoint.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
