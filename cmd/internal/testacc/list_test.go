@@ -1,7 +1,6 @@
 package testacc
 
 import (
-	"encoding/json/v2"
 	"strings"
 	"testing"
 
@@ -24,7 +23,7 @@ func TestAccEveryListCommandAnswers(t *testing.T) {
 	list("buildingblock", "list")
 	list("buildingblockrun", "list")
 	list("eventlog", "list")
-	definition := firstUuid(t, list("buildingblockdefinition", "list"))
+	definition := firstUuid(list("buildingblockdefinition", "list"))
 	if definition == "" {
 		t.Log("the local stack holds no building block definition, so no version list ran")
 		return
@@ -32,15 +31,13 @@ func TestAccEveryListCommandAnswers(t *testing.T) {
 	list("buildingblockdefinitionversion", "list", "--definition", definition)
 }
 
-func firstUuid(t *testing.T, output string) string {
-	t.Helper()
-	for line := range strings.Lines(output) {
-		var object struct {
-			Metadata struct {
-				Uuid string `json:"uuid"`
-			} `json:"metadata"`
-		}
-		if json.Unmarshal([]byte(line), &object) == nil && object.Metadata.Uuid != "" {
+func firstUuid(output string) string {
+	for _, object := range ndjsonObjects[struct {
+		Metadata struct {
+			Uuid string `json:"uuid"`
+		} `json:"metadata"`
+	}](output) {
+		if object.Metadata.Uuid != "" {
 			return object.Metadata.Uuid
 		}
 	}

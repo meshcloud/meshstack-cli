@@ -1,8 +1,6 @@
 package testacc
 
 import (
-	"encoding/json/v2"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,14 +36,13 @@ func TestAccFollowOfAFinishedRunWritesItsLogsAndEnds(t *testing.T) {
 }
 
 func firstFinishedRun(ndjson string) (runUuid, status string) {
-	for line := range strings.Lines(ndjson) {
-		var run struct {
-			Metadata struct {
-				Uuid string `json:"uuid"`
-			} `json:"metadata"`
-			Status string `json:"status"`
-		}
-		if json.Unmarshal([]byte(line), &run) == nil && run.Metadata.Uuid != "" && run.Status != "IN_PROGRESS" {
+	for _, run := range ndjsonObjects[struct {
+		Metadata struct {
+			Uuid string `json:"uuid"`
+		} `json:"metadata"`
+		Status string `json:"status"`
+	}](ndjson) {
+		if run.Metadata.Uuid != "" && run.Status != "IN_PROGRESS" {
 			return run.Metadata.Uuid, run.Status
 		}
 	}
@@ -59,14 +56,9 @@ type stepLog struct {
 
 func stepsOf(t *testing.T, ndjson string) []stepLog {
 	t.Helper()
-	for line := range strings.Lines(ndjson) {
-		var logs struct {
-			Steps []stepLog `json:"steps"`
-		}
-		if json.Unmarshal([]byte(line), &logs) == nil {
-			return logs.Steps
-		}
-	}
-	require.Failf(t, "no logs", "the logs command wrote no JSON:\n%s", ndjson)
-	return nil
+	logs := ndjsonObjects[struct {
+		Steps []stepLog `json:"steps"`
+	}](ndjson)
+	require.NotEmptyf(t, logs, "the logs command wrote no JSON:\n%s", ndjson)
+	return logs[0].Steps
 }
