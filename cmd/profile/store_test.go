@@ -34,7 +34,7 @@ func storedProfiles(t *testing.T, stored ...profile.Profile) profile.Profiles {
 	t.Helper()
 	profiles := emptyConfigDir(t)
 	for _, p := range stored {
-		require.NoError(t, put(t.Context(), &profiles, nil, p))
+		require.NoError(t, profiles.Put(t.Context(), nil, p))
 	}
 	return profiles
 }
@@ -76,9 +76,9 @@ func TestTheStoredProfiles(t *testing.T) {
 	})
 
 	t.Run("a name that is taken is refused", func(t *testing.T) {
-		require.EqualError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "dev", Endpoint: endpointB}),
+		require.EqualError(t, profiles.Put(t.Context(), nil, profile.Profile{Name: "dev", Endpoint: endpointB}),
 			"a profile named 'dev' exists already")
-		require.EqualError(t, put(t.Context(), &profiles, profiles.Profiles["prod"], profile.Profile{Name: "dev", Endpoint: endpointB}),
+		require.EqualError(t, profiles.Put(t.Context(), profiles.Profiles["prod"], profile.Profile{Name: "dev", Endpoint: endpointB}),
 			"a profile named 'dev' exists already")
 	})
 
@@ -87,7 +87,7 @@ func TestTheStoredProfiles(t *testing.T) {
 		renamed := *profiles.Profiles["dev"]
 		renamed.Name = "development"
 
-		require.NoError(t, put(t.Context(), &profiles, profiles.Profiles["dev"], renamed))
+		require.NoError(t, profiles.Put(t.Context(), profiles.Profiles["dev"], renamed))
 
 		assert.Equal(t, []profile.Name{"development", "prod"}, names(profiles))
 		assert.Equal(t, profile.Name("development"), profiles.CurrentProfile)
@@ -105,7 +105,7 @@ func TestTheStoredProfiles(t *testing.T) {
 		moved.Endpoint = endpointC
 		moved.Credential = credential.ManualName
 
-		require.NoError(t, put(t.Context(), &profiles, profiles.Profiles["development"], moved))
+		require.NoError(t, profiles.Put(t.Context(), profiles.Profiles["development"], moved))
 
 		assert.Equal(t, endpointC, profiles.Profiles["development"].Endpoint)
 		assert.Nil(t, loadedCredentials(t, profiles, "development"))
@@ -113,10 +113,10 @@ func TestTheStoredProfiles(t *testing.T) {
 	})
 
 	t.Run("use makes a profile the current one, and refuses one there is not", func(t *testing.T) {
-		require.NoError(t, use(t.Context(), &profiles, "prod"))
+		require.NoError(t, profiles.SetCurrent(t.Context(), "prod"))
 
 		assert.Equal(t, profile.Name("prod"), reloadedCurrent(t))
-		require.EqualError(t, use(t.Context(), &profiles, "staging"), "there is no profile 'staging'")
+		require.EqualError(t, profiles.SetCurrent(t.Context(), "staging"), "there is no profile 'staging'")
 	})
 
 	t.Run("removing another profile than the current one keeps the current one", func(t *testing.T) {
@@ -125,8 +125,8 @@ func TestTheStoredProfiles(t *testing.T) {
 	})
 
 	t.Run("removing the current profile of several left makes none the current one", func(t *testing.T) {
-		require.NoError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "staging", Endpoint: endpointC}))
-		require.NoError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "dev", Endpoint: endpointA}))
+		require.NoError(t, profiles.Put(t.Context(), nil, profile.Profile{Name: "staging", Endpoint: endpointC}))
+		require.NoError(t, profiles.Put(t.Context(), nil, profile.Profile{Name: "dev", Endpoint: endpointA}))
 
 		assert.Contains(t, removeWarning(t, "prod"), "No profile is current now. Make one the current one in meshstack profile, "+
 			"or log in to it with meshstack login --profile <name>.")
@@ -134,7 +134,7 @@ func TestTheStoredProfiles(t *testing.T) {
 	})
 
 	t.Run("removing the current profile of one left makes that the current one", func(t *testing.T) {
-		require.NoError(t, use(t.Context(), &profiles, "staging"))
+		require.NoError(t, profiles.SetCurrent(t.Context(), "staging"))
 
 		assert.Contains(t, removeWarning(t, "staging"), "Profile 'dev' is the current one now, as it is the only one left.")
 		assert.Equal(t, profile.Name("dev"), reloadedCurrent(t))

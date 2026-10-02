@@ -82,8 +82,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 
 		// CurrentProfile points into the map profiles holds, so the default workspace set above is
 		// stored as well.
-		profiles.CurrentProfile = session.CurrentProfile.Name
-		return errors.Join(creds.Store(ctx), profiles.Store(ctx))
+		return errors.Join(creds.Store(ctx), profiles.SetCurrent(ctx, session.CurrentProfile.Name))
 	}
 	return session, storeSession, profiles.Unlock, nil
 }

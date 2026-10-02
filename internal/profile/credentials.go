@@ -57,3 +57,25 @@ func (p Profile) RemoveCredentials(ctx context.Context) error {
 	}
 	return errors.Join(errs...)
 }
+
+func (p Profile) moveCredentialsTo(ctx context.Context, edited Profile) error {
+	if !p.Endpoint.Equal(edited.Endpoint) {
+		return p.RemoveCredentials(ctx)
+	}
+	if p.Name == edited.Name {
+		return nil
+	}
+	credentials, err := p.Credentials(ctx)
+	if err != nil {
+		return err
+	}
+	var none Credentials
+	if credentials.Credentials != none.Credentials {
+		credentials.FilePath = p.ConfigDir.CredentialsJsonFor(edited.Name)
+		if err := credentials.Store(ctx); err != nil {
+			return err
+		}
+	}
+	// The token caches go as well, and new tokens are minted on next use.
+	return p.RemoveCredentials(ctx)
+}

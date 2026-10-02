@@ -35,7 +35,7 @@ func TestTheLocalEndpointIsTheLastSuggestion(t *testing.T) {
 		"b": {Endpoint: endpointB}, "local": {Endpoint: xurl.MustParsef(localEndpoint)}, "a": {Endpoint: endpointA},
 	}}
 
-	assert.Equal(t, []string{endpointA.String(), endpointB.String(), localEndpoint}, knownEndpoints(profiles))
+	assert.Equal(t, []string{endpointA.String(), endpointB.String(), localEndpoint}, (&draft{}).questions(profiles)[0].suggestions)
 }
 
 func TestTheWorkspacesThatTheProfilesAtTheEndpointReachAreSuggested(t *testing.T) {
@@ -61,7 +61,7 @@ func TestTheWorkspacesThatTheProfilesAtTheEndpointReachAreSuggested(t *testing.T
 	require.NoError(t, credentials.Store(t.Context()))
 
 	// The logged-out profile is asked as well, and fails without a call.
-	assert.Equal(t, []string{"app-team", "platform-team"}, knownWorkspaces(t.Context(), profilesAt(profiles, endpoint.String())))
-	assert.Empty(t, profilesAt(profiles, "https://unknown.example.io"))
+	assert.Equal(t, []string{"app-team", "platform-team"}, knownWorkspaces(t.Context(), profiles.MatchingEndpoint(endpoint)))
+	assert.Empty(t, profiles.MatchingEndpoint(xurl.MustParsef("https://unknown.example.io")))
 	assert.Equal(t, int64(1), server.Counts(t).Logins)
 }

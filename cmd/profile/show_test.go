@@ -98,7 +98,7 @@ func TestShow(t *testing.T) {
 	})
 
 	t.Run("shows the current profile with a warning where it is for another endpoint, and that endpoint has several profiles", func(t *testing.T) {
-		require.NoError(t, put(t.Context(), &profiles, nil, profile.Profile{Name: "staging", Endpoint: endpointB}))
+		require.NoError(t, profiles.Put(t.Context(), nil, profile.Profile{Name: "staging", Endpoint: endpointB}))
 		captured := logs.Capture(t)
 
 		output, err := execute(t, "", "show", "--endpoint", "https://b.example.io")

@@ -15,7 +15,7 @@ import (
 // or MESHSTACK_ENDPOINT left in the environment is no answer to which profile to change.
 func selectProfile(ctx context.Context, cmd *cobra.Command, p prompt.Prompt, profiles profile.Profiles) (selected *profile.Profile, namedByFlag bool, err error) {
 	if cmd.Flags().Changed(internal.ProfileFlag.Name.String()) {
-		selected, err = find(profiles, profile.Name(internal.ProfileFlag.Value))
+		selected, err = profiles.Find(profile.Name(internal.ProfileFlag.Value))
 		return selected, true, err
 	}
 	selection, err := profiles.SelectionFor(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})

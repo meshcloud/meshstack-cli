@@ -54,9 +54,14 @@ func (d *draft) questions(profiles profile.Profiles) []question {
 	if d.original != nil {
 		endpointHint += " A new endpoint logs the profile out."
 	}
+	// localEndpoint comes last, so that a known https endpoint wins over it for a prefix of both,
+	// such as "http".
+	endpoints := append(slices.DeleteFunc(profiles.Endpoints(), func(endpoint string) bool {
+		return endpoint == localEndpoint
+	}), localEndpoint)
 	return []question{
 		{
-			title: "Endpoint", description: endpointHint, value: &d.endpoint, suggestions: knownEndpoints(profiles),
+			title: "Endpoint", description: endpointHint, value: &d.endpoint, suggestions: endpoints,
 			validate: func(value string) error {
 				_, err := parseEndpoint(value)
 				return err
@@ -79,10 +84,7 @@ func (d *draft) validateName(profiles profile.Profiles) func(string) error {
 		if err := name.UnmarshalText([]byte(cmp.Or(value, d.suggestedName(profiles)))); err != nil {
 			return err
 		}
-		if _, taken := profiles.Profiles[name]; taken && (d.original == nil || d.original.Name != name) {
-			return fmt.Errorf("a profile named '%s' exists already", name)
-		}
-		return nil
+		return profiles.CheckNameFree(name, d.original)
 	}
 }
 
@@ -96,19 +98,6 @@ func parseEndpoint(value string) (endpoint xurl.URL, err error) {
 
 // localEndpoint is meshfed-api of the local stack in ../meshfed-release, on Spring's default port.
 const localEndpoint = "http://localhost:8080"
-
-// knownEndpoints ends with localEndpoint, so that a known https endpoint wins over it for a
-// prefix of both, such as "http".
-func knownEndpoints(profiles profile.Profiles) []string {
-	var endpoints []string
-	for _, p := range profiles.Profiles {
-		if p.Endpoint.URL != nil && p.Endpoint.String() != localEndpoint {
-			endpoints = append(endpoints, p.Endpoint.String())
-		}
-	}
-	slices.Sort(endpoints)
-	return append(slices.Compact(endpoints), localEndpoint)
-}
 
 func (d *draft) suggestedName(profiles profile.Profiles) string {
 	parsed, err := parseEndpoint(d.endpoint)
@@ -150,7 +139,7 @@ func (d *draft) save(ctx context.Context, profiles *profile.Profiles) (done stri
 		return
 	}
 	edited.DefaultWorkspace = meshstack.Workspace(d.workspace)
-	if err = put(ctx, profiles, d.original, edited); err != nil {
+	if err = profiles.Put(ctx, d.original, edited); err != nil {
 		return
 	}
 	if d.original == nil {
@@ -296,7 +285,11 @@ func (f *form) lookUpWorkspaces(ctx context.Context, profiles profile.Profiles) 
 	if f.endpoint == f.workspacesFor {
 		return f.nextWorkspaceLookup()
 	}
-	endpoint, asked := f.endpoint, profilesAt(profiles, f.endpoint)
+	endpoint := f.endpoint
+	var asked []profile.Profile
+	if parsed, err := parseEndpoint(endpoint); err == nil {
+		asked = profiles.MatchingEndpoint(parsed)
+	}
 	return func() tea.Msg {
 		return workspacesLookedUp{form: f, endpoint: endpoint, names: knownWorkspaces(ctx, asked)}
 	}
@@ -312,19 +305,6 @@ func (f *form) onWorkspacesLookedUp(msg workspacesLookedUp) tea.Cmd {
 
 func (f *form) nextWorkspaceLookup() tea.Cmd {
 	return tea.Tick(workspaceLookupInterval, func(time.Time) tea.Msg { return workspaceLookupDue{form: f} })
-}
-
-// profilesAt are copies of the profiles at endpoint. One without a stored credential fails the
-// lookup at once, without a call.
-func profilesAt(profiles profile.Profiles, endpoint string) (at []profile.Profile) {
-	parsed, err := parseEndpoint(endpoint)
-	if err != nil {
-		return nil
-	}
-	for _, p := range profiles.MatchingEndpoint(parsed) {
-		at = append(at, *p)
-	}
-	return at
 }
 
 // knownWorkspaces lists the workspaces that the stored credentials of profiles can reach. A failure

@@ -311,7 +311,7 @@ func (m model) onKey(msg tea.KeyPressMsg) (model, tea.Cmd) {
 		return m.withDeletion(highlighted)
 	case key.Matches(msg, keys.use) && highlighted != nil:
 		return m.finish(highlighted.Name, fmt.Sprintf("Profile '%s' is the current one.", highlighted.Name),
-			use(m.ctx, &m.Profiles, highlighted.Name))
+			m.SetCurrent(m.ctx, highlighted.Name))
 	case key.Matches(msg, keys.remove, keys.use):
 		return m, nil
 	}

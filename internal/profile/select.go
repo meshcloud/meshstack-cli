@@ -44,11 +44,15 @@ func (ps *Profiles) Selection() Selection {
 	return Selection{Profiles: sorted, Current: ps.CurrentProfile}
 }
 
-// MatchingEndpoint are the profiles for endpoint, ordered by name.
-func (ps *Profiles) MatchingEndpoint(endpoint xurl.URL) []*Profile {
+// MatchingEndpoint are copies of the profiles for endpoint, ordered by name, so that a caller can
+// read them while the profiles change.
+func (ps *Profiles) MatchingEndpoint(endpoint xurl.URL) (matching []Profile) {
 	selection := ps.Selection()
 	selection.Endpoint = &endpoint
-	return selection.Candidates()
+	for _, p := range selection.Candidates() {
+		matching = append(matching, *p)
+	}
+	return matching
 }
 
 func (s Selection) Candidates() []*Profile {
