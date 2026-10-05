@@ -1,9 +1,9 @@
 package profile
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -29,28 +29,7 @@ deletes, unless --yes goes with --profile, or with an --endpoint that only one p
 			}
 			p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
 			return withLockedProfiles(ctx, func(profiles profile.Profiles) error {
-				deleted, named, err := selectProfile(ctx, cmd, p, profiles)
-				if err != nil {
-					return err
-				}
-				if !yesFlag.Value || !named {
-					if err := p.Printf("Delete profile '%s' and its stored credentials? [y/N]: ", deleted.Name); err != nil {
-						return err
-					}
-					answer, err := p.Next(ctx, "confirmation")
-					if err != nil {
-						return err
-					}
-					if !confirmed(answer) {
-						slog.InfoContext(ctx, fmt.Sprintf("Kept profile '%s'.", deleted.Name))
-						return nil
-					}
-				}
-				if err := remove(ctx, &profiles, deleted.Name); err != nil {
-					return err
-				}
-				slog.InfoContext(ctx, fmt.Sprintf("Deleted profile '%s'.", deleted.Name))
-				return nil
+				return deleteProfile(ctx, cmd, p, profiles, yesFlag.Value)
 			})
 		},
 	}
@@ -58,7 +37,24 @@ deletes, unless --yes goes with --profile, or with an --endpoint that only one p
 	return cmd
 }
 
-func confirmed(answer string) bool {
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	return answer == "y" || answer == "yes"
+func deleteProfile(ctx context.Context, cmd *cobra.Command, p prompt.Prompt, profiles profile.Profiles, yes bool) error {
+	deleted, named, err := selectProfile(ctx, cmd, p, profiles)
+	if err != nil {
+		return err
+	}
+	if !yes || !named {
+		confirmed, err := p.Confirm(ctx, fmt.Sprintf("Delete profile '%s' and its stored credentials?", deleted.Name))
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			slog.InfoContext(ctx, fmt.Sprintf("Kept profile '%s'.", deleted.Name))
+			return nil
+		}
+	}
+	if err := remove(ctx, &profiles, deleted.Name); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, fmt.Sprintf("Deleted profile '%s'.", deleted.Name))
+	return nil
 }
