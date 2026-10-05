@@ -24,6 +24,7 @@ type Client struct {
 	BuildingBlock                  MeshBuildingBlockClient
 	BuildingBlockV2                MeshBuildingBlockV2Client
 	BuildingBlockRun               MeshBuildingBlockRunClient
+	BuildingBlockRunAction         *MeshBuildingBlockRunActionClient
 	BuildingBlockDefinition        MeshBuildingBlockDefinitionClient
 	BuildingBlockDefinitionVersion MeshBuildingBlockDefinitionVersionClient
 	BuildingBlockRunner            MeshBuildingBlockRunnerClient
@@ -65,6 +66,7 @@ func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authoriz
 		BuildingBlock:                  newBuildingBlockClient(ctx, authorizedClient),
 		BuildingBlockV2:                buildingBlockV2,
 		BuildingBlockRun:               buildingBlockRun,
+		BuildingBlockRunAction:         newBuildingBlockRunActionClient(authorizedClient, buildingBlockRun),
 		BuildingBlockDefinition:        buildingBlockDefinition,
 		BuildingBlockDefinitionVersion: buildingBlockDefinitionVersion,
 		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, authorizedClient),
