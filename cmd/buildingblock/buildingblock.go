@@ -34,6 +34,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newList())
 	cmd.AddCommand(newTriggerRun())
 	cmd.AddCommand(newApproveRun())
+	cmd.AddCommand(newAbortRun())
 	cmd.AddCommand(buildingblocktfstate.New())
 
 	return cmd
