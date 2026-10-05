@@ -24,9 +24,9 @@ workspace it works in:
 
 The roles Workspace Owner and Workspace Manager have the rights of the second row, so a browser login
 works where its workspace owns the definition of the building block. Any other row takes an API key
-with these rights, meshstack login --apikey. Locking the state takes the right to write it. To
-delete the state, the login needs TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or ADM_TFSTATE_DELETE in
-the same row.`
+with these rights, meshstack login --apikey. Locking the state, and force-unlock, take the right to
+write it. To delete the state, the login needs TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or
+ADM_TFSTATE_DELETE in the same row.`
 
 const backendFile = `terraform {
     backend "http" {}
@@ -50,7 +50,8 @@ to the module:
 and run "meshstack buildingblock tfstate exec <building-block-uuid> -- tofu init" once.`,
 		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources
   meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -- tofu plan
-  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply`,
+  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply
+  meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -59,6 +60,7 @@ and run "meshstack buildingblock tfstate exec <building-block-uuid> -- tofu init
 
 	cmd.AddCommand(newShow())
 	cmd.AddCommand(newExec())
+	cmd.AddCommand(newForceUnlock())
 
 	return cmd
 }

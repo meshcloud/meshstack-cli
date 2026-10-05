@@ -99,6 +99,11 @@ type result struct {
 
 func run(t *testing.T, args ...string) result {
 	t.Helper()
+	return runAnswering(t, "", args...)
+}
+
+func runAnswering(t *testing.T, answers string, args ...string) result {
+	t.Helper()
 	var stdout, stderr, log bytes.Buffer
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })
@@ -106,7 +111,7 @@ func run(t *testing.T, args ...string) result {
 	cmd := tfstate.New()
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
-	cmd.SetIn(strings.NewReader(""))
+	cmd.SetIn(strings.NewReader(answers))
 	cmd.SetArgs(args)
 	err := cmd.ExecuteContext(t.Context())
 	return result{stdout.String(), stderr.String(), log.String(), err}
@@ -201,5 +206,77 @@ func TestTfstate(t *testing.T) {
 		assert.Contains(t, err.Error(), "http error 403")
 		assert.Contains(t, err.Error(), "MANAGED_TFSTATE_LIST")
 		assert.Contains(t, err.Error(), "meshstack login --apikey")
+	})
+}
+
+func TestForceUnlock(t *testing.T) {
+	meshStack := newFakeMeshStack(t)
+	lockPath := statePath("my-workspace") + "/lock"
+	var lock []byte
+	meshStack.Route(lockPath, func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		switch {
+		case r.Method == gohttp.MethodGet && lock == nil:
+			w.WriteHeader(gohttp.StatusNotFound)
+		case r.Method == gohttp.MethodGet:
+			_, _ = w.Write(lock)
+		case r.Method == gohttp.MethodDelete:
+			lock = nil
+		}
+	})
+	lockOfTheRun := []byte(`{"lockInfo":{"ID":"the-lock","Operation":"OperationTypeApply","Who":"building block run ` + runUuid + `"},` +
+		`"holder":{"runUuid":"` + runUuid + `","principal":"the runner"},"createdOn":"2026-10-05T09:00:00Z"}`)
+
+	const question = "Release the lock the-lock? Only yes releases it: "
+
+	t.Run("refuses to release the lock of a run in progress, before it asks", func(t *testing.T) {
+		lock = lockOfTheRun
+
+		refused := runAnswering(t, "yes\n", "force-unlock", buildingBlockUuid)
+
+		require.Error(t, refused.err)
+		assert.Contains(t, refused.err.Error(), "building block run "+runUuid+", which holds the lock, is IN_PROGRESS")
+		assert.Contains(t, refused.log, "is locked by building block run "+runUuid)
+		assert.NotContains(t, refused.stderr, question)
+		assert.NotNil(t, lock)
+	})
+
+	t.Run("--force still asks, and any answer but yes keeps the lock", func(t *testing.T) {
+		for _, answers := range []string{"y\n", "YES\n", ""} {
+			kept := runAnswering(t, answers, "force-unlock", buildingBlockUuid, "--force")
+
+			require.Error(t, kept.err)
+			assert.Contains(t, kept.err.Error(), "kept the lock the-lock")
+			assert.Contains(t, kept.stderr, question)
+			assert.NotNil(t, lock)
+		}
+	})
+
+	t.Run("releases the lock of a run in progress with --force and yes, by the lock ID it found", func(t *testing.T) {
+		meshStack.TakeRequests()
+
+		released := runAnswering(t, "yes\n", "force-unlock", buildingBlockUuid, "--force")
+
+		require.NoError(t, released.err)
+		assert.Nil(t, lock)
+		requests := meshStack.TakeRequests()
+		unlock := requests[len(requests)-1]
+		assert.Equal(t, gohttp.MethodDelete, unlock.Method)
+		assert.Contains(t, string(unlock.Body), `"ID":"the-lock"`)
+	})
+
+	t.Run("releases the lock of a finished run on yes", func(t *testing.T) {
+		meshStack.runStatus["status"] = "FAILED"
+		lock = lockOfTheRun
+
+		require.NoError(t, runAnswering(t, "yes\n", "force-unlock", buildingBlockUuid).err)
+		assert.Nil(t, lock)
+	})
+
+	t.Run("succeeds where the state has no lock, without asking", func(t *testing.T) {
+		released := run(t, "force-unlock", buildingBlockUuid)
+
+		require.NoError(t, released.err)
+		assert.Contains(t, released.log, "has no lock")
+		assert.Empty(t, released.stderr)
 	})
 }
