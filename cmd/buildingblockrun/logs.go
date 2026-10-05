@@ -182,6 +182,11 @@ func (run runSnapshot) failure(runUuid uuid.UUID) error {
 	return fmt.Errorf("building block run %s failed", runUuid)
 }
 
+func WriteLogs(w io.Writer, logs client.MeshBuildingBlockRunLogs) error {
+	var written writtenLogs
+	return written.writeNew(w, logs.Steps)
+}
+
 // writtenLogs is what --follow has written of each step, matched to the next read by position,
 // because a step in the logs answer has no id.
 type writtenLogs []writtenStep
