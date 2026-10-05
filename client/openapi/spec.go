@@ -47,15 +47,10 @@ func (c component) ref() string {
 	return "#/components/" + c.kind + "/" + c.name
 }
 
-// Parse leaves out what the document says about authentication, see withoutAuthentication.
 func Parse(r io.Reader) (Spec, error) {
-	read, err := io.ReadAll(r)
+	document, err := io.ReadAll(r)
 	if err != nil {
 		return Spec{}, err
-	}
-	document, err := withoutAuthentication(read)
-	if err != nil {
-		return Spec{}, fmt.Errorf("cannot parse the OpenAPI document: %w", err)
 	}
 	var parsed struct {
 		Paths      object            `json:"paths"`

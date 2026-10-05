@@ -5,7 +5,6 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -188,29 +187,6 @@ func TestSpec(t *testing.T) {
 		_, err = mediaType.WithKindAndApiVersion(jsontext.Value(`{"apiVersion": "v2-preview"}`))
 		assert.EqualError(t, err, `the body's apiVersion is "v2-preview", but application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json takes "v1"`)
 	})
-}
-
-func TestParseLeavesOutAuthentication(t *testing.T) {
-	spec, err := openapi.Parse(strings.NewReader(`{
-		"security": [{"oauth2": []}],
-		"paths": {
-			"/api/login": {"post": {"operationId": "apiKeyLoginResponse"}},
-			"/api/meshobjects": {"put": {
-				"operationId": "importInJson",
-				"description": "Imports meshObjects.\n\nIt therefore requires\nBasic Authentication with an API User.\n\n**Authentication:** This endpoint supports API User authentication.",
-				"security": [{"basic": []}]
-			}}
-		},
-		"components": {"schemas": {}, "securitySchemes": {"basic": {"type": "http", "scheme": "basic"}}}
-	}`))
-	require.NoError(t, err)
-
-	out, err := json.Marshal(spec)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{
-		"paths": {"/api/meshobjects": {"put": {"operationId": "importInJson", "description": "Imports meshObjects."}}},
-		"components": {"schemas": {}}
-	}`, string(out))
 }
 
 func TestApiVersion(t *testing.T) {
