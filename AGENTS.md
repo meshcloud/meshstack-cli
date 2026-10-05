@@ -33,7 +33,7 @@ looks stale.
 
 ## Naming
 
-- **`meshstack`** — the binary, so every invocation reads `meshstack auth login`.
+- **`meshstack`** — the binary, so every invocation reads `meshstack login`.
 - **meshStack CLI** — the product name, used in prose and docs.
 - `github.com/meshcloud/meshstack-cli` — the repository and Go module.
 

@@ -38,7 +38,7 @@ type MeshWorkspaceListFilter struct {
 
 type MeshWorkspaceClient interface {
 	// List returns every workspace the credential can see. An unscoped user token reaches this and
-	// almost nothing else, which is why `meshstack auth login` prompts for a workspace from it.
+	// almost nothing else, which is why `meshstack login` prompts for a workspace from it.
 	List(ctx context.Context) ([]MeshWorkspace, error)
 	Read(ctx context.Context, name string) (*MeshWorkspace, error)
 	Create(ctx context.Context, workspace *MeshWorkspaceCreate) (*MeshWorkspace, error)

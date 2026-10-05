@@ -14,7 +14,7 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profile",
 		Short: "Manage the stored profiles",
-		Long: `Manage the profiles that meshstack auth login stores, each an endpoint with its credential and
+		Long: `Manage the profiles that meshstack login stores, each an endpoint with its credential and
 default workspace.
 
 On a terminal, this lists the profiles to add, edit, delete, or make the current one. Elsewhere it
