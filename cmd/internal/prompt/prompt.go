@@ -112,6 +112,18 @@ func (p Prompt) Ask(ctx context.Context, what, defaultAnswer string, validate fu
 	}
 }
 
+func (p Prompt) Confirm(ctx context.Context, question string) (bool, error) {
+	if err := p.Printf("%s [y/N]: ", question); err != nil {
+		return false, err
+	}
+	answer, err := p.Next(ctx, "confirmation")
+	if err != nil {
+		return false, err
+	}
+	answer = strings.ToLower(answer)
+	return answer == "y" || answer == "yes", nil
+}
+
 func (p Prompt) Printf(format string, args ...any) (err error) {
 	_, err = fmt.Fprintf(p.out, format, args...)
 	return
