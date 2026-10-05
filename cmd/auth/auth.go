@@ -17,6 +17,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newLogin())
 	cmd.AddCommand(newLogout())
 	cmd.AddCommand(newStatus())
+	cmd.AddCommand(newToken())
 
 	return cmd
 }

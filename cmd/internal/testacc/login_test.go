@@ -119,6 +119,7 @@ func TestAccBrowserLogin(t *testing.T) {
 		require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
 	})
 	t.Run("every GET operation answers the organization admin", everyGetOperationAnswers(c, false))
+	t.Run("--apitoken logs in with the token auth token prints", apiTokenLogsIn(c))
 	t.Run("tfstate of a browser login says that it takes an API key", tfstateTakesAnApiKey(c, apiKey))
 }
 
@@ -172,19 +173,7 @@ func TestAccApiKeyLogin(t *testing.T) {
 		requireAuthStatus(t, c, "API key")
 	})
 
-	// Reading the token the API key login cached back off disk is the only way to reach --apitoken
-	// without minting a token, and a configuration directory is writable in CI too.
-	t.Run("--apitoken logs in with the token the API key login cached", func(t *testing.T) {
-		withToken := newCLI(t, endpoint)
-		withToken.setEnv(setting.ApiToken.EnvKey(), cachedApiKeyToken(t, c))
-
-		output, err := withToken.run("", "login", "--apitoken")
-		require.NoErrorf(t, err, "the API token login did not finish:\n%s", output)
-		assert.Contains(t, output, "| meshStack | ", "the login shows the status, with the meshStack it reached")
-		require.FileExists(t, withToken.credentialsJson())
-		requireAuthStatus(t, withToken, "API token")
-	})
-
+	t.Run("--apitoken logs in with the token auth token prints", apiTokenLogsIn(c))
 	t.Run("a listing keeps to the profile's default workspace", listingKeepsToTheDefaultWorkspace(c))
 	if workspace := c.workspaceHoldingABuildingBlock(t); workspace != "" {
 		c.setEnv(envWorkspace, workspace)
@@ -205,6 +194,34 @@ func (c *cli) withApiKey() *cli {
 	c.setEnv(setting.ApiKeyClientId.EnvKey(), requireEnv(c.t, setting.ApiKeyClientId.EnvKey()))
 	c.setEnv(setting.ApiKeyClientSecret.EnvKey(), requireEnv(c.t, setting.ApiKeyClientSecret.EnvKey()))
 	return c
+}
+
+// apiTokenLogsIn sends the token of c's login as an API token, as someone does who pastes it into
+// the API docs.
+func apiTokenLogsIn(c *cli) func(*testing.T) {
+	return func(t *testing.T) {
+		token := c.authToken(t)
+		withToken := newCLI(t, c.endpoint)
+		withToken.setEnv(setting.ApiToken.EnvKey(), token)
+
+		output, err := withToken.run("", "login", "--apitoken")
+		require.NoErrorf(t, err, "the API token login did not finish:\n%s", output)
+		assert.Contains(t, output, "| meshStack | ", "the login shows the status, with the meshStack it reached")
+		require.FileExists(t, withToken.credentialsJson())
+		requireAuthStatus(t, withToken, "API token")
+		output, err = withToken.run("", "workspace", "list", "-o", "ndjson")
+		require.NoErrorf(t, err, "the API refused the token:\n%s", output)
+		assert.Equal(t, token, withToken.authToken(t), "an API token is printed as it was given")
+	}
+}
+
+func (c *cli) authToken(t *testing.T) string {
+	t.Helper()
+	run := c.start("", "auth", "token")
+	require.NoErrorf(t, run.wait(), "meshstack auth token failed:\n%s", run.output.String())
+	token, oneLine := strings.CutSuffix(run.stdout.String(), "\n")
+	require.Truef(t, oneLine && !strings.Contains(token, "\n"), "a script reads stdout as the token, but it holds:\n%s", run.stdout.String())
+	return token
 }
 
 // requireAuthStatus does not check whether this meshStack lets an API key read itself through
@@ -229,20 +246,6 @@ func requireStoredLogin(t *testing.T, c *cli, output string) {
 	if offered := regexp.MustCompile(`\[ *1\] .*\((\S+)\)`).FindStringSubmatch(output); offered != nil {
 		assert.Contains(t, string(profiles), offered[1], "the selected workspace is the profile's default")
 	}
-}
-
-func cachedApiKeyToken(t *testing.T, c *cli) string {
-	t.Helper()
-	content, err := os.ReadFile(c.credentialsCacheJson("apiKey"))
-	require.NoError(t, err)
-	var cacheFile struct {
-		Cache struct {
-			Token string `json:"token"`
-		} `json:"cache"`
-	}
-	require.NoError(t, json.Unmarshal(content, &cacheFile))
-	require.NotEmpty(t, cacheFile.Cache.Token, "the API key login cached no token to log in with")
-	return cacheFile.Cache.Token
 }
 
 func startLogin(t *testing.T, c *cli, workspaceAnswer string) *cliRun {

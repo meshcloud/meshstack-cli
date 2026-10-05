@@ -3,6 +3,7 @@ package testacc
 import (
 	"context"
 	"encoding/json/v2"
+	goio "io"
 	"log/slog"
 	gohttp "net/http"
 	"os"
@@ -139,6 +140,7 @@ func newRootCommand() *cobra.Command {
 // binary would write to stdout and stderr, and the log, in the order it was written.
 type cliRun struct {
 	output   *syncBuffer
+	stdout   *syncBuffer
 	cancel   context.CancelFunc
 	finished chan struct{}
 	err      error
@@ -156,7 +158,7 @@ func (c *cli) start(stdin string, args ...string) *cliRun {
 	c.t.Helper()
 	c.applyEnv()
 	ctx, cancel := context.WithCancel(c.t.Context())
-	run := &cliRun{output: &syncBuffer{}, cancel: cancel, finished: make(chan struct{})}
+	run := &cliRun{output: &syncBuffer{}, stdout: &syncBuffer{}, cancel: cancel, finished: make(chan struct{})}
 	previous := slog.Default()
 	c.t.Cleanup(func() { slog.SetDefault(previous) })
 	slog.SetDefault(slog.New(slog.NewTextHandler(run.output, nil)))
@@ -164,7 +166,7 @@ func (c *cli) start(stdin string, args ...string) *cliRun {
 	cmd := newRootCommand()
 	cmd.SetArgs(args)
 	cmd.SetIn(strings.NewReader(stdin))
-	cmd.SetOut(run.output)
+	cmd.SetOut(goio.MultiWriter(run.output, run.stdout))
 	cmd.SetErr(run.output)
 	go func() {
 		defer close(run.finished)
