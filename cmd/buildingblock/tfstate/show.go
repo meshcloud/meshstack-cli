@@ -39,7 +39,7 @@ unless --workspace names another one.`,
 				slog.InfoContext(ctx, "Building block "+buildingBlockUuid.String()+" has no state in workspace "+store.Workspace+" yet")
 				return nil
 			} else if err != nil {
-				return withApiKeyHint(err)
+				return withRightsHint(err)
 			}
 			_, err = cmd.OutOrStdout().Write(state)
 			return err

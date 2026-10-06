@@ -14,17 +14,19 @@ import (
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
-const rights = `This command needs an API key login, meshstack login --apikey: meshStack does not give the state
-to a browser login, because no workspace role has the rights that the state needs. Create a temporary
-API key with the rights of one of these rows, and log in with it:
+const rights = `meshStack gives the state to a login that has the rights of one of these rows in the
+workspace it works in:
 
-  Workspace                               To read                To write (--mode readwrite)
+  Workspace the login works in            To read                To write (--mode readwrite)
   the building block's workspace          TFSTATE_LIST           TFSTATE_SAVE
   the workspace owning its definition     MANAGED_TFSTATE_LIST   MANAGED_TFSTATE_SAVE
   the admin workspace                     ADM_TFSTATE_LIST       ADM_TFSTATE_SAVE
 
-To delete the state, the API key needs TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or
-ADM_TFSTATE_DELETE in the same row.`
+The roles Workspace Owner and Workspace Manager have the rights of the second row, so a browser login
+works where its workspace owns the definition of the building block. Any other row takes an API key
+with these rights, meshstack login --apikey. Locking the state takes the right to write it. To
+delete the state, the login needs TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or ADM_TFSTATE_DELETE in
+the same row.`
 
 const backendFile = `terraform {
     backend "http" {}
@@ -72,7 +74,7 @@ func openStore(ctx context.Context, meshStack client.Client, buildingBlockUuid u
 	return tfstate.OpenStore(ctx, meshStack.Raw, workspace, buildingBlockUuid)
 }
 
-func withApiKeyHint(err error) error {
+func withRightsHint(err error) error {
 	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.IsForbidden() {
 		return fmt.Errorf("%w\n\n%s", err, rights)
 	}

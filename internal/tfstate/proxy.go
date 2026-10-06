@@ -20,6 +20,7 @@ import (
 const (
 	username  = "meshstack"
 	statePath = "/state"
+	lockPath  = statePath + "/lock"
 )
 
 var ErrReadOnly = errors.New("the state is read-only")
@@ -28,19 +29,29 @@ var ErrReadOnly = errors.New("the state is read-only")
 // TF_HTTP_PASSWORD, which meshfed's TfStateRunTokenBasicAuthFilter accepts. That token can expire
 // in the middle of an apply, and nothing would check tofu's writes against the stored state.
 type Proxy struct {
-	Store       Store
+	Store Store
+	// Writable passes tofu's lock calls on to meshStack. A proxy that is not writable answers them
+	// itself, so that a command that stores nothing never makes a run of the building block wait.
 	Writable    bool
 	BeforeWrite func(ctx context.Context) error
-	Backups     Backups
-	// OnProblem gets the error of each request that failed, because tofu prints only the status code
-	// of the response.
+	// Force stores a state that does not follow the stored one, such as the one of a
+	// tofu state push -force.
+	Force   bool
+	Backups Backups
+	// LockWarning is how long tofu may hold meshStack's lock before the proxy warns that the runs of
+	// the building block wait for it. Zero warns never.
+	LockWarning time.Duration
+	// OnProblem gets the error of each request that the proxy refused, because tofu prints only the
+	// status code of the response. A 5xx of meshStack, which tofu retries, is logged as a warning
+	// instead.
 	OnProblem func(ctx context.Context, err error)
 
 	password string
 	// mu is held for the whole request, so that no other write comes between a write's check of the
 	// stored state and the write itself.
-	mu       sync.Mutex
-	requests int
+	mu        sync.Mutex
+	requests  int
+	lockTimer *time.Timer
 }
 
 func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int, err error) {
@@ -58,8 +69,13 @@ func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()
 
+	address := "http://" + listener.Addr().String()
 	run([]string{
-		"TF_HTTP_ADDRESS=http://" + listener.Addr().String() + statePath,
+		"TF_HTTP_ADDRESS=" + address + statePath,
+		"TF_HTTP_LOCK_ADDRESS=" + address + lockPath,
+		"TF_HTTP_LOCK_METHOD=" + gohttp.MethodPost,
+		"TF_HTTP_UNLOCK_ADDRESS=" + address + lockPath,
+		"TF_HTTP_UNLOCK_METHOD=" + gohttp.MethodDelete,
 		"TF_HTTP_USERNAME=" + username,
 		"TF_HTTP_PASSWORD=" + p.password,
 	})
@@ -70,6 +86,7 @@ func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.stopLockTimer()
 	return p.requests, err
 }
 
@@ -83,18 +100,63 @@ func (p *Proxy) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) {
 		p.refuse(w, r, gohttp.StatusUnauthorized, errors.New("a request for the state came without the TF_HTTP_USERNAME and TF_HTTP_PASSWORD it was given"))
 		return
 	}
-	if r.URL.Path != statePath {
+	switch {
+	case r.URL.Path == statePath && r.Method == gohttp.MethodGet:
+		p.get(w, r)
+	case r.URL.Path == statePath && (r.Method == gohttp.MethodPost || r.Method == gohttp.MethodDelete):
+		p.write(w, r)
+	case r.URL.Path == lockPath && (r.Method == gohttp.MethodPost || r.Method == gohttp.MethodDelete):
+		p.lock(w, r)
+	case r.URL.Path == statePath || r.URL.Path == lockPath:
+		w.Header().Set("Allow", map[string]string{statePath: "GET, POST, DELETE", lockPath: "POST, DELETE"}[r.URL.Path])
+		p.refuse(w, r, gohttp.StatusMethodNotAllowed, fmt.Errorf("a request asked to %s %s, which meshStack does not offer", r.Method, r.URL.Path))
+	default:
 		p.refuse(w, r, gohttp.StatusNotFound, fmt.Errorf("a request asked for %s, but the state is at %s", r.URL.Path, statePath))
+	}
+}
+
+func (p *Proxy) lock(w gohttp.ResponseWriter, r *gohttp.Request) {
+	if !p.Writable {
 		return
 	}
-	switch r.Method {
-	case gohttp.MethodGet:
-		p.get(w, r)
-	case gohttp.MethodPost, gohttp.MethodDelete:
-		p.write(w, r)
-	default:
-		w.Header().Set("Allow", "GET, POST, DELETE")
-		p.refuse(w, r, gohttp.StatusMethodNotAllowed, fmt.Errorf("a request asked to %s the state, which meshStack does not offer", r.Method))
+	ctx := r.Context()
+	info, err := io.ReadAll(r.Body)
+	if err != nil {
+		p.refuse(w, r, gohttp.StatusBadRequest, err)
+		return
+	}
+	if r.Method == gohttp.MethodDelete {
+		if err = p.Store.Unlock(ctx, info); err != nil {
+			p.failOrPassLock(w, r, err, "release its lock")
+			return
+		}
+		p.stopLockTimer()
+		return
+	}
+
+	err = p.Store.Lock(ctx, info)
+	// tofu prints the holder of a 423 itself, and tries again until its -lock-timeout has passed.
+	if httpErr, ok := errors.AsType[http.Error](err); ok && httpErr.IsLocked() {
+		passLock(w, httpErr)
+		return
+	} else if err != nil {
+		p.fail(w, r, err)
+		return
+	}
+	if p.LockWarning > 0 {
+		p.stopLockTimer()
+		warnCtx := context.WithoutCancel(ctx)
+		p.lockTimer = time.AfterFunc(p.LockWarning, func() {
+			slog.WarnContext(warnCtx, fmt.Sprintf("The command has held the lock on the state of building block %s for %s, and every run of the building block waits until it is released",
+				p.Store.BuildingBlock, p.LockWarning))
+		})
+	}
+}
+
+func (p *Proxy) stopLockTimer() {
+	if p.lockTimer != nil {
+		p.lockTimer.Stop()
+		p.lockTimer = nil
 	}
 }
 
@@ -143,7 +205,7 @@ func (p *Proxy) write(w gohttp.ResponseWriter, r *gohttp.Request) {
 		p.fail(w, r, err)
 		return
 	}
-	if r.Method == gohttp.MethodPost {
+	if r.Method == gohttp.MethodPost && !p.Force {
 		var next version
 		var previous *version
 		if next, previous, err = versionsOf(written, stored); err == nil {
@@ -163,14 +225,37 @@ func (p *Proxy) write(w gohttp.ResponseWriter, r *gohttp.Request) {
 		slog.InfoContext(ctx, "Saved the stored state of building block "+p.Store.BuildingBlock.String()+" to "+path)
 	}
 
+	lockId := r.URL.Query().Get("ID")
 	if r.Method == gohttp.MethodPost {
-		err = p.Store.Put(ctx, written)
+		err = p.Store.Put(ctx, written, lockId)
 	} else {
-		err = p.Store.Delete(ctx)
+		err = p.Store.Delete(ctx, lockId)
 	}
 	if err != nil {
-		p.fail(w, r, err)
+		p.failOrPassLock(w, r, err, "write")
 	}
+}
+
+// failOrPassLock passes a 423 back to the client as it came, which reports the refusal itself, so
+// it is no problem of the proxy. tofu prints only the status code of it, so the holder goes to the log.
+func (p *Proxy) failOrPassLock(w gohttp.ResponseWriter, r *gohttp.Request, err error, action string) {
+	httpErr, ok := errors.AsType[http.Error](err)
+	if !ok || !httpErr.IsLocked() {
+		p.fail(w, r, err)
+		return
+	}
+	var holder LockInfo
+	_ = json.Unmarshal(httpErr.ResponseBody, &holder)
+	slog.WarnContext(r.Context(), fmt.Sprintf("meshStack refused to %s the state of building block %s, as %q holds the lock %s on it",
+		action, p.Store.BuildingBlock, holder.Who, holder.ID))
+	passLock(w, httpErr)
+}
+
+// passLock answers with the lock info of the holder, the 423 that tofu's http backend expects.
+func passLock(w gohttp.ResponseWriter, locked http.Error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(gohttp.StatusLocked)
+	_, _ = w.Write(locked.ResponseBody)
 }
 
 type version struct {
@@ -178,9 +263,10 @@ type version struct {
 	Serial  uint64 `json:"serial"`
 }
 
-// follows replaces the lock that meshStack's state API does not have. tofu writes a state with the
-// lineage of the state it read and a higher serial. A state with another lineage is another state,
-// and a state with a serial that is not higher misses a write.
+// follows catches a state that tofu did not read from the stored one, such as an old copy that
+// tofu state push sends. tofu writes a state with the lineage of the state it read and a higher
+// serial. A state with another lineage is another state, and a state with a serial that is not
+// higher misses a write.
 func (next version) follows(previous *version) error {
 	if previous == nil {
 		return nil
@@ -211,14 +297,20 @@ func versionsOf(written, stored []byte) (next version, previous *version, err er
 	return next, previous, nil
 }
 
-// fail answers 502, which tofu's http backend retries, for every error except a 403 of meshStack,
-// which a retry does not fix.
+// fail answers with the status of meshStack, or 502 for an error that has none. tofu's http backend
+// retries a 5xx, and fails the command where the retries fail as well, so a 5xx is no problem of
+// the proxy: a meshStack that failed once must not fail a tofu run that succeeded.
 func (p *Proxy) fail(w gohttp.ResponseWriter, r *gohttp.Request, err error) {
 	status := gohttp.StatusBadGateway
-	if httpErr, ok := errors.AsType[http.Error](err); ok && httpErr.IsForbidden() {
-		status = gohttp.StatusForbidden
+	if httpErr, ok := errors.AsType[http.Error](err); ok {
+		status = httpErr.StatusCode
 	}
-	p.refuse(w, r, status, err)
+	if status < gohttp.StatusInternalServerError {
+		p.refuse(w, r, status, err)
+		return
+	}
+	slog.WarnContext(r.Context(), err.Error())
+	gohttp.Error(w, err.Error(), status)
 }
 
 func (p *Proxy) refuse(w gohttp.ResponseWriter, r *gohttp.Request, status int, err error) {

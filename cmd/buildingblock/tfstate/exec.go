@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"slices"
 	"syscall"
+	"time"
 	"uuid"
 
 	"github.com/charmbracelet/x/term"
@@ -19,6 +20,9 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/tfstate"
 )
+
+// runLockTimeout must match stateLockTimeout in ../building-block-runner/tf-block-runner/tfrun/tfcmd.go.
+const runLockTimeout = 5 * time.Minute
 
 type mode string
 
@@ -57,15 +61,18 @@ func newExec() *cobra.Command {
 		Short: "Run tofu against the state of a building block",
 		Long: `Run a command, such as tofu plan, against the state of a building block, named by its uuid.
 
-exec serves the state to tofu's http backend through TF_HTTP_ADDRESS, TF_HTTP_USERNAME and
-TF_HTTP_PASSWORD, and exits with the exit code of the command. The module needs a backend "http"
-block: "meshstack buildingblock tfstate --help" shows the file to add. The state is the one stored
-under the workspace of the building block, metadata.ownedByWorkspace, unless --workspace names
-another one.
+exec serves the state to tofu's http backend through the TF_HTTP_* variables, and exits with the
+exit code of the command. The module needs a backend "http" block: "meshstack buildingblock tfstate
+--help" shows the file to add. The state is the one stored under the workspace of the building
+block, metadata.ownedByWorkspace, unless --workspace names another one.
 
---mode read, the default, refuses to store a state. --mode readwrite stores what the command writes,
-and since meshStack keeps no lock on the state, it refuses
-  - while a run of the building block is pending or in progress, unless --force;
+--mode read, the default, refuses to store a state. It takes no lock, so it never makes a run of
+the building block wait, and a plan may read a state that a run is changing.
+
+--mode readwrite stores what the command writes, and locks the state in meshStack whenever tofu
+asks for a lock. A run of the building block waits for that lock for up to 5 minutes, and then
+fails. Unless --force, --mode readwrite refuses
+  - while a run of the building block is pending or in progress;
   - a state whose lineage is not that of the stored state, or whose serial is not above it.
 Before it replaces or deletes the stored state, it copies it to tfstate-backups in the configuration
 directory.`,
@@ -103,6 +110,8 @@ directory.`,
 				},
 			}
 			if proxy.Writable {
+				proxy.Force = force
+				proxy.LockWarning = runLockTimeout
 				if !force {
 					proxy.BeforeWrite = func(ctx context.Context) error {
 						if running := tfstate.NoRunOf(ctx, meshStack.Raw, buildingBlockUuid); running != nil {
@@ -129,13 +138,13 @@ directory.`,
 					"Add the file meshstack_backend.tf with\n\n  %s\n\nto the module, and run `%s %s -- tofu init` once",
 					command[0], backendFile, cmd.CommandPath(), buildingBlockUuid))
 			}
-			return exitWith(cmd, ran, withApiKeyHint(errors.Join(problems...)))
+			return exitWith(cmd, ran, withRightsHint(errors.Join(problems...)))
 		},
 	}
 
 	flags := cmd.Flags()
 	flags.Var(&access, "mode", "read serves the state, readwrite stores what the command writes as well")
-	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending or in progress")
+	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending or in progress, or where it does not follow the stored state")
 
 	return cmd
 }

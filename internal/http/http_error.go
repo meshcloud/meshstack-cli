@@ -33,3 +33,7 @@ func (e Error) IsNotFound() bool {
 func (e Error) IsConflict() bool {
 	return e.StatusCode == gohttp.StatusConflict
 }
+
+func (e Error) IsLocked() bool {
+	return e.StatusCode == gohttp.StatusLocked
+}

@@ -28,6 +28,7 @@ const (
 	buildingBlockUuid = "b1d2c3e4-0000-4000-8000-000000000001"
 	state             = `{"version":4,"serial":1,"lineage":"lineage-1","resources":[]}`
 	childSteps        = "MESHSTACK_TFSTATE_TEST_CHILD"
+	runUuid           = "a1d2c3e4-0000-4000-8000-000000000002"
 )
 
 func statePath(workspace string) string {
@@ -61,12 +62,15 @@ type fakeMeshStack struct {
 	*fakemeshstack.Server
 
 	blockStatus map[string]any
+	runStatus   map[string]any
 }
 
 func newFakeMeshStack(t *testing.T) *fakeMeshStack {
 	t.Helper()
 	blockStatus := map[string]any{"status": "SUCCEEDED"}
+	run := map[string]any{"metadata": map[string]any{"uuid": runUuid}, "status": "IN_PROGRESS"}
 	server := fakemeshstack.Start(t, fakemeshstack.Options{
+		BuildingBlockRuns: []any{run},
 		BuildingBlocks: []any{map[string]any{
 			"metadata": map[string]any{"uuid": buildingBlockUuid, "ownedByWorkspace": "my-workspace"},
 			"spec":     map[string]any{},
@@ -78,7 +82,7 @@ func newFakeMeshStack(t *testing.T) *fakeMeshStack {
 		},
 	})
 	testlogin.LoggedInTo(t, server.URL)
-	return &fakeMeshStack{server, blockStatus}
+	return &fakeMeshStack{server, blockStatus, run}
 }
 
 func (f *fakeMeshStack) requests() (requests []string) {
@@ -173,7 +177,20 @@ func TestTfstate(t *testing.T) {
 		}
 	})
 
-	t.Run("a refusal of meshStack says that the state takes an API key", func(t *testing.T) {
+	t.Run("exec succeeds where meshStack failed a request that the command then got past", func(t *testing.T) {
+		meshStack.Route("/api/terraform/state/", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+			w.WriteHeader(gohttp.StatusInternalServerError)
+		})
+		defer meshStack.Route("/api/terraform/state/", nil)
+
+		ran := execChild(t, "GET exit=0")
+
+		require.NoError(t, ran.err)
+		assert.Contains(t, ran.log, "level=WARN")
+		assert.Contains(t, ran.log, "http error 500")
+	})
+
+	t.Run("a refusal of meshStack says which rights the state takes", func(t *testing.T) {
 		meshStack.Route("/api/terraform/state/", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
 			w.WriteHeader(gohttp.StatusForbidden)
 		})
@@ -182,7 +199,7 @@ func TestTfstate(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "http error 403")
-		assert.Contains(t, err.Error(), "This command needs an API key login, meshstack login --apikey")
-		assert.Contains(t, err.Error(), "TFSTATE_LIST")
+		assert.Contains(t, err.Error(), "MANAGED_TFSTATE_LIST")
+		assert.Contains(t, err.Error(), "meshstack login --apikey")
 	})
 }

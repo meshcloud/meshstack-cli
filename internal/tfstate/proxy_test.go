@@ -3,14 +3,18 @@ package tfstate
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
+	"log/slog"
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/stretchr/testify/assert"
@@ -74,7 +78,11 @@ func (p *proxyUnderTest) requests() (requests []string) {
 }
 
 func (p *proxyUnderTest) send(method, body string) *httptest.ResponseRecorder {
-	r := httptest.NewRequestWithContext(context.Background(), method, statePath, strings.NewReader(body))
+	return p.sendTo(method, statePath, body)
+}
+
+func (p *proxyUnderTest) sendTo(method, target, body string) *httptest.ResponseRecorder {
+	r := httptest.NewRequestWithContext(context.Background(), method, target, strings.NewReader(body))
 	r.SetBasicAuth(username, testPassword)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, r)
@@ -202,6 +210,15 @@ func TestAReadOnlyProxy(t *testing.T) {
 		assert.Equal(t, []string{"GET /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()}, p.requests())
 	})
 
+	t.Run("answers tofu's lock calls itself, so that a plan never makes a run wait", func(t *testing.T) {
+		p.meshStack.TakeRequests()
+		for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
+			assert.Equal(t, gohttp.StatusOK, p.sendTo(method, lockPath, lockInfo("tofu-lock")).Code, method)
+		}
+		assert.Empty(t, p.meshStack.TakeRequests())
+		assert.Empty(t, p.problems)
+	})
+
 	t.Run("refuses every write before it reaches meshStack", func(t *testing.T) {
 		p.meshStack.TakeRequests()
 		for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
@@ -251,4 +268,140 @@ func basicAuth(user, password string) string {
 	r := httptest.NewRequestWithContext(context.Background(), gohttp.MethodGet, "/", nil)
 	r.SetBasicAuth(user, password)
 	return strings.TrimPrefix(r.Header.Get("Authorization"), "Basic ")
+}
+
+func lockInfo(id string) string {
+	return `{"ID":"` + id + `","Operation":"OperationTypeApply","Who":"someone@somewhere"}`
+}
+
+// lockedLog takes the warning, which the proxy logs from a timer of its own.
+type lockedLog struct {
+	mu      sync.Mutex
+	written strings.Builder
+}
+
+func (l *lockedLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.written.Write(p)
+}
+
+func (l *lockedLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.written.String()
+}
+
+// lockOf answers as meshStack's lock endpoint does, with a lock that a test may hold for someone else.
+type lockOf struct {
+	held []byte
+}
+
+func (l *lockOf) serve(w gohttp.ResponseWriter, r *gohttp.Request) {
+	body, _ := io.ReadAll(r.Body)
+	switch {
+	case l.held == nil && r.Method == gohttp.MethodPost:
+		l.held = body
+	case r.Method == gohttp.MethodPost:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(gohttp.StatusLocked)
+		_, _ = w.Write(l.held)
+	case r.Method == gohttp.MethodDelete:
+		l.held = nil
+	}
+}
+
+func TestAWritableProxyPassesTheLockOn(t *testing.T) {
+	p := newProxy(t, firstState, true)
+	lock := &lockOf{}
+	p.meshStack.Route("/api/terraform/state/workspace/my-workspace/buildingBlock/"+buildingBlockUuid.String()+"/lock", lock.serve)
+	var log lockedLog
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
+
+	t.Run("takes the lock in meshStack", func(t *testing.T) {
+		assert.Equal(t, gohttp.StatusOK, p.sendTo(gohttp.MethodPost, lockPath, lockInfo("mine")).Code)
+		assert.JSONEq(t, lockInfo("mine"), string(lock.held))
+	})
+
+	t.Run("answers a lock that someone else holds with 423 and the lock info of the holder, as tofu expects", func(t *testing.T) {
+		lock.held = []byte(lockInfo("theirs"))
+		defer func() { lock.held = []byte(lockInfo("mine")) }()
+
+		w := p.sendTo(gohttp.MethodPost, lockPath, lockInfo("mine"))
+
+		assert.Equal(t, gohttp.StatusLocked, w.Code)
+		assert.JSONEq(t, lockInfo("theirs"), w.Body.String())
+		assert.Empty(t, p.problems, "tofu waits for the lock and reports it itself")
+	})
+
+	t.Run("stores the state with the ID of tofu's lock", func(t *testing.T) {
+		p.meshStack.TakeRequests()
+
+		assert.Equal(t, gohttp.StatusOK, p.sendTo(gohttp.MethodPost, statePath+"?ID=mine", nextState).Code)
+
+		stored := p.meshStack.TakeRequests()
+		require.NotEmpty(t, stored)
+		put := stored[len(stored)-1]
+		assert.Equal(t, gohttp.MethodPost, put.Method)
+		assert.Equal(t, "mine", put.URL.Query().Get("ID"))
+	})
+
+	t.Run("passes a write that meshStack refuses for another's lock back as 423, and logs the holder rather than a problem", func(t *testing.T) {
+		writeInMeshStack := "POST /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()
+		p.meshStack.Route(writeInMeshStack, func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+			w.WriteHeader(gohttp.StatusLocked)
+			_, _ = w.Write([]byte(lockInfo("theirs")))
+		})
+		defer p.meshStack.Route(writeInMeshStack, nil)
+
+		w := p.sendTo(gohttp.MethodPost, statePath+"?ID=stale", `{"version":4,"serial":3,"lineage":"lineage-1"}`)
+
+		assert.Equal(t, gohttp.StatusLocked, w.Code)
+		assert.JSONEq(t, lockInfo("theirs"), w.Body.String())
+		assert.Empty(t, p.problems, "the client reports the refusal itself")
+		assert.Contains(t, log.String(), `as \"someone@somewhere\" holds the lock theirs`)
+	})
+
+	t.Run("with Force, stores a state that does not follow the stored one", func(t *testing.T) {
+		p.Force = true
+		defer func() { p.Force = false }()
+		const pushed = `{"version":4,"serial":1,"lineage":"lineage-2"}`
+
+		assert.Equal(t, gohttp.StatusOK, p.sendTo(gohttp.MethodPost, statePath+"?ID=mine", pushed).Code)
+		assert.JSONEq(t, pushed, string(p.meshStack.TfState(storedState)))
+		assert.Empty(t, p.problems)
+	})
+
+	t.Run("passes a 5xx of meshStack on for tofu to retry, and logs it rather than a problem", func(t *testing.T) {
+		lockInMeshStack := "POST /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String() + "/lock"
+		p.meshStack.Route(lockInMeshStack, func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+			w.WriteHeader(gohttp.StatusInternalServerError)
+		})
+		defer p.meshStack.Route(lockInMeshStack, nil)
+
+		assert.Equal(t, gohttp.StatusInternalServerError, p.sendTo(gohttp.MethodPost, lockPath, lockInfo("mine")).Code)
+		assert.Empty(t, p.problems, "tofu fails the command itself where its retries fail as well")
+		assert.Contains(t, log.String(), "cannot lock the state of building block "+buildingBlockUuid.String())
+	})
+
+	t.Run("releases the lock in meshStack", func(t *testing.T) {
+		assert.Equal(t, gohttp.StatusOK, p.sendTo(gohttp.MethodDelete, lockPath, lockInfo("mine")).Code)
+		assert.Nil(t, lock.held)
+	})
+
+	t.Run("warns where tofu holds the lock longer than LockWarning, and not after it released it", func(t *testing.T) {
+		p.LockWarning = 20 * time.Millisecond
+		defer func() { p.LockWarning = 0 }()
+		const warning = "every run of the building block waits until it is released"
+
+		p.sendTo(gohttp.MethodPost, lockPath, lockInfo("released"))
+		p.sendTo(gohttp.MethodDelete, lockPath, lockInfo("released"))
+		p.sendTo(gohttp.MethodPost, lockPath, lockInfo("held"))
+		defer p.sendTo(gohttp.MethodDelete, lockPath, lockInfo("held"))
+
+		assert.Eventually(t, func() bool { return strings.Contains(log.String(), warning) }, time.Second, 5*time.Millisecond)
+		assert.Equal(t, 1, strings.Count(log.String(), warning), "the lock released first warns as well")
+	})
 }
