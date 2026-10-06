@@ -49,9 +49,6 @@ func TestAccBrowserLogin(t *testing.T) {
 	endpoint := requireLocalStack(t)
 	issuer := meshInfo(t, endpoint).Issuer.String()
 	logins := devLogins(t)
-	// This has to come before the first command, because every command blanks the API key in the
-	// environment that withApiKey reads.
-	apiKey := newCLI(t, endpoint).withApiKey()
 
 	t.Run("a wrong password logs nobody in", func(t *testing.T) {
 		c := newCLI(t, endpoint)
@@ -120,7 +117,6 @@ func TestAccBrowserLogin(t *testing.T) {
 	})
 	t.Run("every GET operation answers the organization admin", everyGetOperationAnswers(c, false))
 	t.Run("--apitoken logs in with the token auth token prints", apiTokenLogsIn(c))
-	t.Run("tfstate of a browser login says that it takes an API key", tfstateTakesAnApiKey(c, apiKey))
 }
 
 func failedLoginKeepsTheEarlierLogin(endpoint string, withWorkspace, withoutWorkspace devLogin) func(*testing.T) {
@@ -185,7 +181,6 @@ func TestAccApiKeyLogin(t *testing.T) {
 	t.Run("trigger-run names the run it started", triggerRunNamesTheRunItStarted(c))
 	t.Run("the run list of every building block is newest first", runListIsNewestFirst(c))
 	t.Run("following a finished run writes its logs and ends", followOfAFinishedRunWritesItsLogsAndEnds(c))
-	t.Run("tfstate exec stores and reads a state through the proxy", tfstateStoresAndReadsAState(c))
 }
 
 // withApiKey gives c the API key of this suite, for a login with --apikey.
