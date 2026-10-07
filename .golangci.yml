@@ -214,7 +214,7 @@ linters:
             - "!**/cmd/meshstack/*.go"
             - "!**/cmd/api/*.go"
             - "!**/cmd/auth/*.go"
-            - "!**/cmd/buildingblocktfstate/*.go"
+            - "!**/cmd/buildingblock/tfstate/*.go"
             - "!**/cmd/profile/*.go"
             - "!**/cmd/internal/*.go"
             - "!**/cmd/internal/**/*.go"
@@ -292,9 +292,9 @@ linters:
             # api-docs renders the flags of a failed request back into a command line
             - github.com/spf13/pflag
 
-        cmd-buildingblocktfstate:
+        cmd-buildingblock-tfstate:
           files:
-            - "**/cmd/buildingblocktfstate/*.go"
+            - "**/cmd/buildingblock/tfstate/*.go"
             - "!$test"
           list-mode: strict
           deny:

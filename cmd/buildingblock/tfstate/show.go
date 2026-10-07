@@ -1,4 +1,4 @@
-package buildingblocktfstate
+package tfstate
 
 import (
 	"errors"

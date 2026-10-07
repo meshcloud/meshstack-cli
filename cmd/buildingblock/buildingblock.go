@@ -3,7 +3,7 @@ package buildingblock
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/meshcloud/meshstack-cli/cmd/buildingblocktfstate"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblock/tfstate"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -23,7 +23,7 @@ func New() *cobra.Command {
 
 	cmd.AddCommand(newList())
 	cmd.AddCommand(newTriggerRun())
-	cmd.AddCommand(buildingblocktfstate.New())
+	cmd.AddCommand(tfstate.New())
 
 	return cmd
 }

@@ -1,4 +1,4 @@
-package buildingblocktfstate_test
+package tfstate_test
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/cmd/buildingblocktfstate"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblock/tfstate"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
@@ -99,7 +99,7 @@ func run(t *testing.T, args ...string) result {
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
-	cmd := buildingblocktfstate.New()
+	cmd := tfstate.New()
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SetIn(strings.NewReader(""))
