@@ -44,7 +44,7 @@ const (
 func requireLocalStack(t *testing.T) string {
 	t.Helper()
 	if os.Getenv(envTestAcc) != testAccOn {
-		t.Skipf("acceptance tests are off. Bring up a local dev stack, export its values with `set -a; . ../.env-satellites-testacc; set +a`, and run `%s=%s go test ./cmd/internal/testacc/... -run TestAcc`",
+		t.Skipf("acceptance tests are off. Bring up a local dev stack, export its values with `set -a; . ../.env-testacc-meshstack-cli; set +a`, and run `%s=%s go test ./cmd/internal/testacc/... -run TestAcc`",
 			envTestAcc, testAccOn)
 	}
 	endpoint := strings.TrimSuffix(os.Getenv(envEndpoint), "/")
@@ -67,7 +67,7 @@ func requireEnv(t *testing.T, key string) string {
 	t.Helper()
 	value := os.Getenv(key)
 	require.NotEmptyf(t, value,
-		"%s is not set. `./gradlew satelliteEnv` in ../meshfed-release writes ../.env-satellites-testacc, and `set -a; . ../.env-satellites-testacc; set +a` exports it.", key)
+		"%s is not set. `./gradlew :meshstack-cli:satelliteEnv` in ../meshfed-release writes ../.env-testacc-meshstack-cli, and `set -a; . ../.env-testacc-meshstack-cli; set +a` exports it.", key)
 	return value
 }
 
