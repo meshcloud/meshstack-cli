@@ -30,7 +30,7 @@
       # The override is what carries the pin: buildGoModule ignores a `go` attribute in the
       # argument set and builds against nixpkgs' default Go instead.
       meshstackPackage = pkgs: (pkgs.buildGoModule.override { go = pkgs.go_1_27; }) {
-        pname = "meshstack";
+        pname = "meshstack-cli";
         inherit version;
         src = self;
 
@@ -59,15 +59,14 @@
       };
     in
     {
-      # terraform-provider-meshstack's dev shell reads packages.<system>.meshstack, so a rename
-      # breaks that flake.
+      # Named as in nixpkgs, so that overlays.default replaces exactly the nixpkgs package.
       packages = forEachSupportedSystem ({ pkgs }: rec {
-        meshstack = meshstackPackage pkgs;
-        default = meshstack;
+        meshstack-cli = meshstackPackage pkgs;
+        default = meshstack-cli;
       });
 
       overlays.default = final: _prev: {
-        meshstack = meshstackPackage final;
+        meshstack-cli = meshstackPackage final;
       };
 
       devShells = forEachSupportedSystem ({ pkgs }: {
