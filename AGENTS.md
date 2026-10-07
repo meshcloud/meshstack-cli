@@ -107,11 +107,11 @@ lane belongs to `../meshfed-release` and changes without us, so read it there, i
 `satellite-suites.md` of the `acceptance-testing` skill, rather than trusting a copy here.
 
 To run the suite yourself, bring up the local stack of `../meshfed-release` (its `local-dev-stack`
-skill); `./gradlew satelliteEnv` there writes `../.env-satellites-testacc`. Then run the suite from
-here with plain `go test`:
+skill); `./gradlew :meshstack-cli:satelliteEnv` there writes `../.env-testacc-meshstack-cli`. Then run
+the suite from here with plain `go test`:
 
 ```bash
-set -a; . ../.env-satellites-testacc; set +a
+set -a; . ../.env-testacc-meshstack-cli; set +a
 go test ./cmd/internal/testacc/... -run TestAcc
 ```
 
