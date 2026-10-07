@@ -40,6 +40,13 @@ brew install meshcloud/tap/meshstack-cli
 brew upgrade meshstack-cli
 ```
 
+### With [winget](https://learn.microsoft.com/windows/package-manager/winget/) on Windows
+
+```powershell
+winget install meshcloud.meshstack-cli
+winget upgrade meshcloud.meshstack-cli
+```
+
 ### With Go
 
 ```shell
@@ -75,6 +82,22 @@ curl -fsSL https://raw.githubusercontent.com/meshcloud/meshstack-cli/main/instal
 
 Run it again to upgrade. `| sh -s -- --version v1.2.3 --dir ~/bin` pins a release and the directory,
 and `| sh -s -- --help` lists the options.
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/meshcloud/meshstack-cli/main/install.ps1 | iex
+```
+
+It installs with winget when winget is available, and otherwise downloads the release into
+`%LOCALAPPDATA%\Programs\meshstack-cli` and adds that directory to your user PATH. Run it again to
+upgrade. To pass options, run it as a script block:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/meshcloud/meshstack-cli/main/install.ps1))) -Version v1.2.3 -Dir ~\bin
+```
+
+`-NoWinget` downloads the release even when winget is available, and `-Help` lists the options.
 
 ## Development
 
