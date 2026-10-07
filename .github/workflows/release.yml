@@ -30,6 +30,26 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The winget section of .goreleaser.yml says how to set up this secret.
+          JANNYMESHI_WINGET_PKGS_TOKEN: ${{ secrets.JANNYMESHI_WINGET_PKGS_TOKEN }}
+
+      # goreleaser only logs a failed winget pull request and still succeeds, so this step fails
+      # the job instead. The branch name must match winget.repository.branch in .goreleaser.yml.
+      # --head reads the pull requests directly; --author would go through the search API, which
+      # can miss a pull request that is only seconds old.
+      - name: Check the winget pull request
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="meshstack-cli-${TAG#v}"
+          url=$(gh pr list --repo microsoft/winget-pkgs --head "$branch" --state all --json author,url \
+            --jq '.[] | select(.author.login == "jannymeshi") | .url')
+          if [ -z "$url" ]; then
+            echo "::error::found no pull request from jannymeshi:$branch in microsoft/winget-pkgs; see the winget step of goreleaser above"
+            exit 1
+          fi
+          echo "winget pull request: $url"
 
   # Publishes the image for the same tag. Separate job so a failing image build does
   # not take the archives down with it.
