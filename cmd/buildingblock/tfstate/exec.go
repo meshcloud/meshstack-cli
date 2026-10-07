@@ -55,6 +55,7 @@ func newExec() *cobra.Command {
 		access            = modeRead
 		force             bool
 		backupDir         string
+		overrideBackend   bool
 	)
 
 	cmd := &cobra.Command{
@@ -63,9 +64,14 @@ func newExec() *cobra.Command {
 		Long: `Run a command, such as tofu plan, against the state of a building block, named by its uuid.
 
 exec serves the state to tofu's http backend through the TF_HTTP_* variables, and exits with the
-exit code of the command. The module needs a backend "http" block: "meshstack buildingblock tfstate
---help" shows the file to add. The state is the one stored under the workspace of the building
-block, metadata.ownedByWorkspace, unless --workspace names another one.
+exit code of the command. The state is the one stored under the workspace of the building block,
+metadata.ownedByWorkspace, unless --workspace names another one.
+
+The module needs a backend "http" block, which the runner adds only while it runs.
+--override-backend adds one while the command runs: it writes the file
+` + tfstate.BackendOverrideFile + ` into the working directory, where it also replaces a backend
+of the module's own, and removes the file when the command ends. So run exec in the module's
+directory rather than with tofu -chdir, and run tofu init through exec with --override-backend once.
 
 tofu's meshstack provider talks to meshStack through exec as well, with the login of the CLI. This
 works with any version of the provider, as long as its provider "meshstack" block sets no endpoint
@@ -144,15 +150,31 @@ With --backup-dir, it copies the stored state into that directory before it repl
 				proxy.Backups = tfstate.Backups(backupDir)
 			}
 
+			if overrideBackend {
+				remove, overrideErr := tfstate.WriteBackendOverride(".")
+				if overrideErr != nil {
+					return fmt.Errorf("%w: remove it, or run without --override-backend", overrideErr)
+				}
+				defer func() {
+					if removeErr := remove(); removeErr != nil {
+						slog.WarnContext(ctx, "Cannot remove the backend override: "+removeErr.Error())
+					}
+				}()
+			}
+
 			var ran error
 			requests, err := proxy.Serve(ctx, func(env []string) { ran = run(ctx, cmd, command, env) })
 			if err != nil {
 				problems = append(problems, err)
 			}
-			if requests == 0 {
+			switch {
+			case requests > 0:
+			case overrideBackend:
+				slog.WarnContext(ctx, command[0]+" asked for no state. --override-backend adds the backend in the working directory, so run exec in the module's directory rather than with tofu -chdir")
+			default:
 				slog.WarnContext(ctx, fmt.Sprintf("%s asked for no state, so the module likely has no backend \"http\" block, which the runner adds only while it runs. "+
-					"Add the file meshstack_backend.tf with\n\n  %s\n\nto the module, and run `%s %s -- tofu init` once",
-					command[0], backendFile, cmd.CommandPath(), buildingBlockUuid))
+					"Run again with --override-backend, and run `%s %s --override-backend -- tofu init` once",
+					command[0], cmd.CommandPath(), buildingBlockUuid))
 			}
 			return exitWith(cmd, ran, withRightsHint(errors.Join(problems...)))
 		},
@@ -161,6 +183,7 @@ With --backup-dir, it copies the stored state into that directory before it repl
 	flags := cmd.Flags()
 	flags.Var(&access, "mode", "read serves the state, readwrite stores what the command writes as well")
 	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending or in progress, or where it does not follow the stored state")
+	flags.BoolVar(&overrideBackend, "override-backend", false, "add the backend \"http\" block to the module in the working directory while the command runs")
 	flags.StringVar(&backupDir, "backup-dir", "", "with --mode readwrite, copy the stored state into this directory before each write, in files only you can read, since a state can hold secrets")
 
 	return cmd

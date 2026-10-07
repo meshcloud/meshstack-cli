@@ -32,6 +32,8 @@ const (
 	state             = `{"version":4,"serial":1,"lineage":"lineage-1","resources":[]}`
 	childSteps        = "MESHSTACK_TFSTATE_TEST_CHILD"
 	runUuid           = "a1d2c3e4-0000-4000-8000-000000000002"
+
+	backendOverrideFile = "zz_meshstack_override.tf"
 )
 
 var apiKey = fakemeshstack.ApiKey{ClientId: "11111111-45bf-42ba-a965-2097b9d0d181", ClientSecret: "the-secret"}
@@ -41,8 +43,8 @@ func statePath(workspace string) string {
 }
 
 // TestMain runs the steps of childSteps where exec started the test binary: GET asks the proxy for
-// the state, POST stores state, provider reads the building block as tofu's meshstack provider
-// does, and exit=<code> exits.
+// the state, POST stores state, backend fails without the backend override, provider reads the
+// building block as tofu's meshstack provider does, and exit=<code> exits.
 func TestMain(m *testing.M) {
 	if steps, ok := os.LookupEnv(childSteps); ok {
 		os.Exit(runChild(steps))
@@ -55,6 +57,13 @@ func runChild(steps string) int {
 		if code, ok := strings.CutPrefix(step, "exit="); ok {
 			exitCode, _ := strconv.Atoi(code)
 			return exitCode
+		}
+		if step == "backend" {
+			if _, err := os.Stat(backendOverrideFile); err != nil {
+				fmt.Println(err)
+				return 1
+			}
+			continue
 		}
 		if step == "provider" {
 			if err := readAsTheProvider(); err != nil {
@@ -192,7 +201,18 @@ func TestTfstate(t *testing.T) {
 
 		require.NoError(t, ran.err)
 		assert.Contains(t, ran.log, `asked for no state, so the module likely has no backend \"http\" block`)
-		assert.Contains(t, ran.log, "meshstack_backend.tf")
+		assert.Contains(t, ran.log, "--override-backend -- tofu init")
+	})
+
+	t.Run("exec --override-backend adds the backend while the command runs, and removes it however the command ends", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+
+		ran := execChild(t, "backend GET exit=3", "--override-backend")
+
+		exitErr, ok := errors.AsType[internal.ExitError](ran.err)
+		require.True(t, ok, "%v %s", ran.err, ran.stdout)
+		assert.Equal(t, 3, exitErr.Code, ran.stdout)
+		assert.NoFileExists(t, backendOverrideFile)
 	})
 
 	t.Run("exec in read mode says how to store the state", func(t *testing.T) {

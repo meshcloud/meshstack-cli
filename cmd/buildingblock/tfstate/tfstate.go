@@ -28,10 +28,6 @@ with these rights, meshstack login --apikey. Locking the state, and force-unlock
 write it. To delete the state, the login needs TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or
 ADM_TFSTATE_DELETE in the same row.`
 
-const backendFile = `terraform {
-    backend "http" {}
-  }`
-
 func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tfstate",
@@ -42,14 +38,12 @@ reads and writes through tofu's http backend.
 ` + rights + `
 
 "meshstack buildingblock tfstate exec" serves the state to tofu's http backend, so the module needs
-a backend "http" block. The runner adds one only while it runs, so add the file meshstack_backend.tf
-to the module:
+a backend "http" block. The runner adds one only while it runs, and exec with --override-backend
+adds one while its command runs. Run it in the module's directory, with tofu init once:
 
-  ` + backendFile + `
-
-and run "meshstack buildingblock tfstate exec <building-block-uuid> -- tofu init" once.`,
+  meshstack buildingblock tfstate exec <building-block-uuid> --override-backend -- tofu init`,
 		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources
-  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -- tofu plan
+  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --override-backend -- tofu plan
   meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply
   meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
 		Args: cobra.NoArgs,
