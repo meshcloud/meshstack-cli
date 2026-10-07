@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"uuid"
 
 	"github.com/spf13/cobra"
@@ -17,12 +19,18 @@ import (
 )
 
 func NewLoginShortcut() *cobra.Command {
-	cmd := newLogin()
+	cmd := newLogin(nil)
 	cmd.Short += " (same as auth login)"
 	return cmd
 }
 
-func newLogin() *cobra.Command {
+// NewLoginTo logs in to the profile name, whichever profile the flags and the environment name.
+func NewLoginTo(name profile.Name) *cobra.Command {
+	return newLogin(setting.Sources{setting.LookupSource(setting.Profile.EnvKey(), "the profile highlighted in meshstack profile",
+		func(context.Context) (string, error) { return string(name), nil })})
+}
+
+func newLogin(profileSources setting.Sources) *cobra.Command {
 	var (
 		openStdinFlag = newStdinFlag()
 		apiKeyFlag    = internal.NewFlagForSetting[uuid.UUID]("apikey", setting.ApiKeyClientId)
@@ -53,6 +61,7 @@ It ends with what meshstack auth status shows for the new login.`,
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			ctx := cmd.Context()
 			opts := internal.ResolveClientOptions()
+			opts.SettingSources = slices.Concat(profileSources, opts.SettingSources)
 			promptedFrom := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
 			var authWith credential.Name
 			switch {

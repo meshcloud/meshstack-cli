@@ -77,6 +77,22 @@ func (o OidcLoginStatus) SessionEnded() bool {
 	return !o.SessionEndsAt.IsZero() && !time.Now().Before(o.SessionEndsAt)
 }
 
+// BrowserLoginEnded is also true for a browser login that a logout removed. It reads only the
+// stored files of p, and calls no meshStack.
+func BrowserLoginEnded(ctx context.Context, p *profile.Profile) bool {
+	if p.Credential != credential.OidcLoginName {
+		return false
+	}
+	creds, err := p.Credentials(ctx)
+	if err != nil || creds.OidcLogin == nil {
+		return true
+	}
+	if err := CacheFor(p, creds.OidcLogin).Load(ctx); err != nil || creds.OidcLogin.Cache == nil {
+		return true
+	}
+	return OidcLoginStatus{SessionEndsAt: creds.OidcLogin.Cache.RefreshExpiresAt}.SessionEnded()
+}
+
 type ApiKeyStatus struct {
 	ClientId uuid.UUID      `json:"clientId"`
 	Details  *ApiKeyDetails `json:"details,omitzero"`
