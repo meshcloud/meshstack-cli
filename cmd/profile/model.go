@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 
@@ -14,19 +15,25 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/spf13/cobra"
 
+	cmdauth "github.com/meshcloud/meshstack-cli/cmd/auth"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
+	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
-const currentMarker = "🏠"
+const (
+	currentMarker    = "🏠"
+	loginEndedMarker = "💤"
+)
 
-type keyMap struct{ move, edit, add, remove, use, quit key.Binding }
+type keyMap struct{ move, edit, add, remove, use, login, quit key.Binding }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.move, k.edit, k.add, k.remove, k.use, k.quit}
+	return []key.Binding{k.move, k.edit, k.add, k.remove, k.use, k.login, k.quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
@@ -38,6 +45,7 @@ var keys = keyMap{
 	add:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add ➕")),
 	remove: key.NewBinding(key.WithKeys("d", "delete"), key.WithHelp("d", "delete ❌")),
 	use:    key.NewBinding(key.WithKeys("u", "space"), key.WithHelp("u", "set "+currentMarker)),
+	login:  key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "log in 🔑")),
 	quit:   key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q", "quit")),
 }
 
@@ -118,7 +126,7 @@ func (m model) tableView() string {
 	body, shownKeys := m.tableBody(), keys
 	if len(m.shown) == 0 {
 		body = m.styles.Focused.Base.Render(m.styles.Focused.Description.Render("There is no profile yet."))
-		for _, binding := range []*key.Binding{&shownKeys.move, &shownKeys.edit, &shownKeys.remove, &shownKeys.use} {
+		for _, binding := range []*key.Binding{&shownKeys.move, &shownKeys.edit, &shownKeys.remove, &shownKeys.use, &shownKeys.login} {
 			binding.SetEnabled(false)
 		}
 	}
@@ -192,6 +200,9 @@ func (m model) withRows(highlight profile.Name) model {
 		r := table.Row{"", string(p.Name), "", string(p.DefaultWorkspace)}
 		if p.Name == m.CurrentProfile {
 			r[0] = currentMarker
+		}
+		if auth.BrowserLoginEnded(m.ctx, p) {
+			r[0] += loginEndedMarker
 		}
 		if p.Endpoint.URL != nil {
 			r[2] = p.Endpoint.String()
@@ -273,6 +284,18 @@ func (m model) update(msg tea.Msg) (model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.form.lookUpWorkspaces(m.ctx, m.Profiles)
+	case loggedIn:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, tea.Quit
+		}
+		profiles, err := loadLockedProfiles(m.ctx)
+		if err != nil {
+			m.err = err
+			return m, tea.Quit
+		}
+		m.Profiles = profiles
+		return m.finish(msg.profile, fmt.Sprintf("Logged in to profile '%s'.", msg.profile), nil)
 	case detailsLoaded:
 		if m.form != nil && m.form.original != nil && m.form.original.Name == msg.profile {
 			if msg.err != nil {
@@ -312,13 +335,42 @@ func (m model) onKey(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	case key.Matches(msg, keys.use) && highlighted != nil:
 		return m.finish(highlighted.Name, fmt.Sprintf("Profile '%s' is the current one.", highlighted.Name),
 			m.SetCurrent(m.ctx, highlighted.Name))
-	case key.Matches(msg, keys.remove, keys.use):
+	case key.Matches(msg, keys.login) && highlighted != nil:
+		return m.withLogin(highlighted.Name)
+	case key.Matches(msg, keys.remove, keys.use, keys.login):
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.table, cmd = m.table.Update(msg)
 	return m, cmd
 }
+
+// withLogin releases the lock on the profiles, as the login takes it itself.
+func (m model) withLogin(name profile.Name) (model, tea.Cmd) {
+	if err := m.Unlock(); err != nil {
+		m.err = err
+		return m, tea.Quit
+	}
+	loginCmd := cmdauth.NewLoginTo(name)
+	loginCmd.SetContext(m.ctx)
+	return m, tea.Exec(login{loginCmd}, func(err error) tea.Msg {
+		return loggedIn{profile: name, err: err}
+	})
+}
+
+type loggedIn struct {
+	profile profile.Name
+	err     error
+}
+
+// login calls RunE rather than Execute, which would print the error that the list prints once it
+// has ended.
+type login struct{ *cobra.Command }
+
+func (l login) SetStdin(in io.Reader)   { l.SetIn(in) }
+func (l login) SetStdout(out io.Writer) { l.SetOut(out) }
+func (l login) SetStderr(out io.Writer) { l.SetErr(out) }
+func (l login) Run() error              { return l.RunE(l.Command, nil) }
 
 // withDeletion keeps the profile unless Delete is chosen: Enter takes Keep, the button huh focuses
 // first.
@@ -385,5 +437,7 @@ func run(ctx context.Context, p prompt.Prompt, m model) error {
 	if err != nil {
 		return err
 	}
-	return result.err
+	// A login in the list replaces the profiles and their lock, and withLockedProfiles unlocks only
+	// the ones it gave run.
+	return errors.Join(result.err, result.Unlock())
 }

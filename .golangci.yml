@@ -362,6 +362,8 @@ linters:
             # the terminal UI shows what it holds back of the log
             - github.com/meshcloud/meshstack-cli/internal/logs
             - github.com/meshcloud/meshstack-cli/cmd/internal
+            # the terminal UI runs meshstack login for the profile it highlights
+            - github.com/meshcloud/meshstack-cli/cmd/auth
             - github.com/meshcloud/meshstack-cli/client
             - github.com/spf13/cobra
             # the terminal UI: a table of the profiles, a form to add or edit one, and a dialog

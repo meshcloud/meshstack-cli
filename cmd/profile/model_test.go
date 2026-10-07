@@ -14,6 +14,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
+	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
@@ -105,7 +106,10 @@ func TestListKeysChangeTheHighlightedProfileAndStoreItAtOnce(t *testing.T) {
 }
 
 func TestTheTableMarksTheCurrentProfileAndADialogAsksBeforeItDeletes(t *testing.T) {
-	m := newModel(t.Context(), twoProfiles(t))
+	m := newModel(t.Context(), storedProfiles(t,
+		profile.Profile{Name: "dev", Endpoint: endpointA},
+		profile.Profile{Name: "prod", Endpoint: endpointB, DefaultWorkspace: "ops", Credential: credential.OidcLoginName},
+	))
 	m, _ = m.update(tea.WindowSizeMsg{Width: 80, Height: 20})
 
 	view := m.View()
@@ -114,8 +118,9 @@ func TestTheTableMarksTheCurrentProfileAndADialogAsksBeforeItDeletes(t *testing.
 	content := ansi.Strip(view.Content)
 	assert.Regexp(t, `Name +Endpoint +Default workspace`, content)
 	assert.Regexp(t, `🏠 +dev +https://a.example.io`, content)
-	assert.Regexp(t, `prod +https://b.example.io +ops`, content)
+	assert.Regexp(t, `💤 +prod +https://b.example.io +ops`, content, "a browser login with no session stored")
 	assert.Contains(t, content, "u set 🏠")
+	assert.Contains(t, content, "l log in 🔑")
 	assert.NotContains(t, content, "…", "the help fits on 80 columns")
 
 	m, _ = m.update(press('d'))
