@@ -61,6 +61,13 @@ func TestStatusOfABrowserLogin(t *testing.T) {
 		assert.Empty(t, status.Unused, "the only stored credential is the one in use")
 	})
 
+	t.Run("scopes the session to the profile and the workspace of the login", func(t *testing.T) {
+		session, err := auth.StoredSession(t.Context(), p, testSessionOpts)
+		require.NoError(t, err)
+
+		assert.Equal(t, "profile dev working in workspace ops", session.Scope())
+	})
+
 	t.Run("lists the stored credentials besides the one in use", func(t *testing.T) {
 		creds, err := p.Credentials(t.Context())
 		require.NoError(t, err)

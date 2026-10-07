@@ -130,6 +130,7 @@ func TestApi(t *testing.T) {
 		for status, wantError := range map[int]string{
 			gohttp.StatusConflict:   "meshStack answered HTTP 409. Run meshstack api-docs /api/x -H 'Accept: application/json' -X DELETE to see what the API takes",
 			gohttp.StatusBadGateway: "meshStack answered HTTP 502",
+			gohttp.StatusForbidden:  "auth scope profile default: meshStack answered HTTP 403",
 		} {
 			meshStack.answer(status, `{"message":"still in use"}`)
 

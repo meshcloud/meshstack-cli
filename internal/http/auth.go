@@ -17,6 +17,9 @@ type Authorization interface {
 	// RefreshBearerToken returns the token that replaces the rejected one. Returning the
 	// rejected token unchanged tells the caller that there is nothing new to try.
 	RefreshBearerToken(ctx context.Context, rejected BearerToken) (BearerToken, error)
+
+	// Scope names what meshStack grants access by, so that a 403 says it. Empty names nothing.
+	Scope() string
 }
 
 func (c Client) WithAuthorization(auth Authorization) AuthorizedClient {
@@ -30,9 +33,13 @@ type AuthorizedClient struct {
 }
 
 func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (R, error) {
-	return withBearerToken(ctx, c.Authorization, method, url, func(token RequestOption) (R, error) {
+	result, err := withBearerToken(ctx, c.Authorization, method, url, func(token RequestOption) (R, error) {
 		return c.Client.DoRequest[R](ctx, method, url, append(options, token)...)
 	})
+	if httpErr, ok := errors.AsType[Error](err); ok && httpErr.IsForbidden() && c.Authorization.Scope() != "" {
+		err = fmt.Errorf("auth scope %s: %w", c.Authorization.Scope(), err)
+	}
+	return result, err
 }
 
 func withBearerToken[R any](ctx context.Context, auth Authorization, method string, url *url.URL, send func(token RequestOption) (R, error)) (result R, err error) {
@@ -68,6 +75,10 @@ func (token BearerToken) GetBearerToken(_ context.Context) (BearerToken, error) 
 
 func (token BearerToken) RefreshBearerToken(_ context.Context, _ BearerToken) (BearerToken, error) {
 	return "", fmt.Errorf("cannot renew %T", token)
+}
+
+func (token BearerToken) Scope() string {
+	return ""
 }
 
 func (token BearerToken) asRequestOption() RequestOption {

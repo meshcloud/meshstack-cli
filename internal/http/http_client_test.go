@@ -264,6 +264,10 @@ func (a *refreshableAuthorization) GetBearerToken(context.Context) (http.BearerT
 	return a.token, nil
 }
 
+func (a *refreshableAuthorization) Scope() string {
+	return ""
+}
+
 func (a *refreshableAuthorization) RefreshBearerToken(_ context.Context, rejected http.BearerToken) (http.BearerToken, error) {
 	a.rejected = append(a.rejected, rejected)
 	if a.refreshErr != nil {

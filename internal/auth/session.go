@@ -10,6 +10,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -51,6 +52,18 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 		return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
 	})
 	return session.withCredential(ctx, resolved, opts)
+}
+
+// Scope names the profile, and the workspace where the settings choose it: only a browser login
+// works in that workspace, while an API key works in the one that owns it.
+func (s Session) Scope() string {
+	scope := "profile " + string(s.CurrentProfile.Name)
+	if _, browserLogin := s.Credential.Credential.(*credential.OidcLogin); browserLogin {
+		if workspace, err := s.getWorkspace(); err == nil && workspace != meshstack.NoWorkspace {
+			scope += " working in workspace " + string(workspace)
+		}
+	}
+	return scope
 }
 
 func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionOptions) (Session, error) {

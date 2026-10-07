@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	gohttp "net/http"
 	"slices"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -98,7 +99,8 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 					return fmt.Errorf("meshStack answered HTTP %d. Run %s to see what the API takes",
 						httpErr.StatusCode, docsCommand(cmd, args))
 				}
-				return fmt.Errorf("meshStack answered HTTP %d", httpErr.StatusCode)
+				// What wraps the HTTP error, such as the auth scope of a 403, stays.
+				return errors.New(strings.Replace(err.Error(), httpErr.Error(), fmt.Sprintf("meshStack answered HTTP %d", httpErr.StatusCode), 1))
 			}
 			if err != nil {
 				return err
