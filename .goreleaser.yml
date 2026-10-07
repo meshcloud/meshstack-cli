@@ -65,3 +65,45 @@ changelog:
       order: 2
     - title: Others
       order: 99
+
+# Opens a pull request to microsoft/winget-pkgs. The pull request comes from the fork
+# jannymeshi/winget-pkgs, because goreleaser has to push the manifest branch somewhere, and a bot
+# account keeps that fork out of the meshcloud organization. One-time setup:
+#   - the GitHub user jannymeshi owns the fork jannymeshi/winget-pkgs;
+#   - the repository secret JANNYMESHI_WINGET_PKGS_TOKEN holds a classic personal access token
+#     of jannymeshi with the public_repo scope, and release.yml passes it in;
+#   - jannymeshi signs the Microsoft CLA once, with company "meshcloud", when the CLA bot asks on
+#     the first pull request.
+# Microsoft reviews every pull request, so a release reaches winget only once that review merges it.
+winget:
+  - name: meshstack-cli
+    package_identifier: meshcloud.meshstack-cli
+    publisher: meshcloud
+    publisher_url: https://www.meshcloud.io
+    short_description: Command-line interface for meshStack
+    license: Apache-2.0
+    license_url: https://github.com/meshcloud/meshstack-cli/blob/main/LICENSE
+    homepage: https://github.com/meshcloud/meshstack-cli
+    release_notes_url: https://github.com/meshcloud/meshstack-cli/releases/tag/{{ .Tag }}
+    tags:
+      - meshstack
+      - meshcloud
+      - cli
+      - cloud
+    # release.yml runs only for tags without a prerelease suffix today. If that changes, this still
+    # keeps a prerelease out of the package.
+    skip_upload: auto
+    commit_author:
+      name: jannymeshi
+      email: 253058105+jannymeshi@users.noreply.github.com
+    repository:
+      owner: jannymeshi
+      name: winget-pkgs
+      branch: '{{ .ProjectName }}-{{ .Version }}'
+      token: '{{ .Env.JANNYMESHI_WINGET_PKGS_TOKEN }}'
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
