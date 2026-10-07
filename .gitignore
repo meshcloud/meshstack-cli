@@ -27,6 +27,7 @@ unit.txt
 .vscode/
 .idea/
 /scratch/
+.claude/worktrees/
 
 # Per-developer Claude Code settings; .claude/settings.json is shared and committed
 .claude/settings.local.json
