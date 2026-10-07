@@ -2,7 +2,9 @@ module github.com/meshcloud/meshstack-cli
 
 // 1.27 is the floor because internal/http declares generic methods, which no earlier release
 // compiles. Keep the pins in flake.nix (go_1_27 and GOROOT) and in the
-// Dockerfile in lock-step.
+// Dockerfile in lock-step. Raising it also breaks the nixpkgs package
+// (buildGo127Module in pkgs/by-name/me/meshstack-cli/package.nix of NixOS/nixpkgs):
+// its automatic update PRs cannot change the Go version, so a maintainer has to.
 go 1.27
 
 // gotestsum is not a convenience: meshfed-release's go-satellite build plugin runs
