@@ -305,9 +305,6 @@ linters:
           allow:
             - $gostd
             - log/slog
-            # the deny on encoding/json matches its subpackages too; a building block names the
-            # workspace its state is stored under
-            - encoding/json/v2
             # the proxy that serves the state to tofu. It needs the request options of
             # client.Raw.DoRequest, and pkg/ does not expose them, because they are for the CLI alone.
             - github.com/meshcloud/meshstack-cli/internal/tfstate

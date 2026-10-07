@@ -2,7 +2,6 @@ package tfstate
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"uuid"
@@ -62,24 +61,6 @@ and run "meshstack buildingblock tfstate exec <building-block-uuid> -- tofu init
 	return cmd
 }
 
-type buildingBlock struct {
-	Metadata client.MeshBuildingBlockV2Metadata `json:"metadata"`
-	Status   *client.MeshBuildingBlockV2Status  `json:"status"`
-}
-
-func (block buildingBlock) hasUnfinishedRun() bool {
-	return block.Status != nil &&
-		(block.Status.Status == client.BuildingBlockStatusInProgress || block.Status.Status == client.BuildingBlockStatusPending)
-}
-
-func readBuildingBlock(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID) (block buildingBlock, err error) {
-	read, err := raw.Get[client.MeshBuildingBlockV2](ctx, buildingBlockUuid)
-	if err != nil {
-		return block, err
-	}
-	return block, json.Unmarshal(read, &block)
-}
-
 // openStore ignores the profile's default workspace. Otherwise that workspace would replace the
 // building block's own workspace, which the runner stores the state under, for every user who has a
 // default.
@@ -88,14 +69,7 @@ func openStore(ctx context.Context, meshStack client.Client, buildingBlockUuid u
 	if err != nil {
 		return tfstate.Store{}, err
 	}
-	if workspace == "" {
-		block, err := readBuildingBlock(ctx, meshStack.Raw, buildingBlockUuid)
-		if err != nil {
-			return tfstate.Store{}, err
-		}
-		workspace = block.Metadata.OwnedByWorkspace
-	}
-	return tfstate.NewStore(meshStack.Raw, workspace, buildingBlockUuid), nil
+	return tfstate.OpenStore(ctx, meshStack.Raw, workspace, buildingBlockUuid)
 }
 
 func withApiKeyHint(err error) error {

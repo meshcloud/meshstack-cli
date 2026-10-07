@@ -16,7 +16,6 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
-	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/tfstate"
 )
@@ -105,7 +104,12 @@ directory.`,
 			}
 			if proxy.Writable {
 				if !force {
-					proxy.BeforeWrite = func(ctx context.Context) error { return noRunOf(ctx, meshStack.Raw, buildingBlockUuid) }
+					proxy.BeforeWrite = func(ctx context.Context) error {
+						if running := tfstate.NoRunOf(ctx, meshStack.Raw, buildingBlockUuid); running != nil {
+							return fmt.Errorf("%w: wait for it to finish, or run again with --force", running)
+						}
+						return nil
+					}
 					if err = proxy.BeforeWrite(ctx); err != nil {
 						return err
 					}
@@ -134,18 +138,6 @@ directory.`,
 	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending or in progress")
 
 	return cmd
-}
-
-func noRunOf(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID) error {
-	block, err := readBuildingBlock(ctx, raw, buildingBlockUuid)
-	if err != nil {
-		return err
-	}
-	if block.hasUnfinishedRun() {
-		return fmt.Errorf("building block %s has a run %s, which writes the state as well: wait for it to finish, or run again with --force",
-			buildingBlockUuid, block.Status.Status)
-	}
-	return nil
 }
 
 func run(ctx context.Context, cmd *cobra.Command, command, proxyEnv []string) error {
