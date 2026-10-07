@@ -66,8 +66,13 @@ exit code of the command. The module needs a backend "http" block: "meshstack bu
 --help" shows the file to add. The state is the one stored under the workspace of the building
 block, metadata.ownedByWorkspace, unless --workspace names another one.
 
---mode read, the default, refuses to store a state. It takes no lock, so it never makes a run of
-the building block wait, and a plan may read a state that a run is changing.
+tofu's meshstack provider talks to meshStack through exec as well, with the login of the CLI. This
+works with any version of the provider, as long as its provider "meshstack" block sets no endpoint
+and no credentials, which would win over what exec gives it.
+
+--mode read, the default, refuses to store a state, and lets the provider only read. It takes no
+lock, so it never makes a run of the building block wait, and a plan may read a state that a run is
+changing.
 
 --mode readwrite stores what the command writes, and locks the state in meshStack whenever tofu
 asks for a lock. A run of the building block waits for that lock for up to 5 minutes, and then
@@ -87,7 +92,11 @@ directory.`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			meshStack, err := internal.ResolveClient(ctx)
+			session, err := internal.ResolveSession(ctx)
+			if err != nil {
+				return err
+			}
+			meshStack, err := session.Client()
 			if err != nil {
 				return err
 			}
@@ -95,13 +104,22 @@ directory.`,
 			if err != nil {
 				return err
 			}
+			api, err := internal.ResolveClientOptions().HttpClient()
+			if err != nil {
+				return err
+			}
 			var problems []error
 			proxy := &tfstate.Proxy{
 				Store:    store,
+				Endpoint: session.CurrentProfile.Endpoint.URL,
+				Api:      api.WithAuthorization(session),
 				Writable: access == modeReadWrite,
 				OnProblem: func(ctx context.Context, err error) {
-					if errors.Is(err, tfstate.ErrReadOnly) {
+					switch {
+					case errors.Is(err, tfstate.ErrReadOnly):
 						err = fmt.Errorf("%w, run again with --mode readwrite to let the command store it", err)
+					case errors.Is(err, tfstate.ErrReadOnlyApi):
+						err = fmt.Errorf("%w, run again with --mode readwrite to let the command change meshStack", err)
 					}
 					if !slices.ContainsFunc(problems, func(problem error) bool { return problem.Error() == err.Error() }) {
 						slog.WarnContext(ctx, err.Error())
@@ -149,10 +167,10 @@ directory.`,
 	return cmd
 }
 
-func run(ctx context.Context, cmd *cobra.Command, command, proxyEnv []string) error {
+func run(ctx context.Context, cmd *cobra.Command, command, env []string) error {
 	// Ctrl-C ends ctx, and the command then still has to store what it has done.
 	child := exec.CommandContext(context.WithoutCancel(ctx), command[0], command[1:]...) //nolint:gosec // G204: running the command it was given is what exec is for
-	child.Env = append(os.Environ(), proxyEnv...)
+	child.Env = append(os.Environ(), env...)
 	child.Stdin, child.Stdout, child.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
 
 	signals := make(chan os.Signal, 1)

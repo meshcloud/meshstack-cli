@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	gohttp "net/http"
 	"net/http/httptest"
@@ -22,6 +23,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
+	"github.com/meshcloud/meshstack-cli/pkg/auth"
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
 const (
@@ -31,12 +34,15 @@ const (
 	runUuid           = "a1d2c3e4-0000-4000-8000-000000000002"
 )
 
+var apiKey = fakemeshstack.ApiKey{ClientId: "11111111-45bf-42ba-a965-2097b9d0d181", ClientSecret: "the-secret"}
+
 func statePath(workspace string) string {
 	return "/api/terraform/state/workspace/" + workspace + "/buildingBlock/" + buildingBlockUuid
 }
 
 // TestMain runs the steps of childSteps where exec started the test binary: GET asks the proxy for
-// the state, POST stores state, and exit=<code> exits.
+// the state, POST stores state, provider reads the building block as tofu's meshstack provider
+// does, and exit=<code> exits.
 func TestMain(m *testing.M) {
 	if steps, ok := os.LookupEnv(childSteps); ok {
 		os.Exit(runChild(steps))
@@ -50,12 +56,30 @@ func runChild(steps string) int {
 			exitCode, _ := strconv.Atoi(code)
 			return exitCode
 		}
+		if step == "provider" {
+			if err := readAsTheProvider(); err != nil {
+				fmt.Println(err)
+				return 1
+			}
+			continue
+		}
 		address, _ := url.Parse(os.Getenv("TF_HTTP_ADDRESS"))
 		r := httptest.NewRequestWithContext(context.Background(), step, "/", nil)
 		r.SetBasicAuth(os.Getenv("TF_HTTP_USERNAME"), os.Getenv("TF_HTTP_PASSWORD"))
 		_, _ = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](context.Background(), step, address, http.WithHeaders(r.Header), http.WithBody([]byte(state)))
 	}
 	return 0
+}
+
+func readAsTheProvider() error {
+	ctx := context.Background()
+	meshStack, err := auth.ResolveClient(ctx, auth.ResolveClientOptions{Version: "test", GitHubRepo: "meshcloud/terraform-provider-meshstack"})
+	if err != nil {
+		return err
+	}
+	block, err := meshStack.Raw.DoRequest(ctx, http.MethodGet, "/api/meshobjects/meshbuildingblocks/"+buildingBlockUuid)
+	fmt.Print(string(block))
+	return err
 }
 
 type fakeMeshStack struct {
@@ -70,6 +94,7 @@ func newFakeMeshStack(t *testing.T) *fakeMeshStack {
 	blockStatus := map[string]any{"status": "SUCCEEDED"}
 	run := map[string]any{"metadata": map[string]any{"uuid": runUuid}, "status": "IN_PROGRESS"}
 	server := fakemeshstack.Start(t, fakemeshstack.Options{
+		ApiKeys:           []fakemeshstack.ApiKey{apiKey},
 		BuildingBlockRuns: []any{run},
 		BuildingBlocks: []any{map[string]any{
 			"metadata": map[string]any{"uuid": buildingBlockUuid, "ownedByWorkspace": "my-workspace"},
@@ -147,6 +172,19 @@ func TestTfstate(t *testing.T) {
 		assert.Equal(t, 3, exitErr.Code)
 		assert.Empty(t, ran.stderr, "the command has said why it failed")
 		assert.NotContains(t, ran.log, "level=WARN", "the command asked for the state")
+	})
+
+	t.Run("exec lets the meshstack provider read meshStack with the login of the CLI", func(t *testing.T) {
+		t.Setenv(setting.ApiToken.EnvKey(), "")
+		t.Setenv(setting.ApiKeyClientId.EnvKey(), apiKey.ClientId)
+		t.Setenv(setting.ApiKeyClientSecret.EnvKey(), apiKey.ClientSecret)
+		logins := meshStack.Counts().Logins
+
+		ran := execChild(t, "GET provider")
+
+		require.NoError(t, ran.err, ran.stdout)
+		assert.Contains(t, ran.stdout, `"ownedByWorkspace":"my-workspace"`)
+		assert.Equal(t, logins+1, meshStack.Counts().Logins, "only exec logs in with the API key")
 	})
 
 	t.Run("exec warns where the command asked for no state", func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -11,10 +12,16 @@ import (
 	"log/slog"
 	"net"
 	gohttp "net/http"
+	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
+	"github.com/meshcloud/meshstack-cli/internal/tfstate/apiproxy"
 )
 
 const (
@@ -23,13 +30,21 @@ const (
 	lockPath  = statePath + "/lock"
 )
 
-var ErrReadOnly = errors.New("the state is read-only")
+var (
+	ErrReadOnly    = errors.New("the state is read-only")
+	ErrReadOnlyApi = errors.New("the meshStack API is read-only")
+)
 
 // Proxy stands between tofu and meshStack, rather than giving tofu the session's token as
 // TF_HTTP_PASSWORD, which meshfed's TfStateRunTokenBasicAuthFilter accepts. That token can expire
 // in the middle of an apply, and nothing would check tofu's writes against the stored state.
+//
+// For the same reason it passes every other request on to the meshStack API with the session's
+// token, so that tofu's meshstack provider works with the CLI's login.
 type Proxy struct {
-	Store Store
+	Store    Store
+	Endpoint *url.URL
+	Api      http.AuthorizedClient
 	// Writable passes tofu's lock calls on to meshStack. A proxy that is not writable answers them
 	// itself, so that a command that stores nothing never makes a run of the building block wait.
 	Writable    bool
@@ -47,6 +62,9 @@ type Proxy struct {
 	OnProblem func(ctx context.Context, err error)
 
 	password string
+	apiToken string
+	// problemMu is held for OnProblem, because the requests for the API do not wait for mu.
+	problemMu sync.Mutex
 	// mu is held for the whole request, so that no other write comes between a write's check of the
 	// stored state and the write itself.
 	mu        sync.Mutex
@@ -56,6 +74,7 @@ type Proxy struct {
 
 func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int, err error) {
 	p.password = rand.Text()
+	p.apiToken = newApiToken(p.password)
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, fmt.Errorf("cannot serve the state on a loopback port: %w", err)
@@ -78,6 +97,14 @@ func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int
 		"TF_HTTP_UNLOCK_METHOD=" + gohttp.MethodDelete,
 		"TF_HTTP_USERNAME=" + username,
 		"TF_HTTP_PASSWORD=" + p.password,
+		meshstack.EndpointSetting.EnvKey() + "=" + address,
+		auth.ApiTokenSetting.EnvKey() + "=" + p.apiToken,
+		// With an API key as well, the provider since v0.26.0 refuses to pick one of the two.
+		auth.ApiKeyClientIdSetting.EnvKey() + "=",
+		auth.ApiKeyClientSecretSetting.EnvKey() + "=",
+		// The provider since v0.26.0 refuses a stored profile whose endpoint is not the proxy's, and
+		// creates a profile it does not find without storing it.
+		profile.NameSetting.EnvKey() + "=" + execProfile,
 	})
 
 	err = server.Shutdown(context.WithoutCancel(ctx))
@@ -91,6 +118,10 @@ func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int
 }
 
 func (p *Proxy) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) {
+	if r.URL.Path != statePath && r.URL.Path != lockPath {
+		p.forward(w, r)
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.requests++
@@ -107,12 +138,41 @@ func (p *Proxy) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) {
 		p.write(w, r)
 	case r.URL.Path == lockPath && (r.Method == gohttp.MethodPost || r.Method == gohttp.MethodDelete):
 		p.lock(w, r)
-	case r.URL.Path == statePath || r.URL.Path == lockPath:
+	default:
 		w.Header().Set("Allow", map[string]string{statePath: "GET, POST, DELETE", lockPath: "POST, DELETE"}[r.URL.Path])
 		p.refuse(w, r, gohttp.StatusMethodNotAllowed, fmt.Errorf("a request asked to %s %s, which meshStack does not offer", r.Method, r.URL.Path))
-	default:
-		p.refuse(w, r, gohttp.StatusNotFound, fmt.Errorf("a request asked for %s, but the state is at %s", r.URL.Path, statePath))
 	}
+}
+
+const execProfile = "meshstack-tfstate-exec"
+
+// newApiToken wraps password in the shape of a JWT that expires in a year, because the provider
+// since v0.26.0 refuses a token that is no JWT, or that has expired. Nobody checks its signature.
+func newApiToken(password string) string {
+	encode := base64.RawURLEncoding.EncodeToString
+	exp := strconv.FormatInt(time.Now().AddDate(1, 0, 0).Unix(), 10)
+	return encode([]byte(`{"alg":"none"}`)) + "." + encode([]byte(`{"exp":`+exp+`}`)) + "." + password
+}
+
+// forward passes a request without a token on as it came, so that the provider can ask
+// meshStack's /mesh/info, which needs none. Only a request with the token it was given gets the
+// session's, so that no other process on this machine works with the CLI's login.
+//
+// The provider builds every URL from its endpoint and pages by number, so the links in meshStack's
+// answers, which name meshStack itself, stay as they are.
+func (p *Proxy) forward(w gohttp.ResponseWriter, r *gohttp.Request) {
+	sent := r.Header.Get("Authorization")
+	if sent != "" && subtle.ConstantTimeCompare([]byte(sent), []byte("Bearer "+p.apiToken)) != 1 {
+		p.refuse(w, r, gohttp.StatusUnauthorized, fmt.Errorf("a request for %s came without the %s it was given", r.URL.Path, auth.ApiTokenSetting.EnvKey()))
+		return
+	}
+	if !p.Writable && r.Method != gohttp.MethodGet && r.Method != gohttp.MethodHead {
+		p.refuse(w, r, gohttp.StatusForbidden, fmt.Errorf("%w, so the command cannot %s %s", ErrReadOnlyApi, r.Method, r.URL.Path))
+		return
+	}
+	apiproxy.New(p.Api, p.Endpoint, func(w gohttp.ResponseWriter, r *gohttp.Request, err error) {
+		p.fail(w, r, fmt.Errorf("cannot pass %s %s on to meshStack: %w", r.Method, r.URL.Path, err))
+	}).ServeHTTP(w, r)
 }
 
 func (p *Proxy) lock(w gohttp.ResponseWriter, r *gohttp.Request) {
@@ -315,6 +375,8 @@ func (p *Proxy) fail(w gohttp.ResponseWriter, r *gohttp.Request, err error) {
 
 func (p *Proxy) refuse(w gohttp.ResponseWriter, r *gohttp.Request, status int, err error) {
 	if p.OnProblem != nil {
+		p.problemMu.Lock()
+		defer p.problemMu.Unlock()
 		p.OnProblem(r.Context(), err)
 	}
 	gohttp.Error(w, err.Error(), status)

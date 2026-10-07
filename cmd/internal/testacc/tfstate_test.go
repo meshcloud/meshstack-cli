@@ -50,6 +50,18 @@ func TestAccTfstate(t *testing.T) {
 		c.exec(t, block, "read", "tofu", "-chdir="+module, "plan", "-input=false")
 	})
 
+	t.Run("exec --mode read lets the meshstack provider read meshStack, and nothing else", func(t *testing.T) {
+		provider := copyTestdata(t, "provider")
+		c.exec(t, block, "read", "tofu", "-chdir="+provider, "init", "-input=false")
+		output := c.exec(t, block, "read", "tofu", "-chdir="+provider, "plan", "-input=false", "-var", "workspace="+block.workspace)
+		assert.Contains(t, output, "meshStack CLI acceptance "+block.workspace)
+
+		output, err := c.run("", "buildingblock", "tfstate", "exec", block.uuid, "--", "sh", "-ec",
+			`curl --silent --show-error --fail --request POST --header "Authorization: Bearer $MESHSTACK_API_TOKEN" "$MESHSTACK_ENDPOINT/api/meshobjects/meshworkspaces"`)
+		require.Errorf(t, err, "the exec passed a POST on in read mode:\n%s", output)
+		assert.Contains(t, output, "run again with --mode readwrite to let the command change meshStack")
+	})
+
 	t.Run("exec --mode readwrite applies with tofu, and leaves no lock behind", func(t *testing.T) {
 		output := c.exec(t, block, "readwrite", "tofu", "-chdir="+module, "apply", "-auto-approve", "-input=false")
 		assert.Contains(t, output, "Apply complete!")

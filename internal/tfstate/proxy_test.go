@@ -21,11 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 const (
 	testPassword = "the-password"
+	testApiToken = "the-api-token"
 	firstState   = `{"version":4,"serial":1,"lineage":"lineage-1"}`
 	nextState    = `{"version":4,"serial":2,"lineage":"lineage-1"}`
 )
@@ -66,6 +68,10 @@ func newProxy(t *testing.T, stored string, writable bool) *proxyUnderTest {
 		Backups:   Backups(filepath.Join(t.TempDir(), "tfstate-backups")),
 		OnProblem: func(_ context.Context, err error) { p.problems = append(p.problems, err) },
 		password:  testPassword,
+		apiToken:  testApiToken,
+
+		Endpoint: endpoint,
+		Api:      http.NewClient(fakemeshstack.UserAgent).WithAuthorization(http.BearerToken(fakemeshstack.Token)),
 	}
 	return p
 }
@@ -88,6 +94,22 @@ func (p *proxyUnderTest) sendTo(method, target, body string) *httptest.ResponseR
 	p.ServeHTTP(w, r)
 	return w
 }
+
+func (p *proxyUnderTest) sendToApi(method, authorization string) *httptest.ResponseRecorder {
+	r := httptest.NewRequestWithContext(context.Background(), method, apiPath+"?page=1", strings.NewReader(`{"some":"body"}`))
+	if authorization != "" {
+		r.Header.Set("Authorization", authorization)
+	}
+	r.Header.Set("User-Agent", providerUserAgent)
+	w := httptest.NewRecorder()
+	p.ServeHTTP(w, r)
+	return w
+}
+
+const (
+	apiPath           = "/api/meshobjects/meshworkspaces"
+	providerUserAgent = "terraform-provider-meshstack/0.26.0"
+)
 
 func (p *proxyUnderTest) backups(t *testing.T) []string {
 	t.Helper()
@@ -187,6 +209,45 @@ func TestAWritableProxy(t *testing.T) {
 		assert.Equal(t, []string{firstState, nextState, `{"version":4,"serial":7,"lineage":"lineage-1"}`}, p.backups(t))
 	})
 
+	t.Run("passes a request for the API on with the session's token in place of the one it gave the command", func(t *testing.T) {
+		p.meshStack.Route(gohttp.MethodPost+" "+apiPath, func(w gohttp.ResponseWriter, _ *gohttp.Request) { w.WriteHeader(gohttp.StatusCreated) })
+		defer p.meshStack.Route(gohttp.MethodPost+" "+apiPath, nil)
+		p.meshStack.TakeRequests()
+
+		assert.Equal(t, gohttp.StatusCreated, p.sendToApi(gohttp.MethodPost, "Bearer "+testApiToken).Code)
+
+		forwarded := p.meshStack.TakeRequests()
+		require.Len(t, forwarded, 1)
+		assert.Equal(t, "Bearer "+fakemeshstack.Token, forwarded[0].Header.Get("Authorization"))
+		assert.Equal(t, "page=1", forwarded[0].URL.RawQuery)
+		assert.JSONEq(t, `{"some":"body"}`, string(forwarded[0].Body))
+		assert.Equal(t, providerUserAgent+" "+fakemeshstack.UserAgent.String(), forwarded[0].Header.Get("User-Agent"),
+			"meshStack learns both who built the request and through which front end it came")
+		assert.Empty(t, p.problems)
+	})
+
+	t.Run("passes a request for the API without a token on without one, as for /mesh/info", func(t *testing.T) {
+		p.meshStack.TakeRequests()
+
+		assert.Equal(t, gohttp.StatusUnauthorized, p.sendToApi(gohttp.MethodGet, "").Code, "meshStack refuses it")
+
+		forwarded := p.meshStack.TakeRequests()
+		require.Len(t, forwarded, 1)
+		assert.Empty(t, forwarded[0].Header.Get("Authorization"))
+		assert.Empty(t, p.problems, "the command reports the answer of meshStack itself")
+	})
+
+	t.Run("refuses a request for the API with another token, so that no other process works with the session", func(t *testing.T) {
+		p.meshStack.TakeRequests()
+		for _, authorization := range []string{"Bearer guessed", "Basic " + basicAuth(username, testPassword)} {
+			p.problems = nil
+			assert.Equal(t, gohttp.StatusUnauthorized, p.sendToApi(gohttp.MethodGet, authorization).Code, authorization)
+			assert.Equal(t, []string{"a request for " + apiPath + " came without the MESHSTACK_API_TOKEN it was given"}, errorTexts(p.problems))
+		}
+		assert.Empty(t, p.meshStack.TakeRequests())
+		p.problems = nil
+	})
+
 	t.Run("passes on the refusal of meshStack", func(t *testing.T) {
 		p.meshStack.Route("/", func(w gohttp.ResponseWriter, _ *gohttp.Request) { w.WriteHeader(gohttp.StatusForbidden) })
 		p.problems = nil
@@ -219,6 +280,26 @@ func TestAReadOnlyProxy(t *testing.T) {
 		assert.Empty(t, p.problems)
 	})
 
+	t.Run("passes a read of the API on", func(t *testing.T) {
+		p.meshStack.TakeRequests()
+
+		assert.Equal(t, gohttp.StatusOK, p.sendToApi(gohttp.MethodGet, "Bearer "+testApiToken).Code)
+		assert.Len(t, p.meshStack.TakeRequests(), 1)
+		assert.Empty(t, p.problems)
+	})
+
+	t.Run("refuses every other request for the API before it reaches meshStack", func(t *testing.T) {
+		p.meshStack.TakeRequests()
+		for _, method := range []string{gohttp.MethodPost, gohttp.MethodPut, gohttp.MethodPatch, gohttp.MethodDelete} {
+			p.problems = nil
+			assert.Equal(t, gohttp.StatusForbidden, p.sendToApi(method, "Bearer "+testApiToken).Code, method)
+			require.Len(t, p.problems, 1)
+			require.ErrorIs(t, p.problems[0], ErrReadOnlyApi)
+		}
+		assert.Empty(t, p.meshStack.TakeRequests())
+		p.problems = nil
+	})
+
 	t.Run("refuses every write before it reaches meshStack", func(t *testing.T) {
 		p.meshStack.TakeRequests()
 		for _, method := range []string{gohttp.MethodPost, gohttp.MethodDelete} {
@@ -244,6 +325,10 @@ func TestServeCountsTheRequestsUntilTheCommandEnds(t *testing.T) {
 		address, err := url.Parse(vars["TF_HTTP_ADDRESS"])
 		require.NoError(t, err)
 		assert.Equal(t, "127.0.0.1", address.Hostname())
+		assert.Equal(t, "http://"+address.Host, vars["MESHSTACK_ENDPOINT"])
+		var apiToken jwt.JWT
+		require.NoError(t, apiToken.UnmarshalText([]byte(vars["MESHSTACK_API_TOKEN"])), "the provider since v0.26.0 takes only a JWT")
+		assert.False(t, apiToken.GetClaim(jwt.ExpiryClaim).Expired(time.Hour))
 		authorization := gohttp.Header{}
 		authorization.Set("Authorization", "Basic "+basicAuth(vars["TF_HTTP_USERNAME"], vars["TF_HTTP_PASSWORD"]))
 		served, err = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](t.Context(), http.MethodGet, address, http.WithHeaders(authorization))

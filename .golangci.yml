@@ -96,6 +96,10 @@ linters:
         linters:
           - forbidigo
         text: user agent of the front end
+      - path: internal/tfstate/apiproxy/
+        linters:
+          - forbidigo
+        text: one HTTP client
       # The fake clock is a test's; production code waits on the real one.
       - path-except: _test\.go
         linters:

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	gohttp "net/http"
 	"net/url"
 )
 
@@ -40,6 +41,17 @@ func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, u
 		err = fmt.Errorf("auth scope %s: %w", c.Authorization.Scope(), err)
 	}
 	return result, err
+}
+
+// Authorize is for a request that this client does not send itself, such as one a reverse proxy
+// passes on. Such a request gets no second try after a 401.
+func (c AuthorizedClient) Authorize(r *gohttp.Request) error {
+	token, err := c.Authorization.GetBearerToken(r.Context())
+	if err != nil {
+		return err
+	}
+	r.Header.Set("Authorization", "Bearer "+string(token))
+	return nil
 }
 
 func withBearerToken[R any](ctx context.Context, auth Authorization, method string, url *url.URL, send func(token RequestOption) (R, error)) (result R, err error) {
