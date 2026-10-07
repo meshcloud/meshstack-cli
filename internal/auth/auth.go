@@ -75,7 +75,7 @@ func (s Session) existenceOf(ctx context.Context, workspace meshstack.Workspace)
 	reading.getWorkspace = func() (meshstack.Workspace, error) {
 		return readFrom, nil
 	}
-	read, err := client.New(ctx, s.CurrentProfile.Endpoint, s.httpClient.UserAgent, reading).Workspace.Read(ctx, string(workspace))
+	read, err := client.New(ctx, s.CurrentProfile.Endpoint, s.httpClient, reading).Workspace.Read(ctx, string(workspace))
 	switch {
 	case err != nil:
 		slog.DebugContext(ctx, fmt.Sprintf("Cannot tell whether workspace %s exists: %s", workspace, err.Error()))

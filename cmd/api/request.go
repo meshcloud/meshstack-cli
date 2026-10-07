@@ -127,11 +127,15 @@ func (f *requestFlags) selector(r request) (openapi.Selector, error) {
 }
 
 func (f *requestFlags) loadApiDocs(cmd *cobra.Command) (openapi.Spec, func(), error) {
+	httpClient, err := internal.ResolveClientOptions().HttpClient()
+	if err != nil {
+		return openapi.Spec{}, func() {}, err
+	}
 	return apidocs.Load(cmd.Context(), apidocs.Options{
-		Sources:   internal.SettingSources(),
-		UserAgent: "meshstack-cli/" + internal.Version,
-		Version:   internal.Version,
-		Dev:       f.dev,
+		Sources: internal.SettingSources(),
+		Client:  httpClient,
+		Version: internal.Version,
+		Dev:     f.dev,
 	})
 }
 

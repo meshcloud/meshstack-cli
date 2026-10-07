@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 
 	"github.com/meshcloud/meshstack-cli/client"
@@ -32,10 +31,9 @@ type (
 	ResolveSessionOptions struct {
 		SettingSources
 
-		// Version of the calling front end and GitHubRepo, as "<org>/<repo>", where its releases live.
-		// Both are required: together they are the User-Agent, and they name the release to check against.
-		Version    string
-		GitHubRepo string
+		// UserAgent is required: it names the front end in every request, and the releases to check
+		// against.
+		http.UserAgent
 	}
 )
 
@@ -109,15 +107,20 @@ func newSession(ctx context.Context, opts ResolveSessionOptions, exclusiveLock b
 	return session, profiles, err
 }
 
+// HttpClient is for a request that the meshStack client does not make, such as the download of the
+// API docs. It carries the user agent of the front end, as the session's client does.
+func (opts ResolveSessionOptions) HttpClient() (http.Client, error) {
+	if err := opts.Validate(); err != nil {
+		return http.Client{}, err
+	}
+	return http.NewClient(opts.UserAgent), nil
+}
+
 func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (Session, error) {
-	org, repo, ok := strings.Cut(opts.GitHubRepo, "/")
-	if !ok || org == "" || repo == "" {
-		return Session{}, fmt.Errorf("GitHub repo '%s' is not of <org>/<repo> format", opts.GitHubRepo)
+	httpClient, err := opts.HttpClient()
+	if err != nil {
+		return Session{}, err
 	}
-	if opts.Version == "" {
-		return Session{}, fmt.Errorf("no version given for GitHub repo '%s'", opts.GitHubRepo)
-	}
-	httpClient := http.NewClient(repo + "/" + opts.Version)
 	return Session{
 		CurrentProfile: currentProfile,
 		httpClient:     httpClient,
@@ -166,7 +169,7 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 	endpoint := s.CurrentProfile.Endpoint
 	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %s, workspace %s",
 		endpoint, s.httpClient.UserAgent, s.Credential.Name(), workspace))
-	c := client.New(ctx, endpoint, s.httpClient.UserAgent, s)
+	c := client.New(ctx, endpoint, s.httpClient, s)
 	if skipVersionCheck, err := opts.ResolveSetting(ctx, meshstack.SkipVersionCheckSetting); err != nil {
 		return client.Client{}, err
 	} else if skipVersionCheck {

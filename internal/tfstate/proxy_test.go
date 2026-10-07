@@ -33,7 +33,7 @@ type requester struct {
 }
 
 func (r requester) DoRequest(ctx context.Context, method, path string, opts ...http.RequestOption) ([]byte, error) {
-	return http.NewClient("").WithAuthorization(http.BearerToken(fakemeshstack.Token)).
+	return http.NewClient(fakemeshstack.UserAgent).WithAuthorization(http.BearerToken(fakemeshstack.Token)).
 		DoRequest[[]byte](ctx, method, r.endpoint.JoinPath(path), opts...)
 }
 
@@ -229,7 +229,7 @@ func TestServeCountsTheRequestsUntilTheCommandEnds(t *testing.T) {
 		assert.Equal(t, "127.0.0.1", address.Hostname())
 		authorization := gohttp.Header{}
 		authorization.Set("Authorization", "Basic "+basicAuth(vars["TF_HTTP_USERNAME"], vars["TF_HTTP_PASSWORD"]))
-		served, err = http.NewClient("").DoRequest[[]byte](t.Context(), http.MethodGet, address, http.WithHeaders(authorization))
+		served, err = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](t.Context(), http.MethodGet, address, http.WithHeaders(authorization))
 		require.NoError(t, err)
 	})
 

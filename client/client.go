@@ -49,8 +49,7 @@ type Client struct {
 	Endpoint xurl.URL
 }
 
-func New(ctx context.Context, endpoint xurl.URL, userAgent string, auth Authorization) Client {
-	client := http.NewClient(userAgent)
+func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Authorization) Client {
 	authorizedClient := internal.HttpClient{
 		AuthorizedClient: client.WithAuthorization(auth),
 		EndpointUrl:      endpoint,

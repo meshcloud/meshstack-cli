@@ -30,7 +30,7 @@ const urlEnv = "MESHSTACK_API_DOCS_URL"
 type Options struct {
 	setting.Sources
 
-	UserAgent string
+	Client http.Client
 	// Version is the CLI's. A build of no release reads the docs of develop, as Dev does.
 	Version string
 	Dev     bool
@@ -68,7 +68,7 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 		url, path, conditionalGet = custom, dir.Join(fmt.Sprintf("api-docs-custom-%x.json", urlHash[:6])), true
 	}
 
-	wait, err = http.NewClient(opts.UserAgent).Download(ctx, url.URL, path, http.WithConditionalGet(conditionalGet))
+	wait, err = opts.Client.Download(ctx, url.URL, path, http.WithConditionalGet(conditionalGet))
 	if err != nil {
 		return spec, wait, fmt.Errorf("cannot download the API docs from %s: %w", url, err)
 	}

@@ -52,7 +52,7 @@ func runChild(steps string) int {
 		address, _ := url.Parse(os.Getenv("TF_HTTP_ADDRESS"))
 		r := httptest.NewRequestWithContext(context.Background(), step, "/", nil)
 		r.SetBasicAuth(os.Getenv("TF_HTTP_USERNAME"), os.Getenv("TF_HTTP_PASSWORD"))
-		_, _ = http.NewClient("").DoRequest[[]byte](context.Background(), step, address, http.WithHeaders(r.Header), http.WithBody([]byte(state)))
+		_, _ = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](context.Background(), step, address, http.WithHeaders(r.Header), http.WithBody([]byte(state)))
 	}
 	return 0
 }

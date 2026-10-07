@@ -23,6 +23,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 func TestHttpClient(t *testing.T) {
@@ -33,13 +34,13 @@ func TestHttpClient(t *testing.T) {
 			_, _ = resp.Write([]byte(`"some-answer"`))
 			assert.Equal(t, "/get", req.URL.Path)
 			assert.Equal(t, gohttp.MethodGet, req.Method)
-			assert.Equal(t, "test-agent", req.Header.Get("User-Agent"))
+			assert.Equal(t, "fakemeshstack/test", req.Header.Get("User-Agent"))
 		})
 		resp, err := client.DoRequest[string](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 		require.NoError(t, err)
 		assert.Equal(t, "some-answer", resp)
 		assert.Equal(t, []string{
-			fmt.Sprintf(`level=DEBUG msg=request url=%s/get method=GET headers="User-Agent=test-agent" body=<empty>`, client.ServerUrl),
+			fmt.Sprintf(`level=DEBUG msg=request url=%s/get method=GET headers="User-Agent=fakemeshstack/test" body=<empty>`, client.ServerUrl),
 			`level=DEBUG msg=response status=200 body="\"some-answer\""`,
 		}, captured.Lines(slog.LevelDebug))
 	})
@@ -114,7 +115,7 @@ func TestHttpClient(t *testing.T) {
 		assert.Equal(t, 502, httpErr.StatusCode)
 		assert.Equal(t, 2, backoff.Called)
 		assert.Equal(t, []string{
-			fmt.Sprintf(`level=DEBUG msg=request url=%s/get method=GET headers="User-Agent=test-agent" body=<empty>`, client.ServerUrl),
+			fmt.Sprintf(`level=DEBUG msg=request url=%s/get method=GET headers="User-Agent=fakemeshstack/test" body=<empty>`, client.ServerUrl),
 			`level=WARN msg="retrying request" status=502 method=GET path=/get attempt=1/2 waitTime=0s`,
 			`level=WARN msg="retrying request" status=502 method=GET path=/get attempt=2/2 waitTime=0s`,
 			`level=DEBUG msg=response status=502 body=<empty>`,
@@ -414,7 +415,7 @@ func newTestClientWithServer(t *testing.T, handlerFunc gohttp.HandlerFunc) TestC
 	client := server.Client()
 	serverUrl, err := url.Parse(server.URL)
 	require.NoError(t, err)
-	return TestClient{http.Client{Client: client, UserAgent: "test-agent"}, serverUrl}
+	return TestClient{http.Client{Client: client, UserAgent: fakemeshstack.UserAgent}, serverUrl}
 }
 
 // withTestRetry gives one test client its own retry policy. The shipped client is the one shared

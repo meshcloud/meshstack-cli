@@ -126,6 +126,13 @@ would end the user's session.
 internal rule closes `client/internal` to both. Its names carry no `Http` prefix — the package is
 what says that — so it reads `http.Client`, `http.Error`, `http.NewClient`.
 
+**Every request names the front end and version that sent it.** `http.NewClient` takes an
+`http.UserAgent`, which `auth.ResolveSessionOptions` embeds: the front end sets its `GitHubRepo` and
+`Version` once, the CLI in `cmd/internal.ResolveClientOptions`, and the release check reads the same
+two. So code below `cmd/` takes its client from its caller, and a command that needs one for
+anything but a meshStack client calls `internal.ResolveClientOptions().HttpClient()`. `forbidigo`
+keeps `http.UserAgent` to those options.
+
 **`net/http` is always imported as `gohttp`**, which `importas` in `.golangci.yml` settles. That
 leaves the plain name to `internal/http`, the package a meshStack call goes through, and `net/http`
 to the status and method constants and to the loopback server. The `forbidigo` rule matches on the

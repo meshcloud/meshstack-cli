@@ -117,11 +117,13 @@ func organizationAdmin(t *testing.T, logins []devLogin) organizationAdminLogin {
 func devApiDocs(t *testing.T) openapi.Spec {
 	t.Helper()
 	t.Setenv(envConfigDir, t.TempDir())
+	httpClient, err := internal.ResolveClientOptions().HttpClient()
+	require.NoError(t, err)
 	spec, wait, err := apidocs.Load(t.Context(), apidocs.Options{
-		Sources:   internal.SettingSources(),
-		UserAgent: "meshstack-cli/testacc",
-		Version:   internal.Version,
-		Dev:       true,
+		Sources: internal.SettingSources(),
+		Client:  httpClient,
+		Version: internal.Version,
+		Dev:     true,
 	})
 	wait()
 	require.NoError(t, err)

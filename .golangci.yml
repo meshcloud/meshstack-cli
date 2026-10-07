@@ -91,6 +91,11 @@ linters:
         linters:
           - forbidigo
         text: one HTTP client
+      # The options of a session carry the user agent the front end sets.
+      - path: (internal/http/|internal/auth/session\.go|internal/testutil/|_test\.go)
+        linters:
+          - forbidigo
+        text: user agent of the front end
       # The fake clock is a test's; production code waits on the real one.
       - path-except: _test\.go
         linters:
@@ -124,6 +129,10 @@ linters:
         - pattern: ^http\.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
           pkg: ^net/http$
           msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
+        # A user agent made anywhere else drifts from the one the front end names itself by.
+        - pattern: ^http\.UserAgent$
+          pkg: ^github\.com/meshcloud/meshstack-cli/internal/http$
+          msg: a client carries the user agent of the front end; take the client from your caller, or from auth.ResolveSessionOptions.HttpClient
         # A test that sleeps for real is slow, and flaky once the machine is slower than the
         # sleep assumed. synctest.Sleep panics outside a bubble, so it cannot be used the same way.
         - pattern: ^time\.Sleep$

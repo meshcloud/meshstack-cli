@@ -23,6 +23,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 // DefaultVersion is at least client.MinMeshStackVersion, or the CLI refuses the backend.
@@ -31,6 +33,9 @@ const DefaultVersion = "2026.39.0"
 // Token is an unsigned JWT that expires in 2100, so the CLI sends it rather than asking for a new
 // one: a token without an expiry counts as expired. Every Server honors it.
 const Token = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9." //nolint:gosec // G101: unsigned, it authorizes nothing but a fake meshStack
+
+// UserAgent is for the client of a test, which no front end builds.
+var UserAgent = http.UserAgent{GitHubRepo: "meshcloud/fakemeshstack", Version: "test"}
 
 const (
 	ApiDocsPath     = "/api/meshstack-openapi-docs.json"

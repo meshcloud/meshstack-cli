@@ -30,8 +30,8 @@ func SkipVersionCheck(opts *auth.ResolveClientOptions) {
 		func(context.Context) (string, error) { return "true", nil }))
 }
 
-// ResolveClient is the only place a client is built, so every command sends the same user agent
-// and resolves the same global flags as settings.
+// ResolveClient is the only place a meshStack client is built, so every command resolves the same
+// global flags as settings.
 func ResolveClient(ctx context.Context, modifiers ...ResolveClientOptionsModifier) (client.Client, error) {
 	return auth.ResolveClient(ctx, ResolveClientOptions(modifiers...))
 }

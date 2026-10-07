@@ -21,7 +21,7 @@ import (
 
 func newTestHttpClient(server *fakemeshstack.Server) internal.HttpClient {
 	return internal.HttpClient{
-		AuthorizedClient: http.NewClient("test-agent").WithAuthorization(http.BearerToken(fakemeshstack.Token)),
+		AuthorizedClient: http.NewClient(fakemeshstack.UserAgent).WithAuthorization(http.BearerToken(fakemeshstack.Token)),
 		EndpointUrl:      xurl.MustParsef("%s", server.URL),
 	}
 }

@@ -36,10 +36,14 @@ func newTransport(silenceTimeout time.Duration) gohttp.RoundTripper {
 type Client struct {
 	*gohttp.Client
 
-	UserAgent string
+	UserAgent UserAgent
 }
 
-func NewClient(userAgent string) Client {
+// NewClient panics on a UserAgent that does not validate, as a request has to name its front end.
+func NewClient(userAgent UserAgent) Client {
+	if err := userAgent.Validate(); err != nil {
+		panic(err)
+	}
 	return Client{sharedClient, userAgent}
 }
 
@@ -84,11 +88,7 @@ func (c Client) doRequest(ctx context.Context, method string, url *url.URL, opti
 }
 
 func (c Client) send(ctx context.Context, method string, url *url.URL, options []RequestOption) (*gohttp.Response, error) {
-	if c.UserAgent != "" {
-		options = slices.Insert(options, 0,
-			withHeader("User-Agent", c.UserAgent),
-		)
-	}
+	options = slices.Insert(options, 0, withHeader("User-Agent", c.UserAgent.String()))
 	opts := requestOptions{}
 	for _, option := range options {
 		option(&opts)

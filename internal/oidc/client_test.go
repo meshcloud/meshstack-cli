@@ -15,6 +15,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 func TestARefreshCountsTheSessionEndFromKeycloaksRefreshExpiresIn(t *testing.T) {
@@ -36,7 +37,7 @@ func TestARefreshCountsTheSessionEndFromKeycloaksRefreshExpiresIn(t *testing.T) 
 				}))
 				defer server.Close()
 				client := oidc.Client{
-					Client:        http.NewClient("oidc-test"),
+					Client:        http.NewClient(fakemeshstack.UserAgent),
 					TokenEndpoint: xurl.MustParsef("%s/token", server.URL),
 					Id:            "meshstack-cli",
 				}
