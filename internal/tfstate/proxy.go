@@ -51,7 +51,8 @@ type Proxy struct {
 	BeforeWrite func(ctx context.Context) error
 	// Force stores a state that does not follow the stored one, such as the one of a
 	// tofu state push -force.
-	Force   bool
+	Force bool
+	// Backups keeps a copy of the stored state before each write. Empty keeps none.
 	Backups Backups
 	// LockWarning is how long tofu may hold meshStack's lock before the proxy warns that the runs of
 	// the building block wait for it. Zero warns never.
@@ -276,7 +277,7 @@ func (p *Proxy) write(w gohttp.ResponseWriter, r *gohttp.Request) {
 			return
 		}
 	}
-	if stored != nil {
+	if stored != nil && p.Backups != "" {
 		var path string
 		if path, err = p.Backups.save(p.Store.BuildingBlock, stored, time.Now()); err != nil {
 			p.refuse(w, r, gohttp.StatusInternalServerError, fmt.Errorf("cannot back up the stored state, so it stays as it is: %w", err))

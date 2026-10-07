@@ -65,7 +65,7 @@ func newProxy(t *testing.T, stored string, writable bool) *proxyUnderTest {
 	p.Proxy = &Proxy{
 		Store:     NewStore(requester{endpoint}, "my-workspace", buildingBlockUuid),
 		Writable:  writable,
-		Backups:   Backups(filepath.Join(t.TempDir(), "tfstate-backups")),
+		Backups:   Backups(filepath.Join(t.TempDir(), "not", "yet", "there")),
 		OnProblem: func(_ context.Context, err error) { p.problems = append(p.problems, err) },
 		password:  testPassword,
 		apiToken:  testApiToken,
@@ -207,6 +207,24 @@ func TestAWritableProxy(t *testing.T) {
 		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodDelete, "").Code)
 		assert.Nil(t, p.meshStack.TfState(storedState))
 		assert.Equal(t, []string{firstState, nextState, `{"version":4,"serial":7,"lineage":"lineage-1"}`}, p.backups(t))
+	})
+
+	t.Run("keeps no backup without a directory for them", func(t *testing.T) {
+		backups, before := p.Backups, p.backups(t)
+		p.Backups = ""
+		workingDir := t.TempDir()
+		t.Chdir(workingDir)
+		p.problems = nil
+
+		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, firstState).Code)
+		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodPost, nextState).Code)
+		assert.Equal(t, gohttp.StatusOK, p.send(gohttp.MethodDelete, "").Code)
+		assert.Empty(t, p.problems)
+		entries, err := os.ReadDir(workingDir)
+		require.NoError(t, err)
+		assert.Empty(t, entries)
+		p.Backups = backups
+		assert.Equal(t, before, p.backups(t))
 	})
 
 	t.Run("passes a request for the API on with the session's token in place of the one it gave the command", func(t *testing.T) {

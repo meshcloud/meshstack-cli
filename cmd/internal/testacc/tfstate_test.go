@@ -153,12 +153,16 @@ state --data '` + minimalState + `' "$TF_HTTP_ADDRESS?ID=the-test-lock" >/dev/nu
 echo "read $(state "$TF_HTTP_ADDRESS")"
 state --request DELETE "$TF_HTTP_ADDRESS?ID=the-test-lock"
 state --request DELETE --data '` + `LOCK_INFO` + `' "$TF_HTTP_UNLOCK_ADDRESS"`
-		output, err := c.run("", "buildingblock", "tfstate", "exec", block.uuid, "--mode", "readwrite", "--force", "--",
+		backupDir := filepath.Join(t.TempDir(), "backups")
+		output, err := c.run("", "buildingblock", "tfstate", "exec", block.uuid, "--mode", "readwrite", "--force", "--backup-dir", backupDir, "--",
 			"sh", "-ec", strings.ReplaceAll(script, "LOCK_INFO", tofuLockInfo("the-test-lock")))
 		require.NoErrorf(t, err, "the exec failed:\n%s", output)
 		assert.NotContains(t, output, "stored without the lock ID")
 		assert.Contains(t, output, "read "+minimalState, "the GET reads the state the POST stored")
 		assert.Contains(t, output, "Saved the stored state of building block "+block.uuid, "the POST backs the state up first")
+		backups, err := filepath.Glob(filepath.Join(backupDir, block.uuid+"-*.json"))
+		require.NoError(t, err)
+		assert.NotEmpty(t, backups)
 
 		output, err = c.run("", "buildingblock", "tfstate", "show", block.uuid)
 		require.NoErrorf(t, err, "the show failed:\n%s", output)

@@ -1,26 +1,14 @@
 package tfstate
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 	"uuid"
-
-	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 type Backups string
-
-func ResolveBackups(ctx context.Context, sources setting.Sources) (Backups, error) {
-	dir, err := sources.ResolveSetting(ctx, config.DirectorySetting)
-	if err != nil {
-		return "", err
-	}
-	return Backups(dir.Join("tfstate-backups")), nil
-}
 
 // save names the file by the time down to the nanosecond, so that two writes within one second keep
 // a backup each.
@@ -33,7 +21,11 @@ func (b Backups) save(buildingBlock uuid.UUID, state []byte, at time.Time) (path
 	if err != nil {
 		return "", err
 	}
-	_, err = file.Write(state)
+	// A state can hold secrets, and the umask may have left the file with other bits than 0600.
+	err = file.Chmod(0o600)
+	if err == nil {
+		_, err = file.Write(state)
+	}
 	if closeErr := file.Close(); err == nil {
 		err = closeErr
 	}

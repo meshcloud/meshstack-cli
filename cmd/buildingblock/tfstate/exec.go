@@ -54,6 +54,7 @@ func newExec() *cobra.Command {
 		command           []string
 		access            = modeRead
 		force             bool
+		backupDir         string
 	)
 
 	cmd := &cobra.Command{
@@ -79,8 +80,7 @@ asks for a lock. A run of the building block waits for that lock for up to 5 min
 fails. Unless --force, --mode readwrite refuses
   - while a run of the building block is pending or in progress;
   - a state whose lineage is not that of the stored state, or whose serial is not above it.
-Before it replaces or deletes the stored state, it copies it to tfstate-backups in the configuration
-directory.`,
+With --backup-dir, it copies the stored state into that directory before it replaces or deletes it.`,
 		Example: `  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if cmd.ArgsLenAtDash() != 1 || len(args) < 2 {
@@ -141,9 +141,7 @@ directory.`,
 						return err
 					}
 				}
-				if proxy.Backups, err = tfstate.ResolveBackups(ctx, internal.SettingSources()); err != nil {
-					return err
-				}
+				proxy.Backups = tfstate.Backups(backupDir)
 			}
 
 			var ran error
@@ -163,6 +161,7 @@ directory.`,
 	flags := cmd.Flags()
 	flags.Var(&access, "mode", "read serves the state, readwrite stores what the command writes as well")
 	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending or in progress, or where it does not follow the stored state")
+	flags.StringVar(&backupDir, "backup-dir", "", "with --mode readwrite, copy the stored state into this directory before each write, in files only you can read, since a state can hold secrets")
 
 	return cmd
 }
