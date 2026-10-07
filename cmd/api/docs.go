@@ -23,8 +23,8 @@ var docsTemplateText string
 
 var docsTemplate = markdown.Parse("docs", docsTemplateText)
 
-// NewDocs is meshstack api-docs. It breaks the command-tree rule of AGENTS.md and lives in package
-// api, to share the request flags of meshstack api.
+// NewDocs is meshstack api-docs. It breaks the command-tree rule of the development skill and lives
+// in package api, to share the request flags of meshstack api.
 func NewDocs() *cobra.Command {
 	var (
 		flags    requestFlags

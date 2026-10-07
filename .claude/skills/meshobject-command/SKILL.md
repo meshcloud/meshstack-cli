@@ -6,8 +6,8 @@ description: Use when adding or changing a `meshstack` command for a meshObject 
 # A command for a meshObject kind
 
 The tree's structure, one package per subcommand and one file per leaf, is the `command-tree`
-rule of `CLAUDE.md`. Before you extend `client/`, follow the API-docs rule in its `client-package`
-section.
+rule of the `development` skill. Before you extend `client/`, follow the API-docs rule in its
+`client-package` section.
 
 ## Name
 
