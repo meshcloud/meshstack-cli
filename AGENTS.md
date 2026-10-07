@@ -118,7 +118,9 @@ go test ./cmd/internal/testacc/... -run TestAcc
 ## Releasing
 
 Pushing a `vN.N.N` tag runs `.github/workflows/release.yml`: goreleaser publishes the archives and
-checksums, and the image goes to GHCR only, as `ghcr.io/meshcloud/meshstack-cli`.
+checksums, and the image goes to GHCR only, as `ghcr.io/meshcloud/meshstack-cli`. Every other
+channel the release publishes to is a job of that workflow or a publish section of `.goreleaser.yml`,
+and its one-time setup is described there.
 
 <rules id="release-version">
 The version reaches the binary through an ldflag on
