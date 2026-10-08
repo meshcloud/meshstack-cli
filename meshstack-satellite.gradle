@@ -5,6 +5,7 @@ plugins {
 satellite {
   acceptance {
     run = 'TestAcc'
+    services 'meshfed-api', 'block-coordinator-api', 'building-block-runner:runners'
     environment MESHSTACK_CLI_TEST_ACC: '1',
                 MESHSTACK_CLI_NO_BROWSER: '1',
                 MESHSTACK_API_KEY: fromBackendConfig('auth.openid.apiKeys.terraform-provider-acceptance.clientId'),
