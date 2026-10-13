@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	gohttp "net/http"
 	"net/url"
@@ -47,6 +48,13 @@ func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, u
 		err = fmt.Errorf("auth scope %s: %w", c.Authorization.Scope(), err)
 	}
 	return result, err
+}
+
+func (c AuthorizedClient) DoStreamingRequest(ctx context.Context, method string, url *url.URL, w io.Writer, options ...RequestOption) error {
+	_, err := withCredential(ctx, c.Authorization, method, url, func(credential RequestOption) (any, error) {
+		return nil, c.Client.DoStreamingRequest(ctx, method, url, w, append(options, credential)...)
+	})
+	return err
 }
 
 // Authorize is for a request that this client does not send itself, such as one a reverse proxy
