@@ -14,12 +14,13 @@ func (n Name) String() string {
 
 const (
 	ApiKeyName    Name = "apiKey"
+	BasicAuthName Name = "basicAuth"
 	ManualName    Name = "manual"
 	OidcLoginName Name = "oidcLogin"
 )
 
 // Names lists every credential, in the order a resolution tries and reports them.
-var Names = []Name{ApiKeyName, ManualName, OidcLoginName}
+var Names = []Name{ApiKeyName, BasicAuthName, ManualName, OidcLoginName}
 
 // A name that no field of Credentials carries resolves to nothing and stores to nowhere, without
 // saying so, which is why the two lists are checked against each other at startup.
@@ -43,6 +44,8 @@ func (n Name) Label() string {
 	switch n {
 	case ApiKeyName:
 		return "API key"
+	case BasicAuthName:
+		return "Basic auth"
 	case ManualName:
 		return "API token"
 	case OidcLoginName:

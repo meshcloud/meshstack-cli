@@ -16,6 +16,11 @@ type Credential interface {
 	Name() Name
 	// Identity identifies the credential, so that a cache minted for another one is not used.
 	Identity() Identity
+}
+
+// Minter sends a bearer token that it mints and caches.
+type Minter interface {
+	Credential
 	// CachedToken does not check the expiry. The caller does, and calls RefreshCachedToken for an
 	// expired token.
 	CachedToken(ctx context.Context, getWorkspace getWorkspaceFunc) (token jwt.JWT, found bool)
@@ -23,10 +28,17 @@ type Credential interface {
 	RefreshCachedToken(ctx context.Context, client http.Client, getWorkspace getWorkspaceFunc) error
 }
 
+// Static is sent with every request as it is.
+type Static interface {
+	Credential
+	Authorization() http.Authorization
+}
+
 type getWorkspaceFunc func() (meshstack.Workspace, error)
 
 type Credentials struct {
 	ApiKey    *ApiKey    `json:"apiKey,omitempty"`
+	BasicAuth *BasicAuth `json:"basicAuth,omitempty"`
 	Manual    *Manual    `json:"manual,omitempty"`
 	OidcLogin *OidcLogin `json:"oidcLogin,omitempty"`
 }

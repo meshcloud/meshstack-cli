@@ -25,4 +25,6 @@ var (
 	ApiKeyClientId     Setting = auth.ApiKeyClientIdSetting
 	ApiKeyClientSecret Setting = auth.ApiKeyClientSecretSetting
 	ApiToken           Setting = auth.ApiTokenSetting
+	ApiUsername        Setting = auth.ApiUsernameSetting
+	ApiPassword        Setting = auth.ApiPasswordSetting
 )
