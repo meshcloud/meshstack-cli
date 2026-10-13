@@ -73,5 +73,9 @@ module "noop" {
     workspace   = var.run_id
     project     = var.run_id
     run_id      = var.run_id
+    # The acceptance backend defines no mandatory tags.
+    meshstack = {
+      tag_schema = { mandatory = { payment_method = {} } }
+    }
   }
 }
