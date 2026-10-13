@@ -18,6 +18,7 @@ type (
 	requestOptions struct {
 		retryable        bool
 		requestPayload   func() ([]byte, error)
+		bodyFile         string
 		requestModifiers []requestModifier
 	}
 	requestModifier func(req *gohttp.Request) error
@@ -136,6 +137,13 @@ func WithBody(body []byte) RequestOption {
 		opts.requestPayload = func() ([]byte, error) {
 			return body, nil
 		}
+	}
+}
+
+// WithBodyFile sends the file as it is, so the caller names its type in a Content-Type header.
+func WithBodyFile(path string) RequestOption {
+	return func(opts *requestOptions) {
+		opts.bodyFile = path
 	}
 }
 
