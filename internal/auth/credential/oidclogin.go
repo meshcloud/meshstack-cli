@@ -16,7 +16,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 )
 
-var _ Credential = &OidcLogin{}
+var _ Minter = &OidcLogin{}
 
 type OidcLogin struct {
 	Endpoint xurl.URL `json:"endpoint"`

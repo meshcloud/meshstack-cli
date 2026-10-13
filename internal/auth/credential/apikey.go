@@ -11,7 +11,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
-var _ Credential = &ApiKey{}
+var _ Minter = &ApiKey{}
 
 type ApiKey struct {
 	Endpoint     xurl.URL

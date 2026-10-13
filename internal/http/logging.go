@@ -25,7 +25,7 @@ import (
 //     Enabled says yes to all of them and terraform owns the level, so a LogValuer would
 //     pretty-print every request body of every run including the ones TF_LOG then drops.
 
-// loggedHeaders is the request's headers with the bearer token taken out. Both methods produce
+// loggedHeaders is the request's headers with the credential taken out. Both methods produce
 // that redacted form, because both are reached: the CLI's sink formats with %v and calls String,
 // while terraform's sink encodes the fields as JSON and would otherwise walk this map itself and
 // write the Authorization header out in full.

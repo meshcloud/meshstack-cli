@@ -35,6 +35,7 @@ func newLogin(profileSources setting.Sources) *cobra.Command {
 		openStdinFlag = newStdinFlag()
 		apiKeyFlag    = internal.NewFlagForSetting[uuid.UUID]("apikey", setting.ApiKeyClientId)
 		apiTokenFlag  = internal.NewFlagForSetting[bool]("apitoken", setting.ApiToken)
+		usernameFlag  = internal.NewFlagForSetting[string]("username", setting.ApiUsername)
 		output        internal.ShowFlag
 	)
 
@@ -77,13 +78,22 @@ It ends with what meshstack auth status shows for the new login.`,
 				if !openStdinFlag.Value {
 					opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom, true))
 				}
+			case usernameFlag.Value != "":
+				authWith = credential.BasicAuthName
+				opts.SettingSources = append(opts.SettingSources,
+					usernameFlag.AsSource(),
+					newPromptingSource(setting.ApiPassword.EnvKey(), &openStdinFlag, promptedFrom, "Password"),
+				)
+				if !openStdinFlag.Value {
+					opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom, true))
+				}
 			case apiTokenFlag.Value:
 				authWith = credential.ManualName
 				opts.SettingSources = append(opts.SettingSources, newPromptingSource(setting.ApiToken.EnvKey(), &openStdinFlag, promptedFrom, "API Token"))
 			default:
 				if openStdinFlag.Value {
-					return fmt.Errorf("--%s reads the secret of --%s or --%s, and a browser login has none",
-						openStdinFlag.Name, apiKeyFlag.Name, apiTokenFlag.Name)
+					return fmt.Errorf("--%s reads the secret of --%s, --%s or --%s, and a browser login has none",
+						openStdinFlag.Name, apiKeyFlag.Name, usernameFlag.Name, apiTokenFlag.Name)
 				}
 				authWith = credential.OidcLoginName
 				opts.SettingSources = append(opts.SettingSources, newWorkspaceSelectionSource(promptedFrom, false))
@@ -102,8 +112,7 @@ It ends with what meshstack auth status shows for the new login.`,
 			defer func() {
 				err = errors.Join(err, unlock())
 			}()
-			_, err = session.GetBearerToken(ctx)
-			if err != nil {
+			if err := session.CheckCredential(ctx); err != nil {
 				return err
 			}
 			if _, err := session.MeshInfo(); err != nil {
@@ -119,6 +128,7 @@ It ends with what meshstack auth status shows for the new login.`,
 	cmd.MarkFlagsMutuallyExclusive(
 		apiKeyFlag.Register(cmd.Flags()),
 		apiTokenFlag.Register(cmd.Flags()),
+		usernameFlag.Register(cmd.Flags()),
 	)
 	apiKeyOption := cmd.Flags().Lookup(apiKeyFlag.Name.String())
 	// NoOptDefVal is what makes a bare --apikey, with no value after it, parse.
