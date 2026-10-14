@@ -109,8 +109,12 @@ func (c *cli) setEnv(key, value string) {
 
 // environ blanks every MESHSTACK_* name this suite does not set on purpose, and the names that
 // force color, so that a developer's .env or a CI cannot decide what a test proves.
+//
+// It holds each name once, with the value set last. applyEnv sets the names one at a time while
+// earlier commands of c may still run and read them, so a name it set twice would show such a
+// command the first value for a moment, such as a blank API key.
 func (c *cli) environ() []string {
-	return append([]string{
+	variables := append([]string{
 		envConfigDir + "=" + c.configDir,
 		envNoBrowser + "=" + testAccOn,
 		envEndpoint + "=" + c.endpoint,
@@ -124,6 +128,18 @@ func (c *cli) environ() []string {
 		"CLICOLOR_FORCE=",
 		"TTY_FORCE=",
 	}, c.extraEnv...)
+	var environ []string
+	indexOf := map[string]int{}
+	for _, variable := range variables {
+		key, _, _ := strings.Cut(variable, "=")
+		if index, seen := indexOf[key]; seen {
+			environ[index] = variable
+			continue
+		}
+		indexOf[key] = len(environ)
+		environ = append(environ, variable)
+	}
+	return environ
 }
 
 // newRootCommand holds the commands this suite runs. The binary's own root is in package main, which
@@ -153,7 +169,9 @@ func (c *cli) applyEnv() {
 	}
 }
 
-// start sets the environment with t.Setenv, so no two commands of a test can run at the same time.
+// start sets the environment with t.Setenv, which every command in the process shares. Commands of
+// one cli may run at the same time, since each start sets the values the others already read;
+// commands of two clis may not.
 func (c *cli) start(stdin string, args ...string) *cliRun {
 	c.t.Helper()
 	c.applyEnv()
