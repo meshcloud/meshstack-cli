@@ -6,8 +6,8 @@ terraform {
   required_providers {
     meshstack = {
       source = "meshcloud/meshstack"
-      # The first release that reads a profile of the meshStack CLI.
-      version = ">= 0.26.0"
+      # The first release that waits through status.action.
+      version = ">= 0.27.1"
     }
   }
 }
@@ -109,8 +109,8 @@ resource "meshstack_building_block" "noop" {
 
   lifecycle {
     postcondition {
-      condition     = self.status.status == "SUCCEEDED"
-      error_message = "The run of building block ${self.metadata.uuid} is ${self.status.status}."
+      condition     = self.status.succeeded
+      error_message = "The run of building block ${self.metadata.uuid} did not succeed."
     }
   }
 }

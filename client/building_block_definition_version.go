@@ -192,10 +192,9 @@ type MeshBuildingBlockDefinitionVersionSpec struct {
 	VersionNumber              *int64                                       `json:"versionNumber,omitzero" tfsdk:"version_number"`
 	State                      *MeshBuildingBlockDefinitionVersionState     `json:"state,omitzero" tfsdk:"state"`
 	RunnerRef                  *UuidRef                                     `json:"runnerRef" tfsdk:"runner_ref"`
-	// Replaces the deprecated bare-UUID dependencyDefinitionUuids; requires a backend serving it.
-	DependencyDefinitionRefs types.Set[UuidRef]                           `json:"dependencyDefinitionRefs,omitempty" tfsdk:"dependency_refs"`
-	Implementation           MeshBuildingBlockDefinitionImplementation    `json:"implementation" tfsdk:"implementation"`
-	Inputs                   map[string]*MeshBuildingBlockDefinitionInput `json:"inputs" tfsdk:"inputs"`
+	DependencyDefinitionRefs   types.Set[UuidRef]                           `json:"dependencyDefinitionRefs,omitempty" tfsdk:"dependency_refs"`
+	Implementation             MeshBuildingBlockDefinitionImplementation    `json:"implementation" tfsdk:"implementation"`
+	Inputs                     map[string]*MeshBuildingBlockDefinitionInput `json:"inputs" tfsdk:"inputs"`
 }
 
 type MeshBuildingBlockDefinitionVersionStatus struct {

@@ -409,7 +409,8 @@ jq -n '{apiVersion: "v2-preview", kind: "meshBuildingBlock", spec: {
     displayName: "my-project",
     buildingBlockDefinitionVersionRef: {kind: "meshBuildingBlockDefinitionVersion", uuid: "<version-uuid>"},
     targetRef: {kind: "meshWorkspace", name: "<workspace>"},
-    inputs: {name: {value: "my-project", valueType: "STRING"}}}}' |
+    inputs: {name: {value: "my-project", valueType: "STRING"}},
+    parentBuildingBlockRefs: []}}' |
   meshstack api -X POST /api/meshobjects/meshbuildingblocks --workspace <workspace> \
     --api-version v2-preview --request-json - |
   jq -c '{uuid: .metadata.uuid, action: .status.action}'
