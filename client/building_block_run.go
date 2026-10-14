@@ -15,6 +15,10 @@ type MeshBuildingBlockRun struct {
 	Links    MeshBuildingBlockRunLinks    `json:"_links,omitzero"`
 }
 
+func (run MeshBuildingBlockRun) IsRunning() bool {
+	return run.Status == "PENDING" || run.Status == "IN_PROGRESS"
+}
+
 type MeshBuildingBlockRunMetadata struct {
 	Uuid      string    `json:"uuid"`
 	CreatedAt time.Time `json:"createdAt"`

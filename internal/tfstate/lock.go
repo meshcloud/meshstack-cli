@@ -57,7 +57,7 @@ func (l Lock) NoUnfinishedRun(ctx context.Context, raw *client.RawClient) error 
 	if err = json.Unmarshal(read, &run); err != nil {
 		return err
 	}
-	if run.Status == string(client.BuildingBlockStatusPending) || run.Status == string(client.BuildingBlockStatusInProgress) {
+	if run.IsRunning() {
 		return fmt.Errorf("building block run %s, which holds the lock, is %s and still writes the state", runUuid, run.Status)
 	}
 	return nil

@@ -145,8 +145,7 @@ Field names worth knowing:
   lives in `spec.displayName`, `spec.buildingBlockDefinitionVersionRef.uuid`, `spec.targetRef.kind`
   (`meshWorkspace` or `meshTenant`), `status.healthStatus` (the outcome of the latest run),
   `status.action` (what the block needs next, as in meshPanel), `status.lifecycle.state`,
-  `status.latestRunUuid`, `status.latestDryRunUuid`, `status.forcePurge`. `status.status` is
-  deprecated.
+  `status.latestRunUuid`, `status.latestDryRunUuid`, `status.forcePurge`.
 - **Definition** — `metadata.uuid`, `metadata.ownedByWorkspace`, `spec.displayName`,
   `spec.targetType` (`TENANT_LEVEL` or `WORKSPACE_LEVEL`), `spec.supportedPlatforms[]`,
   `spec.approvalPolicies`, `spec.schedule`, and the huge `spec.symbol`. `status.versions[]` maps
@@ -382,7 +381,7 @@ meshstack api-docs -X POST /api/meshobjects/meshbuildingblocks   # the same line
 Read one object in another version, for example the full lifecycle of a building block:
 
 ```sh
-meshstack api --api-version v2-preview /api/meshobjects/meshbuildingblocks/<uuid> |
+meshstack api --api-version v2 /api/meshobjects/meshbuildingblocks/<uuid> |
   jq '.status.lifecycle'
 ```
 
@@ -397,13 +396,14 @@ then post the order through `meshstack api`. A workspace-level block targets
 `{kind: "meshTenant", uuid: <tenant-uuid>}`:
 
 ```sh
-jq -n '{apiVersion: "v2-preview", kind: "meshBuildingBlock", spec: {
+jq -n '{apiVersion: "v2", kind: "meshBuildingBlock", spec: {
     displayName: "my-project",
     buildingBlockDefinitionVersionRef: {kind: "meshBuildingBlockDefinitionVersion", uuid: "<version-uuid>"},
     targetRef: {kind: "meshWorkspace", name: "<workspace>"},
-    inputs: {name: {value: "my-project", valueType: "STRING"}}}}' |
+    inputs: {name: {value: "my-project", valueType: "STRING"}},
+    parentBuildingBlockRefs: []}}' |
   meshstack api -X POST /api/meshobjects/meshbuildingblocks --workspace <workspace> \
-    --api-version v2-preview --request-json - |
+    --api-version v2 --request-json - |
   jq -c '{uuid: .metadata.uuid, action: .status.action}'
 ```
 
