@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // BackendOverrideFile ends in _override.tf, so tofu adds its backend to a module without one, and
@@ -33,4 +34,23 @@ func WriteBackendOverride(dir string) (remove func() error, err error) {
 		return nil, errors.Join(err, remove())
 	}
 	return remove, nil
+}
+
+// ModuleDir is where command runs its module: the directory of tofu's or terraform's -chdir, or else
+// the working directory. It must stay in step with extractChdirOption of OpenTofu's
+// internal/command/workdir/chdir.go, which takes -chdir only as -chdir=DIR before the subcommand.
+func ModuleDir(command []string) string {
+	if name := strings.TrimSuffix(filepath.Base(command[0]), ".exe"); name != "tofu" && name != "terraform" {
+		return "."
+	}
+	dir := "."
+	for _, arg := range command[1:] {
+		if !strings.HasPrefix(arg, "-") {
+			break
+		}
+		if value, ok := strings.CutPrefix(arg, "-chdir="); ok && value != "" {
+			dir = value
+		}
+	}
+	return dir
 }

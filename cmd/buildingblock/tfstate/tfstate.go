@@ -39,7 +39,7 @@ reads and writes through tofu's http backend.
 
 "meshstack buildingblock tfstate exec" serves the state to tofu's http backend, so the module needs
 a backend "http" block. The runner adds one only while it runs, and exec with --override-backend
-adds one while its command runs. Run it in the module's directory, with tofu init once:
+adds one while its command runs. Run tofu init through it once:
 
   meshstack buildingblock tfstate exec <building-block-uuid> --override-backend -- tofu init`,
 		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources

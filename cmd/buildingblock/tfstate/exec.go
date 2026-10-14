@@ -69,9 +69,10 @@ metadata.ownedByWorkspace, unless --workspace names another one.
 
 The module needs a backend "http" block, which the runner adds only while it runs.
 --override-backend adds one while the command runs: it writes the file
-` + tfstate.BackendOverrideFile + ` into the working directory, where it also replaces a backend
-of the module's own, and removes the file when the command ends. So run exec in the module's
-directory rather than with tofu -chdir, and run tofu init through exec with --override-backend once.
+` + tfstate.BackendOverrideFile + ` into the directory that tofu -chdir names, or else into the
+working directory, where it also replaces a backend of the module's own, and removes the file when
+the command ends. Run a command that wraps tofu in the module's directory, and run tofu init through
+exec with --override-backend once.
 
 tofu's meshstack provider talks to meshStack through exec as well, with the login of the CLI. This
 works with any version of the provider, as long as its provider "meshstack" block sets no endpoint
@@ -151,7 +152,7 @@ With --backup-dir, it copies the stored state into that directory before it repl
 			}
 
 			if overrideBackend {
-				remove, overrideErr := tfstate.WriteBackendOverride(".")
+				remove, overrideErr := tfstate.WriteBackendOverride(tfstate.ModuleDir(command))
 				if overrideErr != nil {
 					return fmt.Errorf("%w: remove it, or run without --override-backend", overrideErr)
 				}
@@ -170,7 +171,8 @@ With --backup-dir, it copies the stored state into that directory before it repl
 			switch {
 			case requests > 0:
 			case overrideBackend:
-				slog.WarnContext(ctx, command[0]+" asked for no state. --override-backend adds the backend in the working directory, so run exec in the module's directory rather than with tofu -chdir")
+				slog.WarnContext(ctx, fmt.Sprintf("%s asked for no state, although --override-backend added the backend in %s. Run a command that wraps tofu in the module's directory",
+					command[0], tfstate.ModuleDir(command)))
 			default:
 				slog.WarnContext(ctx, fmt.Sprintf("%s asked for no state, so the module likely has no backend \"http\" block, which the runner adds only while it runs. "+
 					"Run again with --override-backend, and run `%s %s --override-backend -- tofu init` once",
@@ -183,7 +185,7 @@ With --backup-dir, it copies the stored state into that directory before it repl
 	flags := cmd.Flags()
 	flags.Var(&access, "mode", "read serves the state, readwrite stores what the command writes as well")
 	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending or in progress, or where it does not follow the stored state")
-	flags.BoolVar(&overrideBackend, "override-backend", false, "add the backend \"http\" block to the module in the working directory while the command runs")
+	flags.BoolVar(&overrideBackend, "override-backend", false, "add the backend \"http\" block to the module in tofu's -chdir or the working directory while the command runs")
 	flags.StringVar(&backupDir, "backup-dir", "", "with --mode readwrite, copy the stored state into this directory before each write, in files only you can read, since a state can hold secrets")
 
 	return cmd

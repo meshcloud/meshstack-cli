@@ -34,3 +34,21 @@ func TestBackendOverride(t *testing.T) {
 		assert.NoFileExists(t, path)
 	})
 }
+
+func TestModuleDir(t *testing.T) {
+	for _, command := range []struct {
+		args []string
+		dir  string
+	}{
+		{[]string{"tofu", "-chdir=module", "plan"}, "module"},
+		{[]string{"/usr/local/bin/terraform", "-chdir=module", "plan"}, "module"},
+		{[]string{"tofu.exe", "-chdir=module", "plan"}, "module"},
+		{[]string{"tofu", "-chdir=first", "-chdir=last", "plan"}, "last"},
+		{[]string{"tofu", "plan", "-chdir=module"}, "."},
+		{[]string{"tofu", "-chdir", "module", "plan"}, "."},
+		{[]string{"tofu"}, "."},
+		{[]string{"terragrunt", "-chdir=module", "plan"}, "."},
+	} {
+		assert.Equalf(t, command.dir, ModuleDir(command.args), "%v", command.args)
+	}
+}
