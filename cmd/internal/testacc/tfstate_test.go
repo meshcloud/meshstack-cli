@@ -33,7 +33,7 @@ func TestAccTfstate(t *testing.T) {
 	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
 	block := bootstrapBuildingBlock(t, c, manager.Username)
 	c.setEnv(envWorkspace, block.workspace)
-	module := copyTestdata(t, "module")
+	module := stateModule(t)
 
 	t.Run("show writes the state that the run stored", func(t *testing.T) {
 		output, err := c.run("", "buildingblock", "tfstate", "show", block.uuid)
@@ -190,7 +190,10 @@ func bootstrapBuildingBlock(t *testing.T, c *cli, workspaceManager string) boots
 	t.Helper()
 	runId := "cli-" + strings.ToLower(rand.Text()[:8])
 	dir := copyTestdata(t, "bootstrap")
-	vars := []string{"-var", "profile=" + defaultProfile, "-var", "run_id=" + runId, "-var", "workspace_manager=" + workspaceManager}
+	vars := []string{
+		"-var", "profile=" + defaultProfile, "-var", "run_id=" + runId, "-var", "workspace_manager=" + workspaceManager,
+		"-var", "repository_url=" + repositoryUrl, "-var", "git_ref=" + pushedHead(t),
+	}
 
 	c.tofu(t, dir, append([]string{"init", "-input=false"}, vars...)...)
 	t.Cleanup(func() {
@@ -219,6 +222,32 @@ func bootstrapBuildingBlock(t *testing.T, c *cli, workspaceManager string) boots
 	}
 	t.Fatalf("workspace %s holds no building block %s-noop:\n%s", runId, runId, output)
 	return bootstrappedBlock{}
+}
+
+const repositoryUrl = "https://github.com/meshcloud/meshstack-cli.git"
+
+// pushedHead names the commit whose testdata/buildingblock the tf-block-runner runs, so that a branch
+// tests its own module. The runner clones it from GitHub.
+func pushedHead(t *testing.T) string {
+	t.Helper()
+	head, err := exec.CommandContext(t.Context(), "git", "rev-parse", "HEAD").Output()
+	require.NoError(t, err, "the tfstate tests run in a git checkout")
+	sha := strings.TrimSpace(string(head))
+	output, err := exec.CommandContext(t.Context(), "git", "fetch", "--dry-run", "--depth=1", repositoryUrl, sha).CombinedOutput()
+	require.NoErrorf(t, err, "push HEAD %s first, as the tf-block-runner checks it out from %s:\n%s", sha, repositoryUrl, output)
+	return sha
+}
+
+// stateModule is the module that the runner applies, with the http backend that tofu reads the
+// TF_HTTP_ variables of exec into.
+func stateModule(t *testing.T) string {
+	t.Helper()
+	dir := copyTestdata(t, "buildingblock")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "backend.tf"), []byte(`terraform {
+  backend "http" {}
+}
+`), 0o600))
+	return dir
 }
 
 // copyTestdata keeps what tofu writes, .terraform and the local state, out of the source tree.

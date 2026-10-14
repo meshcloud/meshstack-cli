@@ -1,6 +1,6 @@
-# The building block that the tfstate tests work on: a block of the noop definition of
-# meshstack-hub, in a workspace of its own, which the tf-block-runner applies with meshStack's state
-# backend.
+# The building block that the tfstate tests work on, in a workspace of its own. Its definition runs
+# testdata/buildingblock at the commit under test, which the tf-block-runner applies with meshStack's
+# state backend.
 
 terraform {
   required_providers {
@@ -21,6 +21,14 @@ variable "run_id" {
 }
 
 variable "workspace_manager" {
+  type = string
+}
+
+variable "repository_url" {
+  type = string
+}
+
+variable "git_ref" {
   type = string
 }
 
@@ -62,20 +70,47 @@ resource "meshstack_workspace_user_binding" "manager" {
   }
 }
 
-module "noop" {
-  source = "git::https://github.com/meshcloud/meshstack-hub.git//modules/meshstack/noop/e2e?ref=main"
-  # test_context reaches a const variable of the noop module, which tofu evaluates at init, so it
-  # takes the names from var.run_id rather than from the resources above.
+resource "meshstack_building_block_definition" "noop" {
+  metadata = {
+    owned_by_workspace = meshstack_workspace.this.metadata.name
+  }
+  spec = {
+    display_name = "${var.run_id} meshStack CLI noop"
+    description  = "Runs testdata/buildingblock of the meshStack CLI acceptance tests."
+    target_type  = "WORKSPACE_LEVEL"
+  }
+  version_spec = {
+    draft         = true
+    deletion_mode = "DELETE"
+    implementation = {
+      terraform = {
+        repository_url    = var.repository_url
+        repository_path   = "cmd/internal/testacc/testdata/buildingblock"
+        ref_name          = var.git_ref
+        terraform_version = "1.12.5"
+      }
+    }
+  }
+}
+
+resource "meshstack_building_block" "noop" {
   depends_on = [meshstack_project.this, meshstack_workspace_user_binding.manager]
 
-  test_context = {
-    hub_git_ref = "main"
-    workspace   = var.run_id
-    project     = var.run_id
-    run_id      = var.run_id
-    # The acceptance backend defines no mandatory tags.
-    meshstack = {
-      tag_schema = { mandatory = { payment_method = {} } }
+  wait_for_completion = true
+  spec = {
+    building_block_definition_version_ref = meshstack_building_block_definition.noop.version_latest
+    display_name                          = "${var.run_id}-noop"
+    inputs                                = {}
+    target_ref = {
+      kind = "meshWorkspace"
+      name = meshstack_workspace.this.metadata.name
+    }
+  }
+
+  lifecycle {
+    postcondition {
+      condition     = self.status.status == "SUCCEEDED"
+      error_message = "The run of building block ${self.metadata.uuid} is ${self.status.status}."
     }
   }
 }
