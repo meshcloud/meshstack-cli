@@ -192,7 +192,7 @@ func bootstrapBuildingBlock(t *testing.T, c *cli, workspaceManager string) boots
 	dir := copyTestdata(t, "bootstrap")
 	vars := []string{
 		"-var", "profile=" + defaultProfile, "-var", "run_id=" + runId, "-var", "workspace_manager=" + workspaceManager,
-		"-var", "repository_url=" + repositoryUrl, "-var", "git_ref=" + pushedHead(t),
+		"-var", "repository_url=" + repositoryUrl, "-var", "git_ref=" + runnerRef(t),
 	}
 
 	c.tofu(t, dir, append([]string{"init", "-input=false"}, vars...)...)
@@ -226,16 +226,32 @@ func bootstrapBuildingBlock(t *testing.T, c *cli, workspaceManager string) boots
 
 const repositoryUrl = "https://github.com/meshcloud/meshstack-cli.git"
 
-// pushedHead names the commit whose testdata/buildingblock the tf-block-runner runs, so that a branch
-// tests its own module. The runner clones it from GitHub.
-func pushedHead(t *testing.T) string {
+// runnerRef names the commit whose testdata/buildingblock the tf-block-runner runs, so that a branch
+// tests its own module. The runner clones only the branches and tags of GitHub, so for the merge
+// commit of a pull request, which meshfed-release's satellite lane tests, it takes the pull request's head.
+func runnerRef(t *testing.T) string {
 	t.Helper()
-	head, err := exec.CommandContext(t.Context(), "git", "rev-parse", "HEAD").Output()
-	require.NoError(t, err, "the tfstate tests run in a git checkout")
-	sha := strings.TrimSpace(string(head))
-	output, err := exec.CommandContext(t.Context(), "git", "fetch", "--dry-run", "--depth=1", repositoryUrl, sha).CombinedOutput()
-	require.NoErrorf(t, err, "push HEAD %s first, as the tf-block-runner checks it out from %s:\n%s", sha, repositoryUrl, output)
-	return sha
+	head := git(t, "rev-parse", "HEAD")
+	remote := map[string]string{}
+	for line := range strings.Lines(git(t, "ls-remote", repositoryUrl)) {
+		sha, ref, _ := strings.Cut(strings.TrimSpace(line), "\t")
+		remote[ref] = sha
+	}
+	for ref, sha := range remote {
+		if pull, isMerge := strings.CutSuffix(ref, "/merge"); isMerge && strings.HasPrefix(ref, "refs/pull/") && sha == head {
+			return remote[pull+"/head"]
+		}
+	}
+	output, err := exec.CommandContext(t.Context(), "git", "fetch", "--dry-run", "--depth=1", repositoryUrl, head).CombinedOutput()
+	require.NoErrorf(t, err, "push HEAD %s first, as the tf-block-runner checks it out from %s:\n%s", head, repositoryUrl, output)
+	return head
+}
+
+func git(t *testing.T, args ...string) string {
+	t.Helper()
+	output, err := exec.CommandContext(t.Context(), "git", args...).CombinedOutput()
+	require.NoErrorf(t, err, "git %s failed:\n%s", strings.Join(args, " "), output)
+	return strings.TrimSpace(string(output))
 }
 
 // stateModule is the module that the runner applies, with the http backend that tofu reads the
