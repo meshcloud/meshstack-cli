@@ -45,10 +45,10 @@ tasks:
         set_vendor_hash() { sed -i.bak "s|vendorHash = \"[^\"]*\";|vendorHash = \"$1\";|" flake.nix && rm flake.nix.bak; }
         old=$(sed -n 's|^ *vendorHash = "\([^"]*\)";|\1|p' flake.nix)
         set_vendor_hash ""
-        new=$(nix build .#meshstack.goModules --no-link 2>&1 | sed -n 's|^ *got: *||p')
+        new=$(nix build .#meshstack-cli.goModules --no-link 2>&1 | sed -n 's|^ *got: *||p')
         if [ -z "$new" ]; then
           set_vendor_hash "$old"
-          echo "nix reported no hash; run 'nix build .#meshstack.goModules' to see why" >&2
+          echo "nix reported no hash; run 'nix build .#meshstack-cli.goModules' to see why" >&2
           exit 1
         fi
         set_vendor_hash "$new"
