@@ -16,6 +16,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meshcloud/meshstack-cli/internal/tfstate"
 )
 
 const noState = "has no state in workspace"
@@ -33,7 +35,7 @@ func TestAccTfstate(t *testing.T) {
 	require.NoErrorf(t, err, "the API key login did not finish:\n%s", output)
 	block := bootstrapBuildingBlock(t, c, manager.Username)
 	c.setEnv(envWorkspace, block.workspace)
-	module := stateModule(t)
+	module := copyTestdata(t, "buildingblock")
 
 	t.Run("show writes the state that the run stored", func(t *testing.T) {
 		output, err := c.run("", "buildingblock", "tfstate", "show", block.uuid)
@@ -42,12 +44,13 @@ func TestAccTfstate(t *testing.T) {
 	})
 
 	t.Run("exec --mode read runs tofu against the state", func(t *testing.T) {
-		output := c.exec(t, block, "read", "tofu", "-chdir="+module, "init", "-input=false")
+		output := c.tofuExec(t, block, "read", module, "init", "-input=false")
 		assert.Contains(t, output, "Successfully configured the backend \"http\"")
 
-		output = c.exec(t, block, "read", "tofu", "-chdir="+module, "state", "list")
+		output = c.tofuExec(t, block, "read", module, "state", "list")
 		assert.Contains(t, output, "terraform_data.noop")
-		c.exec(t, block, "read", "tofu", "-chdir="+module, "plan", "-input=false")
+		c.tofuExec(t, block, "read", module, "plan", "-input=false")
+		assert.NoFileExists(t, filepath.Join(module, tfstate.BackendOverrideFile))
 	})
 
 	t.Run("exec --mode read lets the meshstack provider read meshStack, and nothing else", func(t *testing.T) {
@@ -63,7 +66,7 @@ func TestAccTfstate(t *testing.T) {
 	})
 
 	t.Run("exec --mode readwrite applies with tofu, and leaves no lock behind", func(t *testing.T) {
-		output := c.exec(t, block, "readwrite", "tofu", "-chdir="+module, "apply", "-auto-approve", "-input=false")
+		output := c.tofuExec(t, block, "readwrite", module, "apply", "-auto-approve", "-input=false")
 		assert.Contains(t, output, "Apply complete!")
 		assert.Contains(t, c.forceUnlock(t, block), "has no lock")
 	})
@@ -71,13 +74,13 @@ func TestAccTfstate(t *testing.T) {
 	t.Run("a second exec fails on the lock that the first one holds, and names it", func(t *testing.T) {
 		release := c.holdLock(t, block, "held-by-the-first-exec")
 
-		output, err := c.run("", "buildingblock", "tfstate", "exec", block.uuid, "--mode", "readwrite", "--",
+		output, err := c.run("", "buildingblock", "tfstate", "exec", block.uuid, "--mode", "readwrite", "--override-backend", "--",
 			"tofu", "-chdir="+module, "apply", "-auto-approve", "-input=false", "-lock-timeout=1s")
 		require.Errorf(t, err, "tofu applied while another exec held the lock:\n%s", output)
 		assert.Contains(t, output, "Error acquiring the state lock")
 		assert.Contains(t, output, "held-by-the-first-exec")
 
-		c.exec(t, block, "read", "tofu", "-chdir="+module, "plan", "-input=false")
+		c.tofuExec(t, block, "read", module, "plan", "-input=false")
 		release(t)
 	})
 
@@ -102,8 +105,11 @@ func TestAccTfstate(t *testing.T) {
 		before := c.storedVersion(t, block)
 		runs := make([]*cliRun, execs)
 		for i := range runs {
-			runs[i] = c.start("", "buildingblock", "tfstate", "exec", block.uuid, "--mode", "readwrite", "--",
-				"tofu", "-chdir="+module, "apply", "-auto-approve", "-input=false", "-lock-timeout=2m", "-var", fmt.Sprintf("input=exec-%d", i))
+			// --override-backend refuses to replace an override file, so each exec runs a copy.
+			dir := filepath.Join(t.TempDir(), fmt.Sprintf("exec-%d", i))
+			require.NoError(t, os.CopyFS(dir, os.DirFS(module)))
+			runs[i] = c.start("", "buildingblock", "tfstate", "exec", block.uuid, "--mode", "readwrite", "--override-backend", "--",
+				"tofu", "-chdir="+dir, "apply", "-auto-approve", "-input=false", "-lock-timeout=2m", "-var", fmt.Sprintf("input=exec-%d", i))
 		}
 		for i, run := range runs {
 			require.NoErrorf(t, run.wait(), "exec %d failed:\n%s", i, run.output.String())
@@ -138,7 +144,7 @@ func TestAccTfstate(t *testing.T) {
 
 		output, err := browser.run("", "buildingblock", "tfstate", "show", block.uuid)
 		require.NoErrorf(t, err, "the Workspace Manager could not read the state:\n%s", output)
-		output = browser.exec(t, block, "readwrite", "tofu", "-chdir="+module, "apply", "-auto-approve", "-input=false")
+		output = browser.tofuExec(t, block, "readwrite", module, "apply", "-auto-approve", "-input=false")
 		assert.Contains(t, output, "Apply complete!")
 	})
 
@@ -254,18 +260,6 @@ func git(t *testing.T, args ...string) string {
 	return strings.TrimSpace(string(output))
 }
 
-// stateModule is the module that the runner applies, with the http backend that tofu reads the
-// TF_HTTP_ variables of exec into.
-func stateModule(t *testing.T) string {
-	t.Helper()
-	dir := copyTestdata(t, "buildingblock")
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "backend.tf"), []byte(`terraform {
-  backend "http" {}
-}
-`), 0o600))
-	return dir
-}
-
 // copyTestdata keeps what tofu writes, .terraform and the local state, out of the source tree.
 func copyTestdata(t *testing.T, name string) string {
 	t.Helper()
@@ -287,6 +281,14 @@ func (c *cli) tofu(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	output, err := c.tofuCommand(t, dir, args...).CombinedOutput()
 	require.NoErrorf(t, err, "tofu %s failed:\n%s", args[0], output)
+}
+
+// tofuExec runs tofu with the backend of --override-backend, as the module of the runner has none.
+func (c *cli) tofuExec(t *testing.T, block bootstrappedBlock, mode, module string, args ...string) string {
+	t.Helper()
+	output, err := c.run("", append([]string{"buildingblock", "tfstate", "exec", block.uuid, "--mode", mode, "--override-backend", "--", "tofu", "-chdir=" + module}, args...)...)
+	require.NoErrorf(t, err, "the exec of tofu %s failed:\n%s", strings.Join(args, " "), output)
+	return output
 }
 
 func (c *cli) exec(t *testing.T, block bootstrappedBlock, mode string, command ...string) string {

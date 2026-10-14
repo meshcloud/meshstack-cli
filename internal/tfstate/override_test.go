@@ -13,26 +13,13 @@ import (
 func TestBackendOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, BackendOverrideFile)
+	require.NoError(t, os.WriteFile(path, []byte("# the user's own\n"), 0o600))
 
-	remove, err := WriteBackendOverride(dir)
+	_, err := WriteBackendOverride(dir)
+	require.ErrorContains(t, err, "exists already")
+	kept, err := fs.ReadFile(os.DirFS(dir), BackendOverrideFile)
 	require.NoError(t, err)
-
-	t.Run("adds the http backend", func(t *testing.T) {
-		written, err := fs.ReadFile(os.DirFS(dir), BackendOverrideFile)
-		require.NoError(t, err)
-		assert.Equal(t, backendOverride, string(written))
-	})
-
-	t.Run("refuses to replace a file of the same name", func(t *testing.T) {
-		_, err := WriteBackendOverride(dir)
-		require.ErrorContains(t, err, "exists already")
-		assert.FileExists(t, path, "the file that was there stays")
-	})
-
-	t.Run("is gone once removed", func(t *testing.T) {
-		require.NoError(t, remove())
-		assert.NoFileExists(t, path)
-	})
+	assert.Equal(t, "# the user's own\n", string(kept))
 }
 
 func TestModuleDir(t *testing.T) {
