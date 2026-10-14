@@ -12,6 +12,7 @@ type MeshBuildingBlockRun struct {
 	Metadata MeshBuildingBlockRunMetadata `json:"metadata"`
 	Spec     MeshBuildingBlockRunSpec     `json:"spec"`
 	Status   string                       `json:"status"`
+	Links    MeshBuildingBlockRunLinks    `json:"_links,omitzero"`
 }
 
 type MeshBuildingBlockRunMetadata struct {

@@ -3,7 +3,6 @@ package profile
 import (
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -34,14 +33,11 @@ deletes, unless --yes goes with --profile, or with an --endpoint that only one p
 					return err
 				}
 				if !yesFlag.Value || !named {
-					if err := p.Printf("Delete profile '%s' and its stored credentials? [y/N]: ", deleted.Name); err != nil {
-						return err
-					}
-					answer, err := p.Next(ctx, "confirmation")
+					confirmed, err := p.Confirm(ctx, fmt.Sprintf("Delete profile '%s' and its stored credentials?", deleted.Name))
 					if err != nil {
 						return err
 					}
-					if !confirmed(answer) {
+					if !confirmed {
 						slog.InfoContext(ctx, fmt.Sprintf("Kept profile '%s'.", deleted.Name))
 						return nil
 					}
@@ -56,9 +52,4 @@ deletes, unless --yes goes with --profile, or with an --endpoint that only one p
 	}
 	yesFlag.Register(cmd.Flags())
 	return cmd
-}
-
-func confirmed(answer string) bool {
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	return answer == "y" || answer == "yes"
 }
