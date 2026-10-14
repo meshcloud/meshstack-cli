@@ -1,0 +1,5 @@
+| Methods | Path | API versions |
+|---|---|---|
+{{- range .}}
+| {{range $i, $m := .Methods}}{{if $i}}, {{end}}{{$m}}{{end}} | `{{.Template}}` | {{range $i, $v := .ApiVersions}}{{if $i}}, {{end}}{{$v}}{{end}} |
+{{- end}}

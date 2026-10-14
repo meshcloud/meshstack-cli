@@ -1,0 +1,9 @@
+.git/
+.github/
+dist/
+.nix-go/
+meshstack
+.env
+.vscode/
+.idea/
+*.md

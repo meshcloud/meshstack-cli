@@ -1,0 +1,69 @@
+package auth
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+
+	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/setting"
+)
+
+func (s Session) resolveCredentials(ctx context.Context, opts ResolveSessionOptions) (Credential, error) {
+	var resolved []Credential
+	var errs, noSourceErrs []error
+	collect := func(cred Credential, err error) {
+		switch {
+		case errors.Is(err, setting.ErrNoSourceProvidedValue):
+			noSourceErrs = append(noSourceErrs, err)
+		case err != nil:
+			errs = append(errs, err)
+		default:
+			resolved = append(resolved, cred)
+		}
+	}
+	// No browser login here: it needs a person, so only Login reaches it, and the Terraform
+	// provider resolves a session on every plan and must never open a browser.
+	collect(s.resolveApiKeyCredential(ctx, opts.SettingSources))
+	collect(s.resolveManualCredential(ctx, opts.SettingSources))
+	if err := errors.Join(errs...); err != nil {
+		return Credential{}, err
+	}
+
+	switch len(resolved) {
+	case 0:
+		return s.storedCredential(ctx, noSourceErrs)
+	case 1:
+		slog.DebugContext(ctx, fmt.Sprintf("Using uniquely resolved credential %s from environment MESHSTACK_* and/or explicit config", resolved[0].Name()))
+		return resolved[0], nil
+	default:
+		names := make([]credential.Name, 0, len(resolved))
+		for _, cred := range resolved {
+			names = append(names, cred.Name())
+		}
+		return Credential{}, fmt.Errorf("resolved more than one credential %v; please check environment MESHSTACK_* and/or explicit config", names)
+	}
+}
+
+func (s Session) storedCredential(ctx context.Context, noSourceErrs []error) (Credential, error) {
+	currentProfile := s.CurrentProfile
+	if currentProfile.Credential == "" {
+		return Credential{}, errors.Join(append([]error{
+			fmt.Errorf("profile '%s' selects no credential; run 'meshstack login -p %s'", currentProfile, currentProfile),
+		}, noSourceErrs...)...)
+	}
+	creds, err := currentProfile.Credentials(ctx)
+	if err != nil {
+		return Credential{}, err
+	}
+	current := creds.ByName(currentProfile.Credential)
+	if current == nil {
+		return Credential{}, fmt.Errorf("profile '%s' selects credential '%s', but %s holds none; run 'meshstack login -p %s'",
+			currentProfile, currentProfile.Credential, creds.FilePath, currentProfile)
+	}
+	slog.DebugContext(ctx, fmt.Sprintf("Using credential %s of profile %s", currentProfile.Credential, currentProfile))
+	stored := CacheFor(currentProfile, current)
+	stored.Sources, stored.Stored = []string{"file " + creds.FilePath}, true
+	return stored, nil
+}

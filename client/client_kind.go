@@ -1,0 +1,53 @@
+package client
+
+type meshObjectKind struct {
+	ApiKey                         string
+	BuildingBlock                  string
+	BuildingBlockRun               string
+	BuildingBlockDefinition        string
+	BuildingBlockDefinitionVersion string
+	BuildingBlockRunner            string
+	EventLog                       string
+	Integration                    string
+	LandingZone                    string
+	Location                       string
+	PaymentMethod                  string
+	Platform                       string
+	PlatformType                   string
+	Project                        string
+	ProjectGroupBinding            string
+	ProjectRole                    string
+	ProjectUserBinding             string
+	ServiceInstance                string
+	TagDefinition                  string
+	Tenant                         string
+	Workspace                      string
+	WorkspaceGroupBinding          string
+	WorkspaceUserBinding           string
+}
+
+var MeshObjectKind = meshObjectKind{
+	ApiKey:                         "meshApiKey",
+	BuildingBlock:                  "meshBuildingBlock",
+	BuildingBlockRun:               "meshBuildingBlockRun",
+	BuildingBlockDefinition:        "meshBuildingBlockDefinition",
+	BuildingBlockDefinitionVersion: "meshBuildingBlockDefinitionVersion",
+	BuildingBlockRunner:            "meshBuildingBlockRunner",
+	EventLog:                       "meshEventLog",
+	Integration:                    "meshIntegration",
+	LandingZone:                    "meshLandingZone",
+	Location:                       "meshLocation",
+	PaymentMethod:                  "meshPaymentMethod",
+	Platform:                       "meshPlatform",
+	PlatformType:                   "meshPlatformType",
+	Project:                        "meshProject",
+	ProjectGroupBinding:            "meshProjectGroupBinding",
+	ProjectRole:                    "meshProjectRole",
+	ProjectUserBinding:             "meshProjectUserBinding",
+	ServiceInstance:                "meshServiceInstance",
+	TagDefinition:                  "meshTagDefinition",
+	Tenant:                         "meshTenant",
+	Workspace:                      "meshWorkspace",
+	WorkspaceGroupBinding:          "meshWorkspaceGroupBinding",
+	WorkspaceUserBinding:           "meshWorkspaceUserBinding",
+}

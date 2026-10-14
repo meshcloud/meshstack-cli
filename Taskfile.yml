@@ -1,0 +1,82 @@
+version: '3'
+
+dotenv: ['.env']
+
+tasks:
+  build:
+    desc: Build the meshstack binary
+    cmds:
+      - go build {{.CLI_ARGS}} ./cmd/meshstack
+
+  install:
+    desc: Install the meshstack binary into GOBIN
+    cmds:
+      - go install {{.CLI_ARGS}} ./cmd/meshstack
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  lint:
+    # Also formats, so there is no separate fmt task: golangci-lint's formatters use the
+    # go/format compiled into it, and a gofmt built against another Go release enforces
+    # different formatting. `go tool` builds it from the pin in go.mod, against the same Go.
+    desc: Run golangci-lint
+    cmds:
+      - go tool golangci-lint run {{.CLI_ARGS}}
+
+  vuln:
+    desc: Check for known vulnerabilities with govulncheck
+    cmds:
+      - go tool govulncheck {{.CLI_ARGS}} ./...
+
+  tidy:
+    desc: Tidy go.mod and go.sum
+    cmds:
+      - go mod tidy
+
+  nix:vendor-hash:
+    # An empty vendorHash makes nix build the Go modules anyway and report the hash it got. The
+    # `-i.bak` keeps sed portable between GNU and BSD.
+    desc: Set vendorHash in flake.nix to match go.sum
+    cmds:
+      - |
+        set_vendor_hash() { sed -i.bak "s|vendorHash = \"[^\"]*\";|vendorHash = \"$1\";|" flake.nix && rm flake.nix.bak; }
+        old=$(sed -n 's|^ *vendorHash = "\([^"]*\)";|\1|p' flake.nix)
+        set_vendor_hash ""
+        new=$(nix build .#meshstack-cli.goModules --no-link 2>&1 | sed -n 's|^ *got: *||p')
+        if [ -z "$new" ]; then
+          set_vendor_hash "$old"
+          echo "nix reported no hash; run 'nix build .#meshstack-cli.goModules' to see why" >&2
+          exit 1
+        fi
+        set_vendor_hash "$new"
+        echo "vendorHash = \"$new\""
+
+  release:check:
+    desc: Validate .goreleaser.yml
+    cmds:
+      - goreleaser check
+
+  release:snapshot:
+    desc: Build the release artifacts into dist/ without publishing them
+    cmds:
+      - goreleaser release --snapshot --clean {{.CLI_ARGS}}
+
+  image:
+    desc: Build the container image locally
+    cmds:
+      - docker build -t meshstack:dev {{.CLI_ARGS}} .
+
+  docs:demo:
+    desc: Record docs/demo.gif and docs/profile.gif with VHS, see docs/demo/README.md
+    cmds:
+      - vhs docs/demo/demo.tape
+      - vhs docs/demo/profile.tape
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f meshstack
+      - rm -rf dist

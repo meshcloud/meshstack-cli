@@ -1,0 +1,186 @@
+package client
+
+import (
+	"context"
+
+	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/http"
+)
+
+type MeshBuildingBlockType string
+
+var (
+	MeshBuildingBlockTypes              = enum.Enum[MeshBuildingBlockType]{}
+	MeshBuildingBlockTypeTenantLevel    = MeshBuildingBlockTypes.Entry("TENANT_LEVEL")
+	MeshBuildingBlockTypeWorkspaceLevel = MeshBuildingBlockTypes.Entry("WORKSPACE_LEVEL")
+)
+
+type MeshBuildingBlockScheduleMode string
+
+var (
+	MeshBuildingBlockScheduleModes                   = enum.Enum[MeshBuildingBlockScheduleMode]{}
+	MeshBuildingBlockScheduleModeDisabled            = MeshBuildingBlockScheduleModes.Entry("DISABLED")
+	MeshBuildingBlockScheduleModeDriftDetection      = MeshBuildingBlockScheduleModes.Entry("DRIFT_DETECTION")
+	MeshBuildingBlockScheduleModeDriftReconciliation = MeshBuildingBlockScheduleModes.Entry("DRIFT_RECONCILIATION")
+)
+
+type MeshBuildingBlockScheduleFrequency string
+
+var (
+	MeshBuildingBlockScheduleFrequencies     = enum.Enum[MeshBuildingBlockScheduleFrequency]{}
+	MeshBuildingBlockScheduleFrequencyNone   = MeshBuildingBlockScheduleFrequencies.Entry("NONE")
+	MeshBuildingBlockScheduleFrequencyDaily  = MeshBuildingBlockScheduleFrequencies.Entry("DAILY")
+	MeshBuildingBlockScheduleFrequencyWeekly = MeshBuildingBlockScheduleFrequencies.Entry("WEEKLY")
+)
+
+type MeshBuildingBlockDefinitionMetadata struct {
+	Uuid             *string             `json:"uuid,omitzero" tfsdk:"uuid"`
+	OwnedByWorkspace string              `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
+	Tags             map[string][]string `json:"tags" tfsdk:"tags"`
+}
+
+type MeshBuildingBlockDefinitionSpec struct {
+	DisplayName           string                                      `json:"displayName" tfsdk:"display_name"`
+	DisplayNameTemplate   *string                                     `json:"displayNameTemplate,omitzero" tfsdk:"display_name_template"`
+	TargetType            MeshBuildingBlockType                       `json:"targetType" tfsdk:"target_type"`
+	Description           string                                      `json:"description" tfsdk:"description"`
+	Readme                *string                                     `json:"readme,omitzero" tfsdk:"readme"`
+	RunTransparency       bool                                        `json:"runTransparency" tfsdk:"run_transparency"`
+	ApprovalPolicies      MeshBuildingBlockDefinitionApprovalPolicies `json:"approvalPolicies" tfsdk:"approval_policies"`
+	Schedule              MeshBuildingBlockDefinitionSchedule         `json:"schedule" tfsdk:"schedule"`
+	UseInLandingZonesOnly bool                                        `json:"useInLandingZonesOnly" tfsdk:"use_in_landing_zones_only"`
+	SupportURL            *string                                     `json:"supportUrl,omitzero" tfsdk:"support_url"`
+	DocumentationURL      *string                                     `json:"documentationUrl,omitzero" tfsdk:"documentation_url"`
+	// NotificationSubscribers also takes an email address as `email:<address>`, despite the JSON name.
+	NotificationSubscribers types.Set[string]               `json:"notificationSubscriberUsernames,omitempty" tfsdk:"notification_subscribers"`
+	Symbol                  *string                         `json:"symbol,omitzero" tfsdk:"symbol"`
+	SupportedPlatforms      types.Set[SupportedPlatformRef] `json:"supportedPlatforms" tfsdk:"supported_platforms"`
+}
+
+type MeshBuildingBlockDefinitionApprovalPolicies struct {
+	VersionUpgrade        bool `json:"versionUpgrade" tfsdk:"version_upgrade"`
+	UserInputChanges      bool `json:"userInputChanges" tfsdk:"user_input_changes"`
+	ManualTriggers        bool `json:"manualTriggers" tfsdk:"manual_triggers"`
+	BuildingBlockCreation bool `json:"buildingBlockCreation" tfsdk:"building_block_creation"`
+	AnyInputChanges       bool `json:"anyInputChanges" tfsdk:"any_input_changes"`
+}
+
+func (a MeshBuildingBlockDefinitionApprovalPolicies) NothingRequiresApproval() bool {
+	return a == MeshBuildingBlockDefinitionApprovalPolicies{}
+}
+
+type MeshBuildingBlockDefinitionSchedule struct {
+	Mode              MeshBuildingBlockScheduleMode      `json:"mode" tfsdk:"mode"`
+	Frequency         MeshBuildingBlockScheduleFrequency `json:"frequency" tfsdk:"frequency"`
+	AutomaticApproval bool                               `json:"automaticApproval" tfsdk:"automatic_approval"`
+}
+
+// DisabledSchedule is the only schedule meshStack accepts for every implementation.
+func DisabledSchedule() MeshBuildingBlockDefinitionSchedule {
+	return MeshBuildingBlockDefinitionSchedule{
+		Mode:      MeshBuildingBlockScheduleModeDisabled.Unwrap(),
+		Frequency: MeshBuildingBlockScheduleFrequencyNone.Unwrap(),
+	}
+}
+
+func (s MeshBuildingBlockDefinitionSchedule) IsDisabled() bool {
+	return s == DisabledSchedule()
+}
+
+func (s MeshBuildingBlockDefinitionSpec) HasNeutralPolicies() bool {
+	return s.ApprovalPolicies.NothingRequiresApproval() && s.Schedule.IsDisabled()
+}
+
+func (s MeshBuildingBlockDefinitionSpec) WithNeutralPolicies() MeshBuildingBlockDefinitionSpec {
+	s.ApprovalPolicies = MeshBuildingBlockDefinitionApprovalPolicies{}
+	s.Schedule = DisabledSchedule()
+	return s
+}
+
+type MeshBuildingBlockDefinitionStatusVersion struct {
+	VersionUuid   string                                  `json:"versionUuid"`
+	VersionNumber int64                                   `json:"versionNumber"`
+	State         MeshBuildingBlockDefinitionVersionState `json:"state"`
+	// WorkloadIdentityFederation is rendered from the runner's template, and is nil when the runner
+	// declares none.
+	WorkloadIdentityFederation *MeshBuildingBlockDefinitionWif `json:"workloadIdentityFederation,omitzero"`
+}
+
+type MeshBuildingBlockDefinitionWif struct {
+	Issuer  string                               `json:"issuer" tfsdk:"issuer"`
+	Subject string                               `json:"subject" tfsdk:"subject"`
+	Gcp     *MeshBuildingBlockDefinitionCloudWif `json:"gcp,omitzero" tfsdk:"gcp"`
+	Aws     *MeshBuildingBlockDefinitionCloudWif `json:"aws,omitzero" tfsdk:"aws"`
+	Azure   *MeshBuildingBlockDefinitionCloudWif `json:"azure,omitzero" tfsdk:"azure"`
+}
+
+type MeshBuildingBlockDefinitionCloudWif struct {
+	Audience  string `json:"audience" tfsdk:"audience"`
+	TokenPath string `json:"tokenPath" tfsdk:"token_path"`
+}
+
+type MeshBuildingBlockDefinitionStatus struct {
+	UsageCount                *int64                                     `json:"usageCount"`
+	Versions                  []MeshBuildingBlockDefinitionStatusVersion `json:"versions"`
+	LatestVersion             int64                                      `json:"latestVersion"`
+	LatestVersionUuid         string                                     `json:"latestVersionUuid"`
+	LatestReleasedVersion     *int64                                     `json:"latestReleasedVersion"`
+	LatestReleasedVersionUuid *string                                    `json:"latestReleasedVersionUuid"`
+	RedactedForNonOwnerAccess bool                                       `json:"redactedForNonOwnerAccess"`
+}
+
+type MeshBuildingBlockDefinition struct {
+	Metadata MeshBuildingBlockDefinitionMetadata `json:"metadata"`
+	Spec     MeshBuildingBlockDefinitionSpec     `json:"spec"`
+	Status   *MeshBuildingBlockDefinitionStatus  `json:"status,omitzero"`
+}
+
+type MeshBuildingBlockDefinitionClient interface {
+	List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error)
+	Read(ctx context.Context, uuid string) (*MeshBuildingBlockDefinition, error)
+	Create(ctx context.Context, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error)
+	Update(ctx context.Context, uuid string, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error)
+	Delete(ctx context.Context, uuid string) error
+}
+
+type meshBuildingBlockDefinitionClient struct {
+	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinition]
+}
+
+func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockDefinitionClient {
+	return meshBuildingBlockDefinitionClient{
+		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinition](ctx, httpClient, "v1-preview"),
+	}
+}
+
+type MeshBuildingBlockDefinitionListFilter struct {
+	OwnedByWorkspace *string `json:"ownedByWorkspace"`
+	// IncludeAllPublished adds the definitions published to the whole platform to the workspace's own.
+	IncludeAllPublished bool         `json:"includeAllPublished"`
+	Sort                SortCriteria `json:"sort"`
+}
+
+func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
+	return c.meshObject.List(ctx, http.WithUrlQuery(MeshBuildingBlockDefinitionListFilter{
+		OwnedByWorkspace:    workspaceIdentifier,
+		IncludeAllPublished: true,
+	}))
+}
+
+func (c meshBuildingBlockDefinitionClient) Read(ctx context.Context, uuid string) (*MeshBuildingBlockDefinition, error) {
+	return c.meshObject.Get(ctx, uuid)
+}
+
+func (c meshBuildingBlockDefinitionClient) Create(ctx context.Context, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error) {
+	return c.meshObject.Post(ctx, definition)
+}
+
+func (c meshBuildingBlockDefinitionClient) Update(ctx context.Context, uuid string, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error) {
+	return c.meshObject.Put(ctx, uuid, definition)
+}
+
+func (c meshBuildingBlockDefinitionClient) Delete(ctx context.Context, uuid string) error {
+	return c.meshObject.Delete(ctx, uuid)
+}

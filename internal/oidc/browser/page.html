@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>meshStack CLI</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #f8f9fa; color: #212529; font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { box-sizing: border-box; width: min(28rem, 100% - 2rem); padding: 2rem; background: #fff;
+    border: 1px solid #dee2e6; border-radius: .5rem; }
+  header { display: flex; align-items: center; gap: .5rem; margin-bottom: 1.5rem; font-size: 1.25rem; font-weight: 600; }
+  header img { height: 2.5rem; }
+  h1 { font-size: 1.125rem; margin: 0 0 .5rem; }
+  label { display: flex; gap: .75rem; padding: .75rem; margin-bottom: .5rem; border: 1px solid #dee2e6; border-radius: .375rem; cursor: pointer; }
+  label:has(input:checked) { border-color: #0d6efd; background: #e7f1ff; }
+  label span { display: block; color: #6c757d; font-size: .875rem; }
+  .error { color: #dc3545; }
+  button { width: 100%; margin-top: 1rem; padding: .5rem; border: 0; border-radius: .375rem;
+    background: #0d6efd; color: #fff; font: inherit; cursor: pointer; }
+  button:hover { background: #0b5ed7; }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="{{.Logo}}" alt="">meshStack CLI</header>
+  <h1>{{.Title}}</h1>
+  <p{{if .Failed}} class="error"{{end}}>{{.Message}}</p>
+  {{- with .Form}}
+  <form method="post" action="/">
+    <input type="hidden" name="nonce" value="{{.Nonce}}">
+    {{- range .Levels}}
+    <label><input type="radio" name="access" value="{{.Value}}" required{{if .Selected}} checked{{end}}>
+      <div><strong>{{.Label}}</strong><span>{{.Detail}}</span></div></label>
+    {{- end}}
+    <button type="submit">Continue to log in</button>
+  </form>
+  {{- end}}
+</main>
+</body>
+</html>

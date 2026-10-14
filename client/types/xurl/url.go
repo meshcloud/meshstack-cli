@@ -1,0 +1,86 @@
+package xurl
+
+import (
+	"encoding"
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"strings"
+)
+
+var (
+	_ encoding.TextUnmarshaler = &URL{}
+	_ encoding.TextMarshaler   = URL{}
+)
+
+type URL struct {
+	*url.URL
+}
+
+func MustParsef(format string, args ...any) (result URL) {
+	if err := result.UnmarshalText([]byte(fmt.Sprintf(format, args...))); err != nil {
+		panic(err)
+	}
+	return
+}
+
+//goland:noinspection GoMixedReceiverTypes
+func (u *URL) UnmarshalText(text []byte) (err error) {
+	u.URL, err = url.ParseRequestURI(string(text))
+	if err != nil {
+		return
+	}
+	if u.Path == "/" {
+		u.Path = ""
+	}
+	if !u.IsAbs() {
+		return fmt.Errorf("unmarshaled URL '%s' is not absolute", u)
+	}
+	u.Host = strings.ToLower(u.Host)
+	if u.Scheme != "https" && (u.Scheme != "http" || !u.isLoopback()) {
+		return errors.New("URLs must start with 'https://' unless the host is localhost or another loopback address")
+	}
+	return
+}
+
+func (u URL) Equal(other URL) bool {
+	if u.URL == nil || other.URL == nil {
+		return false
+	}
+	return u.String() == other.String()
+}
+
+func (u URL) MarshalText() ([]byte, error) {
+	if u.URL == nil {
+		return nil, errors.New("a zero URL cannot be marshaled; declare an optional URL field as *URL")
+	}
+	return []byte(u.String()), nil
+}
+
+func (u URL) Clone() URL {
+	return URL{u.URL.Clone()}
+}
+
+// PathTo is the path of target below u, and false where u does not hold target. A near match, such
+// as https://x.io/ab for https://x.io/a, is false as well, because a caller sends u's credential to
+// target.
+func (u URL) PathTo(target *url.URL) (string, bool) {
+	if u.URL == nil || target == nil || !strings.EqualFold(target.Scheme, u.Scheme) || !strings.EqualFold(target.Host, u.Host) {
+		return "", false
+	}
+	path, found := strings.CutPrefix(target.Path, strings.TrimSuffix(u.Path, "/"))
+	if !found || path != "" && !strings.HasPrefix(path, "/") {
+		return "", false
+	}
+	return path, true
+}
+
+func (u URL) isLoopback() bool {
+	hostname := u.Hostname()
+	if hostname == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	return ip != nil && ip.IsLoopback()
+}

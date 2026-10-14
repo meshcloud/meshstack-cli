@@ -1,0 +1,88 @@
+package meshstack
+
+import (
+	"context"
+	"fmt"
+	"iter"
+	"log/slog"
+
+	"github.com/meshcloud/meshstack-cli/client"
+)
+
+type (
+	workspacesContextKey int
+	WorkspacesFunc       func() (Workspaces, error)
+)
+
+func WorkspacesFromContext(ctx context.Context) (Workspaces, error) {
+	workspaces, found := ctx.Value(workspacesContextKey(0)).(WorkspacesFunc)
+	if !found {
+		// An error rather than a panic, because a front end reaches this through pkg/setting and a
+		// panic there takes its process down.
+		return Workspaces{}, fmt.Errorf("no workspaces available in this context; they are only provided while resolving %s", WorkspaceSetting.EnvKey())
+	}
+	return workspaces()
+}
+
+func SetWorkspacesInContext(ctx context.Context, workspacesFunc WorkspacesFunc) context.Context {
+	return context.WithValue(ctx, workspacesContextKey(0), workspacesFunc)
+}
+
+type (
+	Workspaces struct {
+		Items []client.MeshWorkspace
+		// AdminWorkspace is the workspace of meshPanel's admin area. The listed workspaces do not
+		// mark it, so it comes from client.MeshInfo.AdminWorkspaceIdentifier.
+		AdminWorkspace          Workspace
+		ProfileDefaultWorkspace Workspace
+	}
+	// MeshWorkspace is a workspace to select from, where a Workspace only names one.
+	MeshWorkspace struct {
+		client.MeshWorkspace
+
+		IsAdmin bool
+	}
+)
+
+func (ws Workspaces) All() iter.Seq2[int, MeshWorkspace] {
+	return func(yield func(int, MeshWorkspace) bool) {
+		for i, item := range ws.Items {
+			if !yield(i, MeshWorkspace{MeshWorkspace: item, IsAdmin: ws.AdminWorkspace != NoWorkspace && Workspace(item.Metadata.Name) == ws.AdminWorkspace}) {
+				return
+			}
+		}
+	}
+}
+
+func (ws Workspaces) ProfileDefault(ctx context.Context) (r *MeshWorkspace) {
+	if ws.ProfileDefaultWorkspace == NoWorkspace {
+		return
+	}
+	for _, item := range ws.All() {
+		if item.Name() == ws.ProfileDefaultWorkspace {
+			slog.DebugContext(ctx, fmt.Sprintf("Found profile's default workspace: %s", item))
+			return &item
+		}
+	}
+	slog.WarnContext(ctx, fmt.Sprintf("Your profile carries the default workspace '%s', which you have no access to currently", ws.ProfileDefaultWorkspace))
+	return nil
+}
+
+func (w MeshWorkspace) Name() Workspace {
+	return Workspace(w.Metadata.Name)
+}
+
+func (w MeshWorkspace) Matches(other MeshWorkspace) bool {
+	return w.Name() == other.Name()
+}
+
+func (w MeshWorkspace) String() string {
+	if w.IsAdmin {
+		return fmt.Sprintf("**ADMIN** (%s)", w.Metadata.Name)
+	}
+	return fmt.Sprintf("%s (%s)", w.Spec.DisplayName, w.Metadata.Name)
+}
+
+func (w MeshWorkspace) Label() string {
+	return w.String()
+}

@@ -1,0 +1,9 @@
+{{- if . -}}
+| | Profile | Endpoint | Default workspace | Credential |
+| --- | --- | --- | --- | --- |
+{{- range .}}
+| {{if .Current}}current{{end}} | {{cell .Name}} | {{with .Endpoint.URL}}{{cell .}}{{end}} | {{with .DefaultWorkspace}}{{cell .}}{{end}} | {{with .Credential}}{{.Label}}{{end}} |
+{{- end}}
+{{- else -}}
+No profiles yet. Add one with `meshstack profile add`, or log in with `meshstack login --profile <new-profile-name>`.
+{{- end}}

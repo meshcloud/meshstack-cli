@@ -1,0 +1,87 @@
+package internal
+
+import (
+	"context"
+	"fmt"
+	"uuid"
+
+	"github.com/spf13/pflag"
+
+	"github.com/meshcloud/meshstack-cli/pkg/setting"
+)
+
+var (
+	SkipVersionCheckFlag = NewFlagForSetting[bool]("skip-version-check", setting.SkipVersionCheck)
+	EndpointFlag         = NewFlagForSetting[string]("endpoint", setting.Endpoint)
+	WorkspaceFlag        = NewFlagForSetting[string]("workspace", setting.Workspace).WithShorthand("w")
+	ProfileFlag          = NewFlagForSetting[string]("profile", setting.Profile).WithShorthand("p")
+)
+
+func SettingSources() setting.Sources {
+	return setting.Sources{
+		EndpointFlag.AsSource(),
+		WorkspaceFlag.AsSource(),
+		// An unset bool flag reads false, and a frontend source outranks the environment, so
+		// contributing that false would mask MESHSTACK_SKIP_VERSION_CHECK.
+		SkipVersionCheckFlag.AsSourceUnless(func(skip bool) bool { return !skip }),
+		ProfileFlag.AsSource(),
+	}
+}
+
+type FlagName string
+
+func (n FlagName) SourceDescription() string {
+	return fmt.Sprintf("flag --%s", n)
+}
+
+func (n FlagName) String() string {
+	return string(n)
+}
+
+type Flag[T string | bool | uuid.UUID] struct {
+	Name          FlagName
+	Shorthand     string
+	Help          string
+	Value         T
+	SettingEnvKey string
+}
+
+func NewFlagForSetting[T string | bool | uuid.UUID](name FlagName, s setting.Setting) Flag[T] {
+	return Flag[T]{Name: name, Help: s.Help(), SettingEnvKey: s.EnvKey()}
+}
+
+func (flag Flag[T]) WithShorthand(shorthand string) Flag[T] {
+	flag.Shorthand = shorthand
+	return flag
+}
+
+func (flag *Flag[T]) Register(flags *pflag.FlagSet) (flagName string) {
+	switch v := any(&flag.Value).(type) {
+	case *string:
+		flags.StringVarP(v, flag.Name.String(), flag.Shorthand, *v, flag.Help)
+	case *bool:
+		flags.BoolVarP(v, flag.Name.String(), flag.Shorthand, *v, flag.Help)
+	case *uuid.UUID:
+		flags.VarP((*UuidFlag)(v), flag.Name.String(), flag.Shorthand, flag.Help)
+	default:
+		panic(fmt.Sprintf("cannot register flag with value type %T", flag.Value))
+	}
+	return flag.Name.String()
+}
+
+func (flag *Flag[T]) AsSource() setting.FrontendSource {
+	return setting.LookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func(_ context.Context) (string, error) {
+		return fmt.Sprintf("%v", flag.Value), nil
+	})
+}
+
+// AsSourceUnless contributes no value while predicate holds, but stays a source, so that setting
+// resolution can still name the flag in an error.
+func (flag *Flag[T]) AsSourceUnless(predicate func(T) bool) setting.FrontendSource {
+	return setting.LookupSource(flag.SettingEnvKey, flag.Name.SourceDescription(), func(_ context.Context) (string, error) {
+		if predicate(flag.Value) {
+			return "", nil
+		}
+		return fmt.Sprintf("%v", flag.Value), nil
+	})
+}

@@ -1,0 +1,5 @@
+{{- /* "credential" is defined in cmd/internal/markdown/credential.md.tmpl. */ -}}
+{{template "credential" .CredentialStatus}}
+{{- with .MeshStackVersion}}
+| meshStack | {{cell .}} |
+{{- end}}
