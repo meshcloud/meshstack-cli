@@ -116,7 +116,8 @@ func (c *cli) environ() []string {
 		envEndpoint + "=" + c.endpoint,
 		envProfile + "=",
 		envWorkspace + "=",
-		setting.SkipVersionCheck.EnvKey() + "=",
+		// The backend under test reports its newest tag, which is below a floor raised for the coming release.
+		setting.SkipVersionCheck.EnvKey() + "=true",
 		setting.ApiKeyClientId.EnvKey() + "=",
 		setting.ApiKeyClientSecret.EnvKey() + "=",
 		setting.ApiToken.EnvKey() + "=",
