@@ -11,11 +11,9 @@ import (
 	"path/filepath"
 )
 
-// wireCompatibility holds the output to the shape encoding/json v1 produced: a nil slice and a
-// nil map go out as null rather than as [] and {}, and object members are sorted. json/v2 would
-// write [] and {} and leave map order to chance, and neither change is ours to make — the
-// meshObject API may read null and an empty collection differently on a PUT, and the Terraform
-// provider hashes this JSON to decide whether a resource changed.
+// wireCompatibility keeps the output in the shape encoding/json v1 wrote, because the meshObject API
+// reads a null collection differently from an empty one. Sorted map keys keep the files written here
+// stable. A MarshalJSON method gets none of its caller's options, so it marshals through [Marshal].
 var wireCompatibility = json.JoinOptions(
 	json.Deterministic(true),
 	json.FormatNilSliceAsNull(true),
