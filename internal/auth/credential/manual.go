@@ -9,7 +9,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
-var _ Credential = &Manual{}
+var _ Minter = &Manual{}
 
 type Manual struct {
 	Endpoint xurl.URL `json:"endpoint"`

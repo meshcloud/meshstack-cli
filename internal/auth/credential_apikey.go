@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"uuid"
@@ -34,19 +33,8 @@ var ApiKeyClientSecretSetting = setting.Setting[string]{
 }
 
 func (s Session) resolveApiKeyCredential(ctx context.Context, settingSources setting.Sources) (Credential, error) {
-	apiKeyClientId, idSource, idErr := settingSources.ResolveSettingWithSource(ctx, ApiKeyClientIdSetting)
-	apiKeyClientSecret, secretSource, secretErr := settingSources.ResolveSettingWithSource(ctx, ApiKeyClientSecretSetting)
-	idMissing := errors.Is(idErr, setting.ErrNoSourceProvidedValue)
-	secretMissing := errors.Is(secretErr, setting.ErrNoSourceProvidedValue)
-	switch {
-	case idMissing && secretMissing:
-		return Credential{}, errors.Join(idErr, secretErr)
-	case idMissing || secretMissing:
-		// Error(), not %w: the sentinel in the chain reads as "no API key was mentioned" and is skipped.
-		return Credential{}, errors.New("an API key needs " + ApiKeyClientIdSetting.EnvKey() + " and " +
-			ApiKeyClientSecretSetting.EnvKey() + " together: " + errors.Join(idErr, secretErr).Error())
-	}
-	if err := errors.Join(idErr, secretErr); err != nil {
+	apiKeyClientId, apiKeyClientSecret, sources, err := resolveBoth(ctx, settingSources, "an API key", ApiKeyClientIdSetting, ApiKeyClientSecretSetting)
+	if err != nil {
 		return Credential{}, err
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using api key credentials (client id %s with %d bytes long secret)", apiKeyClientId, len(apiKeyClientSecret)))
@@ -55,9 +43,6 @@ func (s Session) resolveApiKeyCredential(ctx context.Context, settingSources set
 		ClientId:     apiKeyClientId,
 		ClientSecret: apiKeyClientSecret,
 	})
-	apiKey.Sources = []string{
-		idSource.Describe(ApiKeyClientIdSetting.EnvKey()),
-		secretSource.Describe(ApiKeyClientSecretSetting.EnvKey()),
-	}
+	apiKey.Sources = sources
 	return apiKey, nil
 }

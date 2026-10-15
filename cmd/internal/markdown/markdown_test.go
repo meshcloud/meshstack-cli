@@ -47,6 +47,25 @@ func TestABrowserLoginShowsItsUserAccessAndSessionEnd(t *testing.T) {
 	})
 }
 
+func TestBasicAuthShowsItsUsernameAndNoToken(t *testing.T) {
+	status := auth.CredentialStatus{
+		Profile: "runner", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
+		Kind: credential.BasicAuthName, Sources: []string{"env MESHSTACK_API_USERNAME", "env MESHSTACK_API_PASSWORD"},
+		BasicAuth: &auth.BasicAuthStatus{Username: "runner"},
+		Unused:    []auth.UnusedCredential{{Kind: credential.BasicAuthName, Username: "other", Selected: true}},
+	}
+
+	shown, err := Execute(credentialOnly, status)
+
+	require.NoError(t, err)
+	assert.Equal(t, "| Profile | runner |\n"+
+		"| --- | --- |\n"+
+		"| Endpoint | https://meshstack.example.com |\n"+
+		"| Workspace | none |\n"+
+		"| Credential | Basic auth runner, from env MESHSTACK_API_USERNAME, env MESHSTACK_API_PASSWORD |\n"+
+		"| Unused credentials | • Basic auth other, selected by the profile |", shown)
+}
+
 func TestAnApiKeyShowsItsPermissionsBelowTheCredential(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		clientId := uuid.MustParse("11111111-45bf-42ba-a965-2097b9d0d181")

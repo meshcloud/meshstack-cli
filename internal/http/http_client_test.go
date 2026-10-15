@@ -12,6 +12,8 @@ import (
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -171,6 +173,25 @@ func TestHttpClient(t *testing.T) {
 		}
 	})
 
+	t.Run("DoRequest reopens a body file to replay it", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "plan")
+		require.NoError(t, os.WriteFile(path, []byte("a plan"), 0o600))
+		var bodies []string
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			body, _ := io.ReadAll(req.Body)
+			bodies = append(bodies, string(body))
+			if len(bodies) == 1 {
+				resp.WriteHeader(gohttp.StatusServiceUnavailable)
+				return
+			}
+			resp.WriteHeader(gohttp.StatusNoContent)
+		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
+
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl, http.WithBodyFile(path), http.Retryable())
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a plan", "a plan"}, bodies)
+	})
+
 	t.Run("DoRequest re-mints once on 401", func(t *testing.T) {
 		t.Run("retries with the freshly minted token", func(t *testing.T) {
 			auth := &refreshableAuthorization{token: "stale"}
@@ -186,7 +207,7 @@ func TestHttpClient(t *testing.T) {
 			_, err := client.WithAuthorization(auth).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
 			require.NoError(t, err)
 			assert.Equal(t, []string{"Bearer stale", "Bearer fresh"}, seen)
-			assert.Equal(t, []http.BearerToken{"stale"}, auth.rejected, "the token that was refused is what the refresh is told about")
+			assert.Equal(t, []http.Credential{http.BearerToken("stale")}, auth.rejected, "the token that was refused is what the refresh is told about")
 		})
 
 		t.Run("reports the 401 when the re-mint changes nothing", func(t *testing.T) {
@@ -219,17 +240,33 @@ func TestHttpClient(t *testing.T) {
 		})
 
 		t.Run("leaves an authorization that cannot re-mint alone", func(t *testing.T) {
-			attempts := 0
-			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-				attempts++
-				resp.WriteHeader(gohttp.StatusUnauthorized)
-			})
-			_, err := client.WithAuthorization(http.BearerToken("static")).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
-			var httpErr http.Error
-			require.ErrorAs(t, err, &httpErr)
-			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
-			assert.Equal(t, 1, attempts)
+			for _, static := range []http.Authorization{http.BearerToken("static"), http.BasicAuth{Username: "runner", Password: "secret"}} {
+				attempts := 0
+				client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+					attempts++
+					resp.WriteHeader(gohttp.StatusUnauthorized)
+				})
+				_, err := client.WithAuthorization(static).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+				var httpErr http.Error
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
+				assert.Equal(t, 1, attempts, "%T", static)
+			}
 		})
+	})
+
+	t.Run("BasicAuth sends the username and password as a Basic header", func(t *testing.T) {
+		var username, password string
+		var ok bool
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			username, password, ok = req.BasicAuth()
+			resp.WriteHeader(gohttp.StatusNoContent)
+		})
+		_, err := client.WithAuthorization(http.BasicAuth{Username: "runner", Password: "p:ss"}).DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl)
+		require.NoError(t, err)
+		require.True(t, ok)
+		assert.Equal(t, "runner", username)
+		assert.Equal(t, "p:ss", password)
 	})
 
 	t.Run("DoRequest of []byte returns the retried answer as it came, empty included", func(t *testing.T) {
@@ -258,10 +295,10 @@ type refreshableAuthorization struct {
 	token      http.BearerToken
 	keepToken  bool
 	refreshErr error
-	rejected   []http.BearerToken
+	rejected   []http.Credential
 }
 
-func (a *refreshableAuthorization) GetBearerToken(context.Context) (http.BearerToken, error) {
+func (a *refreshableAuthorization) GetCredential(context.Context) (http.Credential, error) {
 	return a.token, nil
 }
 
@@ -269,10 +306,10 @@ func (a *refreshableAuthorization) Scope() string {
 	return ""
 }
 
-func (a *refreshableAuthorization) RefreshBearerToken(_ context.Context, rejected http.BearerToken) (http.BearerToken, error) {
+func (a *refreshableAuthorization) RefreshCredential(_ context.Context, rejected http.Credential) (http.Credential, error) {
 	a.rejected = append(a.rejected, rejected)
 	if a.refreshErr != nil {
-		return "", a.refreshErr
+		return nil, a.refreshErr
 	}
 	if !a.keepToken {
 		a.token = "fresh"

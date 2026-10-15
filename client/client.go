@@ -44,6 +44,7 @@ type Client struct {
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 	Raw                            *RawClient
+	Runner                         MeshRunnerClient
 
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
 	Endpoint xurl.URL
@@ -90,6 +91,7 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Author
 			with(buildingBlockDefinition.meshObject).
 			withOwnOrder(buildingBlockDefinitionVersion.meshObject).
 			with(newEventLogMeshObject(ctx, authorizedClient)),
+		Runner: newRunnerClient(authorizedClient),
 
 		Endpoint: endpoint,
 	}

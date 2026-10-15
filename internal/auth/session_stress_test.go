@@ -175,7 +175,7 @@ func (r *stressResolver) askConcurrently(t *testing.T, ctx context.Context, serv
 }
 
 // revokeTokens stops honoring the token the next session will find in the cache file, so that
-// its five callers all meet a 401 at once and go through auth.Session.RefreshBearerToken
+// its five callers all meet a 401 at once and go through auth.Session.RefreshCredential
 // together. Exactly one of them may then mint, which is what the login count checks.
 //
 // It revokes only between rounds, as [fakemeshstack.Server.RevokeNewestToken] requires.
