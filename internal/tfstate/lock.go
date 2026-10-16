@@ -9,6 +9,7 @@ import (
 	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblockrun/v1"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
@@ -49,15 +50,17 @@ func (l Lock) NoUnfinishedRun(ctx context.Context, raw *client.RawClient) error 
 	if err != nil {
 		return fmt.Errorf("the lock names the run %q, which is no uuid: %w", l.Holder.RunUuid, err)
 	}
-	read, err := raw.Get[client.MeshBuildingBlockRun](ctx, runUuid)
+	read, err := raw.Get[meshbuildingblockrun.Response](ctx, runUuid)
 	if err != nil {
 		return err
 	}
-	var run client.MeshBuildingBlockRun
+	var run struct {
+		Status meshbuildingblockrun.RunStatus `json:"status"`
+	}
 	if err = json.Unmarshal(read, &run); err != nil {
 		return err
 	}
-	if run.Status == string(client.BuildingBlockStatusPending) || run.Status == string(client.BuildingBlockStatusInProgress) {
+	if run.Status == meshbuildingblockrun.RunStatusInProgress {
 		return fmt.Errorf("building block run %s, which holds the lock, is %s and still writes the state", runUuid, run.Status)
 	}
 	return nil

@@ -24,7 +24,7 @@ func TestTriggerRunPrintsTheBuildingBlockAndFailsWithTheReasonMeshStackCouldNotS
 		reason            = "meshStack could not start a run for this Building Block.\n\nAsk your platform team to look up the details in the meshStack logs."
 	)
 	failure := func(failedOn string) string {
-		return fmt.Sprintf(`{"metadata": {"uuid": %q, "ownedByWorkspace": "my-workspace"}, "spec": {}, `+
+		return fmt.Sprintf(`{"kind": "meshBuildingBlock", "apiVersion": "v2-preview", "metadata": {"uuid": %q, "ownedByWorkspace": "my-workspace"}, "spec": {}, `+
 			`"status": {"status": "PENDING", "latestRunUuid": "a0000000-0000-4000-8000-000000000001", "runStartFailure": %q, "runStartFailedOn": %q}}`,
 			buildingBlockUuid, reason, failedOn)
 	}
