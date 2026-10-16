@@ -1,0 +1,189 @@
+{
+  "openapi": "3.0.1",
+  "paths": {
+    "/api/meshobjects/meshthings": {
+      "get": {
+        "summary": "List things",
+        "operationId": "meshThingList",
+        "parameters": [
+          {"$ref": "#/components/parameters/page"},
+          {"name": "sort", "in": "query", "schema": {"$ref": "#/components/schemas/array_string_0"}},
+          {"name": "ownerUuid", "in": "query", "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/HalPageMeshThingV2"}}}}
+        }
+      },
+      "post": {
+        "summary": "Create thing",
+        "operationId": "meshThingPost",
+        "requestBody": {"content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/MeshThingV2Request"}}}},
+        "responses": {
+          "201": {"$ref": "#/components/responses/Thing"},
+          "400": {"$ref": "#/components/responses/BadRequest"}
+        }
+      }
+    },
+    "/api/meshobjects/meshthings/{thing}": {
+      "parameters": [{"$ref": "#/components/parameters/thing"}],
+      "get": {
+        "summary": "Get thing",
+        "operationId": "meshThingGet",
+        "responses": {"200": {"$ref": "#/components/responses/Thing"}}
+      },
+      "delete": {
+        "summary": "Delete thing",
+        "operationId": "meshThingDelete",
+        "responses": {"204": {"description": "Deleted"}}
+      }
+    },
+    "/api/meshobjects/meshthings/{thing}/paint": {
+      "post": {
+        "summary": "Paint thing",
+        "operationId": "meshThingPaint",
+        "parameters": [{"$ref": "#/components/parameters/thing"}],
+        "requestBody": {"content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/MeshThingPaintRequest"}}}},
+        "responses": {"200": {"$ref": "#/components/responses/Thing"}}
+      }
+    },
+    "/api/meshobjects/meshothers/{other}": {
+      "get": {
+        "summary": "Get other",
+        "operationId": "meshOtherGet",
+        "parameters": [{"name": "other", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshother.v1.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshOther"}}}}
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "page": {"name": "page", "in": "query", "schema": {"type": "integer", "format": "int32"}},
+      "thing": {"name": "thing", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/string_uuid"}}
+    },
+    "responses": {
+      "Thing": {"description": "The thing", "content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshThingV2"}}}},
+      "BadRequest": {"description": "Bad request", "content": {"application/json": {"schema": {"type": "object"}}}}
+    },
+    "schemas": {
+      "array_string_0": {"type": "array", "items": {"type": "string"}},
+      "string_uuid": {"type": "string", "format": "uuid"},
+      "string_date-time": {"type": "string", "format": "date-time"},
+      "MapOfList": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/array_string_0"}},
+      "HalLinks": {"type": "object", "readOnly": true, "additionalProperties": {"oneOf": [{"$ref": "#/components/schemas/HalLink"}, {"type": "array", "items": {"$ref": "#/components/schemas/HalLink"}}]}},
+      "HalLink": {"type": "object", "required": ["href"], "properties": {"href": {"type": "string"}}},
+      "HalPageMeshThingV2": {
+        "type": "object",
+        "properties": {
+          "_embedded": {"type": "object", "properties": {"meshThings": {"type": "array", "items": {"$ref": "#/components/schemas/HalEntityModelMeshThingV2"}}}},
+          "_links": {"allOf": [{"$ref": "#/components/schemas/HalLinks"}]},
+          "page": {"type": "object", "properties": {"number": {"type": "integer"}}}
+        }
+      },
+      "HalEntityModelMeshThingV2": {
+        "allOf": [
+          {"$ref": "#/components/schemas/MeshThingV2Response"},
+          {"type": "object", "required": ["_links"], "properties": {"_links": {"allOf": [{"$ref": "#/components/schemas/HalLinks"}]}}}
+        ]
+      },
+      "HalEntityModelMeshOther": {
+        "allOf": [
+          {"$ref": "#/components/schemas/MeshOther"},
+          {"type": "object", "properties": {"_links": {"allOf": [{"$ref": "#/components/schemas/HalLinks"}]}}}
+        ]
+      },
+      "MeshThingV2Request": {
+        "type": "object",
+        "required": ["kind", "apiVersion", "spec"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["meshThing"]},
+          "apiVersion": {"type": "string", "enum": ["v2"]},
+          "spec": {"description": "What the thing is.", "allOf": [{"$ref": "#/components/schemas/MeshThingSpecV2"}]}
+        }
+      },
+      "MeshThingV2Response": {
+        "type": "object",
+        "required": ["kind", "apiVersion", "metadata", "spec", "status"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["meshThing"]},
+          "apiVersion": {"type": "string", "enum": ["v2"]},
+          "metadata": {"$ref": "#/components/schemas/MeshThingMetadataV2"},
+          "spec": {"allOf": [{"$ref": "#/components/schemas/MeshThingSpecV2"}]},
+          "status": {"readOnly": true, "allOf": [{"$ref": "#/components/schemas/MeshThingStatusV2"}]}
+        }
+      },
+      "MeshThingMetadataV2": {
+        "type": "object",
+        "required": ["uuid", "createdOn"],
+        "properties": {
+          "uuid": {"$ref": "#/components/schemas/string_uuid"},
+          "createdOn": {"$ref": "#/components/schemas/string_date-time"},
+          "deletedOn": {"nullable": true, "allOf": [{"$ref": "#/components/schemas/string_date-time"}]},
+          "owner": {"$ref": "#/components/schemas/Owner"}
+        }
+      },
+      "MeshThingSpecV2": {
+        "type": "object",
+        "required": ["name", "count", "secret"],
+        "properties": {
+          "name": {"type": "string", "description": "The name.\nIt spans two lines."},
+          "count": {"type": "integer", "format": "int64", "nullable": true},
+          "color": {"type": "string", "enum": ["DEEP_RED", "green"]},
+          "value": {"nullable": true, "oneOf": [{"type": "string"}, {"type": "boolean"}]},
+          "tags": {"allOf": [{"$ref": "#/components/schemas/MapOfList"}]},
+          "parts": {"type": "array", "items": {"$ref": "#/components/schemas/Part_0"}},
+          "spare": {"$ref": "#/components/schemas/Part"},
+          "target": {"$ref": "#/components/schemas/TargetRef"},
+          "secret": {"$ref": "#/components/schemas/SecretBox"},
+          "extra": {"type": "object", "additionalProperties": true}
+        }
+      },
+      "MeshThingStatusV2": {
+        "type": "object",
+        "required": ["config"],
+        "properties": {
+          "config": {"$ref": "#/components/schemas/MeshThingConfigV2"}
+        }
+      },
+      "MeshThingPaintRequest": {
+        "type": "object",
+        "properties": {"dryRun": {"type": "boolean"}}
+      },
+      "Part": {"type": "object", "required": ["size"], "properties": {"size": {"type": "number"}}},
+      "Part_0": {"type": "object", "required": ["size"], "properties": {"size": {"type": "number"}}},
+      "SecretBox": {
+        "type": "object",
+        "properties": {
+          "hash": {"type": "string", "readOnly": true},
+          "plaintext": {"type": "string", "writeOnly": true}
+        }
+      },
+      "TargetRef": {
+        "discriminator": {"propertyName": "kind", "mapping": {"meshTenant": "#/components/schemas/TenantRef", "meshWorkspace": "#/components/schemas/WorkspaceRef"}},
+        "oneOf": [{"$ref": "#/components/schemas/TenantRef"}, {"$ref": "#/components/schemas/WorkspaceRef"}]
+      },
+      "TargetKind": {"type": "string", "enum": ["meshTenant", "meshWorkspace"]},
+      "TenantRef": {"type": "object", "required": ["kind", "uuid"], "properties": {"kind": {"$ref": "#/components/schemas/TargetKind"}, "uuid": {"$ref": "#/components/schemas/string_uuid"}}},
+      "WorkspaceRef": {"type": "object", "required": ["kind", "name"], "properties": {"kind": {"$ref": "#/components/schemas/TargetKind"}, "name": {"type": "string"}}},
+      "MeshThingConfigV2": {
+        "discriminator": {"propertyName": "type", "mapping": {"aws": "#/components/schemas/AwsWrap", "gcp": "#/components/schemas/GcpWrap"}},
+        "oneOf": [{"$ref": "#/components/schemas/AwsWrap"}, {"$ref": "#/components/schemas/GcpWrap"}]
+      },
+      "AwsWrap": {"type": "object", "required": ["type", "aws"], "properties": {"type": {"type": "string", "enum": ["aws"]}, "aws": {"$ref": "#/components/schemas/AwsConfig"}}},
+      "GcpWrap": {"type": "object", "required": ["type", "gcp"], "properties": {"type": {"type": "string", "enum": ["gcp"]}, "gcp": {"$ref": "#/components/schemas/GcpConfig"}}},
+      "AwsConfig": {"type": "object", "required": ["region"], "properties": {"region": {"type": "string"}}},
+      "GcpConfig": {"type": "object", "required": ["project"], "properties": {"project": {"type": "string"}}},
+      "Owner": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "target": {"$ref": "#/components/schemas/TargetRef"}}},
+      "MeshOther": {
+        "type": "object",
+        "required": ["kind", "apiVersion", "owner"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["meshOther"]},
+          "apiVersion": {"type": "string", "enum": ["v1"]},
+          "owner": {"$ref": "#/components/schemas/Owner"}
+        }
+      }
+    }
+  }
+}
