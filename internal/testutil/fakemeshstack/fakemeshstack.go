@@ -28,7 +28,7 @@ import (
 )
 
 // DefaultVersion is at least client.MinMeshStackVersion, or the CLI refuses the backend.
-const DefaultVersion = "2026.39.0"
+const DefaultVersion = "2026.42.0"
 
 // Token is an unsigned JWT that expires in 2100, so the CLI sends it rather than asking for a new
 // one: a token without an expiry counts as expired. Every Server honors it.

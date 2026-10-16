@@ -1,12 +1,12 @@
 package client
 
 import (
-	"encoding/json/v2"
 	"fmt"
 
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 	"github.com/meshcloud/meshstack-cli/client/types/variant"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 type MeshBuildingBlockImplementationType string
@@ -100,7 +100,7 @@ func (m MeshBuildingBlockDefinitionImplementation) MarshalJSON() ([]byte, error)
 		}
 		w.Type = inferred
 	}
-	return json.Marshal(w, wireCompatibility)
+	return json.Marshal(w)
 }
 
 func (m *MeshBuildingBlockDefinitionImplementation) UnmarshalJSON(bytes []byte) error {
