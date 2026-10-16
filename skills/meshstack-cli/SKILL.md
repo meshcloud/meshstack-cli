@@ -38,8 +38,10 @@ re-check a field before you trust a recipe below.
 
 Creating or changing meshStack configuration goes through the
 [meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack), not this
-CLI. The provider can use the same login: set `profile` (and optionally `workspace`) in the
-`provider "meshstack"` block. The exception is a one-off order that Terraform cannot converge on,
+CLI. The provider uses the same login: an empty `provider "meshstack" {}` block takes the profile of
+the last login and its default workspace, and `profile` or `workspace` in the block picks others. For
+several workspaces in one configuration, use one aliased provider block per workspace. The exception
+is a one-off order that Terraform cannot converge on,
 such as a starterkit: see [Ordering a building block](#ordering-a-building-block).
 
 ## Login and profiles

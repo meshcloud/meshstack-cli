@@ -5,13 +5,27 @@ handling multiple meshStacks via [the `meshstack profile` command](docs/profile.
 
 Start with `meshstack login --profile your-profile-name` and explore the CLI with `meshstack --help`, after you [install](#install) it.
 
-The [meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) builds on this `login` as follows:
+The [meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) builds on this `login`.
+An empty block takes the profile of the last login and its default workspace:
+
+```hcl
+provider "meshstack" {}
+```
+
+A browser login acts in one workspace per provider block. To manage several workspaces in one
+configuration, add an aliased block per workspace, as you would add an `azurerm` block per subscription.
+Each block gets a token for its own workspace from the same login, so you need a role in each of them;
+`meshstack workspace list` shows them.
 
 ```hcl
 provider "meshstack" {
-  profile   = "your-profile-name" # login creates 'default' initially
-  workspace = "your-workspace"    # 'meshstack workspace list' finds one,
-                                  # or leave it to the profile's default workspace
+  alias     = "team_a"
+  workspace = "team-a-ab12c"
+}
+
+resource "meshstack_building_block" "team_a_sandbox" {
+  provider = meshstack.team_a
+  # ...
 }
 ```
 
