@@ -24,6 +24,7 @@ type Spec struct {
 
 type Operation struct {
 	Method       string
+	OperationId  string
 	PathTemplate PathTemplate
 	// Kind is the meshObject kind below whose path the operation is, such as meshBuildingBlock, or
 	// empty outside the path of a kind.
@@ -60,13 +61,27 @@ func Parse(r io.Reader) (Spec, error) {
 		return Spec{}, fmt.Errorf("cannot parse the OpenAPI document: %w", err)
 	}
 	spec := Spec{document: document}
+	refs := map[string]jsontext.Value{}
+	for kind, members := range parsed.Components {
+		for _, c := range members {
+			refs[component{c, kind}.ref()] = c.value
+		}
+	}
 	for _, path := range parsed.Paths {
 		var methods object
 		if err := json.Unmarshal(path.value, &methods); err != nil {
 			return Spec{}, fmt.Errorf("cannot parse path %s: %w", path.name, err)
 		}
+		pathParameters, _ := methods.get("parameters")
 		for _, method := range methods {
-			operation, err := parseOperation(strings.ToUpper(method.name), path.name, method.value)
+			if !slices.Contains(httpMethods, method.name) {
+				continue
+			}
+			raw, err := inlineRefs(method.value, pathParameters, refs)
+			if err != nil {
+				return Spec{}, fmt.Errorf("cannot parse %s %s: %w", method.name, path.name, err)
+			}
+			operation, err := parseOperation(strings.ToUpper(method.name), path.name, raw)
 			if err != nil {
 				return Spec{}, fmt.Errorf("cannot parse %s %s: %w", method.name, path.name, err)
 			}
@@ -81,6 +96,8 @@ func Parse(r io.Reader) (Spec, error) {
 	}
 	return spec, nil
 }
+
+var httpMethods = []string{"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 
 func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation, error) {
 	type content struct {
@@ -99,7 +116,7 @@ func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation,
 		names = slices.AppendSeq(names, maps.Keys(response.Content))
 	}
 	slices.Sort(names)
-	operation := Operation{Method: method, PathTemplate: PathTemplate(pathTemplate), raw: raw}
+	operation := Operation{Method: method, PathTemplate: PathTemplate(pathTemplate), OperationId: parsed.OperationId, raw: raw}
 	for _, name := range slices.Compact(names) {
 		operation.MediaTypes = append(operation.MediaTypes, newMediaType(name, parsed.OperationId))
 	}
@@ -154,7 +171,8 @@ type Selector struct {
 	// Method is empty for every method.
 	Method string
 	// Path is a request path such as /api/meshobjects/meshtenants/<uuid>, or empty for every path.
-	Path string
+	Path        string
+	OperationId string
 	// ApiVersion is zero for the latest version each operation offers.
 	ApiVersion ApiVersion
 }
@@ -166,6 +184,7 @@ func (s Selector) IsZero() bool {
 func (s Selector) matches(operation Operation) bool {
 	return (s.Method == "" || strings.EqualFold(operation.Method, s.Method)) &&
 		(s.Path == "" || operation.PathTemplate.matches(s.Path)) &&
+		(s.OperationId == "" || operation.OperationId == s.OperationId) &&
 		(s.Kind == "" || strings.EqualFold(operation.Kind, s.Kind)) &&
 		(s.Action == "" || operation.Action == s.Action)
 }
