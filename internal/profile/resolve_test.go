@@ -154,6 +154,15 @@ func TestResolveProfileOfAStoredConfigDirectory(t *testing.T) {
 		assert.NotContains(t, profiles.Profiles, Name("missing"))
 	})
 
+	t.Run("a missing profile without an endpoint names the stored ones", func(t *testing.T) {
+		t.Setenv(NameSetting.EnvKey(), "typo")
+
+		_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{})
+
+		require.ErrorIs(t, err, setting.ErrNoSourceProvidedValue)
+		require.ErrorContains(t, err, "there is no profile 'typo' among default, dev-local, empty")
+	})
+
 	t.Run("without an endpoint the selection offers every profile, ordered by name", func(t *testing.T) {
 		assert.Equal(t, Name("default"), resolveWithSelection(t).Name)
 		require.Len(t, asked, 1)
