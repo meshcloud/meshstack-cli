@@ -15,54 +15,55 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblockrun/v1"
 )
 
 var runUuid = uuid.MustParse("7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c")
 
-func step(displayName, status string, userMessage, systemMessage *string) client.MeshBuildingBlockRunStepLog {
-	return client.MeshBuildingBlockRunStepLog{DisplayName: displayName, Status: status, UserMessage: userMessage, SystemMessage: systemMessage}
+func step(displayName, status string, userMessage, systemMessage *string) meshbuildingblockrun.StepLogDTO {
+	return meshbuildingblockrun.StepLogDTO{DisplayName: displayName, Status: meshbuildingblockrun.BuildingBlockRunStepStatus(status), UserMessage: userMessage, SystemMessage: systemMessage}
 }
 
 func TestFollowWritesOnlyWhatIsNewAndStartsOverAtAStepThatTookAnotherStepsPlace(t *testing.T) {
 	snapshots := []struct {
-		steps []client.MeshBuildingBlockRunStepLog
+		steps []meshbuildingblockrun.StepLogDTO
 		want  string
 	}{
 		{
-			steps: []client.MeshBuildingBlockRunStepLog{step("Init", "IN_PROGRESS", new("Cloning\n"), nil)},
+			steps: []meshbuildingblockrun.StepLogDTO{step("Init", "IN_PROGRESS", new("Cloning\n"), nil)},
 			want:  "Init: IN_PROGRESS\nInit | Cloning\n",
 		},
 		{
-			steps: []client.MeshBuildingBlockRunStepLog{step("Init", "IN_PROGRESS", new("Cloning\n"), nil)},
+			steps: []meshbuildingblockrun.StepLogDTO{step("Init", "IN_PROGRESS", new("Cloning\n"), nil)},
 			want:  "",
 		},
 		{
-			steps: []client.MeshBuildingBlockRunStepLog{step("Init", "IN_PROGRESS", new("Cloning\nCloned"), nil)},
+			steps: []meshbuildingblockrun.StepLogDTO{step("Init", "IN_PROGRESS", new("Cloning\nCloned"), nil)},
 			want:  "Init | Cloned\n",
 		},
 		{
-			steps: []client.MeshBuildingBlockRunStepLog{
+			steps: []meshbuildingblockrun.StepLogDTO{
 				step("Init", "SUCCEEDED", new("Cloning\nCloned"), new("Cloning\nCloned")),
 				step("Pipeline", "PENDING", nil, nil),
 			},
 			want: "Init: SUCCEEDED\nPipeline: PENDING\n",
 		},
 		{
-			steps: []client.MeshBuildingBlockRunStepLog{
+			steps: []meshbuildingblockrun.StepLogDTO{
 				step("Init", "SUCCEEDED", new("Cloning\nCloned"), new("Cloning\nCloned")),
 				step("Pipeline", "IN_PROGRESS", new("Run 1 is queued"), new("Run 1 is queued, see https://ci")),
 			},
 			want: "Pipeline: IN_PROGRESS\nPipeline | Run 1 is queued\nPipeline (system) | Run 1 is queued, see https://ci\n",
 		},
 		{
-			steps: []client.MeshBuildingBlockRunStepLog{
+			steps: []meshbuildingblockrun.StepLogDTO{
 				step("Init", "SUCCEEDED", new("Cloning\nCloned"), new("Cloning\nCloned")),
 				step("Pipeline", "IN_PROGRESS", new("Run 1 is running"), new("Run 1 is queued, see https://ci")),
 			},
 			want: "Pipeline | Run 1 is running\n",
 		},
 		{
-			steps: []client.MeshBuildingBlockRunStepLog{step("Apply", "SUCCEEDED", new("done"), nil)},
+			steps: []meshbuildingblockrun.StepLogDTO{step("Apply", "SUCCEEDED", new("done"), nil)},
 			want:  "Apply: SUCCEEDED\nApply | done\n",
 		},
 	}
@@ -92,11 +93,11 @@ func (f *fakeRun) read(context.Context) (runSnapshot, error) {
 	return answer.snapshot, answer.err
 }
 
-func inProgress(steps ...client.MeshBuildingBlockRunStepLog) fakeAnswer {
-	return fakeAnswer{snapshot: runSnapshot{status: runInProgress, steps: steps}}
+func inProgress(steps ...meshbuildingblockrun.StepLogDTO) fakeAnswer {
+	return fakeAnswer{snapshot: runSnapshot{status: meshbuildingblockrun.RunStatusInProgress, steps: steps}}
 }
 
-func finished(status string, steps ...client.MeshBuildingBlockRunStepLog) fakeAnswer {
+func finished(status meshbuildingblockrun.RunStatus, steps ...meshbuildingblockrun.StepLogDTO) fakeAnswer {
 	return fakeAnswer{snapshot: runSnapshot{status: status, steps: steps}}
 }
 
@@ -106,16 +107,16 @@ func TestFollowEndsWithTheRun(t *testing.T) {
 		finished fakeAnswer
 		wantErr  string
 	}{
-		{"succeeded", finished(runSucceeded, step("Apply", "SUCCEEDED", nil, nil)), ""},
+		{"succeeded", finished(meshbuildingblockrun.RunStatusSucceeded, step("Apply", "SUCCEEDED", nil, nil)), ""},
 		{
-			"failed", finished(runFailed, step("Plan", "SUCCEEDED", nil, nil), step("Apply", "FAILED", nil, nil)),
+			"failed", finished(meshbuildingblockrun.RunStatusFailed, step("Plan", "SUCCEEDED", nil, nil), step("Apply", "FAILED", nil, nil)),
 			`building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c failed at step "Apply"`,
 		},
 		{
-			"aborted, which meshStack reports as failed", finished(runFailed, step("Apply", "ABORTED", nil, nil)),
+			"aborted, which meshStack reports as failed", finished(meshbuildingblockrun.RunStatusFailed, step("Apply", "ABORTED", nil, nil)),
 			`building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c was aborted at step "Apply"`,
 		},
-		{"failed with no steps", finished(runFailed), "building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c failed"},
+		{"failed with no steps", finished(meshbuildingblockrun.RunStatusFailed), "building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c failed"},
 		{
 			"in a status the CLI does not know", finished("WAITING"),
 			`building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c has the status "WAITING", which the meshStack CLI does not know, so it stops following the run`,
@@ -147,7 +148,7 @@ func TestFollowRetriesAFailedReadWithLongerWaits(t *testing.T) {
 		run := &fakeRun{answers: []fakeAnswer{
 			inProgress(step("Apply", "IN_PROGRESS", new("one"), nil)),
 			unavailable, unavailable,
-			finished(runSucceeded, step("Apply", "SUCCEEDED", new("one\ntwo"), nil)),
+			finished(meshbuildingblockrun.RunStatusSucceeded, step("Apply", "SUCCEEDED", new("one\ntwo"), nil)),
 		}}
 		var out strings.Builder
 		start := time.Now()
