@@ -84,6 +84,12 @@ func (r *RawClient) with[M any](meshObject internal.MeshObjectClient[M]) *RawCli
 	return r
 }
 
+// withApi is with for a generated client.
+func (r *RawClient) withApi[M any](api internal.Api) *RawClient {
+	r.apis[reflect.TypeFor[M]()] = rawApi{MeshObjectApi: api.MeshObjectApi(), sortsByCreatedAt: true}
+	return r
+}
+
 // withOwnOrder is with for a listing that answers 400 to any sort key, as that of building block
 // definition versions does, which orders by version number.
 func (r *RawClient) withOwnOrder[M any](meshObject internal.MeshObjectClient[M]) *RawClient {

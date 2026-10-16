@@ -4,6 +4,9 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblock/v2"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblockrun/v1"
+	"github.com/meshcloud/meshstack-cli/client/meshworkspace/v2"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/version"
@@ -46,6 +49,11 @@ type Client struct {
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 	Raw                            *RawClient
 
+	// The generated clients, one per kind in one API version.
+	MeshWorkspace        meshworkspace.Client
+	MeshBuildingBlock    meshbuildingblock.Client
+	MeshBuildingBlockRun meshbuildingblockrun.Client
+
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
 	Endpoint xurl.URL
 }
@@ -60,6 +68,9 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Author
 	buildingBlockDefinitionVersion := newBuildingBlockDefinitionVersionClient(ctx, authorizedClient)
 	buildingBlockRun := newBuildingBlockRunClient(ctx, authorizedClient)
 	workspace := newWorkspaceClient(ctx, authorizedClient)
+	generatedWorkspace := meshworkspace.NewClient(authorizedClient)
+	generatedBuildingBlock := meshbuildingblock.NewClient(authorizedClient)
+	generatedBuildingBlockRun := meshbuildingblockrun.NewClient(authorizedClient)
 	return Client{
 		ApiKey:                         newApiKeyClient(ctx, authorizedClient),
 		BuildingBlock:                  newBuildingBlockClient(ctx, authorizedClient),
@@ -91,7 +102,13 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Author
 			with(buildingBlockRun.meshObject).
 			with(buildingBlockDefinition.meshObject).
 			withOwnOrder(buildingBlockDefinitionVersion.meshObject).
-			with(newEventLogMeshObject(ctx, authorizedClient)),
+			with(newEventLogMeshObject(ctx, authorizedClient)).
+			withApi[meshworkspace.Response](generatedWorkspace.Api()).
+			withApi[meshbuildingblock.Response](generatedBuildingBlock.Api()).
+			withApi[meshbuildingblockrun.Response](generatedBuildingBlockRun.Api()),
+		MeshWorkspace:        generatedWorkspace,
+		MeshBuildingBlock:    generatedBuildingBlock,
+		MeshBuildingBlockRun: generatedBuildingBlockRun,
 
 		Endpoint: endpoint,
 	}
