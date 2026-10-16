@@ -100,6 +100,11 @@ linters:
         linters:
           - forbidigo
         text: one HTTP client
+      # The generator downloads the API docs in a go:generate run, where no front end exists.
+      - path: client/openapi/generator/main\.go
+        linters:
+          - forbidigo
+        text: user agent of the front end
       # The fake clock is a test's; production code waits on the real one.
       - path-except: _test\.go
         linters:
