@@ -123,7 +123,7 @@ func TestWorkspaceSelection(t *testing.T) {
 		{Metadata: client.MeshWorkspaceMetadata{Name: "first"}, Spec: client.MeshWorkspaceSpec{DisplayName: "First"}},
 		{Metadata: client.MeshWorkspaceMetadata{Name: "second"}, Spec: client.MeshWorkspaceSpec{DisplayName: "Second"}},
 	}}
-	const asked = "  [1] First  (first)\n  [2] Second (second)\nSelect a workspace [1-2]: "
+	const asked = "  [1] First  (first)\n  [2] Second (second)\nSelect a default workspace [1-2]: "
 
 	// An input that stays open with nothing on it, as the stdin of some scripts does.
 	silent := func(t *testing.T) io.Reader {
@@ -142,7 +142,7 @@ func TestWorkspaceSelection(t *testing.T) {
 	}{
 		{name: "an answer selects", answers: answer("2"), want: "second"},
 		{name: "an optional selection answered selects as well", optional: true, answers: answer("2"), want: "second"},
-		{name: "an input that ends is an error", answers: answer(""), wantErr: "nothing was entered for the workspace selection"},
+		{name: "an input that ends is an error", answers: answer(""), wantErr: "nothing was entered for the default workspace selection"},
 		{name: "an optional selection takes an input that ends as none", optional: true, answers: answer("")},
 		{name: "an input with no answer in time is an error", answers: silent, wantErr: context.DeadlineExceeded.Error()},
 		{name: "an optional selection fails as well with no answer in time", optional: true, answers: silent, wantErr: context.DeadlineExceeded.Error()},

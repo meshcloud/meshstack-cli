@@ -33,7 +33,7 @@ func newWorkspaceSelectionSource(p prompt.Prompt, optional bool) setting.Fallbac
 				candidates = append(candidates, workspace)
 			}
 			profileDefault := workspaces.ProfileDefault(ctx)
-			selected, err := prompt.Select(ctx, p, "workspace", candidates, func(workspace setting.MeshWorkspace) bool {
+			selected, err := prompt.Select(ctx, p, "default workspace", candidates, func(workspace setting.MeshWorkspace) bool {
 				return profileDefault != nil && workspace.Matches(*profileDefault)
 			})
 			if optional && errors.Is(err, prompt.ErrEndOfInput) {

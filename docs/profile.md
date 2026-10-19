@@ -30,8 +30,9 @@ The form that adds or edits a profile asks for these fields:
 
 - **Endpoint**: the meshStack API. It suggests the endpoints of your profiles and
   `http://localhost:8080`.
-- **Default workspace**: optional. It suggests the workspaces that you can list with the stored
-  credential of a profile at the same endpoint.
+- **Default workspace**: optional. A browser login acts in it where `--workspace` names no other
+  workspace. It suggests the workspaces that you can list with the stored credential of a profile
+  at the same endpoint.
 - **Name**: an empty name takes the suggested one, made from the host of the endpoint.
 
 Tab completes a suggestion, ↑ / ↓ picks another one, Enter goes to the next field, and Esc cancels

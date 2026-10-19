@@ -45,7 +45,8 @@ func newLogin(profileSources setting.Sources) *cobra.Command {
 does not exist yet.
 
 Without a profile named, it asks which stored profile to log in to, among those for the endpoint.
-With no flag this is a browser login, and it asks which workspace to work in unless one is named.
+With no flag this is a browser login. Unless --workspace names one, it asks for the profile's
+default workspace, which every later command acts in where --workspace names no other one.
 
 It ends with what meshstack auth status shows for the new login.`,
 		Args: func(cmd *cobra.Command, args []string) error {

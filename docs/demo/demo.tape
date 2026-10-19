@@ -29,7 +29,7 @@ Down@300ms 2
 Sleep 400ms
 Enter
 
-Wait+Screen@20s /Select a workspace/
+Wait+Screen@20s /Select a default workspace/
 Sleep 1s
 Down@200ms 3
 Up@200ms 1
