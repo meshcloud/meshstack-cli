@@ -33,3 +33,7 @@ unit.txt
 .claude/settings.local.json
 
 .terraform*
+
+# Per-developer direnv setup, e.g. "use flake" with nix-direnv
+.envrc
+.direnv/
