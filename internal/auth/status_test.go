@@ -78,6 +78,38 @@ func TestStatusOfABrowserLogin(t *testing.T) {
 	})
 }
 
+func TestABrowserLoginNamesTheSettingThatChoseItsWorkspace(t *testing.T) {
+	newTestServer(t)
+	p := storedOidcLogin(t, xurl.MustParsef("https://localhost:1/realms/meshfed"), "", oidc.Token{
+		RefreshToken: "refresh-token",
+		AccessToken:  testToken(t, map[string]any{"MC_CUSTOMER": "ops"}),
+	})
+	t.Setenv(config.DirectorySetting.EnvKey(), string(p.ConfigDir))
+	t.Setenv(meshstack.EndpointSetting.EnvKey(), p.Endpoint.String())
+	profiles, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{})
+	require.NoError(t, err)
+	require.NoError(t, profiles.Put(t.Context(), nil, *p))
+	resolve := func(t *testing.T) auth.Session {
+		t.Helper()
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		return session
+	}
+
+	t.Run("the profile's default workspace", func(t *testing.T) {
+		session := resolve(t)
+
+		assert.Equal(t, "profile dev working in workspace ops (default workspace in profile dev)", session.Scope())
+		assert.Equal(t, "default workspace in profile dev", session.Status(t.Context()).WorkspaceNamedBy)
+	})
+
+	t.Run("a workspace that the environment names", func(t *testing.T) {
+		t.Setenv(meshstack.WorkspaceSetting.EnvKey(), "platform")
+
+		assert.Equal(t, "profile dev working in workspace platform (env MESHSTACK_WORKSPACE)", resolve(t).Scope())
+	})
+}
+
 func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
 	tests := []struct {
 		name     string

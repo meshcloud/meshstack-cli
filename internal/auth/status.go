@@ -29,6 +29,8 @@ type CredentialStatus struct {
 	Kind      credential.Name     `json:"credential"`
 	Sources   []string            `json:"sources"`
 	Workspace meshstack.Workspace `json:"workspace,omitzero"`
+	// WorkspaceNamedBy describes the setting that Workspace came from.
+	WorkspaceNamedBy string `json:"workspaceNamedBy,omitzero"`
 	// Token is read from the cached access token without verifying it, and is nil while none is
 	// cached.
 	Token *TokenStatus `json:"token,omitzero"`
@@ -126,6 +128,7 @@ func (s Session) Status(ctx context.Context) CredentialStatus {
 		slog.WarnContext(ctx, "Cannot resolve the workspace: "+err.Error())
 	}
 	status.Workspace = workspace
+	status.WorkspaceNamedBy = s.workspaceNamedBy()
 
 	var token jwt.JWT
 	var found bool

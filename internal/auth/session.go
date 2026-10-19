@@ -24,7 +24,9 @@ type Session struct {
 	MeshInfo   func() (client.MeshInfo, error)
 
 	getWorkspace func() (meshstack.Workspace, error)
-	httpClient   http.Client
+	// workspaceNamedBy describes the setting that getWorkspace took its workspace from.
+	workspaceNamedBy func() string
+	httpClient       http.Client
 }
 type (
 	SettingSources        = setting.Sources
@@ -46,19 +48,41 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	if err != nil {
 		return Session{}, err
 	}
-	session.getWorkspace = sync.OnceValues(func() (meshstack.Workspace, error) {
-		return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
+	resolveWorkspace := sync.OnceValues(func() (namedWorkspace, error) {
+		workspace, source, err := opts.ResolveSettingWithSource(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
+		if err != nil {
+			return namedWorkspace{}, err
+		}
+		return namedWorkspace{workspace, source.Describe(meshstack.WorkspaceSetting.EnvKey())}, nil
 	})
+	session.getWorkspace = func() (meshstack.Workspace, error) {
+		resolved, err := resolveWorkspace()
+		return resolved.Workspace, err
+	}
+	session.workspaceNamedBy = func() string {
+		resolved, _ := resolveWorkspace()
+		return resolved.namedBy
+	}
 	return session.withCredential(ctx, resolved, opts)
 }
 
+type namedWorkspace struct {
+	meshstack.Workspace
+
+	namedBy string
+}
+
 // Scope names the profile, and the workspace where the settings choose it: only a browser login
-// works in that workspace, while an API key works in the one that owns it.
+// works in that workspace, while an API key works in the one that owns it. It says which setting
+// chose the workspace, as a 403 is often the first sign that the profile's default was taken.
 func (s Session) Scope() string {
 	scope := "profile " + string(s.CurrentProfile.Name)
 	if _, browserLogin := s.Credential.Credential.(*credential.OidcLogin); browserLogin {
 		if workspace, err := s.getWorkspace(); err == nil && workspace != meshstack.NoWorkspace {
 			scope += " working in workspace " + string(workspace)
+			if namedBy := s.workspaceNamedBy(); namedBy != "" {
+				scope += " (" + namedBy + ")"
+			}
 		}
 	}
 	return scope
@@ -131,6 +155,7 @@ func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts Re
 		getWorkspace: func() (meshstack.Workspace, error) {
 			return meshstack.NoWorkspace, nil
 		},
+		workspaceNamedBy: func() string { return "" },
 	}, nil
 }
 
