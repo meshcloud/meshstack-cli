@@ -108,6 +108,28 @@ func TestABrowserLoginNamesTheSettingThatChoseItsWorkspace(t *testing.T) {
 
 		assert.Equal(t, "profile dev working in workspace platform (env MESHSTACK_WORKSPACE)", resolve(t).Scope())
 	})
+
+	ignoringTheDefault := testSessionOpts
+	ignoringTheDefault.IgnoreDefaultWorkspace = true
+
+	t.Run("a front end that ignores the default workspace fails before it asks for a token", func(t *testing.T) {
+		session, err := auth.ResolveSession(t.Context(), ignoringTheDefault)
+		require.NoError(t, err)
+
+		_, err = session.GetBearerToken(t.Context())
+
+		require.ErrorAs(t, err, new(meshstack.WorkspaceNotNamedError))
+		require.ErrorContains(t, err, "try setting env MESHSTACK_WORKSPACE")
+		assert.Equal(t, "profile dev", session.Scope())
+	})
+
+	t.Run("a front end that ignores the default workspace takes the one the environment names", func(t *testing.T) {
+		t.Setenv(meshstack.WorkspaceSetting.EnvKey(), "platform")
+		session, err := auth.ResolveSession(t.Context(), ignoringTheDefault)
+		require.NoError(t, err)
+
+		assert.Equal(t, "profile dev working in workspace platform (env MESHSTACK_WORKSPACE)", session.Scope())
+	})
 }
 
 func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {

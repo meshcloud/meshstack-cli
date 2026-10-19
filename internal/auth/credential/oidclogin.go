@@ -77,6 +77,9 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 		// The setting resolution around it only adds the sources a workspace could come from, and
 		// noWorkspace already says which of them helps.
 		return noWorkspace
+	} else if notNamed, ok := errors.AsType[meshstack.WorkspaceNotNamedError](err); ok {
+		// The hint below names the profile's default workspace, which this front end ignores.
+		return notNamed
 	} else if err != nil {
 		return fmt.Errorf("a browser login needs a workspace; name one, or give the profile a default workspace with 'meshstack profile edit' or 'meshstack login --endpoint %s': %w", oidcLogin.Endpoint, err)
 	}

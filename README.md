@@ -10,8 +10,8 @@ The [meshStack Terraform provider](https://github.com/meshcloud/terraform-provid
 ```hcl
 provider "meshstack" {
   profile   = "your-profile-name" # login creates 'default' initially
-  workspace = "your-workspace"    # 'meshstack workspace list' finds one,
-                                  # or leave it to the profile's default workspace
+  workspace = "your-workspace"    # 'meshstack workspace list' finds one; the provider
+                                  # does not take the profile's default workspace
 }
 ```
 

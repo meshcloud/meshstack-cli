@@ -36,6 +36,11 @@ type (
 		// UserAgent is required: it names the front end in every request, and the releases to check
 		// against.
 		http.UserAgent
+
+		// IgnoreDefaultWorkspace leaves the profile's default workspace out, so that a browser login
+		// works only in a workspace the settings name. The Terraform provider sets it: a
+		// configuration must act in the same workspace for everyone who applies it.
+		IgnoreDefaultWorkspace bool
 	}
 )
 
@@ -49,8 +54,10 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 		return Session{}, err
 	}
 	resolveWorkspace := sync.OnceValues(func() (namedWorkspace, error) {
-		workspace, source, err := opts.ResolveSettingWithSource(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
-		if err != nil {
+		workspace, source, err := opts.ResolveSettingWithSource(ctx, meshstack.WorkspaceSetting, opts.defaultWorkspaceOf(session.CurrentProfile)...)
+		if opts.IgnoreDefaultWorkspace && errors.Is(err, setting.ErrNoSourceProvidedValue) {
+			return namedWorkspace{}, meshstack.WorkspaceNotNamedError{Resolution: err}
+		} else if err != nil {
 			return namedWorkspace{}, err
 		}
 		return namedWorkspace{workspace, source.Describe(meshstack.WorkspaceSetting.EnvKey())}, nil
@@ -140,6 +147,13 @@ func (opts ResolveSessionOptions) HttpClient() (http.Client, error) {
 	return http.NewClient(opts.UserAgent), nil
 }
 
+func (opts ResolveSessionOptions) defaultWorkspaceOf(p *profile.Profile) []setting.Source {
+	if opts.IgnoreDefaultWorkspace {
+		return nil
+	}
+	return []setting.Source{p.WorkspaceSource()}
+}
+
 func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (Session, error) {
 	httpClient, err := opts.HttpClient()
 	if err != nil {
@@ -215,14 +229,14 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 // and is NoWorkspace where no setting names one and the profile has no default workspace.
 func ResolveWorkspace(ctx context.Context, opts ResolveSessionOptions) (meshstack.Workspace, error) {
 	stored, _, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{SettingSources: opts.SettingSources, StoredOnly: true})
-	var defaultWorkspace setting.Source
+	var defaultWorkspace []setting.Source
 	switch {
 	case err == nil:
-		defaultWorkspace = stored.WorkspaceSource()
+		defaultWorkspace = opts.defaultWorkspaceOf(stored)
 	case !errors.Is(err, profile.ErrNoStoredProfile):
 		return meshstack.NoWorkspace, err
 	}
-	workspace, err := opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, defaultWorkspace)
+	workspace, err := opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, defaultWorkspace...)
 	if errors.Is(err, setting.ErrNoSourceProvidedValue) {
 		return meshstack.NoWorkspace, nil
 	}
