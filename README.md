@@ -18,6 +18,8 @@ provider "meshstack" {
 Commands meant for people, such as `meshstack auth status` and `meshstack profile list`, write Markdown.
 The other commands write JSON, or one item per line with `--output ndjson`, for scripts and agentic AI
 workflows that read it through a `| jq ...` pipe. A listing stops at 100 items unless `--limit` says otherwise.
+AI agents get the [`meshstack-cli` skill](skills/meshstack-cli/SKILL.md): link it from your repository's agent
+instructions.
 
 On a terminal, the Markdown is rendered and the log is colored. [`NO_COLOR`](https://no-color.org) turns the
 colors off, and `FORCE_COLOR` or [`CLICOLOR_FORCE`](https://bixense.com/clicolors/) turns them on where the
