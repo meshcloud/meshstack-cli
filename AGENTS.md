@@ -49,6 +49,10 @@ The binary gets its name from its directory, `cmd/meshstack`, which is what `tas
 layout, the split of a command into a front end in `cmd/` and its logic in `internal/`, the command
 tree, the dependency policy, and what `client/`, `internal/http` and the settings must keep.
 
+[`skills/meshstack-cli`](skills/meshstack-cli/SKILL.md) is the skill for those who **use** the CLI;
+other repositories link to it. A change to what a command does, prints or needs updates it in the
+same pull request.
+
 ## Always-on rules
 
 <rules id="always-on">
