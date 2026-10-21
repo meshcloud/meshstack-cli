@@ -9,6 +9,8 @@ import (
 
 type MeshWorkspaceUserBinding struct {
 	MeshWorkspaceBinding
+
+	Status *MeshUserBindingStatus `json:"status,omitempty" tfsdk:"status"`
 }
 
 type MeshWorkspaceUserBindingClient interface {
