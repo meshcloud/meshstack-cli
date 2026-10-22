@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+
+	wirejson "github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // A Variant decodes one JSON value into X or into Y. When both decode, X wins, so Y can be a type
@@ -19,20 +21,11 @@ var (
 	_ json.Marshaler   = Variant[int, string]{}
 )
 
-// wireCompatibility repeats the options internal/json marshals every request with: a v1-style
-// MarshalJSON receives none of its caller's. A Y decoded from JSON is a map, so without
-// Deterministic it would leave this method in a random member order.
-var wireCompatibility = json.JoinOptions(
-	json.Deterministic(true),
-	json.FormatNilSliceAsNull(true),
-	json.FormatNilMapAsNull(true),
-)
-
 func (v Variant[X, Y]) MarshalJSON() ([]byte, error) {
 	if v.HasX() {
-		return json.Marshal(v.X, wireCompatibility)
+		return wirejson.Marshal(v.X)
 	} else if v.HasY() {
-		return json.Marshal(v.Y, wireCompatibility)
+		return wirejson.Marshal(v.Y)
 	}
 	return json.Marshal(nil)
 }
