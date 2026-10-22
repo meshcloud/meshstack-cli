@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // OperationSchemas are the parameters and bodies of an operation, with their schemas.
@@ -15,15 +16,67 @@ type OperationSchemas struct {
 }
 
 type ParameterSchema struct {
-	Name, In string
-	Required bool
-	Schema   *Schema
+	Name, In    string
+	Required    bool
+	Schema      *Schema
+	Description string
+	PathKey     PathKey
+}
+
+// PathKey is the field of a meshObject that a path parameter takes, such as metadata.uuid, or a
+// template of several fields, such as {metadata.ownedByWorkspace}.{metadata.name}.
+type PathKey struct {
+	Key string `json:"x-meshstack-path-key"`
+	// Name is set where the key is a template, such as workspace.project for the one above.
+	Name string `json:"x-meshstack-path-key-name"`
+	// ByVersion holds the keys of the API versions that take another key than Key.
+	ByVersion map[string]string `json:"x-meshstack-path-key-by-version"`
 }
 
 // Content is the body of one media type.
 type Content struct {
 	MediaType string
 	Schema    *Schema
+	Lifecycle *Lifecycle
+}
+
+// Lifecycle is the state of one version of a meshObject kind.
+type Lifecycle struct {
+	MeshObject   string `json:"meshObject"`
+	State        string `json:"state"`
+	RetiredAfter string `json:"retiredAfter"`
+	Notice       string `json:"notice"`
+}
+
+// Deprecation is empty for a version that is not deprecated.
+func (l Lifecycle) Deprecation() string {
+	var text string
+	switch l.State {
+	case "Outdated":
+		text = "`" + l.MeshObject + "` is outdated."
+	case "Deprecated":
+		text = "`" + l.MeshObject + "` is deprecated."
+		if l.RetiredAfter != "" {
+			text = "`" + l.MeshObject + "` is deprecated and retired after " + l.RetiredAfter + "."
+		}
+	default:
+		return ""
+	}
+	return strings.TrimSpace(text + " " + l.Notice)
+}
+
+// Lifecycle is that of the media type in the request body or a response, or nil.
+func (s OperationSchemas) Lifecycle(mediaType string) *Lifecycle {
+	bodies := slices.Clone(s.RequestBody)
+	for _, response := range s.Responses {
+		bodies = append(bodies, response.Content...)
+	}
+	for _, body := range bodies {
+		if body.MediaType == mediaType && body.Lifecycle != nil {
+			return body.Lifecycle
+		}
+	}
+	return nil
 }
 
 type ResponseContent struct {
@@ -64,10 +117,12 @@ func (o Operation) Schemas() (OperationSchemas, error) {
 
 func (p *ParameterSchema) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	var wire struct {
-		Name     string  `json:"name"`
-		In       string  `json:"in"`
-		Required bool    `json:"required"`
-		Schema   *Schema `json:"schema"`
+		Name        string  `json:"name"`
+		In          string  `json:"in"`
+		Required    bool    `json:"required"`
+		Schema      *Schema `json:"schema"`
+		Description string  `json:"description"`
+		PathKey     PathKey `json:",embed"`
 	}
 	if err := json.UnmarshalDecode(dec, &wire); err != nil {
 		return err
@@ -80,12 +135,13 @@ func contents(members object) ([]Content, error) {
 	var result []Content
 	for _, m := range members {
 		var mediaType struct {
-			Schema *Schema `json:"schema"`
+			Schema    *Schema    `json:"schema"`
+			Lifecycle *Lifecycle `json:"x-meshstack-lifecycle"`
 		}
 		if err := json.Unmarshal(m.value, &mediaType); err != nil {
 			return nil, fmt.Errorf("%s: %w", m.name, err)
 		}
-		result = append(result, Content{m.name, mediaType.Schema})
+		result = append(result, Content{m.name, mediaType.Schema, mediaType.Lifecycle})
 	}
 	return result, nil
 }
