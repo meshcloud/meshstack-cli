@@ -2,6 +2,7 @@ package generator
 
 import (
 	"bytes"
+	"cmp"
 	_ "embed"
 	"fmt"
 	"go/format"
@@ -86,7 +87,7 @@ func (g *generator) render(p *pkg) ([]byte, error) {
 		EmbeddedRel: p.embeddedRel,
 	}
 	if p.Kind != "" {
-		data.Doc = fmt.Sprintf("Package %s is the meshObject kind %s in API version %s.", p.Name, p.Kind, p.ApiVersion)
+		data.Doc = withDeprecation(fmt.Sprintf("Package %s is the meshObject kind %s in API version %s.", p.Name, p.Kind, p.ApiVersion), p.deprecation())
 	}
 	for _, o := range p.operations {
 		data.Operations = append(data.Operations, r.operation(o))
@@ -146,14 +147,33 @@ func (r renderer) expr(t typeRef) string {
 func (r renderer) operation(o *operation) operationData {
 	runtime := path.Base(r.g.cfg.Runtime)
 	params := []string{"ctx context.Context"}
-	pathArgs := []string{strconv.Quote(o.pathTemplate)}
 	for _, p := range o.pathParams {
 		params = append(params, p.goName+" "+p.goType)
-		if p.uuid {
+		if p.goType == "uuid.UUID" {
 			r.imports["uuid"] = true
-			pathArgs = append(pathArgs, p.goName+".String()")
-		} else {
-			pathArgs = append(pathArgs, p.goName)
+		}
+	}
+	docs := []string{o.doc}
+	pathArgs := []string{strconv.Quote(o.pathTemplate)}
+	for _, arg := range o.pathArgs {
+		var expr, names []string
+		var doc string
+		for _, part := range arg {
+			if !part.field {
+				expr = append(expr, strconv.Quote(part.text))
+				continue
+			}
+			p := o.pathParams[part.param]
+			names, doc = append(names, p.goName), p.doc
+			if p.goType == "uuid.UUID" {
+				expr = append(expr, p.goName+".String()")
+			} else {
+				expr = append(expr, p.goName)
+			}
+		}
+		pathArgs = append(pathArgs, strings.Join(expr, " + "))
+		if doc != "" {
+			docs = append(docs, paramDoc(names, doc))
 		}
 	}
 	call := []string{"Method: " + strconv.Quote(o.method)}
@@ -170,7 +190,8 @@ func (r renderer) operation(o *operation) operationData {
 		params = append(params, name+" "+o.queryType)
 		call = append(call, "Query: "+name)
 	}
-	data := operationData{Name: o.name, Doc: o.doc, List: o.list, Body: "nil", Returns: "error"}
+	doc := strings.Join(docs, "\n\n")
+	data := operationData{Name: o.name, Doc: withDeprecation(doc, cmp.Or(o.deprecation, r.p.deprecation())), List: o.list, Body: "nil", Returns: "error"}
 	if o.body != nil {
 		params = append(params, "body "+r.expr(*o.body))
 		data.Body = "body"
@@ -196,7 +217,7 @@ func (r renderer) operation(o *operation) operationData {
 
 func (r renderer) typeData(d *decl) typeData {
 	t := d.t
-	data := typeData{Name: d.name, Doc: t.schema.Description}
+	data := typeData{Name: d.name, Doc: withDeprecation(t.schema.Description, cmp.Or(t.deprecation(), d.home.deprecation()))}
 	dir := d.dir
 	if dir == 0 {
 		dir = t.dirs()[len(t.dirs())-1]
@@ -252,6 +273,41 @@ func plural(name string) string {
 		return name[:len(name)-1] + "ies"
 	}
 	return name + "s"
+}
+
+// paramDoc reads "uuid is the UUID of the meshTenant." where the text allows it.
+func paramDoc(names []string, text string) string {
+	if rest, ok := strings.CutPrefix(text, "The "); ok && len(names) == 1 {
+		return names[0] + " is the " + rest
+	}
+	return strings.Join(names, " and ") + ": " + text
+}
+
+// withDeprecation adds the paragraph that Go tools such as staticcheck read.
+func withDeprecation(doc, deprecation string) string {
+	if deprecation == "" {
+		return doc
+	}
+	return strings.TrimSpace(doc + "\n\nDeprecated: " + deprecation)
+}
+
+// deprecation is empty for a package of no deprecated API version.
+func (p *pkg) deprecation() string {
+	if p.lifecycle == nil {
+		return ""
+	}
+	return p.lifecycle.Deprecation()
+}
+
+func (t *namedType) deprecation() string {
+	if !t.schema.Deprecated {
+		return ""
+	}
+	var ofVersion string
+	for _, version := range t.schema.Versions {
+		ofVersion = cmp.Or(ofVersion, version.Deprecation())
+	}
+	return cmp.Or(t.schema.DeprecatedDescription, ofVersion, "This type is deprecated.")
 }
 
 func comment(text string) string {
