@@ -1,4 +1,6 @@
-package internal
+// Package meshapi sends the requests of the clients that client/openapi/generator writes. It is
+// public so that another module can generate clients of its own.
+package meshapi
 
 import (
 	"context"
@@ -12,9 +14,17 @@ import (
 	"strings"
 
 	"github.com/meshcloud/meshstack-cli/client/openapi"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	internaljson "github.com/meshcloud/meshstack-cli/internal/json"
 )
+
+// HttpClient sends requests to one meshStack, authorized.
+type HttpClient struct {
+	http.AuthorizedClient
+
+	EndpointUrl xurl.URL
+}
 
 // Api is one version of a meshObject kind as the generated clients call it.
 type Api struct {
@@ -86,12 +96,21 @@ func (a Api) Do[R any](ctx context.Context, call Call, body any, options ...http
 	return result, a.decode(answer, call.AnswersMeshObject, &result)
 }
 
+type page struct {
+	Embedded map[string][]jsontext.Value `json:"_embedded"`
+	Page     struct {
+		TotalElements int `json:"totalElements"`
+		TotalPages    int `json:"totalPages"`
+		Number        int `json:"number"`
+	} `json:"page"`
+}
+
 // List pages through the objects that call lists.
 func (a Api) List[T any](ctx context.Context, call Call) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var noItem T
 		for pageNumber := 0; ; pageNumber++ {
-			response, err := a.Do[paginatedResponse[jsontext.Value]](ctx, Call{Method: call.Method, Path: call.Path, Query: call.Query}, nil,
+			response, err := a.Do[page](ctx, Call{Method: call.Method, Path: call.Path, Query: call.Query}, nil,
 				http.WithUrlQuery(map[string]any{"page": pageNumber}))
 			if err != nil && pageNumber > 0 {
 				err = fmt.Errorf("cannot read page %d of the list: %w", pageNumber, err)
@@ -120,11 +139,6 @@ func (a Api) List[T any](ctx context.Context, call Call) iter.Seq2[T, error] {
 			}
 		}
 	}
-}
-
-// MeshObjectApi lets the raw client reach the kind in the same version.
-func (a Api) MeshObjectApi() MeshObjectApi {
-	return MeshObjectApi{a.AuthorizedClient, a.Kind, a.ApiVersion, a.EndpointUrl.JoinPath(a.Path)}
 }
 
 func (a Api) payload(body any, meshObject bool) (jsontext.Value, error) {

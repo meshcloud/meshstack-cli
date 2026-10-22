@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go/format"
 	"maps"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ type fileData struct {
 	Header      string
 	Doc         string
 	Package     string
+	Runtime     string
 	StdImports  []string
 	Imports     []string
 	Kind        string
@@ -76,6 +78,7 @@ func (g *generator) render(p *pkg) ([]byte, error) {
 	data := fileData{
 		Header:      header,
 		Package:     p.Name,
+		Runtime:     path.Base(g.cfg.Runtime),
 		Kind:        p.Kind,
 		ApiVersion:  p.ApiVersion,
 		MediaType:   p.mediaType,
@@ -97,7 +100,7 @@ func (g *generator) render(p *pkg) ([]byte, error) {
 	}
 	if len(p.operations) > 0 {
 		r.imports["context"] = true
-		r.imports[runtimeImport] = true
+		r.imports[g.cfg.Runtime] = true
 	}
 	for _, d := range p.types {
 		data.Types = append(data.Types, r.typeData(d))
@@ -141,6 +144,7 @@ func (r renderer) expr(t typeRef) string {
 }
 
 func (r renderer) operation(o *operation) operationData {
+	runtime := path.Base(r.g.cfg.Runtime)
 	params := []string{"ctx context.Context"}
 	pathArgs := []string{strconv.Quote(o.pathTemplate)}
 	for _, p := range o.pathParams {
@@ -154,7 +158,7 @@ func (r renderer) operation(o *operation) operationData {
 	}
 	call := []string{"Method: " + strconv.Quote(o.method)}
 	if len(o.pathParams) > 0 {
-		call = append(call, "Path: internal.Path("+strings.Join(pathArgs, ", ")+")")
+		call = append(call, "Path: "+runtime+".Path("+strings.Join(pathArgs, ", ")+")")
 	} else {
 		call = append(call, "Path: "+pathArgs[0])
 	}
@@ -186,7 +190,7 @@ func (r renderer) operation(o *operation) operationData {
 		data.Returns = "iter.Seq2[" + data.Result + ", error]"
 	}
 	data.Params = strings.Join(params, ", ")
-	data.Call = "internal.Call{" + strings.Join(call, ", ") + "}"
+	data.Call = runtime + ".Call{" + strings.Join(call, ", ") + "}"
 	return data
 }
 

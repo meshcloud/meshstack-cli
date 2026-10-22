@@ -7,7 +7,7 @@ import (
 	"context"
 
 	"example.com/client/meshobject"
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 )
 
 const (
@@ -17,11 +17,11 @@ const (
 )
 
 type Client struct {
-	api internal.Api
+	api meshapi.Api
 }
 
-func NewClient(httpClient internal.HttpClient) Client {
-	return Client{internal.Api{
+func NewClient(httpClient meshapi.HttpClient) Client {
+	return Client{meshapi.Api{
 		HttpClient:  httpClient,
 		Kind:        Kind,
 		ApiVersion:  ApiVersion,
@@ -32,13 +32,13 @@ func NewClient(httpClient internal.HttpClient) Client {
 }
 
 // Api lets the raw client of the CLI reach the same API version.
-func (c Client) Api() internal.Api {
+func (c Client) Api() meshapi.Api {
 	return c.api
 }
 
 // Get other
 func (c Client) Get(ctx context.Context, other string) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "GET", Path: internal.Path("/api/meshobjects/meshothers/{other}", other), AnswersMeshObject: true}, nil)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshothers/{other}", other), AnswersMeshObject: true}, nil)
 }
 
 type Response struct {

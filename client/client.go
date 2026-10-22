@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/client/meshbuildingblock/v2"
 	"github.com/meshcloud/meshstack-cli/client/meshbuildingblockrun/v1"
 	"github.com/meshcloud/meshstack-cli/client/meshworkspace/v2"
@@ -53,13 +53,15 @@ type Client struct {
 	MeshWorkspace        meshworkspace.Client
 	MeshBuildingBlock    meshbuildingblock.Client
 	MeshBuildingBlockRun meshbuildingblockrun.Client
+	// HttpClient is what the NewClient of a package that another module generates takes.
+	HttpClient meshapi.HttpClient
 
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
 	Endpoint xurl.URL
 }
 
 func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Authorization) Client {
-	authorizedClient := internal.HttpClient{
+	authorizedClient := meshapi.HttpClient{
 		AuthorizedClient: client.WithAuthorization(auth),
 		EndpointUrl:      endpoint,
 	}
@@ -109,6 +111,7 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Author
 		MeshWorkspace:        generatedWorkspace,
 		MeshBuildingBlock:    generatedBuildingBlock,
 		MeshBuildingBlockRun: generatedBuildingBlockRun,
+		HttpClient:           authorizedClient,
 
 		Endpoint: endpoint,
 	}

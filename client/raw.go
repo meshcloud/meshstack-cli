@@ -11,6 +11,7 @@ import (
 	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
@@ -85,8 +86,9 @@ func (r *RawClient) with[M any](meshObject internal.MeshObjectClient[M]) *RawCli
 }
 
 // withApi is with for a generated client.
-func (r *RawClient) withApi[M any](api internal.Api) *RawClient {
-	r.apis[reflect.TypeFor[M]()] = rawApi{MeshObjectApi: api.MeshObjectApi(), sortsByCreatedAt: true}
+func (r *RawClient) withApi[M any](api meshapi.Api) *RawClient {
+	meshObject := internal.MeshObjectApi{AuthorizedClient: api.AuthorizedClient, Kind: api.Kind, ApiVersion: api.ApiVersion, ApiUrl: api.EndpointUrl.JoinPath(api.Path)}
+	r.apis[reflect.TypeFor[M]()] = rawApi{MeshObjectApi: meshObject, sortsByCreatedAt: true}
 	return r
 }
 

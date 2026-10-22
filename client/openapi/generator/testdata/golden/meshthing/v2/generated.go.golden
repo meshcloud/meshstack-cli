@@ -11,7 +11,7 @@ import (
 
 	"example.com/client/meshobject"
 	"example.com/client/types"
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 )
 
@@ -22,11 +22,11 @@ const (
 )
 
 type Client struct {
-	api internal.Api
+	api meshapi.Api
 }
 
-func NewClient(httpClient internal.HttpClient) Client {
-	return Client{internal.Api{
+func NewClient(httpClient meshapi.HttpClient) Client {
+	return Client{meshapi.Api{
 		HttpClient:  httpClient,
 		Kind:        Kind,
 		ApiVersion:  ApiVersion,
@@ -37,34 +37,34 @@ func NewClient(httpClient internal.HttpClient) Client {
 }
 
 // Api lets the raw client of the CLI reach the same API version.
-func (c Client) Api() internal.Api {
+func (c Client) Api() meshapi.Api {
 	return c.api
 }
 
 // Create thing
 func (c Client) Create(ctx context.Context, body Request) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "POST", Path: "/api/meshobjects/meshthings", SendsMeshObject: true, AnswersMeshObject: true}, body)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: "/api/meshobjects/meshthings", SendsMeshObject: true, AnswersMeshObject: true}, body)
 }
 
 // Delete thing
 func (c Client) Delete(ctx context.Context, thing uuid.UUID) error {
-	_, err := c.api.Do[any](ctx, internal.Call{Method: "DELETE", Path: internal.Path("/api/meshobjects/meshthings/{thing}", thing.String())}, nil)
+	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshthings/{thing}", thing.String())}, nil)
 	return err
 }
 
 // Get thing
 func (c Client) Get(ctx context.Context, thing uuid.UUID) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "GET", Path: internal.Path("/api/meshobjects/meshthings/{thing}", thing.String()), AnswersMeshObject: true}, nil)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshthings/{thing}", thing.String()), AnswersMeshObject: true}, nil)
 }
 
 // List things
 func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response, error] {
-	return c.api.List[Response](ctx, internal.Call{Method: "GET", Path: "/api/meshobjects/meshthings", Query: filter, AnswersMeshObject: true})
+	return c.api.List[Response](ctx, meshapi.Call{Method: "GET", Path: "/api/meshobjects/meshthings", Query: filter, AnswersMeshObject: true})
 }
 
 // Paint thing
 func (c Client) Paint(ctx context.Context, thing uuid.UUID, body PaintRequest) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "POST", Path: internal.Path("/api/meshobjects/meshthings/{thing}/paint", thing.String()), AnswersMeshObject: true}, body)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: meshapi.Path("/api/meshobjects/meshthings/{thing}/paint", thing.String()), AnswersMeshObject: true}, body)
 }
 
 type ListFilter struct {

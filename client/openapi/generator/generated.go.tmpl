@@ -20,11 +20,11 @@ const (
 {{- if .Operations}}
 
 type Client struct {
-	api internal.Api
+	api {{$.Runtime}}.Api
 }
 
-func NewClient(httpClient internal.HttpClient) Client {
-	return Client{internal.Api{
+func NewClient(httpClient {{$.Runtime}}.HttpClient) Client {
+	return Client{ {{- $.Runtime}}.Api{
 		HttpClient:  httpClient,
 		Kind:        {{if .Kind}}Kind{{else}}""{{end}},
 		ApiVersion:  {{if .Kind}}ApiVersion{{else}}""{{end}},
@@ -35,7 +35,7 @@ func NewClient(httpClient internal.HttpClient) Client {
 }
 
 // Api lets the raw client of the CLI reach the same API version.
-func (c Client) Api() internal.Api {
+func (c Client) Api() {{$.Runtime}}.Api {
 	return c.api
 }
 {{- range .Operations}}
