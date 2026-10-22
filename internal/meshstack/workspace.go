@@ -41,6 +41,18 @@ func (e NoWorkspaceToWorkInError) Error() string {
 	return "this login has no workspace to work in; ask for access to one in meshPanel"
 }
 
+type WorkspaceNotNamedError struct {
+	Resolution error
+}
+
+func (e WorkspaceNotNamedError) Error() string {
+	return "a browser login needs an explicitly set workspace, it is not taken from the profile: " + e.Resolution.Error()
+}
+
+func (e WorkspaceNotNamedError) Unwrap() error {
+	return e.Resolution
+}
+
 // NoRoleInWorkspaceError is what a login gets that asks for a token for a workspace in which it has
 // no role. The issuer then mints a token for no workspace.
 type NoRoleInWorkspaceError struct {
