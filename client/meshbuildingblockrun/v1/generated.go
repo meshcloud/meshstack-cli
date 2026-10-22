@@ -44,8 +44,10 @@ func (c Client) Api() meshapi.Api {
 }
 
 // Get building block run
-func (c Client) Get(ctx context.Context, buildingBlockRun uuid.UUID) (Response, error) {
-	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}", buildingBlockRun.String()), AnswersMeshObject: true}, nil)
+//
+// uuid is the UUID of the meshBuildingBlockRun.
+func (c Client) Get(ctx context.Context, uuid uuid.UUID) (Response, error) {
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}", uuid.String()), AnswersMeshObject: true}, nil)
 }
 
 // List building block runs
@@ -54,8 +56,10 @@ func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response,
 }
 
 // Download logs of building block run
-func (c Client) Logs(ctx context.Context, buildingBlockRun uuid.UUID) (LogsDTO, error) {
-	return c.api.Do[LogsDTO](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/logs", buildingBlockRun.String())}, nil)
+//
+// uuid is the UUID of the meshBuildingBlockRun.
+func (c Client) Logs(ctx context.Context, uuid uuid.UUID) (LogsDTO, error) {
+	return c.api.Do[LogsDTO](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/logs", uuid.String())}, nil)
 }
 
 type ListFilter struct {

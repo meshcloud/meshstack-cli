@@ -44,14 +44,18 @@ func (c Client) Create(ctx context.Context, body Request) (Response, error) {
 }
 
 // Delete workspace
-func (c Client) Delete(ctx context.Context, workspace string) error {
-	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace)}, nil)
+//
+// name is the `metadata.name` of the meshWorkspace.
+func (c Client) Delete(ctx context.Context, name string) error {
+	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", name)}, nil)
 	return err
 }
 
 // Get workspace
-func (c Client) Get(ctx context.Context, workspace string) (Response, error) {
-	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace), AnswersMeshObject: true}, nil)
+//
+// name is the `metadata.name` of the meshWorkspace.
+func (c Client) Get(ctx context.Context, name string) (Response, error) {
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", name), AnswersMeshObject: true}, nil)
 }
 
 // List workspaces
@@ -60,8 +64,10 @@ func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response,
 }
 
 // Create or update workspace
-func (c Client) Update(ctx context.Context, workspace string, body Request) (Response, error) {
-	return c.api.Do[Response](ctx, meshapi.Call{Method: "PUT", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace), SendsMeshObject: true, AnswersMeshObject: true}, body)
+//
+// name is the `metadata.name` of the meshWorkspace.
+func (c Client) Update(ctx context.Context, name string, body Request) (Response, error) {
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "PUT", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", name), SendsMeshObject: true, AnswersMeshObject: true}, body)
 }
 
 type ListFilter struct {

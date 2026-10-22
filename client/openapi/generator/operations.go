@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"go/token"
 	"path"
 	"slices"
 	"strings"
@@ -103,11 +104,22 @@ func (g *generator) operation(p *pkg, selected openapi.Operation) (*operation, e
 	if err != nil {
 		return nil, err
 	}
+	if lifecycle := schemas.Lifecycle(p.mediaType); lifecycle != nil {
+		p.lifecycle = lifecycle
+	}
+	if selected.Deprecated {
+		doc, docErr := g.spec.Doc(selected)
+		if docErr != nil {
+			return nil, docErr
+		}
+		o.deprecation = cmp.Or(strings.TrimSpace(strings.TrimPrefix(doc.Description, "Deprecated:")), "This operation is deprecated.")
+	}
 	for _, parameter := range schemas.Parameters {
-		if parameterErr := g.addParameter(o, parameter); parameterErr != nil {
+		if parameterErr := g.addParameter(p, o, parameter); parameterErr != nil {
 			return nil, parameterErr
 		}
 	}
+	o.disambiguatePathParams()
 	if len(o.query) > 0 {
 		o.queryType = o.name + "Query"
 		if o.list {
@@ -149,7 +161,7 @@ func (g *generator) summary(operation openapi.Operation) (string, error) {
 	return doc.Summary, err
 }
 
-func (g *generator) addParameter(o *operation, parameter openapi.ParameterSchema) error {
+func (g *generator) addParameter(p *pkg, o *operation, parameter openapi.ParameterSchema) error {
 	if parameter.Schema == nil || parameter.In == "header" {
 		return nil
 	}
@@ -159,11 +171,11 @@ func (g *generator) addParameter(o *operation, parameter openapi.ParameterSchema
 	}
 	switch parameter.In {
 	case "path":
-		p := param{name: parameter.Name, goName: lowerFirst(goName(parameter.Name)), goType: "string"}
-		if resolved.Format == "uuid" {
-			p.goType, p.uuid = "uuid.UUID", true
+		key := parameter.PathKey.Key
+		if byVersion, ok := parameter.PathKey.ByVersion[p.ApiVersion]; ok {
+			key = byVersion
 		}
-		o.pathParams = append(o.pathParams, p)
+		o.addPathParam(parameter, key, resolved.Format == "uuid")
 	case "query":
 		if parameter.Name == "page" || parameter.Name == "size" {
 			return nil
@@ -175,6 +187,94 @@ func (g *generator) addParameter(o *operation, parameter openapi.ParameterSchema
 		o.query = append(o.query, param{name: parameter.Name, goName: goName(parameter.Name), goType: goType})
 	}
 	return nil
+}
+
+// addPathParam names a path parameter after the key it takes, as uuid or name. A template key with
+// a name of as many parts, as {metadata.ownedByWorkspace}.{metadata.name} with workspace.project,
+// takes one parameter per part, so that a caller passes the fields and the client writes the
+// template.
+func (o *operation) addPathParam(parameter openapi.ParameterSchema, key string, isUuid bool) {
+	add := func(name, goType, doc string) int {
+		o.pathParams = append(o.pathParams, param{name: parameter.Name, goName: argName(name), goType: goType, doc: doc})
+		return len(o.pathParams) - 1
+	}
+	names := strings.Split(parameter.PathKey.Name, ".")
+	if parts := templateParts(key); countFields(parts) == len(names) {
+		var arg []argPart
+		for _, part := range parts {
+			if part.field {
+				part.param = add(names[countFields(arg)], "string", parameter.Description)
+			}
+			arg = append(arg, part)
+		}
+		o.pathArgs = append(o.pathArgs, arg)
+		return
+	}
+	name := parameter.Name
+	if key != "" && !strings.Contains(key, "{") {
+		name = key[strings.LastIndex(key, ".")+1:]
+	}
+	goType := "string"
+	if isUuid {
+		goType = "uuid.UUID"
+	}
+	o.pathArgs = append(o.pathArgs, []argPart{{field: true, param: add(name, goType, parameter.Description)}})
+}
+
+func argName(name string) string {
+	name = lowerFirst(goName(name))
+	if token.IsKeyword(name) {
+		return name + "Value"
+	}
+	return name
+}
+
+// argPart is a literal of a key's template, or a field, which a parameter of the method fills.
+type argPart struct {
+	text  string
+	field bool
+	param int
+}
+
+func templateParts(template string) []argPart {
+	var parts []argPart
+	for rest := template; rest != ""; {
+		before, after, found := strings.Cut(rest, "{")
+		if before != "" {
+			parts = append(parts, argPart{text: before})
+		}
+		if !found {
+			break
+		}
+		field, after, _ := strings.Cut(after, "}")
+		parts = append(parts, argPart{text: field, field: true})
+		rest = after
+	}
+	return parts
+}
+
+func countFields(parts []argPart) int {
+	n := 0
+	for _, part := range parts {
+		if part.field {
+			n++
+		}
+	}
+	return n
+}
+
+// disambiguatePathParams prefixes the name of the path parameter where two keys share a name, as
+// workspaceName and userName.
+func (o *operation) disambiguatePathParams() {
+	count := map[string]int{}
+	for _, p := range o.pathParams {
+		count[p.goName]++
+	}
+	for i, p := range o.pathParams {
+		if count[p.goName] > 1 {
+			o.pathParams[i].goName = lowerFirst(goName(p.name)) + upperFirst(p.goName)
+		}
+	}
 }
 
 // queryType keeps an enum a string, because a query parameter is no type of the API's objects.

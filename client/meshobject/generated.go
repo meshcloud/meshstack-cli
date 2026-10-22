@@ -71,15 +71,13 @@ func (u *MeshBuildingBlockTargetRefResponse) UnmarshalJSONFrom(dec *jsontext.Dec
 }
 
 type MeshBuildingBlockTargetTenantRefResponse struct {
-	// The uuid of the tenant for this Building Block. Only for kind "meshTenant"; a workspace has no uuid, use `name`.
+	// The UUID of the meshTenant.
 	Uuid uuid.UUID `json:"uuid"`
-	// The identifier of the workspace for this Building Block. Only for kind "meshWorkspace", where it replaces `uuid`.
-	Name *string `json:"name,omitzero"`
 }
 
 type MeshBuildingBlockTargetWorkspaceRefResponse struct {
-	Name string     `json:"name"`
-	Uuid *uuid.UUID `json:"uuid,omitzero"`
+	// The identifier of the meshWorkspace.
+	Name string `json:"name"`
 }
 
 type MeshObjectAuthor struct {

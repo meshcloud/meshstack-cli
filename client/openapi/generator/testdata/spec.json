@@ -40,6 +40,8 @@
     "/api/meshobjects/meshthings/{thing}/paint": {
       "post": {
         "summary": "Paint thing",
+        "description": "Deprecated: use `PUT /api/meshobjects/meshthings/{thing}`, which paints as well.",
+        "deprecated": true,
         "operationId": "meshThingPaint",
         "parameters": [{"$ref": "#/components/parameters/thing"}],
         "requestBody": {"content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/MeshThingPaintRequest"}}}},
@@ -50,9 +52,9 @@
       "get": {
         "summary": "Get other",
         "operationId": "meshOtherGet",
-        "parameters": [{"name": "other", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "parameters": [{"name": "other", "in": "path", "required": true, "description": "The thing and the other, separated by '.'.", "schema": {"type": "string"}, "x-meshstack-path-key": "{metadata.ownedByThing}.{metadata.name}", "x-meshstack-path-key-name": "thing.other"}],
         "responses": {
-          "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshother.v1.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshOther"}}}}
+          "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshother.v1.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshOther"}, "x-meshstack-lifecycle": {"meshObject": "meshOther.v1", "state": "Outdated", "notice": "Please update to `meshOther.v2`."}}}}
         }
       }
     }
@@ -60,10 +62,10 @@
   "components": {
     "parameters": {
       "page": {"name": "page", "in": "query", "schema": {"type": "integer", "format": "int32"}},
-      "thing": {"name": "thing", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/string_uuid"}}
+      "thing": {"name": "thing", "in": "path", "required": true, "description": "The UUID of the meshThing.", "schema": {"$ref": "#/components/schemas/string_uuid"}, "x-meshstack-path-key": "metadata.uuid"}
     },
     "responses": {
-      "Thing": {"description": "The thing", "content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshThingV2"}}}},
+      "Thing": {"description": "The thing", "content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshThingV2"}, "x-meshstack-lifecycle": {"meshObject": "meshThing.v2", "state": "GA"}}}},
       "BadRequest": {"description": "Bad request", "content": {"application/json": {"schema": {"type": "object"}}}}
     },
     "schemas": {
@@ -148,6 +150,8 @@
       },
       "MeshThingPaintRequest": {
         "type": "object",
+        "deprecated": true,
+        "x-deprecated-description": "Paint with an update instead.",
         "properties": {"dryRun": {"type": "boolean"}}
       },
       "Part": {"type": "object", "required": ["size"], "properties": {"size": {"type": "number"}}},
@@ -177,6 +181,8 @@
       "Owner": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "target": {"$ref": "#/components/schemas/TargetRef"}}},
       "MeshOther": {
         "type": "object",
+        "deprecated": true,
+        "x-meshstack-versions": [{"meshObject": "meshOther.v1", "state": "Outdated", "notice": "Please update to `meshOther.v2`."}],
         "required": ["kind", "apiVersion", "owner"],
         "properties": {
           "kind": {"type": "string", "enum": ["meshOther"]},

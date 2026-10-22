@@ -46,6 +46,7 @@ type pkg struct {
 	// collection is the path the kind's objects are below, such as /api/meshobjects/meshworkspaces.
 	collection  string
 	embeddedRel string
+	lifecycle   *openapi.Lifecycle
 	operations  []*operation
 	types       []*decl
 	names       map[string]bool
@@ -118,11 +119,14 @@ func (r typeRef) container() bool {
 }
 
 type operation struct {
-	name              string
-	doc               string
-	method            string
-	pathTemplate      string
-	pathParams        []param
+	name         string
+	doc          string
+	method       string
+	pathTemplate string
+	pathParams   []param
+	// pathArgs fill the parameters of pathTemplate, in its order.
+	pathArgs          [][]argPart
+	deprecation       string
 	queryType         string
 	query             []param
 	body              *typeRef
@@ -133,8 +137,7 @@ type operation struct {
 }
 
 type param struct {
-	name, goName, goType string
-	uuid                 bool
+	name, goName, goType, doc string
 }
 
 func newGenerator(spec openapi.Spec, cfg Config) *generator {

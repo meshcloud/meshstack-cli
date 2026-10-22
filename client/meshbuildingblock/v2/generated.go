@@ -50,14 +50,18 @@ func (c Client) Create(ctx context.Context, body Request) (Response, error) {
 }
 
 // Delete building block
-func (c Client) Delete(ctx context.Context, buildingBlock uuid.UUID) error {
-	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String())}, nil)
+//
+// uuid is the UUID of the meshBuildingBlock.
+func (c Client) Delete(ctx context.Context, uuid uuid.UUID) error {
+	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", uuid.String())}, nil)
 	return err
 }
 
 // Get building block
-func (c Client) Get(ctx context.Context, buildingBlock uuid.UUID) (Response, error) {
-	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String()), AnswersMeshObject: true}, nil)
+//
+// uuid is the UUID of the meshBuildingBlock.
+func (c Client) Get(ctx context.Context, uuid uuid.UUID) (Response, error) {
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", uuid.String()), AnswersMeshObject: true}, nil)
 }
 
 // List building blocks
@@ -66,19 +70,25 @@ func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response,
 }
 
 // Purge building block
-func (c Client) Purge(ctx context.Context, buildingBlock uuid.UUID) error {
-	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/purge", buildingBlock.String())}, nil)
+//
+// uuid is the UUID of the meshBuildingBlock.
+func (c Client) Purge(ctx context.Context, uuid uuid.UUID) error {
+	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/purge", uuid.String())}, nil)
 	return err
 }
 
 // Trigger run of building block
-func (c Client) TriggerRun(ctx context.Context, buildingBlock uuid.UUID, body TriggerRunRequest) (Response, error) {
-	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/trigger-run", buildingBlock.String()), AnswersMeshObject: true}, body)
+//
+// uuid is the UUID of the meshBuildingBlock.
+func (c Client) TriggerRun(ctx context.Context, uuid uuid.UUID, body TriggerRunRequest) (Response, error) {
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/trigger-run", uuid.String()), AnswersMeshObject: true}, body)
 }
 
 // Update building block
-func (c Client) Update(ctx context.Context, buildingBlock uuid.UUID, body Request) (Response, error) {
-	return c.api.Do[Response](ctx, meshapi.Call{Method: "PUT", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String()), SendsMeshObject: true, AnswersMeshObject: true}, body)
+//
+// uuid is the UUID of the meshBuildingBlock.
+func (c Client) Update(ctx context.Context, uuid uuid.UUID, body Request) (Response, error) {
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "PUT", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", uuid.String()), SendsMeshObject: true, AnswersMeshObject: true}, body)
 }
 
 type ListFilter struct {
@@ -361,8 +371,10 @@ type SpecRequest struct {
 	// value is returned as its hash only, because meshStack does not store the plaintext.
 	Inputs map[string]InputRequest `json:"inputs"`
 	// (Deprecated: Use parentBuildingBlockRefs instead) List of parent Building Blocks, which are required for the Building Block.
+	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
 	ParentBuildingBlocks []MeshParentBuildingBlock `json:"parentBuildingBlocks,omitzero"`
 	// List of references to the parent Building Blocks of this Building Block. Each entry contains a uuid and kind.
+	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
 	ParentBuildingBlockRefs []Ref `json:"parentBuildingBlockRefs,omitzero"`
 }
 
@@ -379,8 +391,10 @@ type SpecResponse struct {
 	// value is returned as its hash only, because meshStack does not store the plaintext.
 	Inputs map[string]InputResponse `json:"inputs"`
 	// (Deprecated: Use parentBuildingBlockRefs instead) List of parent Building Blocks, which are required for the Building Block.
+	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
 	ParentBuildingBlocks []MeshParentBuildingBlock `json:"parentBuildingBlocks"`
 	// List of references to the parent Building Blocks of this Building Block. Each entry contains a uuid and kind.
+	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
 	ParentBuildingBlockRefs []Ref `json:"parentBuildingBlockRefs,omitzero"`
 }
 
@@ -497,14 +511,16 @@ func (u *TargetRefRequest) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 }
 
 type TargetTenantRefRequest struct {
-	// The uuid of the tenant for this Building Block. Only for kind "meshTenant"; a workspace has no uuid, use `name`.
+	// The UUID of the meshTenant.
 	Uuid *uuid.UUID `json:"uuid,omitzero"`
-	// The identifier of the workspace for this Building Block. Only for kind "meshWorkspace", where it replaces `uuid`.
+	// Rejected: a meshTenant target is referenced by its `uuid`.
 	Name *string `json:"name,omitzero"`
 }
 
 type TargetWorkspaceRefRequest struct {
+	// The identifier of the meshWorkspace.
 	Name *string `json:"name,omitzero"`
+	// Rejected: a meshWorkspace target is referenced by its identifier in `name`.
 	Uuid *string `json:"uuid,omitzero"`
 }
 
