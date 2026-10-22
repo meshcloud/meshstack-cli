@@ -5,11 +5,15 @@ handling multiple meshStacks via [the `meshstack profile` command](docs/profile.
 
 Start with `meshstack login --profile your-profile-name` and explore the CLI with `meshstack --help`, after you [install](#install) it.
 
-The [meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) builds on this `login`.
-An empty block takes the profile of the last login and its default workspace:
+The [meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack) builds on this `login`:
+a provider block takes the endpoint and the credential of the profile of the last login. A browser login also needs
+the workspace in the block or in `MESHSTACK_WORKSPACE`, while an API key or an API token needs none. The workspace
+only picks the role the provider acts with, since each resource names its own workspace:
 
 ```hcl
-provider "meshstack" {}
+provider "meshstack" {
+  workspace = "team-a-ab12c"
+}
 ```
 
 A browser login acts in one workspace per provider block. To manage several workspaces in one
