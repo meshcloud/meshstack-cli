@@ -34,6 +34,7 @@ type Operation struct {
 	Action string
 	// MediaTypes are those of the request body and of every response, each once.
 	MediaTypes []MediaType
+	Deprecated bool
 
 	raw jsontext.Value
 }
@@ -105,6 +106,7 @@ func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation,
 	}
 	var parsed struct {
 		OperationId string             `json:"operationId"`
+		Deprecated  bool               `json:"deprecated"`
 		RequestBody content            `json:"requestBody"`
 		Responses   map[string]content `json:"responses"`
 	}
@@ -116,7 +118,7 @@ func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation,
 		names = slices.AppendSeq(names, maps.Keys(response.Content))
 	}
 	slices.Sort(names)
-	operation := Operation{Method: method, PathTemplate: PathTemplate(pathTemplate), OperationId: parsed.OperationId, raw: raw}
+	operation := Operation{Method: method, PathTemplate: PathTemplate(pathTemplate), OperationId: parsed.OperationId, Deprecated: parsed.Deprecated, raw: raw}
 	for _, name := range slices.Compact(names) {
 		operation.MediaTypes = append(operation.MediaTypes, newMediaType(name, parsed.OperationId))
 	}
