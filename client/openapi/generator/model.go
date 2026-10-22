@@ -138,6 +138,7 @@ type param struct {
 }
 
 func newGenerator(spec openapi.Spec, cfg Config) *generator {
+	cfg.Runtime = cmp.Or(cfg.Runtime, DefaultRuntime)
 	shared := &pkg{Path: cfg.Shared, Name: path.Base(cfg.Shared), names: map[string]bool{}}
 	shared.importPath = path.Join(cfg.Module, cfg.Shared)
 	return &generator{

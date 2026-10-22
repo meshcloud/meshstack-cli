@@ -8,7 +8,7 @@ import (
 	"iter"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/client/meshobject"
 )
 
@@ -19,11 +19,11 @@ const (
 )
 
 type Client struct {
-	api internal.Api
+	api meshapi.Api
 }
 
-func NewClient(httpClient internal.HttpClient) Client {
-	return Client{internal.Api{
+func NewClient(httpClient meshapi.HttpClient) Client {
+	return Client{meshapi.Api{
 		HttpClient:  httpClient,
 		Kind:        Kind,
 		ApiVersion:  ApiVersion,
@@ -34,34 +34,34 @@ func NewClient(httpClient internal.HttpClient) Client {
 }
 
 // Api lets the raw client of the CLI reach the same API version.
-func (c Client) Api() internal.Api {
+func (c Client) Api() meshapi.Api {
 	return c.api
 }
 
 // Create workspace
 func (c Client) Create(ctx context.Context, body Request) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "POST", Path: "/api/meshobjects/meshworkspaces", SendsMeshObject: true, AnswersMeshObject: true}, body)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: "/api/meshobjects/meshworkspaces", SendsMeshObject: true, AnswersMeshObject: true}, body)
 }
 
 // Delete workspace
 func (c Client) Delete(ctx context.Context, workspace string) error {
-	_, err := c.api.Do[any](ctx, internal.Call{Method: "DELETE", Path: internal.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace)}, nil)
+	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace)}, nil)
 	return err
 }
 
 // Get workspace
 func (c Client) Get(ctx context.Context, workspace string) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "GET", Path: internal.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace), AnswersMeshObject: true}, nil)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace), AnswersMeshObject: true}, nil)
 }
 
 // List workspaces
 func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response, error] {
-	return c.api.List[Response](ctx, internal.Call{Method: "GET", Path: "/api/meshobjects/meshworkspaces", Query: filter, AnswersMeshObject: true})
+	return c.api.List[Response](ctx, meshapi.Call{Method: "GET", Path: "/api/meshobjects/meshworkspaces", Query: filter, AnswersMeshObject: true})
 }
 
 // Create or update workspace
 func (c Client) Update(ctx context.Context, workspace string, body Request) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "PUT", Path: internal.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace), SendsMeshObject: true, AnswersMeshObject: true}, body)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "PUT", Path: meshapi.Path("/api/meshobjects/meshworkspaces/{workspace}", workspace), SendsMeshObject: true, AnswersMeshObject: true}, body)
 }
 
 type ListFilter struct {

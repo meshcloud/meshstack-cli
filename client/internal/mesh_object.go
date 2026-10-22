@@ -13,15 +13,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
-type HttpClient struct {
-	http.AuthorizedClient
-
-	EndpointUrl xurl.URL
-}
+type HttpClient = meshapi.HttpClient
 
 // MeshObjectApi is the API of one meshObject kind, in one version, with no Go type for its objects:
 // the requests and the paging they share, for a caller that decodes the answers itself.

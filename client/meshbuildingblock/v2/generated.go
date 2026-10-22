@@ -12,7 +12,7 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/client/meshobject"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
@@ -25,11 +25,11 @@ const (
 )
 
 type Client struct {
-	api internal.Api
+	api meshapi.Api
 }
 
-func NewClient(httpClient internal.HttpClient) Client {
-	return Client{internal.Api{
+func NewClient(httpClient meshapi.HttpClient) Client {
+	return Client{meshapi.Api{
 		HttpClient:  httpClient,
 		Kind:        Kind,
 		ApiVersion:  ApiVersion,
@@ -40,45 +40,45 @@ func NewClient(httpClient internal.HttpClient) Client {
 }
 
 // Api lets the raw client of the CLI reach the same API version.
-func (c Client) Api() internal.Api {
+func (c Client) Api() meshapi.Api {
 	return c.api
 }
 
 // Create building block
 func (c Client) Create(ctx context.Context, body Request) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "POST", Path: "/api/meshobjects/meshbuildingblocks", SendsMeshObject: true, AnswersMeshObject: true}, body)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: "/api/meshobjects/meshbuildingblocks", SendsMeshObject: true, AnswersMeshObject: true}, body)
 }
 
 // Delete building block
 func (c Client) Delete(ctx context.Context, buildingBlock uuid.UUID) error {
-	_, err := c.api.Do[any](ctx, internal.Call{Method: "DELETE", Path: internal.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String())}, nil)
+	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String())}, nil)
 	return err
 }
 
 // Get building block
 func (c Client) Get(ctx context.Context, buildingBlock uuid.UUID) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "GET", Path: internal.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String()), AnswersMeshObject: true}, nil)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String()), AnswersMeshObject: true}, nil)
 }
 
 // List building blocks
 func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response, error] {
-	return c.api.List[Response](ctx, internal.Call{Method: "GET", Path: "/api/meshobjects/meshbuildingblocks", Query: filter, AnswersMeshObject: true})
+	return c.api.List[Response](ctx, meshapi.Call{Method: "GET", Path: "/api/meshobjects/meshbuildingblocks", Query: filter, AnswersMeshObject: true})
 }
 
 // Purge building block
 func (c Client) Purge(ctx context.Context, buildingBlock uuid.UUID) error {
-	_, err := c.api.Do[any](ctx, internal.Call{Method: "DELETE", Path: internal.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/purge", buildingBlock.String())}, nil)
+	_, err := c.api.Do[any](ctx, meshapi.Call{Method: "DELETE", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/purge", buildingBlock.String())}, nil)
 	return err
 }
 
 // Trigger run of building block
 func (c Client) TriggerRun(ctx context.Context, buildingBlock uuid.UUID, body TriggerRunRequest) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "POST", Path: internal.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/trigger-run", buildingBlock.String()), AnswersMeshObject: true}, body)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}/trigger-run", buildingBlock.String()), AnswersMeshObject: true}, body)
 }
 
 // Update building block
 func (c Client) Update(ctx context.Context, buildingBlock uuid.UUID, body Request) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "PUT", Path: internal.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String()), SendsMeshObject: true, AnswersMeshObject: true}, body)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "PUT", Path: meshapi.Path("/api/meshobjects/meshbuildingblocks/{buildingBlock}", buildingBlock.String()), SendsMeshObject: true, AnswersMeshObject: true}, body)
 }
 
 type ListFilter struct {

@@ -12,7 +12,7 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/client/meshobject"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 )
@@ -24,11 +24,11 @@ const (
 )
 
 type Client struct {
-	api internal.Api
+	api meshapi.Api
 }
 
-func NewClient(httpClient internal.HttpClient) Client {
-	return Client{internal.Api{
+func NewClient(httpClient meshapi.HttpClient) Client {
+	return Client{meshapi.Api{
 		HttpClient:  httpClient,
 		Kind:        Kind,
 		ApiVersion:  ApiVersion,
@@ -39,23 +39,23 @@ func NewClient(httpClient internal.HttpClient) Client {
 }
 
 // Api lets the raw client of the CLI reach the same API version.
-func (c Client) Api() internal.Api {
+func (c Client) Api() meshapi.Api {
 	return c.api
 }
 
 // Get building block run
 func (c Client) Get(ctx context.Context, buildingBlockRun uuid.UUID) (Response, error) {
-	return c.api.Do[Response](ctx, internal.Call{Method: "GET", Path: internal.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}", buildingBlockRun.String()), AnswersMeshObject: true}, nil)
+	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}", buildingBlockRun.String()), AnswersMeshObject: true}, nil)
 }
 
 // List building block runs
 func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response, error] {
-	return c.api.List[Response](ctx, internal.Call{Method: "GET", Path: "/api/meshobjects/meshbuildingblockruns", Query: filter, AnswersMeshObject: true})
+	return c.api.List[Response](ctx, meshapi.Call{Method: "GET", Path: "/api/meshobjects/meshbuildingblockruns", Query: filter, AnswersMeshObject: true})
 }
 
 // Download logs of building block run
 func (c Client) Logs(ctx context.Context, buildingBlockRun uuid.UUID) (LogsDTO, error) {
-	return c.api.Do[LogsDTO](ctx, internal.Call{Method: "GET", Path: internal.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/logs", buildingBlockRun.String())}, nil)
+	return c.api.Do[LogsDTO](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/logs", buildingBlockRun.String())}, nil)
 }
 
 type ListFilter struct {
