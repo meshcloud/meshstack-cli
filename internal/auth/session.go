@@ -202,7 +202,9 @@ func ResolveWorkspace(ctx context.Context, opts ResolveSessionOptions) (meshstac
 	var defaultWorkspace setting.Source
 	switch {
 	case err == nil:
-		defaultWorkspace = stored.WorkspaceSource()
+		if !opts.IgnoreDefaultWorkspace {
+			defaultWorkspace = stored.WorkspaceSource()
+		}
 	case !errors.Is(err, profile.ErrNoStoredProfile):
 		return meshstack.NoWorkspace, err
 	}
