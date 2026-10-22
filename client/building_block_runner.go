@@ -31,13 +31,18 @@ var MeshBuildingBlockRunnerImplementationTypes = []string{
 type MeshBuildingBlockRunner struct {
 	Metadata MeshBuildingBlockRunnerMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshBuildingBlockRunnerSpec     `json:"spec" tfsdk:"spec"`
+	Status   *MeshBuildingBlockRunnerStatus  `json:"status,omitzero" tfsdk:"status"`
 }
 
 type MeshBuildingBlockRunnerMetadata struct {
 	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
 	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
 	CreatedOn        *string `json:"createdOn,omitzero" tfsdk:"created_on"`
+}
+
+type MeshBuildingBlockRunnerStatus struct {
 	LastSeen         *string `json:"lastSeen,omitzero" tfsdk:"last_seen"`
+	LastKnownVersion *string `json:"lastKnownVersion,omitzero" tfsdk:"last_known_version"`
 }
 
 type MeshBuildingBlockRunnerSpec struct {
