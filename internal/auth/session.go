@@ -50,7 +50,11 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	}
 	session.getWorkspace = sync.OnceValues(func() (meshstack.Workspace, error) {
 		if opts.IgnoreDefaultWorkspace {
-			return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting)
+			workspace, err := opts.ResolveSetting(ctx, meshstack.WorkspaceSetting)
+			if errors.Is(err, setting.ErrNoSourceProvidedValue) {
+				return meshstack.NoWorkspace, meshstack.WorkspaceNotNamedError{Resolution: err}
+			}
+			return workspace, err
 		}
 		return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
 	})
