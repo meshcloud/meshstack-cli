@@ -34,6 +34,8 @@ type (
 		// UserAgent is required: it names the front end in every request, and the releases to check
 		// against.
 		http.UserAgent
+
+		IgnoreDefaultWorkspace bool
 	}
 )
 
@@ -47,6 +49,9 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 		return Session{}, err
 	}
 	session.getWorkspace = sync.OnceValues(func() (meshstack.Workspace, error) {
+		if opts.IgnoreDefaultWorkspace {
+			return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting)
+		}
 		return opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, session.CurrentProfile.WorkspaceSource())
 	})
 	return session.withCredential(ctx, resolved, opts)
