@@ -27,9 +27,7 @@ type Schema struct {
 	ReadOnly             bool           `json:"readOnly"`
 	WriteOnly            bool           `json:"writeOnly"`
 	Deprecated           bool           `json:"deprecated"`
-	// DeprecatedDescription says why a Deprecated schema is, where meshStack states it.
-	DeprecatedDescription string      `json:"x-deprecated-description"`
-	Versions              []Lifecycle `json:"x-meshstack-versions"`
+	Versions             []Lifecycle    `json:"x-meshstack-versions"`
 }
 
 type Discriminator struct {

@@ -2,7 +2,7 @@
 
 // Package meshother is the meshObject kind meshOther in API version v1.
 //
-// Deprecated: `meshOther.v1` is outdated. Please update to `meshOther.v2`.
+// Deprecated: removed after 2025-07-01.
 package meshother
 
 import (
@@ -42,12 +42,12 @@ func (c Client) Api() meshapi.Api {
 //
 // thing and other: The thing and the other, separated by '.'.
 //
-// Deprecated: `meshOther.v1` is outdated. Please update to `meshOther.v2`.
+// Deprecated: removed after 2025-07-01.
 func (c Client) Get(ctx context.Context, thing string, other string) (Response, error) {
 	return c.api.Do[Response](ctx, meshapi.Call{Method: "GET", Path: meshapi.Path("/api/meshobjects/meshothers/{other}", thing+"."+other), AnswersMeshObject: true}, nil)
 }
 
-// Deprecated: `meshOther.v1` is outdated. Please update to `meshOther.v2`.
+// Deprecated: removed after 2025-07-01.
 type Response struct {
 	Owner meshobject.Owner `json:"owner"`
 	Links meshobject.Links `json:"_links,omitzero"`

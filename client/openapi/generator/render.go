@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+
+	"github.com/meshcloud/meshstack-cli/client/openapi"
 )
 
 //go:embed generated.go.tmpl
@@ -307,7 +309,7 @@ func (t *namedType) deprecation() string {
 	for _, version := range t.schema.Versions {
 		ofVersion = cmp.Or(ofVersion, version.Deprecation())
 	}
-	return cmp.Or(t.schema.DeprecatedDescription, ofVersion, "This type is deprecated.")
+	return cmp.Or(ofVersion, openapi.NewerVersionAvailable)
 }
 
 func comment(text string) string {
