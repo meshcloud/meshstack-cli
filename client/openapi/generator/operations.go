@@ -110,17 +110,18 @@ func (g *generator) operation(p *pkg, selected openapi.Operation) (*operation, e
 	if selected.Deprecated {
 		o.deprecation = cmp.Or(p.deprecation(), openapi.NewerVersionAvailable)
 	}
+	o.queryType = o.name + "Query"
+	if o.list {
+		o.queryType = "ListFilter"
+	}
 	for _, parameter := range schemas.Parameters {
 		if parameterErr := g.addParameter(p, o, parameter); parameterErr != nil {
 			return nil, parameterErr
 		}
 	}
 	o.disambiguatePathParams()
-	if len(o.query) > 0 {
-		o.queryType = o.name + "Query"
-		if o.list {
-			o.queryType = "ListFilter"
-		}
+	if len(o.query) == 0 {
+		o.queryType = ""
 	}
 	if body := p.content(schemas.RequestBody); body != nil {
 		r, sendsMeshObject, bodyErr := g.root(p, body, request)
@@ -176,11 +177,11 @@ func (g *generator) addParameter(p *pkg, o *operation, parameter openapi.Paramet
 		if parameter.Name == "page" || parameter.Name == "size" {
 			return nil
 		}
-		goType, err := g.queryType(resolved)
+		r, err := g.queryRef(p, Location{Schema: o.queryType, Property: parameter.Name}, parameter.Schema)
 		if err != nil {
 			return fmt.Errorf("query parameter %s: %w", parameter.Name, err)
 		}
-		o.query = append(o.query, param{name: parameter.Name, goName: goName(parameter.Name), goType: goType})
+		o.query = append(o.query, param{name: parameter.Name, goName: goName(parameter.Name), ref: r})
 	}
 	return nil
 }
@@ -273,25 +274,27 @@ func (o *operation) disambiguatePathParams() {
 	}
 }
 
-// queryType keeps an enum a string, because a query parameter is no type of the API's objects.
-func (g *generator) queryType(s *openapi.Schema) (string, error) {
-	if s.Type == "array" && s.Items != nil {
-		items, err := g.resolve(s.Items)
-		if err != nil {
-			return "", err
+// queryRef keys an inline enum by the package, since the ListFilter of every kind names its enums
+// alike.
+func (g *generator) queryRef(p *pkg, at Location, s *openapi.Schema) (typeRef, error) {
+	resolved, err := g.resolve(s)
+	if err != nil {
+		return typeRef{}, err
+	}
+	switch {
+	case resolved.Type == "array" && resolved.Items != nil:
+		items, err := g.queryRef(p, at, resolved.Items)
+		return typeRef{slice: &items}, err
+	case len(resolved.Enum) > 0 && s.Ref == "":
+		key := "#" + p.importPath + "#" + at.String()
+		t, ok := g.types[key]
+		if !ok {
+			t = &namedType{loc: at, schema: resolved, kind: enumType}
+			g.types[key] = t
 		}
-		element, err := g.queryType(items)
-		return "[]" + element, err
+		return typeRef{named: t, dir: request}, g.visit(p, t, request)
 	}
-	switch s.Type {
-	case "integer":
-		return "int64", nil
-	case "boolean":
-		return "bool", nil
-	case "number":
-		return "float64", nil
-	}
-	return "string", nil
+	return g.ref(p, s, request, at)
 }
 
 // content is the schema of the package's media type, or of the one media type an operation of no

@@ -96,7 +96,7 @@ func (g *generator) render(p *pkg) ([]byte, error) {
 		if o.queryType != "" {
 			query := typeData{Name: o.queryType, Kind: "object"}
 			for _, q := range o.query {
-				query.Fields = append(query.Fields, fieldData{Name: q.goName, Type: q.goType, Tag: fmt.Sprintf("`json:%q`", q.name)})
+				query.Fields = append(query.Fields, fieldData{Name: q.goName, Type: r.expr(q.ref), Tag: fmt.Sprintf("`json:%q`", q.name+",omitzero")})
 			}
 			data.Queries = append(data.Queries, query)
 		}
