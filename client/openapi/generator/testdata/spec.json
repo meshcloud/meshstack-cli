@@ -40,7 +40,6 @@
     "/api/meshobjects/meshthings/{thing}/paint": {
       "post": {
         "summary": "Paint thing",
-        "description": "Deprecated: use `PUT /api/meshobjects/meshthings/{thing}`, which paints as well.",
         "deprecated": true,
         "operationId": "meshThingPaint",
         "parameters": [{"$ref": "#/components/parameters/thing"}],
@@ -54,7 +53,7 @@
         "operationId": "meshOtherGet",
         "parameters": [{"name": "other", "in": "path", "required": true, "description": "The thing and the other, separated by '.'.", "schema": {"type": "string"}, "x-meshstack-path-key": "{metadata.ownedByThing}.{metadata.name}", "x-meshstack-path-key-name": "thing.other"}],
         "responses": {
-          "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshother.v1.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshOther"}, "x-meshstack-lifecycle": {"meshObject": "meshOther.v1", "state": "Outdated", "notice": "Please update to `meshOther.v2`."}}}}
+          "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshother.v1.hal+json": {"schema": {"$ref": "#/components/schemas/HalEntityModelMeshOther"}, "x-meshstack-lifecycle": {"meshObject": "meshOther.v1", "state": "Deprecated", "retiredAfter": "2025-07-01", "latest": "meshOther.v2", "notice": "Please update to `meshOther.v2`."}}}}
         }
       }
     }
@@ -151,7 +150,6 @@
       "MeshThingPaintRequest": {
         "type": "object",
         "deprecated": true,
-        "x-deprecated-description": "Paint with an update instead.",
         "properties": {"dryRun": {"type": "boolean"}}
       },
       "Part": {"type": "object", "required": ["size"], "properties": {"size": {"type": "number"}}},
@@ -182,7 +180,7 @@
       "MeshOther": {
         "type": "object",
         "deprecated": true,
-        "x-meshstack-versions": [{"meshObject": "meshOther.v1", "state": "Outdated", "notice": "Please update to `meshOther.v2`."}],
+        "x-meshstack-versions": [{"meshObject": "meshOther.v1", "state": "Deprecated", "retiredAfter": "2025-07-01", "latest": "meshOther.v2", "notice": "Please update to `meshOther.v2`."}],
         "required": ["kind", "apiVersion", "owner"],
         "properties": {
           "kind": {"type": "string", "enum": ["meshOther"]},

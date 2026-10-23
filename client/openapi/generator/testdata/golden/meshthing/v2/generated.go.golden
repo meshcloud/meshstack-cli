@@ -70,7 +70,7 @@ func (c Client) List(ctx context.Context, filter ListFilter) iter.Seq2[Response,
 //
 // uuid is the UUID of the meshThing.
 //
-// Deprecated: use `PUT /api/meshobjects/meshthings/{thing}`, which paints as well.
+// Deprecated: a newer version is available.
 func (c Client) Paint(ctx context.Context, uuid uuid.UUID, body PaintRequest) (Response, error) {
 	return c.api.Do[Response](ctx, meshapi.Call{Method: "POST", Path: meshapi.Path("/api/meshobjects/meshthings/{thing}/paint", uuid.String()), AnswersMeshObject: true}, body)
 }
@@ -101,7 +101,7 @@ type Metadata struct {
 	Owner     *meshobject.Owner `json:"owner,omitzero"`
 }
 
-// Deprecated: Paint with an update instead.
+// Deprecated: a newer version is available.
 type PaintRequest struct {
 	DryRun *bool `json:"dryRun,omitzero"`
 }

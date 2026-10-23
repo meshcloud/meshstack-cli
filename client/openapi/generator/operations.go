@@ -108,11 +108,7 @@ func (g *generator) operation(p *pkg, selected openapi.Operation) (*operation, e
 		p.lifecycle = lifecycle
 	}
 	if selected.Deprecated {
-		doc, docErr := g.spec.Doc(selected)
-		if docErr != nil {
-			return nil, docErr
-		}
-		o.deprecation = cmp.Or(strings.TrimSpace(strings.TrimPrefix(doc.Description, "Deprecated:")), "This operation is deprecated.")
+		o.deprecation = cmp.Or(p.deprecation(), openapi.NewerVersionAvailable)
 	}
 	for _, parameter := range schemas.Parameters {
 		if parameterErr := g.addParameter(p, o, parameter); parameterErr != nil {

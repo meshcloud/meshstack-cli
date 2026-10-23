@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"slices"
-	"strings"
 )
 
 // OperationSchemas are the parameters and bodies of an operation, with their schemas.
@@ -50,20 +49,17 @@ type Lifecycle struct {
 
 // Deprecation is empty for a version that is not deprecated.
 func (l Lifecycle) Deprecation() string {
-	var text string
-	switch l.State {
-	case "Outdated":
-		text = "`" + l.MeshObject + "` is outdated."
-	case "Deprecated":
-		text = "`" + l.MeshObject + "` is deprecated."
-		if l.RetiredAfter != "" {
-			text = "`" + l.MeshObject + "` is deprecated and retired after " + l.RetiredAfter + "."
-		}
-	default:
+	switch {
+	case l.State != "Outdated" && l.State != "Deprecated" && l.State != "Retired":
 		return ""
+	case l.RetiredAfter != "":
+		return "removed after " + l.RetiredAfter + "."
 	}
-	return strings.TrimSpace(text + " " + l.Notice)
+	return NewerVersionAvailable
 }
+
+// NewerVersionAvailable is the deprecation of a version without an end of life.
+const NewerVersionAvailable = "a newer version is available."
 
 // Lifecycle is that of the media type in the request body or a response, or nil.
 func (s OperationSchemas) Lifecycle(mediaType string) *Lifecycle {
