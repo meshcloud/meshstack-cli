@@ -24,7 +24,7 @@ var EndpointSetting = setting.Setting[xurl.URL]{
 var SkipVersionCheckSetting = setting.Setting[bool]{
 	Env: "MESHSTACK_SKIP_VERSION_CHECK",
 	Short: func(envKey string) string {
-		return fmt.Sprintf("Skip version check against meshStack backend. Also read from %s.", envKey)
+		return fmt.Sprintf("Skip the meshStack version and release checks, so a run sends only the requests it needs. Also read from %s.", envKey)
 	},
 	Parse: setting.ParseBool,
 	// An explicit "0", because ParseBool reads every string but a spelling of "no" as true.
