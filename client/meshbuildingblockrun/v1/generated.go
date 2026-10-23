@@ -63,8 +63,8 @@ func (c Client) Logs(ctx context.Context, uuid uuid.UUID) (LogsDTO, error) {
 }
 
 type ListFilter struct {
-	BuildingBlockUuid string   `json:"buildingBlockUuid"`
-	Sort              []string `json:"sort"`
+	BuildingBlockUuid uuid.UUID        `json:"buildingBlockUuid,omitzero"`
+	Sort              []ListFilterSort `json:"sort,omitzero"`
 }
 
 type Behavior string
@@ -202,6 +202,16 @@ type KnownHostEntry struct {
 	KeyType  string `json:"keyType"`
 	KeyValue string `json:"keyValue"`
 }
+
+type ListFilterSort string
+
+const (
+	ListFilterSortCreatedAt     ListFilterSort = "createdAt"
+	ListFilterSortCreatedAtAsc  ListFilterSort = "createdAt,asc"
+	ListFilterSortCreatedAtDesc ListFilterSort = "createdAt,desc"
+)
+
+var ListFilterSorts = enum.Of[ListFilterSort]("createdAt", "createdAt,asc", "createdAt,desc")
 
 type LogsDTO struct {
 	// List of steps in the building block run.

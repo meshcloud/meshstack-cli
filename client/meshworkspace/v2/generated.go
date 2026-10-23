@@ -10,6 +10,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/client/meshobject"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
 )
 
 const (
@@ -71,8 +72,18 @@ func (c Client) Update(ctx context.Context, name string, body Request) (Response
 }
 
 type ListFilter struct {
-	Sort []string `json:"sort"`
+	Sort []ListFilterSort `json:"sort,omitzero"`
 }
+
+type ListFilterSort string
+
+const (
+	ListFilterSortCreatedAt     ListFilterSort = "createdAt"
+	ListFilterSortCreatedAtAsc  ListFilterSort = "createdAt,asc"
+	ListFilterSortCreatedAtDesc ListFilterSort = "createdAt,desc"
+)
+
+var ListFilterSorts = enum.Of[ListFilterSort]("createdAt", "createdAt,asc", "createdAt,desc")
 
 type MetadataRequest struct {
 	// The workspaceIdentifier as `name` to uniquely identify the meshWorkspace (read-only after creation).
