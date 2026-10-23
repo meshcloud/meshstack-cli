@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/types"
 )
 
 // apiAsksForJson checks the answers of meshStack that request.negotiate in cmd/api relies on where
@@ -28,7 +29,7 @@ func apiAsksForJson(c *cli) func(*testing.T) {
 func apiFollowsASelfLink(c *cli) func(*testing.T) {
 	return func(t *testing.T) {
 		var href string
-		for item, err := range c.client(t).Raw.List[client.MeshWorkspace](t.Context(), nil, client.ListOptions{PageSize: 1}) {
+		for item, err := range c.client(t).Raw.List[client.MeshWorkspace](t.Context(), nil, types.ListOptions{PageSize: 1}) {
 			require.NoError(t, err)
 			var links struct {
 				Links struct {

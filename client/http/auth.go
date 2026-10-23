@@ -84,7 +84,7 @@ func withCredential[R any](ctx context.Context, auth Authorization, method strin
 }
 
 func withAuthorizationHeader(credential Credential) RequestOption {
-	return withHeader("Authorization", credential.authorizationHeader())
+	return WithHeader("Authorization", credential.authorizationHeader())
 }
 
 type BearerToken string

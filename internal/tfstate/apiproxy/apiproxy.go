@@ -1,6 +1,6 @@
 // Package apiproxy passes requests on to the meshStack API. It stands apart from internal/tfstate
 // because httputil.ReverseProxy takes a transport rather than a client, and forbidigo keeps the
-// transport to internal/http and this package.
+// transport to client/http and this package.
 package apiproxy
 
 import (
@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 )
 
 // New replaces the Authorization a request came with by that of client, and passes a request

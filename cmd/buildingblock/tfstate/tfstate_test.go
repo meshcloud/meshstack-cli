@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock/tfstate"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
@@ -75,7 +75,7 @@ func runChild(steps string) int {
 		address, _ := url.Parse(os.Getenv("TF_HTTP_ADDRESS"))
 		r := httptest.NewRequestWithContext(context.Background(), step, "/", nil)
 		r.SetBasicAuth(os.Getenv("TF_HTTP_USERNAME"), os.Getenv("TF_HTTP_PASSWORD"))
-		_, _ = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](context.Background(), step, address, http.WithHeaders(r.Header), http.WithBody([]byte(state)))
+		_, _ = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](context.Background(), step, address, http.WithHeader("Authorization", r.Header.Get("Authorization")), http.WithBody("application/json", []byte(state)))
 	}
 	return 0
 }

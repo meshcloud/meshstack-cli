@@ -10,12 +10,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/openapi"
+	"github.com/meshcloud/meshstack-cli/client/types/version"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
-	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 var (
@@ -68,7 +68,7 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 		url, path, conditionalGet = custom, dir.Join(fmt.Sprintf("api-docs-custom-%x.json", urlHash[:6])), true
 	}
 
-	wait, err = opts.Client.Download(ctx, url.URL, path, http.WithConditionalGet(conditionalGet))
+	wait, err = download(ctx, opts.Client, url.URL, path, conditionalGet)
 	if err != nil {
 		return spec, wait, fmt.Errorf("cannot download the API docs from %s: %w", url, err)
 	}

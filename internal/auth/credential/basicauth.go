@@ -1,7 +1,7 @@
 package credential
 
 import (
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 )
 
 var _ Static = &BasicAuth{}
