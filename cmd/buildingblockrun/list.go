@@ -38,7 +38,7 @@ credential can see.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if buildingBlockUuid != uuid.Nil() {
-				return flags.Run[meshbuildingblockrun.Response](cmd, meshbuildingblockrun.ListFilter{BuildingBlockUuid: buildingBlockUuid.String()})
+				return flags.Run[meshbuildingblockrun.Response](cmd, meshbuildingblockrun.ListFilter{BuildingBlockUuid: buildingBlockUuid})
 			}
 			workspace, err := internal.ListWorkspace(cmd.Context())
 			if err != nil {
@@ -102,7 +102,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter meshbuild
 
 func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID, pageSize int) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
-		filter := meshbuildingblockrun.ListFilter{BuildingBlockUuid: buildingBlockUuid.String()}
+		filter := meshbuildingblockrun.ListFilter{BuildingBlockUuid: buildingBlockUuid}
 		for run, err := range meshStack.Raw.List[meshbuildingblockrun.Response](ctx, filter, client.ListOptions{PageSize: pageSize}) {
 			if err != nil {
 				err = fmt.Errorf("listing the runs of building block %s: %w", buildingBlockUuid, err)

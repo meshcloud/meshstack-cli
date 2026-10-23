@@ -92,24 +92,24 @@ func (c Client) Update(ctx context.Context, uuid uuid.UUID, body Request) (Respo
 }
 
 type ListFilter struct {
-	WorkspaceIdentifier          string   `json:"workspaceIdentifier"`
-	CustomerIdentifier           string   `json:"customerIdentifier"`
-	ProjectIdentifier            string   `json:"projectIdentifier"`
-	PlatformIdentifier           string   `json:"platformIdentifier"`
-	Name                         string   `json:"name"`
-	DefinitionName               string   `json:"definitionName"`
-	DefinitionUuid               string   `json:"definitionUuid"`
-	VersionNumber                string   `json:"versionNumber"`
-	Status                       string   `json:"status"`
-	Sort                         []string `json:"sort"`
-	VersionUuid                  string   `json:"versionUuid"`
-	TenantUuid                   string   `json:"tenantUuid"`
-	TargetRefKind                string   `json:"targetRefKind"`
-	HealthStatus                 []string `json:"healthStatus"`
-	Action                       []string `json:"action"`
-	ManagedByWorkspaceIdentifier string   `json:"managedByWorkspaceIdentifier"`
-	ManagedByDefinitionUuid      string   `json:"managedByDefinitionUuid"`
-	LifecycleState               []string `json:"lifecycleState"`
+	WorkspaceIdentifier          string                                             `json:"workspaceIdentifier,omitzero"`
+	CustomerIdentifier           string                                             `json:"customerIdentifier,omitzero"`
+	ProjectIdentifier            string                                             `json:"projectIdentifier,omitzero"`
+	PlatformIdentifier           string                                             `json:"platformIdentifier,omitzero"`
+	Name                         string                                             `json:"name,omitzero"`
+	DefinitionName               string                                             `json:"definitionName,omitzero"`
+	DefinitionUuid               string                                             `json:"definitionUuid,omitzero"`
+	VersionNumber                string                                             `json:"versionNumber,omitzero"`
+	Status                       StatusValue                                        `json:"status,omitzero"`
+	Sort                         []ListFilterSort                                   `json:"sort,omitzero"`
+	VersionUuid                  uuid.UUID                                          `json:"versionUuid,omitzero"`
+	TenantUuid                   uuid.UUID                                          `json:"tenantUuid,omitzero"`
+	TargetRefKind                meshobject.MeshBuildingBlockTargetRefDiscriminator `json:"targetRefKind,omitzero"`
+	HealthStatus                 []HealthStatusValue                                `json:"healthStatus,omitzero"`
+	Action                       []ActionValue                                      `json:"action,omitzero"`
+	ManagedByWorkspaceIdentifier string                                             `json:"managedByWorkspaceIdentifier,omitzero"`
+	ManagedByDefinitionUuid      uuid.UUID                                          `json:"managedByDefinitionUuid,omitzero"`
+	LifecycleState               []ListFilterLifecycleState                         `json:"lifecycleState,omitzero"`
 }
 
 type ActionValue string
@@ -260,6 +260,34 @@ type InputResponse struct {
 	// Version.
 	IsOptional bool `json:"isOptional"`
 }
+
+type ListFilterLifecycleState string
+
+const (
+	ListFilterLifecycleStateActive  ListFilterLifecycleState = "ACTIVE"
+	ListFilterLifecycleStateDeleted ListFilterLifecycleState = "DELETED"
+)
+
+var ListFilterLifecycleStates = enum.Of[ListFilterLifecycleState]("ACTIVE", "DELETED")
+
+type ListFilterSort string
+
+const (
+	ListFilterSortCreatedAt     ListFilterSort = "createdAt"
+	ListFilterSortCreatedAtAsc  ListFilterSort = "createdAt,asc"
+	ListFilterSortCreatedAtDesc ListFilterSort = "createdAt,desc"
+	ListFilterSortName          ListFilterSort = "name"
+	ListFilterSortNameAsc       ListFilterSort = "name,asc"
+	ListFilterSortNameDesc      ListFilterSort = "name,desc"
+	ListFilterSortStatus        ListFilterSort = "status"
+	ListFilterSortStatusAsc     ListFilterSort = "status,asc"
+	ListFilterSortStatusDesc    ListFilterSort = "status,desc"
+	ListFilterSortUuid          ListFilterSort = "uuid"
+	ListFilterSortUuidAsc       ListFilterSort = "uuid,asc"
+	ListFilterSortUuidDesc      ListFilterSort = "uuid,desc"
+)
+
+var ListFilterSorts = enum.Of[ListFilterSort]("createdAt", "createdAt,asc", "createdAt,desc", "name", "name,asc", "name,desc", "status", "status,asc", "status,desc", "uuid", "uuid,asc", "uuid,desc")
 
 type MeshLifecycle struct {
 	// The lifecycle state of this meshObject. One of ACTIVE, DEACTIVATED, MARKED_FOR_DELETION, DELETED.
