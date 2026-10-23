@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	gohttp "net/http"
 	"net/url"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
@@ -255,4 +257,68 @@ func must[T any](value T, err error) T {
 		panic(err)
 	}
 	return value
+}
+
+func TestSessionWarnsWhenTheEnvironmentOverridesTheStoredLogin(t *testing.T) {
+	server := newTestServer(t)
+	warnings := func(t *testing.T) []string {
+		t.Helper()
+		captured := logs.Capture(t)
+		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		return captured.Lines(slog.LevelWarn)
+	}
+
+	t.Run("a login stores an API key", func(t *testing.T) {
+		setApiKeyEnv(t, testApiKey1)
+		storeLogin(t, credential.ApiKeyName)
+	})
+
+	t.Run("the stored login alone is not warned of", func(t *testing.T) {
+		assert.Empty(t, warnings(t))
+	})
+
+	t.Run("an API key overrides the stored credential", func(t *testing.T) {
+		setApiKeyEnv(t, testApiKey2)
+		lines := warnings(t)
+		require.Len(t, lines, 1)
+		assert.Contains(t, lines[0], "env "+auth.ApiKeyClientIdSetting.EnvKey()+" and env "+auth.ApiKeyClientSecretSetting.EnvKey())
+	})
+
+	t.Run("a token overrides the stored credential", func(t *testing.T) {
+		t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(time.Hour))
+		lines := warnings(t)
+		require.Len(t, lines, 1)
+		assert.Contains(t, lines[0], "env "+auth.ApiTokenSetting.EnvKey())
+	})
+
+	t.Run("the current profile named in the environment overrides nothing", func(t *testing.T) {
+		t.Setenv(profile.NameSetting.EnvKey(), "default")
+		assert.Empty(t, warnings(t))
+	})
+
+	t.Run("another profile named in the environment overrides the current one", func(t *testing.T) {
+		t.Setenv(profile.NameSetting.EnvKey(), "dev")
+		captured := logs.Capture(t)
+		_, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		require.NoError(t, err)
+		lines := captured.Lines(slog.LevelWarn)
+		require.Len(t, lines, 1)
+		assert.Contains(t, lines[0], "'dev' over 'default' from the current profile")
+	})
+
+	t.Run("a workspace in the environment overrides the default workspace", func(t *testing.T) {
+		current, profiles, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		require.NoError(t, err)
+		current.DefaultWorkspace = "stored-workspace"
+		require.NoError(t, profiles.Store(t.Context()))
+
+		t.Setenv(meshstack.WorkspaceSetting.EnvKey(), "env-workspace")
+		captured := logs.Capture(t)
+		_, err = auth.ResolveWorkspace(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		lines := captured.Lines(slog.LevelWarn)
+		require.Len(t, lines, 1)
+		assert.Contains(t, lines[0], "'env-workspace' over 'stored-workspace' from the default workspace in profile default")
+	})
 }

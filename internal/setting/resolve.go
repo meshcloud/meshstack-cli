@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 )
@@ -78,7 +79,21 @@ func (sources Sources) ResolveSettingWithSource[T any](ctx context.Context, sett
 		if err != nil {
 			return value, nil, fmt.Errorf("value from source '%s' could not be parsed: %w", description, err)
 		}
+		if _, fromEnv := candidate.(EnvKey); fromEnv {
+			fallbackSources.warnOfOverriddenStoredValues(ctx, setting.EnvKey(), description, text)
+		}
 		return value, candidate, nil
 	}
 	return value, nil, fmt.Errorf("%w for %s", ErrNoSourceProvidedValue, setting.EnvKey())
+}
+
+func (sources Sources) warnOfOverriddenStoredValues(ctx context.Context, key, description, text string) {
+	for _, source := range sources {
+		if fallback, ok := source.(FallbackSource); ok && fallback.Stored {
+			stored, err := fallback.Lookup(ctx, key)
+			if stored = strings.TrimSpace(stored); err == nil && stored != "" && stored != text {
+				slog.WarnContext(ctx, fmt.Sprintf("%s sets '%s' over '%s' from the %s", description, text, stored, fallback.Describe(key)))
+			}
+		}
+	}
 }

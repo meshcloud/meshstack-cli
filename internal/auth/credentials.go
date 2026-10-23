@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
@@ -36,6 +37,10 @@ func (s Session) resolveCredentials(ctx context.Context, opts ResolveSessionOpti
 		return s.storedCredential(ctx, noSourceErrs)
 	case 1:
 		slog.DebugContext(ctx, fmt.Sprintf("Using uniquely resolved credential %s from environment MESHSTACK_* and/or explicit config", resolved[0].Name()))
+		if stored := s.CurrentProfile.Credential; stored != "" {
+			slog.WarnContext(ctx, fmt.Sprintf("%s set a credential over '%s' stored in profile '%s'",
+				strings.Join(resolved[0].Sources, " and "), stored, s.CurrentProfile))
+		}
 		return resolved[0], nil
 	default:
 		names := make([]credential.Name, 0, len(resolved))
