@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
@@ -33,6 +34,9 @@ func loadLockedProfiles(ctx context.Context) (profile.Profiles, error) {
 }
 
 func remove(ctx context.Context, profiles *profile.Profiles, name profile.Name) error {
+	if removed, err := profiles.Find(name); err == nil {
+		auth.EndBrowserSession(ctx, removed, internal.ResolveClientOptions())
+	}
 	currentChanged, err := profiles.Remove(ctx, name)
 	if err != nil || !currentChanged {
 		return err

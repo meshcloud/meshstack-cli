@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -35,7 +36,7 @@ const (
 // opens on a page of the loopback server first, where the person picks the access level, and that
 // page redirects on to the identity provider. It returns the level the identity provider granted,
 // which is none on a meshStack older than access levels.
-func Login(ctx context.Context, client oidc.Client, previous meshstack.AccessLevel) (oidc.Token, meshstack.AccessLevel, error) {
+func Login(ctx context.Context, client oidc.Client, previous Previous) (oidc.Token, meshstack.AccessLevel, error) {
 	ctx, cancel := context.WithTimeout(ctx, loginTime)
 	defer cancel()
 
@@ -80,6 +81,28 @@ func Login(ctx context.Context, client oidc.Client, previous meshstack.AccessLev
 	return token, "", nil
 }
 
+// Previous is the login of the profile that a new login replaces.
+type Previous struct {
+	Level        meshstack.AccessLevel
+	RefreshToken string
+}
+
+// endIfReplaced revokes the previous login when the new one chose another access level. Keycloak
+// keeps one offline session per browser session and client, and refreshes every token of it with
+// the scopes of its first login, so the new login would otherwise keep the previous level. The new
+// login's code belongs to that session as well, so the revoke has to come before the browser
+// reaches keycloak.
+func (p Previous) endIfReplaced(ctx context.Context, client oidc.Client, chosen meshstack.AccessLevel) error {
+	if p.RefreshToken == "" || cmp.Or(p.Level, meshstack.AccessFull) == chosen {
+		return nil
+	}
+	if err := client.RevokeRefreshToken(ctx, p.RefreshToken); err != nil {
+		return fmt.Errorf("cannot end the previous login with the access level %q, which this login would keep: %w",
+			cmp.Or(p.Level, meshstack.AccessFull).Label(), err)
+	}
+	return nil
+}
+
 type callback struct {
 	code string
 	err  error
@@ -117,7 +140,7 @@ func await(ctx context.Context, listener net.Listener, login *loginPages, startU
 
 type loginPages struct {
 	flow     oidc.AuthorizationCodeFlow
-	previous meshstack.AccessLevel
+	previous Previous
 	// nonce ties a submitted access level to the page this login served, so that another site
 	// cannot post a level to the loopback port.
 	nonce string
@@ -148,7 +171,7 @@ func (l *loginPages) showAccessLevels(w gohttp.ResponseWriter, r *gohttp.Request
 	page(r.Context(), w, status, pageData{
 		Title:   "Choose an access level",
 		Message: message,
-		Form:    newAccessLevelForm(l.nonce, l.previous),
+		Form:    newAccessLevelForm(l.nonce, l.previous.Level),
 	})
 }
 
@@ -162,12 +185,17 @@ func (l *loginPages) redirectToIdentityProvider(w gohttp.ResponseWriter, r *goht
 		l.showAccessLevels(w, r, gohttp.StatusBadRequest)
 		return
 	}
+	if err := l.previous.endIfReplaced(r.Context(), l.flow.Client, level); err != nil {
+		page(r.Context(), w, gohttp.StatusBadGateway, pageData{Title: "Login failed", Message: err.Error()})
+		l.arrive(callback{err: err})
+		return
+	}
 	l.mu.Lock()
 	l.chosen = level
 	l.mu.Unlock()
 	// Keycloak asks on its own for a level the user has never granted, but not for one granted
 	// before, so switching back to that one would otherwise need no click.
-	askConsent := l.previous != "" && level != l.previous
+	askConsent := l.previous.Level != "" && level != l.previous.Level
 	gohttp.Redirect(w, r, l.flow.BrowserUrl(scope.Scopes{level.Scope()}, askConsent).String(), gohttp.StatusSeeOther)
 }
 

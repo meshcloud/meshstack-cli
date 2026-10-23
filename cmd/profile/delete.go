@@ -17,7 +17,8 @@ func newDelete() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a profile and its stored credentials",
-		Long: `Delete a profile and its stored credentials.
+		Long: `Delete a profile and its stored credentials. For a browser login, this also ends the login's
+session at meshStack, as meshstack auth logout does. Your browser stays signed in to meshStack.
 
 Without --profile, it asks which profile to delete, among those for the endpoint. It asks before it
 deletes, unless --yes goes with --profile, or with an --endpoint that only one profile is for.`,

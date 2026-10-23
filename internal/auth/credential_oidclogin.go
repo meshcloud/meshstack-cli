@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
-	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/browser"
 )
@@ -20,11 +19,17 @@ func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *crede
 	if err != nil {
 		return Credential{}, err
 	}
-	var previousLevel meshstack.AccessLevel
+	var replaced browser.Previous
 	if previous != nil {
-		previousLevel = previous.AccessLevel
+		replaced.Level = previous.AccessLevel
+		if err = CacheFor(s.CurrentProfile, previous).Load(ctx); err != nil {
+			return Credential{}, err
+		}
+		if previous.Cache != nil {
+			replaced.RefreshToken = previous.Cache.RefreshToken
+		}
 	}
-	token, level, err := browser.Login(ctx, oidcClient, previousLevel)
+	token, level, err := browser.Login(ctx, oidcClient, replaced)
 	if err != nil {
 		return Credential{}, err
 	}
