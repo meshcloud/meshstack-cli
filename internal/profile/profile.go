@@ -43,7 +43,7 @@ func (p Profile) WorkspaceSource() setting.FallbackSource {
 			}
 			return p.DefaultWorkspace.String(), nil
 		},
-	}}
+	}, Stored: true}
 }
 
 //goland:noinspection GoMixedReceiverTypes

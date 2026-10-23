@@ -67,7 +67,7 @@ func resolveProfile(ctx context.Context, opts ResolveProfileOptions, loadProfile
 			profiles, err := loadProfiles()
 			return string(profiles.CurrentProfile), err
 		},
-	}}
+	}, Stored: true}
 
 	// A front end source that selects the profile reads what to select from out of the context,
 	// as the one for the workspace does. Being a fallback source of the front end, it ranks above

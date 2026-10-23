@@ -58,6 +58,11 @@ func (s LookupSource) Describe(key string) string {
 // FallbackSource ranks the wrapped source below the environment, see Sources.ResolveSetting.
 type FallbackSource struct {
 	Source
+
+	// Stored marks a value a person saved earlier, such as in a profile, so that the environment
+	// overriding it with another value is warned of. Resolving looks it up only then, so it must
+	// not prompt.
+	Stored bool
 }
 
 // FrontendSource ranks the wrapped source above the environment, see Sources.ResolveSetting.

@@ -2,11 +2,13 @@ package setting_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 	"github.com/meshcloud/meshstack-cli/internal/setting/setting_test"
 )
@@ -137,4 +139,50 @@ func TestResolveSettingWithSourceDescribesTheSourceThatWon(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "from the environment", value)
 	assert.Equal(t, "env MESHSTACK_TEST_DESCRIBED", source.Describe(described.EnvKey()))
+}
+
+func TestResolveSettingWarnsWhenTheEnvironmentOverridesAStoredValue(t *testing.T) {
+	stored := setting.Setting[string]{Env: "MESHSTACK_TEST_STORED", Parse: setting.ParseText[string]}
+	var storedLookups int
+	sources := setting.Sources{setting.FallbackSource{Stored: true, Source: setting.LookupSource{
+		Description: "current profile",
+		Func: func(context.Context) (string, error) {
+			storedLookups++
+			return "default", nil
+		},
+	}}}
+	warnings := func(t *testing.T, sources setting.Sources) []string {
+		t.Helper()
+		captured := logs.Capture(t)
+		_, err := sources.ResolveSetting(t.Context(), stored)
+		require.NoError(t, err)
+		return captured.Lines(slog.LevelWarn)
+	}
+
+	t.Run("the stored value alone is not warned of", func(t *testing.T) {
+		t.Setenv(stored.EnvKey(), "")
+		assert.Empty(t, warnings(t, sources))
+	})
+
+	t.Run("the environment with the stored value is not warned of", func(t *testing.T) {
+		t.Setenv(stored.EnvKey(), "default")
+		assert.Empty(t, warnings(t, sources))
+	})
+
+	t.Run("the environment with another value is warned of", func(t *testing.T) {
+		t.Setenv(stored.EnvKey(), "dev")
+		lines := warnings(t, sources)
+		require.Len(t, lines, 1)
+		assert.Contains(t, lines[0], "env MESHSTACK_TEST_STORED sets 'dev' over 'default' from the current profile")
+	})
+
+	t.Run("a front end source over the environment is no reason to look up the stored value", func(t *testing.T) {
+		t.Setenv(stored.EnvKey(), "dev")
+		storedLookups = 0
+		flag := setting.FrontendSource{Source: setting_test.LookupFunc(func(context.Context, string) (string, error) {
+			return "prod", nil
+		})}
+		assert.Empty(t, warnings(t, append(setting.Sources{flag}, sources...)))
+		assert.Zero(t, storedLookups)
+	})
 }

@@ -192,7 +192,9 @@ func TestStatusOfAnApiToken(t *testing.T) {
 		assert.Equal(t, testApiKey1.ClientId, status.Token.ClientId)
 		require.NotNil(t, status.ApiKey)
 		assert.Nil(t, status.ApiKey.Details)
-		assert.Empty(t, captured.Records(slog.LevelWarn))
+		warnings := captured.Lines(slog.LevelWarn)
+		require.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "set a credential over 'manual' stored in profile 'default'")
 	})
 }
 
