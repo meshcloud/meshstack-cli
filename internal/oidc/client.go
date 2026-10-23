@@ -27,8 +27,7 @@ type ClientConfig struct {
 	Issuer                xurl.URL `json:"issuer"`
 	AuthorizationEndpoint xurl.URL `json:"authorization_endpoint"`
 	TokenEndpoint         xurl.URL `json:"token_endpoint"`
-	// Both are optional in the discovery document, and either one ends a session.
-	EndSessionEndpoint *xurl.URL `json:"end_session_endpoint"`
+	// RevocationEndpoint is optional in the discovery document (RFC 8414).
 	RevocationEndpoint *xurl.URL `json:"revocation_endpoint"`
 }
 
@@ -86,22 +85,18 @@ func (c Client) ExchangeAuthCode(ctx context.Context, code string, redirectUri x
 	return
 }
 
-func (c Client) EndSession(ctx context.Context, refreshToken string) error {
-	endpoint, payload := c.EndSessionEndpoint, map[string]any{
-		"client_id":     c.Id,
-		"refresh_token": refreshToken,
+// RevokeRefreshToken ends the session of a login (RFC 7009). For keycloak's offline token that is the
+// offline session of this client alone, while its end_session_endpoint would sign the browser out of
+// every client.
+func (c Client) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	if c.RevocationEndpoint == nil {
+		return fmt.Errorf("%s advertises no revocation_endpoint", c.Issuer)
 	}
-	if endpoint == nil {
-		endpoint, payload = c.RevocationEndpoint, map[string]any{
-			"client_id":       c.Id,
-			"token":           refreshToken,
-			"token_type_hint": "refresh_token",
-		}
-	}
-	if endpoint == nil {
-		return errors.New("the identity provider advertises neither an end_session_endpoint nor a revocation_endpoint")
-	}
-	_, err := c.doPost[any](ctx, endpoint.URL, payload)
+	_, err := c.doPost[any](ctx, c.RevocationEndpoint.URL, map[string]any{
+		"client_id":       c.Id,
+		"token":           refreshToken,
+		"token_type_hint": "refresh_token",
+	})
 	return err
 }
 

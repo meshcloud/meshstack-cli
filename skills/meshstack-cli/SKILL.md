@@ -62,7 +62,7 @@ meshstack auth status -p <profile>       # who, which workspace, until when — 
 meshstack login -p <profile> --endpoint <url> --workspace <id>   # browser login, needs a human
 meshstack login --apikey=<id> --stdin    # API key, secret from stdin; the = is required
 meshstack login --apitoken --stdin       # an access token, sent as it is
-meshstack auth logout                    # drop this profile's credential
+meshstack auth logout                    # drop this profile's credential, end a browser login's session
 meshstack profile list                   # stored profiles and their endpoints
 ```
 

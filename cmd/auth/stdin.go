@@ -13,7 +13,7 @@ import (
 const stdinFlagName internal.FlagName = "stdin"
 
 func newStdinFlag() internal.Flag[bool] {
-	return internal.Flag[bool]{Name: stdinFlagName, Help: "prompt the API key secret or API token from stdin"}
+	return internal.Flag[bool]{Name: stdinFlagName, Help: "read the API key secret or API token from stdin"}
 }
 
 func newPromptingSource(settingEnvKey string, openStdinFlag *internal.Flag[bool], p prompt.Prompt, what string) setting.FrontendSource {

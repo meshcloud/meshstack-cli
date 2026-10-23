@@ -102,6 +102,42 @@ func TestAccBrowserLogin(t *testing.T) {
 		assert.False(t, loginWith("write"), "the same access level must reuse the consent keycloak remembers")
 	})
 
+	t.Run("a second login in the same browser raises the access level", func(t *testing.T) {
+		c := newCLI(t, endpoint)
+		browser := panelLogin(t, issuer, withWorkspace.Username, withWorkspace.Password)
+		loginWith := func(level string) {
+			run := startLogin(t, c, "1")
+			continueKeycloakLogin(t, browser, run.awaitStartURL(t), level, withWorkspace.Username)
+			require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
+		}
+
+		loginWith("read")
+		loginWith("full")
+		assert.Equal(t, "full", storedAccessLevel(t, c))
+		assert.Equal(t, "full", tokenAccessLevel(t, c), "the token keeps the access level of the earlier login")
+	})
+
+	t.Run("a logout ends the session of the browser login", func(t *testing.T) {
+		c := newCLI(t, endpoint)
+		run := startLogin(t, c, "1")
+		completeKeycloakLogin(t, run.awaitStartURL(t), "read", withWorkspace.Username, withWorkspace.Password)
+		require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
+		refreshToken := cachedRefreshToken(t, c)
+
+		output, err := c.run("", "auth", "logout")
+		require.NoErrorf(t, err, "the logout failed:\n%s", output)
+		assert.NotContains(t, output, "Cannot end the session")
+
+		refresh := url.Values{"client_id": {"meshstack-cli"}, "grant_type": {"refresh_token"}, "refresh_token": {refreshToken}}
+		req, err := gohttp.NewRequestWithContext(t.Context(), gohttp.MethodPost, issuer+"/protocol/openid-connect/token", strings.NewReader(refresh.Encode()))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		refreshed, err := gohttp.DefaultClient.Do(req)
+		require.NoError(t, err)
+		_ = refreshed.Body.Close()
+		assert.Equal(t, gohttp.StatusBadRequest, refreshed.StatusCode, "keycloak still refreshes the token of the logged out login")
+	})
+
 	t.Run("a login holds the profiles until the browser comes back", browserLoginHoldsTheProfiles(endpoint, withWorkspace))
 	if without := slices.IndexFunc(logins, func(login devLogin) bool { return len(login.Workspaces) == 0 }); without != -1 {
 		t.Run("a failed login keeps the earlier login of the profile", failedLoginKeepsTheEarlierLogin(endpoint, withWorkspace, logins[without]))
@@ -153,6 +189,33 @@ func storedAccessLevel(t *testing.T, c *cli) string {
 	}
 	require.NoError(t, json.Unmarshal(content, &credentials))
 	return credentials.OidcLogin.AccessLevel
+}
+
+func cachedRefreshToken(t *testing.T, c *cli) string {
+	t.Helper()
+	content, err := os.ReadFile(c.credentialsCacheJson("oidcLogin"))
+	require.NoError(t, err)
+	var cached struct {
+		Cache struct {
+			RefreshToken string `json:"refreshToken"`
+		} `json:"cache"`
+	}
+	require.NoError(t, json.Unmarshal(content, &cached))
+	require.NotEmpty(t, cached.Cache.RefreshToken)
+	return cached.Cache.RefreshToken
+}
+
+func tokenAccessLevel(t *testing.T, c *cli) string {
+	t.Helper()
+	output, err := c.run("", "auth", "status", "-o", "json")
+	require.NoErrorf(t, err, "meshstack auth status failed:\n%s", output)
+	var status struct {
+		Token struct {
+			AccessLevel string `json:"accessLevel"`
+		} `json:"token"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(output), &status), output)
+	return status.Token.AccessLevel
 }
 
 // TestAccApiKeyLogin logs in with the API key the Terraform provider's acceptance suite uses, whose
@@ -275,6 +338,11 @@ func (r *cliRun) awaitStartURL(t *testing.T) string {
 func completeKeycloakLogin(t *testing.T, startURL, accessLevel, username, password string) (askedForConsent bool) {
 	t.Helper()
 	browser, page := keycloakLogin(t, startURL, accessLevel, username, password)
+	return finishKeycloakLogin(t, browser, page, username)
+}
+
+func finishKeycloakLogin(t *testing.T, browser *gohttp.Client, page htmlPage, username string) (askedForConsent bool) {
+	t.Helper()
 	// Asserted as a bool: a Contains assertion would quote two hundred lines of patternfly.
 	stillAsksForALogin := strings.Contains(page.body, "kc-form-login")
 	require.Falsef(t, stillAsksForALogin,
@@ -296,11 +364,7 @@ func completeKeycloakLogin(t *testing.T, startURL, accessLevel, username, passwo
 // http://127.0.0.1:<port>/callback, which hands the CLI its authorization code and ends its wait.
 func keycloakLogin(t *testing.T, startURL, accessLevel, username, password string) (*gohttp.Client, htmlPage) {
 	t.Helper()
-	jar, err := cookiejar.New(nil)
-	require.NoError(t, err)
-	// Keycloak carries the authentication session in a cookie, so the jar is not a convenience.
-	browser := &gohttp.Client{Jar: jar, Timeout: 30 * time.Second}
-
+	browser := newBrowser(t)
 	page := fetch(t, browser, startURL)
 	page = submitForm(t, browser, page, `action="/"`, url.Values{"access": {accessLevel}})
 	asksForALogin := strings.Contains(page.body, "kc-form-login")
@@ -313,6 +377,22 @@ func keycloakLogin(t *testing.T, startURL, accessLevel, username, password strin
 		"credentialId": {""},
 	})
 	return browser, page
+}
+
+func newBrowser(t *testing.T) *gohttp.Client {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	// Keycloak carries the authentication session in a cookie, so the jar is not a convenience.
+	return &gohttp.Client{Jar: jar, Timeout: 30 * time.Second}
+}
+
+// continueKeycloakLogin is a login in a browser that keycloak already knows, which therefore
+// shows no login form.
+func continueKeycloakLogin(t *testing.T, browser *gohttp.Client, startURL, accessLevel, username string) {
+	t.Helper()
+	page := submitForm(t, browser, fetch(t, browser, startURL), `action="/"`, url.Values{"access": {accessLevel}})
+	finishKeycloakLogin(t, browser, page, username)
 }
 
 // consentAction identifies the consent form, which carries no id of its own.
@@ -389,4 +469,26 @@ func firstSubmatch(t *testing.T, body, pattern string) string {
 	match := regexp.MustCompile(pattern).FindStringSubmatch(body)
 	require.Lenf(t, match, 2, "nothing matched %s in:\n%s", pattern, body)
 	return match[1]
+}
+
+// panelLogin signs a browser in to meshStack's panel, so that a CLI login after it finds a keycloak
+// session it did not create.
+func panelLogin(t *testing.T, issuer, username, password string) *gohttp.Client {
+	t.Helper()
+	const panelRedirect = "http://127.0.0.1:1/panel"
+	browser := newBrowser(t)
+	browser.CheckRedirect = func(req *gohttp.Request, _ []*gohttp.Request) error {
+		if strings.HasPrefix(req.URL.String(), panelRedirect) {
+			return gohttp.ErrUseLastResponse
+		}
+		return nil
+	}
+	authorize := url.Values{"client_id": {"meshfed-oidc"}, "response_type": {"code"}, "scope": {"openid"}, "redirect_uri": {panelRedirect}}
+	page := fetch(t, browser, issuer+"/protocol/openid-connect/auth?"+authorize.Encode())
+	page = submitForm(t, browser, page, `id="kc-form-login"`, url.Values{
+		"username": {username}, "password": {password}, "credentialId": {""},
+	})
+	require.NotContainsf(t, page.body, "kc-form-login", "keycloak refused the panel login of %s: %s", username, keycloakFeedback(page.body))
+	browser.CheckRedirect = nil
+	return browser
 }

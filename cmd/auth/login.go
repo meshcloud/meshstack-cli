@@ -46,6 +46,8 @@ does not exist yet.
 
 Without a profile named, it asks which stored profile to log in to, among those for the endpoint.
 With no flag this is a browser login, and it asks which workspace to work in unless one is named.
+A browser login with another access level than the profile's earlier one ends that earlier login
+first.
 
 It ends with what meshstack auth status shows for the new login.`,
 		Args: func(cmd *cobra.Command, args []string) error {
