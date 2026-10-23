@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblock/v2"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
@@ -28,10 +28,10 @@ func TestAwaitRunStartTakesNothingTheTriggerRunAnswerReportedForTheStart(t *test
 	meshStack, err := internal.ResolveClient(t.Context())
 	require.NoError(t, err)
 
-	_, err = awaitRunStart(t.Context(), meshStack.Raw, buildingBlockUuid, &client.MeshBuildingBlockV2Status{
+	_, err = awaitRunStart(t.Context(), meshStack.Raw, buildingBlockUuid, meshbuildingblock.StatusResponse{
 		LatestRunUuid:    new(previousRun),
 		RunStartFailure:  new("the previous request failed"),
-		RunStartFailedOn: new(failedOn),
+		RunStartFailedOn: new(time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)),
 	}, time.Millisecond, 50*time.Millisecond)
 
 	require.Error(t, err)

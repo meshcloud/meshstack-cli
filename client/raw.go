@@ -11,6 +11,7 @@ import (
 	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/meshapi"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
@@ -81,6 +82,13 @@ func (r *RawClient) DoRequest(ctx context.Context, method, path string, opts ...
 // the version stays declared once, in the constructor of M's typed client.
 func (r *RawClient) with[M any](meshObject internal.MeshObjectClient[M]) *RawClient {
 	r.apis[reflect.TypeFor[M]()] = rawApi{MeshObjectApi: meshObject.MeshObjectApi, sortsByCreatedAt: true}
+	return r
+}
+
+// withApi is with for a generated client.
+func (r *RawClient) withApi[M any](api meshapi.Api) *RawClient {
+	meshObject := internal.MeshObjectApi{AuthorizedClient: api.AuthorizedClient, Kind: api.Kind, ApiVersion: api.ApiVersion, ApiUrl: api.EndpointUrl.JoinPath(api.Path)}
+	r.apis[reflect.TypeFor[M]()] = rawApi{MeshObjectApi: meshObject, sortsByCreatedAt: true}
 	return r
 }
 

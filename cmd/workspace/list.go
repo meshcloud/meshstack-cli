@@ -3,7 +3,7 @@ package workspace
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshworkspace/v2"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -21,7 +21,7 @@ Organization Admin, lists them all. From any other workspace the list holds that
   meshstack ws list --workspace admin-workspace --limit unlimited -o ndjson`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return flags.Run[client.MeshWorkspace](cmd, client.MeshWorkspaceListFilter{})
+			return flags.Run[meshworkspace.Response](cmd, meshworkspace.ListFilter{})
 		},
 	}
 
