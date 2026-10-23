@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -45,7 +46,7 @@ credential can see.`,
 			if blockFilter.WorkspaceIdentifier, err = internal.ListWorkspace(cmd.Context()); err != nil {
 				return err
 			}
-			return flags.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error] {
+			return flags.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options types.ListOptions) iter.Seq2[jsontext.Value, error] {
 				return allRuns(ctx, meshStack, blockFilter, options.PageSize)
 			})
 		},
@@ -73,7 +74,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 		var runsOfEachBlock []iter.Seq2[jsontext.Value, error]
 		// The blocks are read raw because only their uuid is needed, and a block the client cannot
 		// fully decode still has runs to list.
-		for rawBlock, err := range meshStack.Raw.List[client.MeshBuildingBlockV2](ctx, blockFilter, client.ListOptions{}) {
+		for rawBlock, err := range meshStack.Raw.List[client.MeshBuildingBlockV2](ctx, blockFilter, types.ListOptions{}) {
 			if err != nil {
 				yield(nil, err)
 				return
@@ -100,7 +101,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID, pageSize int) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
 		filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid}
-		for run, err := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, client.ListOptions{PageSize: pageSize}) {
+		for run, err := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, types.ListOptions{PageSize: pageSize}) {
 			if err != nil {
 				err = fmt.Errorf("listing the runs of building block %s: %w", buildingBlockUuid, err)
 			}

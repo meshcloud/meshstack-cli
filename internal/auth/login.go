@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
@@ -46,6 +46,8 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 		resolved, err = session.resolveManualCredential(ctx, opts.SettingSources)
 	case credential.ApiKeyName:
 		resolved, err = session.resolveApiKeyCredential(ctx, opts.SettingSources)
+	case credential.BasicAuthName:
+		resolved, err = session.resolveBasicAuthCredential(ctx, opts.SettingSources)
 	default:
 		return Session{}, nil, nil, fmt.Errorf("cannot authenticate with credential '%s'; pick one of %v", withAuth, credential.Names)
 	}

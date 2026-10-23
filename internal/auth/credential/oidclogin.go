@@ -8,15 +8,15 @@ import (
 	gohttp "net/http"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 )
 
-var _ Credential = &OidcLogin{}
+var _ Minter = &OidcLogin{}
 
 type OidcLogin struct {
 	Endpoint xurl.URL `json:"endpoint"`

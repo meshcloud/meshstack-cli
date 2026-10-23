@@ -7,10 +7,9 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	gohttp "net/http"
 	"uuid"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 )
 
 // ErrNoState is meshStack's 404, which tofu's http backend takes for a state not written yet.
@@ -45,7 +44,7 @@ func (s Store) Get(ctx context.Context) ([]byte, error) {
 // Put and Delete send the ID of tofu's lock as tofu's http backend does, because meshStack refuses
 // a write without the ID of the lock it holds.
 func (s Store) Put(ctx context.Context, state []byte, lockId string) error {
-	_, err := s.raw.DoRequest(ctx, http.MethodPost, s.path(), withLockId(lockId, http.WithBody(state), jsonContent)...)
+	_, err := s.raw.DoRequest(ctx, http.MethodPost, s.path(), withLockId(lockId, http.WithBody("application/json", state))...)
 	return s.wrap("store", err)
 }
 
@@ -61,19 +60,17 @@ func withLockId(lockId string, opts ...http.RequestOption) []http.RequestOption 
 	return append(opts, http.WithUrlQuery(map[string]string{"ID": lockId}))
 }
 
-var jsonContent = http.WithHeaders(gohttp.Header{"Content-Type": {"application/json"}})
-
 // Lock and Unlock take tofu's lock info as tofu sends it. A Lock that meshStack refuses with 423
 // is an [http.Error] that carries the lock info of the holder.
 func (s Store) Lock(ctx context.Context, info []byte) error {
-	_, err := s.raw.DoRequest(ctx, http.MethodPost, s.lockPath(), http.WithBody(info), jsonContent)
+	_, err := s.raw.DoRequest(ctx, http.MethodPost, s.lockPath(), http.WithBody("application/json", info))
 	return s.wrap("lock", err)
 }
 
 // Unlock fails with a 423 of meshStack where meshStack holds a lock of another ID than the one in
 // info.
 func (s Store) Unlock(ctx context.Context, info []byte) error {
-	_, err := s.raw.DoRequest(ctx, http.MethodDelete, s.lockPath(), http.WithBody(info), jsonContent)
+	_, err := s.raw.DoRequest(ctx, http.MethodDelete, s.lockPath(), http.WithBody("application/json", info))
 	return s.wrap("unlock", err)
 }
 

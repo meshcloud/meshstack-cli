@@ -10,20 +10,15 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/types"
 )
-
-type ListOptions = internal.ListOptions
-
-type Page = internal.Page
 
 // SortCriteria holds one `property,(asc|desc)` criterion per element, such as createdAt,desc.
 type SortCriteria []string
 
-// RawClient answers with the JSON meshStack sent, for the CLI, which writes it out as it came. It
-// is the CLI's alone: DoRequest takes the options of internal/http, which Go's internal rule closes
-// to the Terraform provider.
+// RawClient answers with the JSON meshStack sent, for the CLI, which writes it out as it came.
 type RawClient struct {
 	httpClient internal.HttpClient
 	// apis is keyed by the Go type rather than the kind, because MeshBuildingBlock and
@@ -43,7 +38,7 @@ func newRawClient(httpClient internal.HttpClient) *RawClient {
 
 // List pages through the objects of M, narrowed by filter, a struct whose fields are the query
 // parameters of the listing.
-func (r *RawClient) List[M any](ctx context.Context, filter any, options ListOptions) iter.Seq2[jsontext.Value, error] {
+func (r *RawClient) List[M any](ctx context.Context, filter any, options types.ListOptions) iter.Seq2[jsontext.Value, error] {
 	api, err := r.api[M]()
 	if err != nil {
 		return func(yield func(jsontext.Value, error) bool) {
@@ -67,7 +62,7 @@ func (r *RawClient) Get[M any](ctx context.Context, uuid uuid.UUID, pathElems ..
 		return nil, err
 	}
 	return api.DoRequest[jsontext.Value](ctx, http.MethodGet, api.ApiUrl.JoinPath(uuid.String()).JoinPath(pathElems...),
-		http.WithAccept(api.MeshObjectMimeType()))
+		http.WithHeader("Accept", api.MeshObjectMimeType()))
 }
 
 // DoRequest joins path onto the endpoint, even one that names a host, so that the bearer token

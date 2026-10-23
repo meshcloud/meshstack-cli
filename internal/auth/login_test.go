@@ -19,7 +19,7 @@ func TestLoginRefusesAnUnknownCredential(t *testing.T) {
 	newTestServer(t)
 
 	_, _, _, err := auth.Login(t.Context(), "nope", testSessionOpts)
-	require.ErrorContains(t, err, "cannot authenticate with credential 'nope'; pick one of [apiKey manual oidcLogin]")
+	require.ErrorContains(t, err, "cannot authenticate with credential 'nope'; pick one of [apiKey basicAuth manual oidcLogin]")
 
 	profiles, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{ExclusiveLock: true})
 	require.NoError(t, err, "a login that fails holds no lock on the profiles")

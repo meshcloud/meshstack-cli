@@ -17,9 +17,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
@@ -88,8 +88,11 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 				r.header.Set("Content-Type", "application/json")
 			}
 
-			answer, err := meshStack.Raw.DoRequest(ctx, r.method, r.target.Path,
-				http.WithUrlQuery(r.target.Query()), http.WithHeaders(r.header), http.WithBody(r.body))
+			options := []http.RequestOption{http.WithUrlQuery(r.target.Query()), http.WithBody(r.header.Get("Content-Type"), r.body)}
+			for key, values := range r.header {
+				options = append(options, http.WithHeader(key, values...))
+			}
+			answer, err := meshStack.Raw.DoRequest(ctx, r.method, r.target.Path, options...)
 			if httpErr, ok := errors.AsType[client.HttpError](err); ok {
 				if writeErr := writeAnswer(cmd.OutOrStdout(), httpErr.ResponseBody); writeErr != nil {
 					return writeErr

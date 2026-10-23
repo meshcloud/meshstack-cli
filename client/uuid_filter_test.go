@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
@@ -19,7 +20,7 @@ func TestAUuidOfAFilterGoesAsItsTextAndAZeroOneNotAtAll(t *testing.T) {
 		{BuildingBlockUuid: uuid.MustParse("0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90")},
 		{},
 	} {
-		for _, err := range raw.List[MeshBuildingBlockRun](t.Context(), filter, ListOptions{}) {
+		for _, err := range raw.List[MeshBuildingBlockRun](t.Context(), filter, types.ListOptions{}) {
 			require.NoError(t, err)
 		}
 	}

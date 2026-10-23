@@ -14,47 +14,58 @@ import (
 	"time"
 )
 
-type RetryOptions struct {
-	MaxRetries int
-	Backoff    RetryBackoff
+type RetryOn uint8
+
+const (
+	// RetryOnBusy waits as long as the Retry-After of a 429 or 503 asks.
+	RetryOnBusy RetryOn = 1 << iota
+	// RetryOnGatewayError covers 502 and 504, after which the server may have acted on the request.
+	RetryOnGatewayError
+	// RetryOnBrokenConnection covers a connection that broke once it was up, as one an ingress drops
+	// during a rolling deploy does.
+	RetryOnBrokenConnection
+
+	RetryOnTransient = RetryOnBusy | RetryOnGatewayError | RetryOnBrokenConnection
+)
+
+// RetryPolicy gets retryable true when the caller marked the request with [Retryable].
+type RetryPolicy func(method string, retryable bool) RetryOn
+
+func defaultRetryPolicy(method string, retryable bool) RetryOn {
+	if method == MethodGet || retryable {
+		return RetryOnTransient
+	}
+	return 0
 }
 
-// ApplyTo makes the given client retry a GET on its own, and any other method only where the
-// caller marked the request with [Retryable].
-func (options RetryOptions) ApplyTo(c *gohttp.Client) {
-	next := gohttp.DefaultTransport
-	if c.Transport != nil {
-		next = c.Transport
+type retryOptions struct {
+	policy     RetryPolicy
+	maxRetries int
+	backoff    retryBackoff
+}
+
+func (options retryOptions) wrap(next gohttp.RoundTripper) gohttp.RoundTripper {
+	return &retryRoundTripper{next: next, retryOptions: options}
+}
+
+func (on RetryOn) backoff(resp *gohttp.Response, err error, fallback retryBackoff) retryBackoff {
+	switch {
+	case err != nil:
+		// An unknown host, a refused connection or a TLS error repeats on every attempt, and a
+		// timeout would multiply by the retries.
+		if on&RetryOnBrokenConnection != 0 && isBrokenConnection(err) {
+			return fallback
+		}
+	case resp.StatusCode == gohttp.StatusTooManyRequests || resp.StatusCode == gohttp.StatusServiceUnavailable:
+		if on&RetryOnBusy != 0 {
+			return retryAfterBackoff{Response: resp, Fallback: fallback}
+		}
+	case resp.StatusCode == gohttp.StatusBadGateway || resp.StatusCode == gohttp.StatusGatewayTimeout:
+		if on&RetryOnGatewayError != 0 {
+			return fallback
+		}
 	}
-	c.Transport = &retryRoundTripper{
-		Next:       next,
-		MaxRetries: options.MaxRetries,
-		ShouldRetryRequest: func(req *gohttp.Request) bool {
-			if options.Backoff == nil {
-				return false
-			}
-			return req.Method == MethodGet || isRetryable(req.Context())
-		},
-		ShouldRetryResponse: func(resp *gohttp.Response, err error) RetryBackoff {
-			if err != nil {
-				// Only a connection that broke once it was up clears on a retry, as one an ingress drops
-				// during a rolling deploy does. An unknown host, a refused connection or a TLS error
-				// repeats on every attempt, and a timeout would multiply by the retries.
-				if isBrokenConnection(err) {
-					return options.Backoff
-				}
-				return nil
-			}
-			switch resp.StatusCode {
-			case gohttp.StatusTooManyRequests, gohttp.StatusServiceUnavailable:
-				return retryAfterBackoff{Response: resp, Fallback: options.Backoff}
-			case gohttp.StatusBadGateway, gohttp.StatusGatewayTimeout:
-				return options.Backoff
-			default:
-				return nil
-			}
-		},
-	}
+	return nil
 }
 
 func isBrokenConnection(err error) bool {
@@ -62,15 +73,15 @@ func isBrokenConnection(err error) bool {
 		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
-type RetryBackoff interface {
+type retryBackoff interface {
 	Calculate(attempt int) time.Duration
 }
 
-type ExponentialBackoff struct {
+type exponentialBackoff struct {
 	MinWait, MaxWait time.Duration
 }
 
-func (b ExponentialBackoff) Calculate(attempt int) time.Duration {
+func (b exponentialBackoff) Calculate(attempt int) time.Duration {
 	nextWait := time.Duration(math.Pow(2, float64(attempt-1))) * b.MinWait
 	if b.MaxWait > 0 && nextWait > b.MaxWait {
 		return b.MaxWait
@@ -82,7 +93,7 @@ var timeNow = time.Now
 
 type retryAfterBackoff struct {
 	Response *gohttp.Response
-	Fallback RetryBackoff
+	Fallback retryBackoff
 }
 
 func (b retryAfterBackoff) Calculate(attempt int) (waitTime time.Duration) {
@@ -112,27 +123,27 @@ func (b retryAfterBackoff) Calculate(attempt int) (waitTime time.Duration) {
 }
 
 type retryRoundTripper struct {
-	Next                gohttp.RoundTripper
-	MaxRetries          int
-	ShouldRetryRequest  func(req *gohttp.Request) bool
-	ShouldRetryResponse func(resp *gohttp.Response, err error) RetryBackoff
+	retryOptions
+
+	next gohttp.RoundTripper
 }
 
 func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
-	if !r.ShouldRetryRequest(req) {
-		return r.Next.RoundTrip(req)
+	on := r.policy(req.Method, isRetryable(req))
+	if on == 0 {
+		return r.next.RoundTrip(req)
 	}
 	req = makeRequestBodyRetryable(req)
 	for attempt := 1; ; attempt++ {
-		resp, err := r.Next.RoundTrip(req)
+		resp, err := r.next.RoundTrip(req)
 		// A request the context ended is not retried. The context is checked rather than the error,
 		// since the transport returns the context's cause, which for Ctrl-C is a signal error that
 		// wraps no context.Canceled.
 		if errors.Is(err, errRetryableBodyClose) || err != nil && req.Context().Err() != nil {
 			return resp, err
 		}
-		backoff := r.ShouldRetryResponse(resp, err)
-		if backoff == nil || attempt > r.MaxRetries {
+		backoff := on.backoff(resp, err, r.backoff)
+		if backoff == nil || attempt > r.maxRetries {
 			return resp, err
 		}
 		drainAndCloseResponseBody(req.Context(), resp)
@@ -153,7 +164,7 @@ func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, er
 			}(),
 			"method", req.Method,
 			"path", req.URL.Path,
-			"attempt", fmt.Sprintf("%d/%d", attempt, r.MaxRetries),
+			"attempt", fmt.Sprintf("%d/%d", attempt, r.maxRetries),
 			"waitTime", waitTime,
 		)...)
 		timer := time.NewTimer(waitTime)

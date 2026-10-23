@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )
 
-var _ Credential = &Manual{}
+var _ Minter = &Manual{}
 
 type Manual struct {
 	Endpoint xurl.URL `json:"endpoint"`

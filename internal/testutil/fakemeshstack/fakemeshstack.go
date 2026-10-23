@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 )
 
 // DefaultVersion is at least client.MinMeshStackVersion, or the CLI refuses the backend.
@@ -48,8 +48,9 @@ type Options struct {
 	AdminWorkspace string
 	// Issuer makes the Server the Keycloak of meshStack as well, under the path of the issuer. A
 	// caller that serves the issuer's host elsewhere routes that host to the Server too.
-	Issuer  string
-	ApiKeys []ApiKey
+	Issuer    string
+	ApiKeys   []ApiKey
+	BasicAuth []http.BasicAuth
 
 	// The objects are marshaled on every request, so a test may change one between steps. A
 	// workspace is found by metadata.name, every other object by metadata.uuid.
@@ -255,6 +256,9 @@ func (s *Server) authorized(next gohttp.HandlerFunc) gohttp.HandlerFunc {
 		token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		s.mu.Lock()
 		honored, minted := s.minted[token]
+		if username, password, ok := r.BasicAuth(); ok {
+			honored = slices.Contains(s.options.BasicAuth, http.BasicAuth{Username: username, Password: password})
+		}
 		switch {
 		case honored:
 			s.counts.Authorized++

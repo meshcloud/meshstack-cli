@@ -1,5 +1,5 @@
 // Package http_test drives the client from the outside, so that it can parse answers into the
-// types real callers declare. internal/http may not import any of them.
+// types real callers declare. client/http may not import any of them.
 package http_test
 
 import (
@@ -12,6 +12,8 @@ import (
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -19,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
@@ -83,7 +85,7 @@ func TestHttpClient(t *testing.T) {
 						}
 						resp.WriteHeader(gohttp.StatusOK)
 						_, _ = resp.Write([]byte(`{}`))
-					}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff})
+					}), 3, &retryTestBackoff)
 					start := time.Now()
 
 					_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
@@ -108,7 +110,7 @@ func TestHttpClient(t *testing.T) {
 		backoff := retryTestBackoff{}
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusBadGateway)
-		}), http.RetryOptions{MaxRetries: 2, Backoff: &backoff})
+		}), 2, &backoff)
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 		var httpErr http.Error
 		require.ErrorAs(t, err, &httpErr)
@@ -128,7 +130,7 @@ func TestHttpClient(t *testing.T) {
 			backoff := retryTestBackoff{WaitTime: 10 * time.Second}
 			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				resp.WriteHeader(gohttp.StatusBadGateway)
-			}), http.RetryOptions{MaxRetries: 3, Backoff: &backoff})
+			}), 3, &backoff)
 			// The bubble's clock only moves once the 502 has arrived and the backoff waits, so this
 			// cancels inside the wait. Cancelling from the handler raced the 502 back to the client.
 			ctx, cancel := context.WithCancel(t.Context())
@@ -155,7 +157,7 @@ func TestHttpClient(t *testing.T) {
 				return
 			}
 			resp.WriteHeader(gohttp.StatusNoContent)
-		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
+		}), 3, &retryTestBackoff{})
 		payload := http.WithJsonPayload(map[string]string{"key": "value"}, "application/json")
 
 		for _, method := range []string{gohttp.MethodPatch, gohttp.MethodPost, gohttp.MethodPut, gohttp.MethodDelete} {
@@ -169,6 +171,25 @@ func TestHttpClient(t *testing.T) {
 			require.NoError(t, err, method)
 			assert.Equal(t, []string{`{"key":"value"}`, `{"key":"value"}`}, bodies, method)
 		}
+	})
+
+	t.Run("DoRequest reopens a body file to replay it", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "plan")
+		require.NoError(t, os.WriteFile(path, []byte("a plan"), 0o600))
+		var bodies []string
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			body, _ := io.ReadAll(req.Body)
+			bodies = append(bodies, string(body))
+			if len(bodies) == 1 {
+				resp.WriteHeader(gohttp.StatusServiceUnavailable)
+				return
+			}
+			resp.WriteHeader(gohttp.StatusNoContent)
+		}), 3, &retryTestBackoff{})
+
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl, http.WithBodyFile("application/octet-stream", path), http.Retryable())
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a plan", "a plan"}, bodies)
 	})
 
 	t.Run("DoRequest re-mints once on 401", func(t *testing.T) {
@@ -186,7 +207,7 @@ func TestHttpClient(t *testing.T) {
 			_, err := client.WithAuthorization(auth).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
 			require.NoError(t, err)
 			assert.Equal(t, []string{"Bearer stale", "Bearer fresh"}, seen)
-			assert.Equal(t, []http.BearerToken{"stale"}, auth.rejected, "the token that was refused is what the refresh is told about")
+			assert.Equal(t, []http.Credential{http.BearerToken("stale")}, auth.rejected, "the token that was refused is what the refresh is told about")
 		})
 
 		t.Run("reports the 401 when the re-mint changes nothing", func(t *testing.T) {
@@ -219,17 +240,33 @@ func TestHttpClient(t *testing.T) {
 		})
 
 		t.Run("leaves an authorization that cannot re-mint alone", func(t *testing.T) {
-			attempts := 0
-			client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-				attempts++
-				resp.WriteHeader(gohttp.StatusUnauthorized)
-			})
-			_, err := client.WithAuthorization(http.BearerToken("static")).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
-			var httpErr http.Error
-			require.ErrorAs(t, err, &httpErr)
-			assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
-			assert.Equal(t, 1, attempts)
+			for _, static := range []http.Authorization{http.BearerToken("static"), http.BasicAuth{Username: "runner", Password: "secret"}} {
+				attempts := 0
+				client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+					attempts++
+					resp.WriteHeader(gohttp.StatusUnauthorized)
+				})
+				_, err := client.WithAuthorization(static).DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl.JoinPath("edit"))
+				var httpErr http.Error
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, gohttp.StatusUnauthorized, httpErr.StatusCode)
+				assert.Equal(t, 1, attempts, "%T", static)
+			}
 		})
+	})
+
+	t.Run("BasicAuth sends the username and password as a Basic header", func(t *testing.T) {
+		var username, password string
+		var ok bool
+		client := newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			username, password, ok = req.BasicAuth()
+			resp.WriteHeader(gohttp.StatusNoContent)
+		})
+		_, err := client.WithAuthorization(http.BasicAuth{Username: "runner", Password: "p:ss"}).DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl)
+		require.NoError(t, err)
+		require.True(t, ok)
+		assert.Equal(t, "runner", username)
+		assert.Equal(t, "p:ss", password)
 	})
 
 	t.Run("DoRequest of []byte returns the retried answer as it came, empty included", func(t *testing.T) {
@@ -254,14 +291,54 @@ func TestHttpClient(t *testing.T) {
 	})
 }
 
+func TestClientOptions(t *testing.T) {
+	serve := func(t *testing.T, handler gohttp.HandlerFunc) *url.URL {
+		t.Helper()
+		server := httptest.NewServer(handler)
+		t.Cleanup(server.Close)
+		serverUrl, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		return serverUrl
+	}
+
+	t.Run("WithoutRedirects answers with the 3xx", func(t *testing.T) {
+		serverUrl := serve(t, gohttp.RedirectHandler("/elsewhere", gohttp.StatusFound).ServeHTTP)
+		client := http.NewClient(fakemeshstack.UserAgent, http.WithoutRedirects())
+
+		_, err := client.DoRequest[[]byte](t.Context(), http.MethodGet, serverUrl)
+
+		httpErr, ok := errors.AsType[http.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, gohttp.StatusFound, httpErr.StatusCode)
+	})
+
+	t.Run("WithRetry retries a POST on 503 and stops at 502", func(t *testing.T) {
+		var answered []int
+		serverUrl := serve(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+			status := []int{gohttp.StatusServiceUnavailable, gohttp.StatusBadGateway}[len(answered)]
+			answered = append(answered, status)
+			resp.Header().Set("Retry-After", "0")
+			resp.WriteHeader(status)
+		})
+		client := http.NewClient(fakemeshstack.UserAgent, http.WithRetry(func(string, bool) http.RetryOn { return http.RetryOnBusy }))
+
+		_, err := client.DoRequest[any](t.Context(), http.MethodPost, serverUrl)
+
+		httpErr, ok := errors.AsType[http.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, []int{gohttp.StatusServiceUnavailable, gohttp.StatusBadGateway}, answered)
+		assert.Equal(t, http.Error{Method: http.MethodPost, Url: serverUrl.String(), StatusCode: gohttp.StatusBadGateway, ResponseBody: []byte{}}, httpErr)
+	})
+}
+
 type refreshableAuthorization struct {
 	token      http.BearerToken
 	keepToken  bool
 	refreshErr error
-	rejected   []http.BearerToken
+	rejected   []http.Credential
 }
 
-func (a *refreshableAuthorization) GetBearerToken(context.Context) (http.BearerToken, error) {
+func (a *refreshableAuthorization) GetCredential(context.Context) (http.Credential, error) {
 	return a.token, nil
 }
 
@@ -269,10 +346,10 @@ func (a *refreshableAuthorization) Scope() string {
 	return ""
 }
 
-func (a *refreshableAuthorization) RefreshBearerToken(_ context.Context, rejected http.BearerToken) (http.BearerToken, error) {
+func (a *refreshableAuthorization) RefreshCredential(_ context.Context, rejected http.Credential) (http.Credential, error) {
 	a.rejected = append(a.rejected, rejected)
 	if a.refreshErr != nil {
-		return "", a.refreshErr
+		return nil, a.refreshErr
 	}
 	if !a.keepToken {
 		a.token = "fresh"
@@ -418,10 +495,8 @@ func newTestClientWithServer(t *testing.T, handlerFunc gohttp.HandlerFunc) TestC
 	return TestClient{http.Client{Client: client, UserAgent: fakemeshstack.UserAgent}, serverUrl}
 }
 
-// withTestRetry gives one test client its own retry policy. The shipped client is the one shared
-// one and takes no configuration, so a test that needs a backoff it can count builds its own.
-func withTestRetry(c TestClient, options http.RetryOptions) TestClient {
-	options.ApplyTo(c.Client.Client)
+func withTestRetry(c TestClient, maxRetries int, backoff *retryTestBackoff) TestClient {
+	c.Client = http.WithTestRetry(c.Client, maxRetries, backoff)
 	return c
 }
 

@@ -12,9 +12,9 @@ import (
 	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -37,6 +37,7 @@ type CredentialStatus struct {
 	// an API key minted.
 	OidcLogin *OidcLoginStatus `json:"oidcLogin,omitzero"`
 	ApiKey    *ApiKeyStatus    `json:"apiKey,omitzero"`
+	BasicAuth *BasicAuthStatus `json:"basicAuth,omitzero"`
 
 	Unused []UnusedCredential `json:"unusedCredentials,omitzero"`
 }
@@ -48,6 +49,7 @@ type UnusedCredential struct {
 	Selected bool `json:"selected,omitzero"`
 	// ClientId is set for an API key.
 	ClientId string `json:"clientId,omitzero"`
+	Username string `json:"username,omitzero"`
 	// Token is the cached token of a browser login or an API token.
 	Token *TokenStatus `json:"token,omitzero"`
 }
@@ -91,6 +93,10 @@ func BrowserLoginEnded(ctx context.Context, p *profile.Profile) bool {
 		return true
 	}
 	return OidcLoginStatus{SessionEndsAt: creds.OidcLogin.Cache.RefreshExpiresAt}.SessionEnded()
+}
+
+type BasicAuthStatus struct {
+	Username string `json:"username"`
 }
 
 type ApiKeyStatus struct {
@@ -139,6 +145,8 @@ func (s Session) Status(ctx context.Context) CredentialStatus {
 	case *credential.ApiKey:
 		status.ApiKey = &ApiKeyStatus{ClientId: cred.ClientId, Details: apiKeyDetails(ctx, s.Client)}
 		token, found = cred.CachedToken(ctx, s.getWorkspace)
+	case *credential.BasicAuth:
+		status.BasicAuth = &BasicAuthStatus{Username: cred.Username}
 	case *credential.Manual:
 		token, found = cred.CachedToken(ctx, s.getWorkspace)
 		// A pasted API token is most likely the token of a building block run, which its ephemeral
@@ -175,6 +183,8 @@ func (s Session) unusedCredentials(ctx context.Context, workspace meshstack.Work
 		switch cred := cred.(type) {
 		case *credential.ApiKey:
 			entry.ClientId = cred.ClientId.String()
+		case *credential.BasicAuth:
+			entry.Username = cred.Username
 		case *credential.OidcLogin:
 			if token, found := oidcTokenFor(cred, workspace); found {
 				entry.Token = tokenStatusOf(token)

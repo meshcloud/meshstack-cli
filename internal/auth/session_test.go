@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -58,6 +58,21 @@ func TestSessionResolutionSaysWhyItFails(t *testing.T) {
 		require.ErrorContains(t, err, auth.ApiTokenSetting.EnvKey())
 		require.ErrorContains(t, err, auth.ApiKeyClientIdSetting.EnvKey())
 		require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
+		require.ErrorContains(t, err, auth.ApiUsernameSetting.EnvKey())
+	})
+
+	t.Run("with a username but no password", func(t *testing.T) {
+		t.Setenv(auth.ApiUsernameSetting.EnvKey(), testBasicAuth.Username)
+		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.ErrorContains(t, err, "together")
+		require.ErrorContains(t, err, auth.ApiPasswordSetting.EnvKey())
+	})
+
+	t.Run("with basic auth next to an API key", func(t *testing.T) {
+		setApiKeyEnv(t, testApiKey1)
+		setBasicAuthEnv(t, testBasicAuth)
+		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		assert.ErrorContains(t, err, "more than one credential")
 	})
 
 	t.Run("with half an API key", func(t *testing.T) {
@@ -130,6 +145,62 @@ func TestSessionOfAStoredApiKey(t *testing.T) {
 	})
 }
 
+func TestSessionWithBasicAuth(t *testing.T) {
+	server := newTestServer(t)
+
+	t.Run("sends the username and password with every request and logs in nowhere", func(t *testing.T) {
+		setBasicAuthEnv(t, testBasicAuth)
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		requireAnswer(t, server, session)
+		requireAnswer(t, server, session)
+		assert.Equal(t, fakemeshstack.Counts{Authorized: 2}, server.Counts())
+	})
+
+	t.Run("a refused password is asked once", func(t *testing.T) {
+		setBasicAuthEnv(t, http.BasicAuth{Username: testBasicAuth.Username, Password: "wrong"})
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		var httpErr http.Error
+		require.ErrorAs(t, ask(t.Context(), server, session), &httpErr)
+		assert.True(t, httpErr.IsUnauthorized())
+		assert.EqualValues(t, 1, server.Counts().UnknownTokens)
+	})
+
+	t.Run("a check refuses a wrong password and accepts the right one", func(t *testing.T) {
+		setBasicAuthEnv(t, http.BasicAuth{Username: testBasicAuth.Username, Password: "wrong"})
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		var httpErr http.Error
+		require.ErrorAs(t, session.CheckCredential(t.Context()), &httpErr)
+		assert.True(t, httpErr.IsUnauthorized())
+
+		setBasicAuthEnv(t, testBasicAuth)
+		session, err = auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		require.NoError(t, session.CheckCredential(t.Context()))
+	})
+
+	t.Run("sends no bearer token", func(t *testing.T) {
+		setBasicAuthEnv(t, testBasicAuth)
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		_, err = session.GetBearerToken(t.Context())
+		require.EqualError(t, err, "Basic auth sends no bearer token")
+	})
+
+	t.Run("a login stores it for the next command", func(t *testing.T) {
+		setBasicAuthEnv(t, testBasicAuth)
+		storeLogin(t, credential.BasicAuthName)
+
+		setBasicAuthEnv(t, http.BasicAuth{})
+		session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+		require.NoError(t, err)
+		assert.Equal(t, credential.BasicAuthName, session.Credential.Name())
+		requireAnswer(t, server, session)
+	})
+}
+
 func TestSessionOfAStoredManualToken(t *testing.T) {
 	server := newTestServer(t)
 	t.Setenv(auth.ApiTokenSetting.EnvKey(), server.MintToken(time.Hour))
@@ -170,6 +241,7 @@ var (
 	testSessionOpts = auth.ResolveSessionOptions{Version: "dev", GitHubRepo: "meshcloud/test-client"}
 	testApiKey1     = fakemeshstack.ApiKey{ClientId: "11111111-45bf-42ba-a965-2097b9d0d181", ClientSecret: "super-test-secret-1"}
 	testApiKey2     = fakemeshstack.ApiKey{ClientId: "22222222-45bf-42ba-a965-2097b9d0d181", ClientSecret: "super-test-secret-2"}
+	testBasicAuth   = http.BasicAuth{Username: "runner", Password: "super-test-password"}
 )
 
 func newTestServer(t *testing.T) *fakemeshstack.Server {
@@ -184,10 +256,15 @@ func newTestServer(t *testing.T) *fakemeshstack.Server {
 		auth.ApiKeyClientIdSetting.EnvKey(),
 		auth.ApiKeyClientSecretSetting.EnvKey(),
 		auth.ApiTokenSetting.EnvKey(),
+		auth.ApiUsernameSetting.EnvKey(),
+		auth.ApiPasswordSetting.EnvKey(),
 	} {
 		t.Setenv(envKey, "")
 	}
-	server := fakemeshstack.Start(t, fakemeshstack.Options{ApiKeys: []fakemeshstack.ApiKey{testApiKey1, testApiKey2}})
+	server := fakemeshstack.Start(t, fakemeshstack.Options{
+		ApiKeys:   []fakemeshstack.ApiKey{testApiKey1, testApiKey2},
+		BasicAuth: []http.BasicAuth{testBasicAuth},
+	})
 	t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 	t.Setenv(meshstack.EndpointSetting.EnvKey(), server.URL)
 	return server
@@ -197,6 +274,12 @@ func setApiKeyEnv(t *testing.T, key fakemeshstack.ApiKey) {
 	t.Helper()
 	t.Setenv(auth.ApiKeyClientIdSetting.EnvKey(), key.ClientId)
 	t.Setenv(auth.ApiKeyClientSecretSetting.EnvKey(), key.ClientSecret)
+}
+
+func setBasicAuthEnv(t *testing.T, basic http.BasicAuth) {
+	t.Helper()
+	t.Setenv(auth.ApiUsernameSetting.EnvKey(), basic.Username)
+	t.Setenv(auth.ApiPasswordSetting.EnvKey(), basic.Password)
 }
 
 // ask brings its own http.Client, because the session keeps its own to itself. What these tests
