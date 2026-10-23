@@ -123,7 +123,10 @@ func TestWorkspaceSelection(t *testing.T) {
 		{Metadata: client.MeshWorkspaceMetadata{Name: "first"}, Spec: client.MeshWorkspaceSpec{DisplayName: "First"}},
 		{Metadata: client.MeshWorkspaceMetadata{Name: "second"}, Spec: client.MeshWorkspaceSpec{DisplayName: "Second"}},
 	}}
-	const asked = "  [1] First  (first)\n  [2] Second (second)\nSelect a workspace [1-2]: "
+	const (
+		asked            = "  [1] First  (first)\n  [2] Second (second)\nSelect a workspace [1-2]: "
+		askedWithDefault = "  [1] First  (first)\n *[2] Second (second)\nSelect a workspace [1-2, default=2]: "
+	)
 
 	// An input that stays open with nothing on it, as the stdin of some scripts does.
 	silent := func(t *testing.T) io.Reader {
@@ -134,15 +137,18 @@ func TestWorkspaceSelection(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		optional bool
-		answers  func(t *testing.T) io.Reader
-		want     string
-		wantErr  string
+		name           string
+		optional       bool
+		profileDefault meshstack.Workspace
+		answers        func(t *testing.T) io.Reader
+		want           string
+		wantErr        string
 	}{
 		{name: "an answer selects", answers: answer("2"), want: "second"},
 		{name: "an optional selection answered selects as well", optional: true, answers: answer("2"), want: "second"},
-		{name: "an input that ends is an error", answers: answer(""), wantErr: "nothing was entered for the workspace selection"},
+		{name: "an input that ends is an error", answers: answer(""), wantErr: "nothing was entered for the workspace selection: the prompt reached the end of its input; name one with --workspace"},
+		{name: "an input that ends takes the profile's default", profileDefault: "second", answers: answer(""), want: "second"},
+		{name: "an answer selects over the profile's default", profileDefault: "second", answers: answer("1"), want: "first"},
 		{name: "an optional selection takes an input that ends as none", optional: true, answers: answer("")},
 		{name: "an input with no answer in time is an error", answers: silent, wantErr: context.DeadlineExceeded.Error()},
 		{name: "an optional selection fails as well with no answer in time", optional: true, answers: silent, wantErr: context.DeadlineExceeded.Error()},
@@ -155,7 +161,9 @@ func TestWorkspaceSelection(t *testing.T) {
 
 				source := newWorkspaceSelectionSource(prompt.New(tt.answers(t), &output), tt.optional)
 				ctx := meshstack.SetWorkspacesInContext(t.Context(), func() (meshstack.Workspaces, error) {
-					return workspaces, nil
+					withDefault := workspaces
+					withDefault.ProfileDefaultWorkspace = tt.profileDefault
+					return withDefault, nil
 				})
 
 				selected, err := source.Lookup(ctx, setting.Workspace.EnvKey())
@@ -166,7 +174,11 @@ func TestWorkspaceSelection(t *testing.T) {
 					require.NoError(t, err)
 				}
 				assert.Equal(t, tt.want, selected)
-				assert.Equal(t, asked, output.String())
+				if tt.profileDefault != "" {
+					assert.Equal(t, askedWithDefault, output.String())
+				} else {
+					assert.Equal(t, asked, output.String())
+				}
 			})
 		})
 	}
