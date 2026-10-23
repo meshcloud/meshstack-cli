@@ -138,6 +138,7 @@ type operation struct {
 
 type param struct {
 	name, goName, goType, doc string
+	ref                       typeRef
 }
 
 func newGenerator(spec openapi.Spec, cfg Config) *generator {

@@ -76,8 +76,9 @@ func (c Client) Paint(ctx context.Context, uuid uuid.UUID, body PaintRequest) (R
 }
 
 type ListFilter struct {
-	Sort      []string `json:"sort"`
-	OwnerUuid string   `json:"ownerUuid"`
+	Sort       []ListFilterSort      `json:"sort,omitzero"`
+	OwnerUuid  uuid.UUID             `json:"ownerUuid,omitzero"`
+	TargetKind meshobject.TargetKind `json:"targetKind,omitzero"`
 }
 
 type AwsConfig struct {
@@ -93,6 +94,15 @@ type Config struct {
 type GcpConfig struct {
 	Project string `json:"project"`
 }
+
+type ListFilterSort string
+
+const (
+	ListFilterSortCreatedAt     ListFilterSort = "createdAt"
+	ListFilterSortCreatedAtDesc ListFilterSort = "createdAt,desc"
+)
+
+var ListFilterSorts = enum.Of[ListFilterSort]("createdAt", "createdAt,desc")
 
 type Metadata struct {
 	Uuid      uuid.UUID         `json:"uuid"`

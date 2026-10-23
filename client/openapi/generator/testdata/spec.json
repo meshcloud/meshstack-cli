@@ -7,8 +7,9 @@
         "operationId": "meshThingList",
         "parameters": [
           {"$ref": "#/components/parameters/page"},
-          {"name": "sort", "in": "query", "schema": {"$ref": "#/components/schemas/array_string_0"}},
-          {"name": "ownerUuid", "in": "query", "schema": {"type": "string", "format": "uuid"}}
+          {"name": "sort", "in": "query", "schema": {"type": "array", "items": {"type": "string", "enum": ["createdAt", "createdAt,desc"]}}},
+          {"name": "ownerUuid", "in": "query", "schema": {"type": "string", "format": "uuid"}},
+          {"name": "targetKind", "in": "query", "schema": {"$ref": "#/components/schemas/TargetKind"}}
         ],
         "responses": {
           "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/HalPageMeshThingV2"}}}}
