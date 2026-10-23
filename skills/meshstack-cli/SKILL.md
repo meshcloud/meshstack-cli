@@ -75,10 +75,9 @@ A browser login needs the user in their browser. An agent's shell is no terminal
 break the login there:
 
 - **Always pass `-p` and `--workspace`.** Without `-p`, login asks which profile to log in to.
-  Without `--workspace`, it asks for the workspace *after* the browser step: the prompt reads end
-  of input and fails, and the finished browser login is lost
-  ([#43](https://github.com/meshcloud/meshstack-cli/issues/43)). This also happens when the profile
-  has a default workspace.
+  Without `--workspace`, it asks for the workspace *after* the browser step. When the prompt reads
+  end of input, it takes the profile's default workspace. Without a default it fails, and the
+  finished browser login is lost.
 - **Run login in the background.** It waits up to 5 minutes for the browser step. Tell the user to
   finish it, and wait for the command to end. Never start a second login while one is waiting:
   the user then has to sign in twice.

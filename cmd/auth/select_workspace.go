@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
+	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
@@ -13,8 +15,9 @@ import (
 // profile's default ranks below it: a login is what changes that default. It needs no --stdin,
 // unlike the secret prompts in stdin.go, because the list has to be shown for the choice to make sense.
 //
-// A login that works without a workspace passes optional, and then takes an input that ends before
-// an answer as no selection. That is how a script with a closed stdin gets through, while a pipe that
+// An input that ends before an answer takes the profile's default workspace. A login that works
+// without a workspace passes optional, and then takes such an input as no selection where the
+// profile has no default. That is how a script with a closed stdin gets through, while a pipe that
 // carries the answer still selects. It takes a list it cannot get as no selection as well, since many
 // API keys lack the permission to list workspaces.
 func newWorkspaceSelectionSource(p prompt.Prompt, optional bool) setting.FallbackSource {
@@ -36,9 +39,17 @@ func newWorkspaceSelectionSource(p prompt.Prompt, optional bool) setting.Fallbac
 			selected, err := prompt.Select(ctx, p, "workspace", candidates, func(workspace setting.MeshWorkspace) bool {
 				return profileDefault != nil && workspace.Matches(*profileDefault)
 			})
-			if optional && errors.Is(err, prompt.ErrEndOfInput) {
-				slog.InfoContext(ctx, "No workspace was selected, as the input ended; the profile keeps its default workspace")
-				return "", nil
+			if errors.Is(err, prompt.ErrEndOfInput) {
+				switch {
+				case profileDefault != nil:
+					slog.InfoContext(ctx, fmt.Sprintf("Selecting the profile's default workspace '%s', as the input ended before an answer", profileDefault.Name()))
+					return string(profileDefault.Name()), nil
+				case optional:
+					slog.InfoContext(ctx, "No workspace was selected, as the input ended; the profile keeps its default workspace")
+					return "", nil
+				default:
+					return "", fmt.Errorf("%w; name one with --%s", err, internal.WorkspaceFlag.Name)
+				}
 			}
 			if err != nil {
 				return "", err
