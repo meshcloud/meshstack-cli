@@ -11,71 +11,62 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
 )
 
-type MeshBuildingBlockTargetRefDiscriminator string
-
-const (
-	MeshBuildingBlockTargetRefDiscriminatorMeshTenant    MeshBuildingBlockTargetRefDiscriminator = "meshTenant"
-	MeshBuildingBlockTargetRefDiscriminatorMeshWorkspace MeshBuildingBlockTargetRefDiscriminator = "meshWorkspace"
-)
-
-var MeshBuildingBlockTargetRefDiscriminators = enum.Of[MeshBuildingBlockTargetRefDiscriminator]("meshTenant", "meshWorkspace")
-
-type MeshBuildingBlockTargetRefResponse struct {
-	Kind          MeshBuildingBlockTargetRefDiscriminator
-	MeshTenant    *MeshBuildingBlockTargetTenantRefResponse
-	MeshWorkspace *MeshBuildingBlockTargetWorkspaceRefResponse
+type MeshBuildingBlockTargetRef struct {
+	Kind          string
+	MeshTenant    *MeshBuildingBlockTargetTenantRef
+	MeshWorkspace *MeshBuildingBlockTargetWorkspaceRef
 }
 
-func (u MeshBuildingBlockTargetRefResponse) MarshalJSONTo(enc *jsontext.Encoder) error {
+func (u MeshBuildingBlockTargetRef) MarshalJSONTo(enc *jsontext.Encoder) error {
 	switch u.Kind {
 	case "meshTenant":
 		if u.MeshTenant != nil {
 			return json.MarshalEncode(enc, struct {
-				Discriminator                             MeshBuildingBlockTargetRefDiscriminator `json:"kind"`
-				*MeshBuildingBlockTargetTenantRefResponse `json:",embed"`
+				Discriminator                     string `json:"kind"`
+				*MeshBuildingBlockTargetTenantRef `json:",embed"`
 			}{u.Kind, u.MeshTenant})
 		}
 	case "meshWorkspace":
 		if u.MeshWorkspace != nil {
 			return json.MarshalEncode(enc, struct {
-				Discriminator                                MeshBuildingBlockTargetRefDiscriminator `json:"kind"`
-				*MeshBuildingBlockTargetWorkspaceRefResponse `json:",embed"`
+				Discriminator                        string `json:"kind"`
+				*MeshBuildingBlockTargetWorkspaceRef `json:",embed"`
 			}{u.Kind, u.MeshWorkspace})
 		}
 	}
-	return fmt.Errorf("MeshBuildingBlockTargetRefResponse has no value for kind %q", u.Kind)
+	return fmt.Errorf("MeshBuildingBlockTargetRef has no value for kind %q", u.Kind)
 }
 
 // UnmarshalJSONFrom leaves every variant nil for a kind this client does not know yet.
-func (u *MeshBuildingBlockTargetRefResponse) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+func (u *MeshBuildingBlockTargetRef) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	raw, err := dec.ReadValue()
 	if err != nil {
 		return err
 	}
 	var discriminator struct {
-		Value MeshBuildingBlockTargetRefDiscriminator `json:"kind"`
+		Value string `json:"kind"`
 	}
 	if err := json.Unmarshal(raw, &discriminator); err != nil {
 		return err
 	}
-	*u = MeshBuildingBlockTargetRefResponse{Kind: discriminator.Value}
+	*u = MeshBuildingBlockTargetRef{Kind: discriminator.Value}
 	switch discriminator.Value {
 	case "meshTenant":
-		u.MeshTenant = new(MeshBuildingBlockTargetTenantRefResponse)
+		u.MeshTenant = new(MeshBuildingBlockTargetTenantRef)
 		return json.Unmarshal(raw, u.MeshTenant)
 	case "meshWorkspace":
-		u.MeshWorkspace = new(MeshBuildingBlockTargetWorkspaceRefResponse)
+		u.MeshWorkspace = new(MeshBuildingBlockTargetWorkspaceRef)
 		return json.Unmarshal(raw, u.MeshWorkspace)
 	}
 	return nil
 }
 
-type MeshBuildingBlockTargetTenantRefResponse struct {
+type MeshBuildingBlockTargetTenantRef struct {
 	// The UUID of the meshTenant.
 	Uuid uuid.UUID `json:"uuid"`
 }
 
-type MeshBuildingBlockTargetWorkspaceRefResponse struct {
+type MeshBuildingBlockTargetWorkspaceRef struct {
 	// The identifier of the meshWorkspace.
 	Name string `json:"name"`
 }

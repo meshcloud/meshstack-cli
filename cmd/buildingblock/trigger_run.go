@@ -79,7 +79,7 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 // building block as meshStack reported it then.
 type runStart struct {
 	raw     jsontext.Value
-	runUuid string
+	runUuid uuid.UUID
 	failure string
 }
 

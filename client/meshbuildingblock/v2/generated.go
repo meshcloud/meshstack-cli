@@ -5,9 +5,6 @@ package meshbuildingblock
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
-	"fmt"
 	"iter"
 	"time"
 	"uuid"
@@ -92,24 +89,24 @@ func (c Client) Update(ctx context.Context, uuid uuid.UUID, body Request) (Respo
 }
 
 type ListFilter struct {
-	WorkspaceIdentifier          string                                             `json:"workspaceIdentifier,omitzero"`
-	CustomerIdentifier           string                                             `json:"customerIdentifier,omitzero"`
-	ProjectIdentifier            string                                             `json:"projectIdentifier,omitzero"`
-	PlatformIdentifier           string                                             `json:"platformIdentifier,omitzero"`
-	Name                         string                                             `json:"name,omitzero"`
-	DefinitionName               string                                             `json:"definitionName,omitzero"`
-	DefinitionUuid               string                                             `json:"definitionUuid,omitzero"`
-	VersionNumber                string                                             `json:"versionNumber,omitzero"`
-	Status                       StatusValue                                        `json:"status,omitzero"`
-	Sort                         []ListFilterSort                                   `json:"sort,omitzero"`
-	VersionUuid                  uuid.UUID                                          `json:"versionUuid,omitzero"`
-	TenantUuid                   uuid.UUID                                          `json:"tenantUuid,omitzero"`
-	TargetRefKind                meshobject.MeshBuildingBlockTargetRefDiscriminator `json:"targetRefKind,omitzero"`
-	HealthStatus                 []HealthStatusValue                                `json:"healthStatus,omitzero"`
-	Action                       []ActionValue                                      `json:"action,omitzero"`
-	ManagedByWorkspaceIdentifier string                                             `json:"managedByWorkspaceIdentifier,omitzero"`
-	ManagedByDefinitionUuid      uuid.UUID                                          `json:"managedByDefinitionUuid,omitzero"`
-	LifecycleState               []ListFilterLifecycleState                         `json:"lifecycleState,omitzero"`
+	WorkspaceIdentifier          string                     `json:"workspaceIdentifier,omitzero"`
+	CustomerIdentifier           string                     `json:"customerIdentifier,omitzero"`
+	ProjectIdentifier            string                     `json:"projectIdentifier,omitzero"`
+	PlatformIdentifier           string                     `json:"platformIdentifier,omitzero"`
+	Name                         string                     `json:"name,omitzero"`
+	DefinitionName               string                     `json:"definitionName,omitzero"`
+	DefinitionUuid               uuid.UUID                  `json:"definitionUuid,omitzero"`
+	VersionNumber                string                     `json:"versionNumber,omitzero"`
+	Status                       StatusValue                `json:"status,omitzero"`
+	Sort                         []ListFilterSort           `json:"sort,omitzero"`
+	VersionUuid                  uuid.UUID                  `json:"versionUuid,omitzero"`
+	TenantUuid                   uuid.UUID                  `json:"tenantUuid,omitzero"`
+	TargetRefKind                TargetRefDiscriminator     `json:"targetRefKind,omitzero"`
+	HealthStatus                 []HealthStatusValue        `json:"healthStatus,omitzero"`
+	Action                       []ActionValue              `json:"action,omitzero"`
+	ManagedByWorkspaceIdentifier string                     `json:"managedByWorkspaceIdentifier,omitzero"`
+	ManagedByDefinitionUuid      uuid.UUID                  `json:"managedByDefinitionUuid,omitzero"`
+	LifecycleState               []ListFilterLifecycleState `json:"lifecycleState,omitzero"`
 }
 
 type ActionValue string
@@ -145,7 +142,6 @@ type DefinitionVersionRefRequest struct {
 	Uuid uuid.UUID `json:"uuid"`
 	// This is a fixed value "meshBuildingBlockDefinitionVersion"
 	Kind *DefinitionVersionRefRequestKind `json:"kind,omitzero"`
-	Name *string                          `json:"name,omitzero"`
 }
 
 // This is a fixed value "meshBuildingBlockDefinitionVersion"
@@ -162,7 +158,6 @@ type DefinitionVersionRefResponse struct {
 	Uuid uuid.UUID `json:"uuid"`
 	// This is a fixed value "meshBuildingBlockDefinitionVersion"
 	Kind DefinitionVersionRefResponseKind `json:"kind"`
-	Name *string                          `json:"name,omitzero"`
 }
 
 // This is a fixed value "meshBuildingBlockDefinitionVersion"
@@ -317,15 +312,15 @@ type MeshParentBuildingBlock struct {
 	// (Deprecated: Use parentBuildingBlockRefs instead) Reference to the parent Building Block, identified by its uuid.
 	BuildingBlockRef *Ref `json:"buildingBlockRef,omitzero"`
 	// (Deprecated: Use parentBuildingBlockRefs instead) The UUID of the parent Building Block.
-	BuildingBlockUuid *string `json:"buildingBlockUuid,omitzero"`
+	BuildingBlockUuid *uuid.UUID `json:"buildingBlockUuid,omitzero"`
 	// (Deprecated: Use parentBuildingBlockRefs instead) The UUID of the Building Block Definition of the parent Building Block. It is
-	// derived from the referenced Building Block, and ignored when supplied in a request.
-	DefinitionUuid *string `json:"definitionUuid,omitzero"`
+	// derived from the referenced Building Block. In a request, a valid UUID is ignored and a malformed one gets 400.
+	DefinitionUuid *uuid.UUID `json:"definitionUuid,omitzero"`
 }
 
 type Metadata struct {
 	// The UUID to uniquely identify the Building Block.
-	Uuid *string `json:"uuid,omitzero"`
+	Uuid *uuid.UUID `json:"uuid,omitzero"`
 	// The identifier of the meshWorkspace the Building Blocks belongs to.
 	OwnedByWorkspace string `json:"ownedByWorkspace"`
 }
@@ -357,7 +352,6 @@ type Ref struct {
 	Uuid uuid.UUID `json:"uuid"`
 	// The kind of the referenced meshObject. Always "meshBuildingBlock".
 	Kind RefKind `json:"kind"`
-	Name *string `json:"name,omitzero"`
 }
 
 // The kind of the referenced meshObject. Always "meshBuildingBlock".
@@ -391,7 +385,7 @@ type SpecRequest struct {
 	BuildingBlockDefinitionVersionRef DefinitionVersionRefRequest `json:"buildingBlockDefinitionVersionRef"`
 	// The reference to either a tenant or workspace the Building Block is located on. A tenant is referenced by `uuid`,
 	// a workspace by its identifier in `name`.
-	TargetRef TargetRefRequest `json:"targetRef"`
+	TargetRef meshobject.MeshBuildingBlockTargetRef `json:"targetRef"`
 	// The display name of the Building Block as it is shown in meshPanel.
 	DisplayName string `json:"displayName"`
 	// Map of input keys to their input data. A request contains only the inputs it may update, given sufficient
@@ -411,7 +405,7 @@ type SpecResponse struct {
 	BuildingBlockDefinitionVersionRef DefinitionVersionRefResponse `json:"buildingBlockDefinitionVersionRef"`
 	// The reference to either a tenant or workspace the Building Block is located on. A tenant is referenced by `uuid`,
 	// a workspace by its identifier in `name`.
-	TargetRef meshobject.MeshBuildingBlockTargetRefResponse `json:"targetRef"`
+	TargetRef meshobject.MeshBuildingBlockTargetRef `json:"targetRef"`
 	// The display name of the Building Block as it is shown in meshPanel.
 	DisplayName string `json:"displayName"`
 	// Map of input keys to their input data. A request contains only the inputs it may update, given sufficient
@@ -455,11 +449,11 @@ type StatusResponse struct {
 	// excluded — see `status.latestDryRunUuid`. Null when there is no modifying run yet. Use the meshBuildingBlockRun
 	// API to read the run and its logs; access to that content is governed there (run transparency does not gate this
 	// identifier).
-	LatestRunUuid *string `json:"latestRunUuid,omitzero"`
+	LatestRunUuid *uuid.UUID `json:"latestRunUuid,omitzero"`
 	// The UUID of the latest dry run for this Building Block, but only when it is the newest run — i.e. no modifying
 	// (apply/destroy) run is newer; null otherwise. This guarantees the field never points to a stale dry run that a
 	// later modifying run has superseded.
-	LatestDryRunUuid *string `json:"latestDryRunUuid,omitzero"`
+	LatestDryRunUuid *uuid.UUID `json:"latestDryRunUuid,omitzero"`
 	// Why meshStack could not start the run this Building Block was last asked to perform, phrased for the user of the
 	// Building Block and saying what they can do about it. Null while nothing stands in the way of a run.
 	RunStartFailure *string `json:"runStartFailure,omitzero"`
@@ -488,69 +482,14 @@ const (
 
 var StatusValues = enum.Of[StatusValue]("WAITING_FOR_DEPENDENT_INPUT", "WAITING_FOR_OPERATOR_INPUT", "WAITING_FOR_USER_INPUT", "WAITING_FOR_APPROVAL", "PENDING", "IN_PROGRESS", "SUCCEEDED", "FAILED", "ABORTED")
 
-type TargetRefRequest struct {
-	Kind          meshobject.MeshBuildingBlockTargetRefDiscriminator
-	MeshTenant    *TargetTenantRefRequest
-	MeshWorkspace *TargetWorkspaceRefRequest
-}
+type TargetRefDiscriminator string
 
-func (u TargetRefRequest) MarshalJSONTo(enc *jsontext.Encoder) error {
-	switch u.Kind {
-	case "meshTenant":
-		if u.MeshTenant != nil {
-			return json.MarshalEncode(enc, struct {
-				Discriminator           meshobject.MeshBuildingBlockTargetRefDiscriminator `json:"kind"`
-				*TargetTenantRefRequest `json:",embed"`
-			}{u.Kind, u.MeshTenant})
-		}
-	case "meshWorkspace":
-		if u.MeshWorkspace != nil {
-			return json.MarshalEncode(enc, struct {
-				Discriminator              meshobject.MeshBuildingBlockTargetRefDiscriminator `json:"kind"`
-				*TargetWorkspaceRefRequest `json:",embed"`
-			}{u.Kind, u.MeshWorkspace})
-		}
-	}
-	return fmt.Errorf("TargetRefRequest has no value for kind %q", u.Kind)
-}
+const (
+	TargetRefDiscriminatorMeshTenant    TargetRefDiscriminator = "meshTenant"
+	TargetRefDiscriminatorMeshWorkspace TargetRefDiscriminator = "meshWorkspace"
+)
 
-// UnmarshalJSONFrom leaves every variant nil for a kind this client does not know yet.
-func (u *TargetRefRequest) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	raw, err := dec.ReadValue()
-	if err != nil {
-		return err
-	}
-	var discriminator struct {
-		Value meshobject.MeshBuildingBlockTargetRefDiscriminator `json:"kind"`
-	}
-	if err := json.Unmarshal(raw, &discriminator); err != nil {
-		return err
-	}
-	*u = TargetRefRequest{Kind: discriminator.Value}
-	switch discriminator.Value {
-	case "meshTenant":
-		u.MeshTenant = new(TargetTenantRefRequest)
-		return json.Unmarshal(raw, u.MeshTenant)
-	case "meshWorkspace":
-		u.MeshWorkspace = new(TargetWorkspaceRefRequest)
-		return json.Unmarshal(raw, u.MeshWorkspace)
-	}
-	return nil
-}
-
-type TargetTenantRefRequest struct {
-	// The UUID of the meshTenant.
-	Uuid *uuid.UUID `json:"uuid,omitzero"`
-	// Rejected: a meshTenant target is referenced by its `uuid`.
-	Name *string `json:"name,omitzero"`
-}
-
-type TargetWorkspaceRefRequest struct {
-	// The identifier of the meshWorkspace.
-	Name *string `json:"name,omitzero"`
-	// Rejected: a meshWorkspace target is referenced by its identifier in `name`.
-	Uuid *string `json:"uuid,omitzero"`
-}
+var TargetRefDiscriminators = enum.Of[TargetRefDiscriminator]("meshTenant", "meshWorkspace")
 
 type Transition struct {
 	// The date this happened (e.g. `2020-12-22T09:37:43Z`).

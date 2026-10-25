@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"iter"
 	"testing"
+	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +19,7 @@ func blockRuns(block string, pulled *int, createdAts ...string) iter.Seq2[jsonte
 	return func(yield func(jsontext.Value, error) bool) {
 		for i, createdAt := range createdAts {
 			*pulled++
-			run := fmt.Sprintf(`{"metadata": {"uuid": "%s/%d", "createdAt": %q}}`, block, i, createdAt)
+			run := fmt.Sprintf(`{"name": "%s/%d", "metadata": {"uuid": "%s", "createdAt": %q}}`, block, i, uuid.New(), createdAt)
 			if !yield(jsontext.Value(run), nil) {
 				return
 			}
@@ -26,22 +27,20 @@ func blockRuns(block string, pulled *int, createdAts ...string) iter.Seq2[jsonte
 	}
 }
 
-func uuidsOf(t *testing.T, runs iter.Seq2[jsontext.Value, error], n int) []string {
+func namesOf(t *testing.T, runs iter.Seq2[jsontext.Value, error], n int) []string {
 	t.Helper()
-	var uuids []string
+	var names []string
 	for run, err := range runs {
 		require.NoError(t, err)
 		var listed struct {
-			Metadata struct {
-				Uuid string `json:"uuid"`
-			} `json:"metadata"`
+			Name string `json:"name"`
 		}
 		require.NoError(t, json.Unmarshal(run, &listed))
-		if uuids = append(uuids, listed.Metadata.Uuid); len(uuids) == n {
+		if names = append(names, listed.Name); len(names) == n {
 			break
 		}
 	}
-	return uuids
+	return names
 }
 
 func TestMergeNewestFirst(t *testing.T) {
@@ -54,7 +53,7 @@ func TestMergeNewestFirst(t *testing.T) {
 			blockRuns("d", &pulled, "2026-10-01T03:00:00.000Z"),
 		})
 
-		assert.Equal(t, []string{"a/0", "c/0", "a/1", "c/1", "d/0", "a/2", "c/2"}, uuidsOf(t, merged, 0),
+		assert.Equal(t, []string{"a/0", "c/0", "a/1", "c/1", "d/0", "a/2", "c/2"}, namesOf(t, merged, 0),
 			"runs created at the same time keep the order of their blocks")
 	})
 
@@ -66,7 +65,7 @@ func TestMergeNewestFirst(t *testing.T) {
 			blockRuns("c", &pulledC, "2026-10-01T01:00:00Z"),
 		})
 
-		assert.Equal(t, []string{"a/0", "a/1"}, uuidsOf(t, merged, 2))
+		assert.Equal(t, []string{"a/0", "a/1"}, namesOf(t, merged, 2))
 		assert.Equal(t, 2, pulledA, "no further than the last listed run of a")
 		assert.Equal(t, 1, pulledB, "only the first run of b, before the merge listed any")
 		assert.Equal(t, 1, pulledC, "only the first run of c, before the merge listed any")

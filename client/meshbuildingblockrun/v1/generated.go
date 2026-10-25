@@ -79,18 +79,18 @@ var Behaviors = enum.Of[Behavior]("APPLY", "DETECT", "DESTROY")
 
 type BuildingBlock struct {
 	// UUID of the referenced building block.
-	Uuid string                      `json:"uuid"`
+	Uuid uuid.UUID                   `json:"uuid"`
 	Spec MeshBuildingBlockSpecForRun `json:"spec"`
 }
 
 type BuildingBlockDefinition struct {
 	// UUID of the building block definition.
-	Uuid string                                 `json:"uuid"`
+	Uuid uuid.UUID                              `json:"uuid"`
 	Spec MeshBuildingBlockMinimalDefinitionSpec `json:"spec"`
 }
 
 type BuildingBlockImplementation struct {
-	Type           BuildingBlockImplementationDiscriminator
+	Type           string
 	Manual         *MeshManualBuildingBlockImplementation
 	Terraform      *MeshBuildingBlockTerraformImplementation
 	GithubWorkflow *MeshBuildingBlockGithubImplementation
@@ -103,35 +103,35 @@ func (u BuildingBlockImplementation) MarshalJSONTo(enc *jsontext.Encoder) error 
 	case "MANUAL":
 		if u.Manual != nil {
 			return json.MarshalEncode(enc, struct {
-				Discriminator                          BuildingBlockImplementationDiscriminator `json:"type"`
+				Discriminator                          string `json:"type"`
 				*MeshManualBuildingBlockImplementation `json:",embed"`
 			}{u.Type, u.Manual})
 		}
 	case "TERRAFORM":
 		if u.Terraform != nil {
 			return json.MarshalEncode(enc, struct {
-				Discriminator                             BuildingBlockImplementationDiscriminator `json:"type"`
+				Discriminator                             string `json:"type"`
 				*MeshBuildingBlockTerraformImplementation `json:",embed"`
 			}{u.Type, u.Terraform})
 		}
 	case "GITHUB_WORKFLOW":
 		if u.GithubWorkflow != nil {
 			return json.MarshalEncode(enc, struct {
-				Discriminator                          BuildingBlockImplementationDiscriminator `json:"type"`
+				Discriminator                          string `json:"type"`
 				*MeshBuildingBlockGithubImplementation `json:",embed"`
 			}{u.Type, u.GithubWorkflow})
 		}
 	case "GITLAB_CICD":
 		if u.GitlabCicd != nil {
 			return json.MarshalEncode(enc, struct {
-				Discriminator                          BuildingBlockImplementationDiscriminator `json:"type"`
+				Discriminator                          string `json:"type"`
 				*MeshBuildingBlockGitlabImplementation `json:",embed"`
 			}{u.Type, u.GitlabCicd})
 		}
 	case "AZURE_DEVOPS":
 		if u.AzureDevops != nil {
 			return json.MarshalEncode(enc, struct {
-				Discriminator                               BuildingBlockImplementationDiscriminator `json:"type"`
+				Discriminator                               string `json:"type"`
 				*MeshBuildingBlockAzureDevOpsImplementation `json:",embed"`
 			}{u.Type, u.AzureDevops})
 		}
@@ -146,7 +146,7 @@ func (u *BuildingBlockImplementation) UnmarshalJSONFrom(dec *jsontext.Decoder) e
 		return err
 	}
 	var discriminator struct {
-		Value BuildingBlockImplementationDiscriminator `json:"type"`
+		Value string `json:"type"`
 	}
 	if err := json.Unmarshal(raw, &discriminator); err != nil {
 		return err
@@ -171,18 +171,6 @@ func (u *BuildingBlockImplementation) UnmarshalJSONFrom(dec *jsontext.Decoder) e
 	}
 	return nil
 }
-
-type BuildingBlockImplementationDiscriminator string
-
-const (
-	BuildingBlockImplementationDiscriminatorManual         BuildingBlockImplementationDiscriminator = "MANUAL"
-	BuildingBlockImplementationDiscriminatorTerraform      BuildingBlockImplementationDiscriminator = "TERRAFORM"
-	BuildingBlockImplementationDiscriminatorGithubWorkflow BuildingBlockImplementationDiscriminator = "GITHUB_WORKFLOW"
-	BuildingBlockImplementationDiscriminatorGitlabCicd     BuildingBlockImplementationDiscriminator = "GITLAB_CICD"
-	BuildingBlockImplementationDiscriminatorAzureDevops    BuildingBlockImplementationDiscriminator = "AZURE_DEVOPS"
-)
-
-var BuildingBlockImplementationDiscriminators = enum.Of[BuildingBlockImplementationDiscriminator]("MANUAL", "TERRAFORM", "GITHUB_WORKFLOW", "GITLAB_CICD", "AZURE_DEVOPS")
 
 type BuildingBlockRunStepStatus string
 
@@ -295,7 +283,7 @@ type MeshBuildingBlockSpecForRun struct {
 	// The reference to either the tenant or workspace the building block is located on. Contains a `kind`
 	// (`meshTenant` or `meshWorkspace`). For `meshTenant`, the tenant is identified by its `uuid`; for
 	// `meshWorkspace`, the workspace is identified by its `name` field, which holds the workspace identifier.
-	TargetRef meshobject.MeshBuildingBlockTargetRefResponse `json:"targetRef"`
+	TargetRef meshobject.MeshBuildingBlockTargetRef `json:"targetRef"`
 	// The identifier of the workspace of the building block.
 	WorkspaceIdentifier string `json:"workspaceIdentifier"`
 	// The identifier of the project of the building block.
@@ -327,14 +315,14 @@ type MeshManualBuildingBlockImplementation struct {
 
 type MeshParentBuildingBlock struct {
 	// The UUID of the parent Building Block.
-	BuildingBlockUuid string `json:"buildingBlockUuid"`
+	BuildingBlockUuid uuid.UUID `json:"buildingBlockUuid"`
 	// The UUID of the Building Block Definition of the parent Building Block.
-	DefinitionUuid string `json:"definitionUuid"`
+	DefinitionUuid uuid.UUID `json:"definitionUuid"`
 }
 
 type Metadata struct {
 	// The UUID of this building block run.
-	Uuid string `json:"uuid"`
+	Uuid uuid.UUID `json:"uuid"`
 	// When meshStack recorded this run, as an ISO-8601 instant (e.g. `2020-12-22T09:37:43Z`). A run is recorded when
 	// it enters the queue, which is not necessarily when a runner picked it up: a run that waits for an input, a
 	// parent Building Block or an approval is recorded long before it executes. The list endpoint sorts on this

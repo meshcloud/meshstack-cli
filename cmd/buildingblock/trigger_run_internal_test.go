@@ -29,7 +29,7 @@ func TestAwaitRunStartTakesNothingTheTriggerRunAnswerReportedForTheStart(t *test
 	require.NoError(t, err)
 
 	_, err = awaitRunStart(t.Context(), meshStack.Raw, buildingBlockUuid, meshbuildingblock.StatusResponse{
-		LatestRunUuid:    new(previousRun),
+		LatestRunUuid:    new(uuid.MustParse(previousRun)),
 		RunStartFailure:  new("the previous request failed"),
 		RunStartFailedOn: new(time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)),
 	}, time.Millisecond, 50*time.Millisecond)
