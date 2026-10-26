@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -70,30 +71,21 @@ type MeshBuildingBlockV2Spec struct {
 	ParentBuildingBlockRefs types.Set[UuidRef]                 `json:"parentBuildingBlockRefs" tfsdk:"parent_building_block_refs"`
 }
 
-// wireCompatibility repeats the options internal/json marshals every request with: a v1-style
-// MarshalJSON receives none of its caller's, so without it a nested value would go out in a
-// different shape than the request around it.
-var wireCompatibility = json.JoinOptions(
-	json.Deterministic(true),
-	json.FormatNilSliceAsNull(true),
-	json.FormatNilMapAsNull(true),
-)
-
 type MeshBuildingBlockInput struct {
 	Value          types.SecretOrAny                                `json:"value" tfsdk:"value"`
 	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitzero" tfsdk:"-"`
 	AssignmentType enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
 
 	// IsSensitive decides the case of Value: [types.Secret] when true, [types.Any] otherwise.
-	// [types.Variant] decodes into X first, so UnmarshalJSON moves a non-sensitive value that also
+	// [types.Variant] decodes into X first, so UnmarshalJSONFrom moves a non-sensitive value that also
 	// decodes as a Secret over to Y.
 	IsSensitive bool `json:"isSensitive" tfsdk:"-"`
 }
 
-func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
+func (m *MeshBuildingBlockInput) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type wrapped MeshBuildingBlockInput
 	var target wrapped
-	if err := json.Unmarshal(bytes, &target); err != nil {
+	if err := json.UnmarshalDecode(dec, &target, dec.Options()); err != nil {
 		return err
 	}
 	*m = MeshBuildingBlockInput(target)

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 
@@ -70,7 +71,7 @@ func (m MeshIntegrationConfig) InferType() (enum.Entry[MeshIntegrationConfigType
 	return result, nil
 }
 
-func (m MeshIntegrationConfig) MarshalJSON() ([]byte, error) {
+func (m MeshIntegrationConfig) MarshalJSONTo(enc *jsontext.Encoder) error {
 	type wrapped MeshIntegrationConfig
 	w := wrapped(m)
 	// Built-in integrations (replicator, metering) come with a type but no variant, so the type is only
@@ -78,17 +79,17 @@ func (m MeshIntegrationConfig) MarshalJSON() ([]byte, error) {
 	if len(w.Type) == 0 {
 		inferred, err := m.InferType()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		w.Type = inferred
 	}
-	return json.Marshal(w, wireCompatibility)
+	return json.MarshalEncode(enc, w, enc.Options())
 }
 
-func (m *MeshIntegrationConfig) UnmarshalJSON(bytes []byte) error {
+func (m *MeshIntegrationConfig) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type wrapped MeshIntegrationConfig
 	var target wrapped
-	if err := json.Unmarshal(bytes, &target); err != nil {
+	if err := json.UnmarshalDecode(dec, &target, dec.Options()); err != nil {
 		return err
 	}
 	*m = MeshIntegrationConfig(target)
