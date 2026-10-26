@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -76,15 +77,15 @@ type MeshBuildingBlockInput struct {
 	AssignmentType enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
 
 	// IsSensitive decides the case of Value: [types.Secret] when true, [types.Any] otherwise.
-	// [types.Variant] decodes into X first, so UnmarshalJSON moves a non-sensitive value that also
+	// [types.Variant] decodes into X first, so UnmarshalJSONFrom moves a non-sensitive value that also
 	// decodes as a Secret over to Y.
 	IsSensitive bool `json:"isSensitive" tfsdk:"-"`
 }
 
-func (m *MeshBuildingBlockInput) UnmarshalJSON(bytes []byte) error {
+func (m *MeshBuildingBlockInput) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type wrapped MeshBuildingBlockInput
 	var target wrapped
-	if err := json.Unmarshal(bytes, &target); err != nil {
+	if err := json.UnmarshalDecode(dec, &target, dec.Options()); err != nil {
 		return err
 	}
 	*m = MeshBuildingBlockInput(target)

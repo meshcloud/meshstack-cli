@@ -8,8 +8,6 @@ import (
 
 // object keeps the order of its members, which a map would lose, so that a part of the document
 // prints as the document has it.
-//
-//nolint:recvcheck // MarshalJSONTo takes a value, so that json.Marshal finds it on an object that is not addressable
 type object []member
 
 type member struct {

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 
@@ -90,23 +91,23 @@ func (m MeshBuildingBlockDefinitionImplementation) InferType() (enum.Entry[MeshB
 	return result, nil
 }
 
-func (m MeshBuildingBlockDefinitionImplementation) MarshalJSON() ([]byte, error) {
+func (m MeshBuildingBlockDefinitionImplementation) MarshalJSONTo(enc *jsontext.Encoder) error {
 	type wrapped MeshBuildingBlockDefinitionImplementation
 	w := wrapped(m)
 	if len(w.Type) == 0 {
 		inferred, err := m.InferType()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		w.Type = inferred
 	}
-	return json.Marshal(w, wireCompatibility)
+	return json.MarshalEncode(enc, w, enc.Options())
 }
 
-func (m *MeshBuildingBlockDefinitionImplementation) UnmarshalJSON(bytes []byte) error {
+func (m *MeshBuildingBlockDefinitionImplementation) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type wrapped MeshBuildingBlockDefinitionImplementation
 	var target wrapped
-	if err := json.Unmarshal(bytes, &target); err != nil {
+	if err := json.UnmarshalDecode(dec, &target, dec.Options()); err != nil {
 		return err
 	}
 	*m = MeshBuildingBlockDefinitionImplementation(target)
