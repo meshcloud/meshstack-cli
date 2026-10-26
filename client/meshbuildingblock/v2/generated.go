@@ -89,14 +89,25 @@ func (c Client) Update(ctx context.Context, uuid uuid.UUID, body Request) (Respo
 }
 
 type ListFilter struct {
-	WorkspaceIdentifier          string                     `json:"workspaceIdentifier,omitzero"`
-	CustomerIdentifier           string                     `json:"customerIdentifier,omitzero"`
-	ProjectIdentifier            string                     `json:"projectIdentifier,omitzero"`
-	PlatformIdentifier           string                     `json:"platformIdentifier,omitzero"`
-	Name                         string                     `json:"name,omitzero"`
-	DefinitionName               string                     `json:"definitionName,omitzero"`
-	DefinitionUuid               uuid.UUID                  `json:"definitionUuid,omitzero"`
-	VersionNumber                string                     `json:"versionNumber,omitzero"`
+	WorkspaceIdentifier string    `json:"workspaceIdentifier,omitzero"`
+	CustomerIdentifier  string    `json:"customerIdentifier,omitzero"`
+	ProjectIdentifier   string    `json:"projectIdentifier,omitzero"`
+	PlatformIdentifier  string    `json:"platformIdentifier,omitzero"`
+	Name                string    `json:"name,omitzero"`
+	DefinitionName      string    `json:"definitionName,omitzero"`
+	DefinitionUuid      uuid.UUID `json:"definitionUuid,omitzero"`
+	VersionNumber       string    `json:"versionNumber,omitzero"`
+	// Filter for Building Blocks that have a certain status.
+	//
+	// Deprecated: Use the `healthStatus` and `action` filters:
+	// - `WAITING_FOR_USER_INPUT`, `WAITING_FOR_OPERATOR_INPUT`: `action=PROVIDE_INPUT`
+	// - `WAITING_FOR_DEPENDENT_INPUT`: `action=WAITING_FOR_DEPENDENCY`
+	// - `WAITING_FOR_APPROVAL`: `action=APPROVE_RUN`
+	// - `PENDING`: `action=PENDING`
+	// - `IN_PROGRESS`: `action=IN_PROGRESS`
+	// - `FAILED`: `action=REVIEW_ERRORS`
+	// - `SUCCEEDED`: `healthStatus=SUCCEEDED`
+	// - `ABORTED`: no equivalent
 	Status                       StatusValue                `json:"status,omitzero"`
 	Sort                         []ListFilterSort           `json:"sort,omitzero"`
 	VersionUuid                  uuid.UUID                  `json:"versionUuid,omitzero"`
@@ -309,12 +320,16 @@ const (
 var MeshLifecycleStates = enum.Of[MeshLifecycleState]("ACTIVE", "DEACTIVATED", "MARKED_FOR_DELETION", "DELETED")
 
 type MeshParentBuildingBlock struct {
-	// (Deprecated: Use parentBuildingBlockRefs instead) Reference to the parent Building Block, identified by its uuid.
+	// Reference to the parent Building Block, identified by its uuid.
 	BuildingBlockRef *Ref `json:"buildingBlockRef,omitzero"`
-	// (Deprecated: Use parentBuildingBlockRefs instead) The UUID of the parent Building Block.
+	// The UUID of the parent Building Block.
+	//
+	// Deprecated: Use `buildingBlockRef`.
 	BuildingBlockUuid *uuid.UUID `json:"buildingBlockUuid,omitzero"`
-	// (Deprecated: Use parentBuildingBlockRefs instead) The UUID of the Building Block Definition of the parent Building Block. It is
-	// derived from the referenced Building Block. In a request, a valid UUID is ignored and a malformed one gets 400.
+	// The UUID of the Building Block Definition of the parent Building Block. In a request, a valid UUID is ignored and
+	// a malformed one gets 400.
+	//
+	// Deprecated: It is derived from the referenced Building Block.
 	DefinitionUuid *uuid.UUID `json:"definitionUuid,omitzero"`
 }
 
@@ -392,8 +407,10 @@ type SpecRequest struct {
 	// permission. A response contains all inputs the Building Block Definition defines, with their values; a sensitive
 	// value is returned as its hash only, because meshStack does not store the plaintext.
 	Inputs map[string]InputRequest `json:"inputs"`
-	// (Deprecated: Use parentBuildingBlockRefs instead) List of parent Building Blocks, which are required for the Building Block.
-	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
+	// List of parent Building Blocks, which are required for the Building Block. Each parent must belong to the same
+	// workspace as the Building Block, on any of its tenants or on the workspace itself.
+	//
+	// Deprecated: Use `parentBuildingBlockRefs`.
 	ParentBuildingBlocks []MeshParentBuildingBlock `json:"parentBuildingBlocks,omitzero"`
 	// List of references to the parent Building Blocks of this Building Block. Each entry contains a uuid and kind.
 	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
@@ -412,8 +429,10 @@ type SpecResponse struct {
 	// permission. A response contains all inputs the Building Block Definition defines, with their values; a sensitive
 	// value is returned as its hash only, because meshStack does not store the plaintext.
 	Inputs map[string]InputResponse `json:"inputs"`
-	// (Deprecated: Use parentBuildingBlockRefs instead) List of parent Building Blocks, which are required for the Building Block.
-	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
+	// List of parent Building Blocks, which are required for the Building Block. Each parent must belong to the same
+	// workspace as the Building Block, on any of its tenants or on the workspace itself.
+	//
+	// Deprecated: Use `parentBuildingBlockRefs`.
 	ParentBuildingBlocks []MeshParentBuildingBlock `json:"parentBuildingBlocks"`
 	// List of references to the parent Building Blocks of this Building Block. Each entry contains a uuid and kind.
 	// Each parent must belong to the same workspace as the Building Block, on any of its tenants or on the workspace itself.
@@ -421,12 +440,20 @@ type SpecResponse struct {
 }
 
 type StatusResponse struct {
-	// Deprecated: rely on `status.healthStatus` and `status.action` instead, which separate the two questions this field
-	// conflates — whether the Building Block is healthy, and what it needs from you next. The status of the Building
-	// Block. One of WAITING_FOR_DEPENDENT_INPUT, WAITING_FOR_OPERATOR_INPUT, WAITING_FOR_USER_INPUT,
-	// WAITING_FOR_APPROVAL, PENDING, IN_PROGRESS, SUCCEEDED, FAILED, ABORTED. A request that triggers a run reports
-	// `PENDING` right away, before the run itself exists, so you can poll this field for that run's outcome without
-	// mistaking the previous run's status for it.
+	// The status of the Building Block. A request that triggers a run reports `PENDING` right away, before the run
+	// itself exists, so you can poll this field for that run's outcome without mistaking the previous run's status for
+	// it.
+	//
+	// Deprecated: Use `status.healthStatus` and `status.action`. They separate the two questions this field conflates: whether the
+	// Building Block is healthy, and what it needs from you next. The values map as follows:
+	// - `WAITING_FOR_USER_INPUT`, `WAITING_FOR_OPERATOR_INPUT`: `action` is `PROVIDE_INPUT`
+	// - `WAITING_FOR_DEPENDENT_INPUT`: `action` is `WAITING_FOR_DEPENDENCY`
+	// - `WAITING_FOR_APPROVAL`: `action` is `APPROVE_RUN`
+	// - `PENDING`: `action` is `PENDING`
+	// - `IN_PROGRESS`: `action` is `IN_PROGRESS`
+	// - `FAILED`: `action` is `REVIEW_ERRORS`
+	// - `SUCCEEDED`: `healthStatus` is `SUCCEEDED`
+	// - `ABORTED`: no equivalent
 	Status StatusValue `json:"status"`
 	// The outcome of the latest run that speaks for the Building Block: an apply or destroy run, or a preflight that
 	// failed or confirmed there is nothing to change. A preflight that planned a change leaves this field to the run

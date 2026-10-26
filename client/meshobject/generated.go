@@ -89,7 +89,9 @@ type MeshObjectAuthor struct {
 	// The external identifier of the author from the identity provider, used to identify the user in downstream cloud
 	// platforms. Set for `User` authors that have one; absent otherwise.
 	Euid *string `json:"euid,omitzero"`
-	// Deprecated: superseded by `type`, which carries the same value. Retained for backward compatibility.
+	// The type of the author.
+	//
+	// Deprecated: Use `type`, which carries the same value.
 	AuthorType *MeshObjectAuthorType `json:"authorType,omitzero"`
 }
 
