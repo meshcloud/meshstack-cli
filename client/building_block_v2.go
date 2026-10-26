@@ -38,6 +38,32 @@ var (
 	BuildingBlockStatusAborted                  = BuildingBlockStatuses.Entry("ABORTED")
 )
 
+type BuildingBlockHealthStatus string
+
+var (
+	BuildingBlockHealthStatuses        = enum.Enum[BuildingBlockHealthStatus]{}
+	BuildingBlockHealthStatusNone      = BuildingBlockHealthStatuses.Entry("NONE")
+	BuildingBlockHealthStatusSucceeded = BuildingBlockHealthStatuses.Entry("SUCCEEDED")
+	BuildingBlockHealthStatusFailed    = BuildingBlockHealthStatuses.Entry("FAILED")
+	BuildingBlockHealthStatusDeleted   = BuildingBlockHealthStatuses.Entry("DELETED")
+)
+
+type BuildingBlockAction string
+
+var (
+	BuildingBlockActions                    = enum.Enum[BuildingBlockAction]{}
+	BuildingBlockActionProvideInput         = BuildingBlockActions.Entry("PROVIDE_INPUT")
+	BuildingBlockActionWaitingForDependency = BuildingBlockActions.Entry("WAITING_FOR_DEPENDENCY")
+	BuildingBlockActionApproveRun           = BuildingBlockActions.Entry("APPROVE_RUN")
+	BuildingBlockActionReviewDrift          = BuildingBlockActions.Entry("REVIEW_DRIFT")
+	BuildingBlockActionPending              = BuildingBlockActions.Entry("PENDING")
+	BuildingBlockActionInProgress           = BuildingBlockActions.Entry("IN_PROGRESS")
+	BuildingBlockActionUpgradeAvailable     = BuildingBlockActions.Entry("UPGRADE_AVAILABLE")
+	BuildingBlockActionReviewErrors         = BuildingBlockActions.Entry("REVIEW_ERRORS")
+	BuildingBlockActionReviewAbortedRun     = BuildingBlockActions.Entry("REVIEW_ABORTED_RUN")
+	BuildingBlockActionNoAction             = BuildingBlockActions.Entry("NO_ACTION")
+)
+
 type MeshBuildingBlockV2 struct {
 	Metadata MeshBuildingBlockV2Metadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshBuildingBlockV2Spec     `json:"spec" tfsdk:"spec"`
@@ -238,10 +264,12 @@ type MeshBuildingBlockV2Lifecycle struct {
 }
 
 type MeshBuildingBlockV2Status struct {
-	Status     enum.Entry[BuildingBlockStatus]    `json:"status" tfsdk:"status"`
-	Outputs    map[string]MeshBuildingBlockOutput `json:"outputs" tfsdk:"outputs"`
-	ForcePurge bool                               `json:"forcePurge" tfsdk:"force_purge"`
-	Lifecycle  MeshBuildingBlockV2Lifecycle       `json:"lifecycle" tfsdk:"-"`
+	Status       enum.Entry[BuildingBlockStatus]       `json:"status" tfsdk:"status"`
+	HealthStatus enum.Entry[BuildingBlockHealthStatus] `json:"healthStatus" tfsdk:"health_status"`
+	Action       enum.Entry[BuildingBlockAction]       `json:"action" tfsdk:"action"`
+	Outputs      map[string]MeshBuildingBlockOutput    `json:"outputs" tfsdk:"outputs"`
+	ForcePurge   bool                                  `json:"forcePurge" tfsdk:"force_purge"`
+	Lifecycle    MeshBuildingBlockV2Lifecycle          `json:"lifecycle" tfsdk:"-"`
 	// LatestRunUuid tracks the latest *modifying* (apply/destroy) run and excludes dry runs. It is nil
 	// only when no such run exists: run_transparency gates reading the run and its system messages, not
 	// this identifier (MeshBuildingBlockV2RepresentationModelAssembler.resolveLatestRunUuid).
