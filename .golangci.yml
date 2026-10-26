@@ -224,6 +224,14 @@ linters:
     depguard:
       rules:
 
+        # The $ keeps encoding/json/v2 and encoding/json/jsontext out of the match.
+        json:
+          files:
+            - $all
+          deny:
+            - pkg: encoding/json$
+              desc: Use encoding/json/v2 and internal/json instead
+
         # cobra is used in cmd/ and nowhere else.
         cmd:
           files:
@@ -241,14 +249,12 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
-            # the deny on encoding/json matches its subpackages too; a listing yields raw items
+            # a listing yields raw items, and reads a field out of one, such as the uuid a run
+            # listing needs per block
             - encoding/json/jsontext
-            # and reads a field out of a raw item, such as the uuid a run listing needs per block
             - encoding/json/v2
             # no direct access to internal/
             - github.com/meshcloud/meshstack-cli/pkg
@@ -266,8 +272,6 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
@@ -284,13 +288,10 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
-            # the deny on encoding/json matches its subpackages too; a request body is checked as
-            # JSON, and api-docs writes a part of the OpenAPI document
+            # a request body is checked as JSON, and api-docs writes a part of the OpenAPI document
             - encoding/json/jsontext
             - encoding/json/v2
             - github.com/meshcloud/meshstack-cli/cmd/internal
@@ -318,8 +319,6 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
@@ -341,8 +340,6 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
@@ -363,8 +360,6 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
@@ -400,14 +395,11 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
-            # the deny on encoding/json matches its subpackages too; a listing writes raw items
+            # a listing writes raw items, and a command that shows one object marshals it
             - encoding/json/jsontext
-            # and a command that shows one object marshals it, or writes it as Markdown
             - encoding/json/v2
             - github.com/meshcloud/meshstack-cli/cmd/internal/markdown
             - github.com/meshcloud/meshstack-cli/cmd/internal/color
@@ -440,8 +432,6 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - encoding/json/v2
@@ -460,8 +450,6 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - log/slog
@@ -476,9 +464,6 @@ linters:
             - "**/internal/json/*.go"
             - "!$test"
           list-mode: strict
-          deny:
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - encoding/json/v2
@@ -506,8 +491,6 @@ linters:
           deny:
             - pkg: log
               desc: Use log/slog instead
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - encoding/json/v2
@@ -523,9 +506,6 @@ linters:
           files:
             - "**/internal/testutil/**/*.go"
           list-mode: strict
-          deny:
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - encoding/json/v2
@@ -561,9 +541,6 @@ linters:
           files:
             - "$test"
           list-mode: strict
-          deny:
-            - pkg: encoding/json
-              desc: Use encoding/json/v2 and internal/json instead
           allow:
             - $gostd
             - encoding/json/v2
