@@ -76,8 +76,11 @@ func (c Client) Paint(ctx context.Context, uuid uuid.UUID, body PaintRequest) (R
 }
 
 type ListFilter struct {
-	Sort       []ListFilterSort      `json:"sort,omitzero"`
-	OwnerUuid  uuid.UUID             `json:"ownerUuid,omitzero"`
+	Sort      []ListFilterSort `json:"sort,omitzero"`
+	OwnerUuid uuid.UUID        `json:"ownerUuid,omitzero"`
+	// The kind of the target.
+	//
+	// Deprecated: Use `ownerUuid`.
 	TargetKind meshobject.TargetKind `json:"targetKind,omitzero"`
 }
 
@@ -152,10 +155,14 @@ var SpecColors = enum.Of[SpecColor]("DEEP_RED", "green")
 type SpecRequest struct {
 	// The name.
 	// It spans two lines.
-	Name   string                `json:"name"`
-	Count  *int64                `json:"count,omitzero"`
-	Color  *SpecColor            `json:"color,omitzero"`
-	Value  types.SecretOrAny     `json:"value,omitzero"`
+	Name string `json:"name"`
+	// Deprecated: see the API documentation.
+	Count *int64            `json:"count,omitzero"`
+	Color *SpecColor        `json:"color,omitzero"`
+	Value types.SecretOrAny `json:"value,omitzero"`
+	// The tags.
+	//
+	// Deprecated: Use `parts`.
 	Tags   map[string][]string   `json:"tags,omitzero"`
 	Parts  []Part                `json:"parts,omitzero"`
 	Spare  *Part                 `json:"spare,omitzero"`
@@ -167,10 +174,14 @@ type SpecRequest struct {
 type SpecResponse struct {
 	// The name.
 	// It spans two lines.
-	Name   string                `json:"name"`
-	Count  *int64                `json:"count,omitzero"`
-	Color  *SpecColor            `json:"color,omitzero"`
-	Value  types.SecretOrAny     `json:"value,omitzero"`
+	Name string `json:"name"`
+	// Deprecated: see the API documentation.
+	Count *int64            `json:"count,omitzero"`
+	Color *SpecColor        `json:"color,omitzero"`
+	Value types.SecretOrAny `json:"value,omitzero"`
+	// The tags.
+	//
+	// Deprecated: Use `parts`.
 	Tags   map[string][]string   `json:"tags,omitzero"`
 	Parts  []Part                `json:"parts,omitzero"`
 	Spare  *Part                 `json:"spare,omitzero"`

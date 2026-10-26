@@ -181,7 +181,11 @@ func (g *generator) addParameter(p *pkg, o *operation, parameter openapi.Paramet
 		if err != nil {
 			return fmt.Errorf("query parameter %s: %w", parameter.Name, err)
 		}
-		o.query = append(o.query, param{name: parameter.Name, goName: goName(parameter.Name), ref: r})
+		var doc string
+		if parameter.Deprecated {
+			doc = deprecated(versionSection(parameter.Description, p.ApiVersion))
+		}
+		o.query = append(o.query, param{name: parameter.Name, goName: goName(parameter.Name), ref: r, doc: doc})
 	}
 	return nil
 }

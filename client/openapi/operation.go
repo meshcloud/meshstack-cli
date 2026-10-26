@@ -17,6 +17,7 @@ type OperationSchemas struct {
 type ParameterSchema struct {
 	Name, In    string
 	Required    bool
+	Deprecated  bool
 	Schema      *Schema
 	Description string
 	PathKey     PathKey
@@ -116,6 +117,7 @@ func (p *ParameterSchema) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 		Name        string  `json:"name"`
 		In          string  `json:"in"`
 		Required    bool    `json:"required"`
+		Deprecated  bool    `json:"deprecated"`
 		Schema      *Schema `json:"schema"`
 		Description string  `json:"description"`
 		PathKey     PathKey `json:",embed"`

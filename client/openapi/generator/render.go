@@ -96,7 +96,7 @@ func (g *generator) render(p *pkg) ([]byte, error) {
 		if o.queryType != "" {
 			query := typeData{Name: o.queryType, Kind: "object"}
 			for _, q := range o.query {
-				query.Fields = append(query.Fields, fieldData{Name: q.goName, Type: r.expr(q.ref), Tag: fmt.Sprintf("`json:%q`", q.name+",omitzero")})
+				query.Fields = append(query.Fields, fieldData{Name: q.goName, Type: r.expr(q.ref), Tag: fmt.Sprintf("`json:%q`", q.name+",omitzero"), Doc: q.doc})
 			}
 			data.Queries = append(data.Queries, query)
 		}
@@ -291,6 +291,25 @@ func withDeprecation(doc, deprecation string) string {
 		return doc
 	}
 	return strings.TrimSpace(doc + "\n\nDeprecated: " + deprecation)
+}
+
+// deprecated turns the API's "**Deprecated:**" paragraph of a field into the one Go tools read.
+func deprecated(text string) string {
+	doc, note, found := strings.Cut(text, "**Deprecated:** ")
+	if !found {
+		return withDeprecation(text, "see the API documentation.")
+	}
+	return withDeprecation(strings.TrimSpace(doc), note)
+}
+
+// versionSection is the "**v2:** …" part of a text that differs by API version.
+func versionSection(text, version string) string {
+	_, section, found := strings.Cut(text, "**"+version+":** ")
+	if !found {
+		return text
+	}
+	section, _, _ = strings.Cut(section, "\n\n**v")
+	return section
 }
 
 // deprecation is empty for a package of no deprecated API version.

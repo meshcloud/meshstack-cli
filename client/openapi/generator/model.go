@@ -414,13 +414,17 @@ func (g *generator) field(p *pkg, t *namedType, property openapi.Property, dir d
 	readOnly, _, _ := g.access(property.Schema)
 	required := t.schema.IsRequired(property.Name) && (!readOnly || dir != request)
 	optional := !required || property.Schema.Nullable || resolved.Nullable
+	doc := cmp.Or(property.Schema.Description, resolved.Description)
+	if property.Schema.Deprecated {
+		doc = deprecated(doc)
+	}
 	return field{
 		name:     goName(property.Name),
 		json:     property.Name,
 		ref:      r,
 		pointer:  optional && !r.container(),
 		omitZero: optional,
-		doc:      cmp.Or(property.Schema.Description, resolved.Description),
+		doc:      doc,
 	}, nil
 }
 

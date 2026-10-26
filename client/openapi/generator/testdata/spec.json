@@ -9,7 +9,7 @@
           {"$ref": "#/components/parameters/page"},
           {"name": "sort", "in": "query", "schema": {"type": "array", "items": {"type": "string", "enum": ["createdAt", "createdAt,desc"]}}},
           {"name": "ownerUuid", "in": "query", "schema": {"type": "string", "format": "uuid"}},
-          {"name": "targetKind", "in": "query", "schema": {"$ref": "#/components/schemas/TargetKind"}}
+          {"name": "targetKind", "in": "query", "deprecated": true, "description": "**v1:** The kind.\n\n**Deprecated:** v2 has `ownerUuid`.\n\n**v2:** The kind of the target.\n\n**Deprecated:** Use `ownerUuid`.", "schema": {"$ref": "#/components/schemas/TargetKind"}}
         ],
         "responses": {
           "200": {"description": "OK", "content": {"application/vnd.meshcloud.api.meshthing.v2.hal+json": {"schema": {"$ref": "#/components/schemas/HalPageMeshThingV2"}}}}
@@ -130,10 +130,10 @@
         "required": ["name", "count", "secret"],
         "properties": {
           "name": {"type": "string", "description": "The name.\nIt spans two lines."},
-          "count": {"type": "integer", "format": "int64", "nullable": true},
+          "count": {"type": "integer", "format": "int64", "nullable": true, "deprecated": true},
           "color": {"type": "string", "enum": ["DEEP_RED", "green"]},
           "value": {"nullable": true, "oneOf": [{"type": "string"}, {"type": "boolean"}]},
-          "tags": {"allOf": [{"$ref": "#/components/schemas/MapOfList"}]},
+          "tags": {"description": "The tags.\n\n**Deprecated:** Use `parts`.", "deprecated": true, "allOf": [{"$ref": "#/components/schemas/MapOfList"}]},
           "parts": {"type": "array", "items": {"$ref": "#/components/schemas/Part_0"}},
           "spare": {"$ref": "#/components/schemas/Part"},
           "target": {"$ref": "#/components/schemas/TargetRef"},

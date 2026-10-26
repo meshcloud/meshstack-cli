@@ -56,7 +56,10 @@ func (c Client) Api() {{$.Runtime}}.Api {
 
 type {{.Name}} struct {
 {{- range .Fields}}
-	{{.Name}} {{.Type}} {{.Tag}}
+{{- if .Doc}}
+{{comment .Doc}}
+{{- else}}
+{{end}}	{{.Name}} {{.Type}} {{.Tag}}
 {{- end}}
 }
 {{- end}}
