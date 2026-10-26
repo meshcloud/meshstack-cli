@@ -23,3 +23,10 @@ type MeshWorkspaceTargetRef struct {
 type MeshWorkspaceSubject struct {
 	Name string `json:"name" tfsdk:"name"`
 }
+
+type MeshWorkspaceBindingListFilter struct {
+	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
+	WorkspaceRole       *string `json:"workspaceRole"`
+	// Username matches a user binding of that user, or a group binding of a group the user is in.
+	Username *string `json:"username"`
+}

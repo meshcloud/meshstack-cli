@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshWorkspaceUserBinding struct {
@@ -12,6 +13,7 @@ type MeshWorkspaceUserBinding struct {
 
 type MeshWorkspaceUserBindingClient interface {
 	Read(ctx context.Context, name string) (*MeshWorkspaceUserBinding, error)
+	List(ctx context.Context, filter MeshWorkspaceBindingListFilter) ([]MeshWorkspaceUserBinding, error)
 	Create(ctx context.Context, binding *MeshWorkspaceUserBinding) (*MeshWorkspaceUserBinding, error)
 	Delete(ctx context.Context, name string) error
 }
@@ -26,6 +28,10 @@ func newWorkspaceUserBindingClient(ctx context.Context, httpClient internal.Http
 
 func (c meshWorkspaceUserBindingClient) Read(ctx context.Context, name string) (*MeshWorkspaceUserBinding, error) {
 	return c.meshObject.Get(ctx, name)
+}
+
+func (c meshWorkspaceUserBindingClient) List(ctx context.Context, filter MeshWorkspaceBindingListFilter) ([]MeshWorkspaceUserBinding, error) {
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshWorkspaceUserBindingClient) Create(ctx context.Context, binding *MeshWorkspaceUserBinding) (*MeshWorkspaceUserBinding, error) {

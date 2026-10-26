@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshProjectGroupBinding struct {
@@ -12,6 +13,7 @@ type MeshProjectGroupBinding struct {
 
 type MeshProjectGroupBindingClient interface {
 	Read(ctx context.Context, name string) (*MeshProjectGroupBinding, error)
+	List(ctx context.Context, filter MeshProjectBindingListFilter) ([]MeshProjectGroupBinding, error)
 	Create(ctx context.Context, binding *MeshProjectGroupBinding) (*MeshProjectGroupBinding, error)
 	Delete(ctx context.Context, name string) error
 }
@@ -26,6 +28,10 @@ func newProjectGroupBindingClient(ctx context.Context, httpClient internal.HttpC
 
 func (c meshProjectGroupBindingClient) Read(ctx context.Context, name string) (*MeshProjectGroupBinding, error) {
 	return c.meshObject.Get(ctx, name)
+}
+
+func (c meshProjectGroupBindingClient) List(ctx context.Context, filter MeshProjectBindingListFilter) ([]MeshProjectGroupBinding, error) {
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshProjectGroupBindingClient) Create(ctx context.Context, binding *MeshProjectGroupBinding) (*MeshProjectGroupBinding, error) {

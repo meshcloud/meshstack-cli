@@ -1,10 +1,11 @@
 package client
 
 type MeshProjectBinding struct {
-	Metadata  MeshProjectBindingMetadata `json:"metadata" tfsdk:"metadata"`
-	RoleRef   MeshProjectRoleRef         `json:"roleRef" tfsdk:"role_ref"`
-	TargetRef MeshProjectTargetRef       `json:"targetRef" tfsdk:"target_ref"`
-	Subject   MeshSubject                `json:"subject" tfsdk:"subject"`
+	Metadata   MeshProjectBindingMetadata `json:"metadata" tfsdk:"metadata"`
+	RoleRef    MeshProjectRoleRef         `json:"roleRef" tfsdk:"role_ref"`
+	TargetRef  MeshProjectTargetRef       `json:"targetRef" tfsdk:"target_ref"`
+	Subject    MeshSubject                `json:"subject" tfsdk:"subject"`
+	ExpiryDate *string                    `json:"expiryDate,omitzero" tfsdk:"expiry_date"`
 }
 
 type MeshProjectBindingMetadata struct {
@@ -26,4 +27,9 @@ type MeshProjectTargetRef struct {
 
 type MeshSubject struct {
 	Name string `json:"name" tfsdk:"name"`
+}
+
+type MeshProjectBindingListFilter struct {
+	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
+	ProjectIdentifier   *string `json:"projectIdentifier"`
 }
