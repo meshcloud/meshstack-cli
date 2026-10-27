@@ -77,7 +77,11 @@ func (a runAction) approve(ctx context.Context) error {
 	if plan.Links.DownloadLogs == nil {
 		return fmt.Errorf("meshStack shows you no logs of run %s, which planned run %s", plan.Metadata.Uuid, run.Metadata.Uuid)
 	}
-	logs, err := a.meshStack.BuildingBlockRunAction.ReadLogs(ctx, *plan.Links.DownloadLogs)
+	planUuid, err := uuid.Parse(plan.Metadata.Uuid)
+	if err != nil {
+		return err
+	}
+	logs, err := a.meshStack.MeshBuildingBlockRun.Logs(ctx, planUuid)
 	if err != nil {
 		return err
 	}

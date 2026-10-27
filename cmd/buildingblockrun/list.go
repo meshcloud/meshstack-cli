@@ -14,6 +14,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblock/v2"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblockrun/v1"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -36,14 +38,15 @@ credential can see.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if buildingBlockUuid != uuid.Nil() {
-				return flags.Run[client.MeshBuildingBlockRun](cmd, client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid})
+				return flags.Run[meshbuildingblockrun.Response](cmd, meshbuildingblockrun.ListFilter{BuildingBlockUuid: buildingBlockUuid})
 			}
-			var (
-				blockFilter client.MeshBuildingBlockV2ListFilter
-				err         error
-			)
-			if blockFilter.WorkspaceIdentifier, err = internal.ListWorkspace(cmd.Context()); err != nil {
+			workspace, err := internal.ListWorkspace(cmd.Context())
+			if err != nil {
 				return err
+			}
+			var blockFilter meshbuildingblock.ListFilter
+			if workspace != nil {
+				blockFilter.WorkspaceIdentifier = *workspace
 			}
 			return flags.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error] {
 				return allRuns(ctx, meshStack, blockFilter, options.PageSize)
@@ -65,7 +68,7 @@ const runsPageSizeOfEachBlock = 10
 
 // allRuns merges the runs of every building block, because the run list endpoint takes one building
 // block at a time and has no list of every run.
-func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.MeshBuildingBlockV2ListFilter, pageSize int) iter.Seq2[jsontext.Value, error] {
+func allRuns(ctx context.Context, meshStack client.Client, blockFilter meshbuildingblock.ListFilter, pageSize int) iter.Seq2[jsontext.Value, error] {
 	if pageSize > 0 {
 		pageSize = min(pageSize, runsPageSizeOfEachBlock)
 	}
@@ -73,7 +76,7 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 		var runsOfEachBlock []iter.Seq2[jsontext.Value, error]
 		// The blocks are read raw because only their uuid is needed, and a block the client cannot
 		// fully decode still has runs to list.
-		for rawBlock, err := range meshStack.Raw.List[client.MeshBuildingBlockV2](ctx, blockFilter, client.ListOptions{}) {
+		for rawBlock, err := range meshStack.Raw.List[meshbuildingblock.Response](ctx, blockFilter, client.ListOptions{}) {
 			if err != nil {
 				yield(nil, err)
 				return
@@ -99,8 +102,8 @@ func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.Me
 
 func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID, pageSize int) iter.Seq2[jsontext.Value, error] {
 	return func(yield func(jsontext.Value, error) bool) {
-		filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid}
-		for run, err := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, client.ListOptions{PageSize: pageSize}) {
+		filter := meshbuildingblockrun.ListFilter{BuildingBlockUuid: buildingBlockUuid}
+		for run, err := range meshStack.Raw.List[meshbuildingblockrun.Response](ctx, filter, client.ListOptions{PageSize: pageSize}) {
 			if err != nil {
 				err = fmt.Errorf("listing the runs of building block %s: %w", buildingBlockUuid, err)
 			}
@@ -166,7 +169,7 @@ func (h *runHead) advance() (bool, error) {
 		return false, err
 	}
 	var created struct {
-		Metadata client.MeshBuildingBlockRunMetadata `json:"metadata"`
+		Metadata meshbuildingblockrun.Metadata `json:"metadata"`
 	}
 	if err := json.Unmarshal(run, &created); err != nil {
 		return false, fmt.Errorf("reading the metadata.createdAt of a building block run: %w", err)

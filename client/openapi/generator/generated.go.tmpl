@@ -1,0 +1,134 @@
+{{.Header}}{{comment .Doc}}package {{.Package}}
+
+import (
+{{- range .StdImports}}
+	{{quote .}}
+{{- end}}
+{{if .StdImports}}{{end}}
+{{- range .Imports}}
+	{{quote .}}
+{{- end}}
+)
+{{- if .Kind}}
+
+const (
+	Kind       = {{quote .Kind}}
+	ApiVersion = {{quote .ApiVersion}}
+	MediaType  = {{quote .MediaType}}
+)
+{{- end}}
+{{- if .Operations}}
+
+type Client struct {
+	api {{$.Runtime}}.Api
+}
+
+func NewClient(httpClient {{$.Runtime}}.HttpClient) Client {
+	return Client{ {{- $.Runtime}}.Api{
+		HttpClient:  httpClient,
+		Kind:        {{if .Kind}}Kind{{else}}""{{end}},
+		ApiVersion:  {{if .Kind}}ApiVersion{{else}}""{{end}},
+		MediaType:   {{if .Kind}}MediaType{{else}}{{quote .MediaType}}{{end}},
+		Path:        {{quote .Collection}},
+		EmbeddedRel: {{quote .EmbeddedRel}},
+	}}
+}
+
+// Api lets the raw client of the CLI reach the same API version.
+func (c Client) Api() {{$.Runtime}}.Api {
+	return c.api
+}
+{{- range .Operations}}
+
+{{comment .Doc}}func (c Client) {{.Name}}({{.Params}}) {{.Returns}} {
+{{- if .List}}
+	return c.api.List[{{.Result}}](ctx, {{.Call}})
+{{- else if .Result}}
+	return c.api.Do[{{.Result}}](ctx, {{.Call}}, {{.Body}})
+{{- else}}
+	_, err := c.api.Do[any](ctx, {{.Call}}, {{.Body}})
+	return err
+{{- end}}
+}
+{{- end}}
+{{- end}}
+{{- range .Queries}}
+
+type {{.Name}} struct {
+{{- range .Fields}}
+{{- if .Doc}}
+{{comment .Doc}}
+{{- else}}
+{{end}}	{{.Name}} {{.Type}} {{.Tag}}
+{{- end}}
+}
+{{- end}}
+{{- range .Types}}
+{{- $type := .}}
+
+{{comment .Doc}}
+{{- if eq .Kind "enum"}}type {{.Name}} string
+
+const (
+{{- range .Values}}
+	{{.Const}} {{$type.Name}} = {{quote .Value}}
+{{- end}}
+)
+
+var {{.Plural}} = enum.Of[{{.Name}}]({{range $i, $v := .Values}}{{if $i}}, {{end}}{{quote $v.Value}}{{end}})
+{{- else if eq .Kind "union"}}type {{.Name}} struct {
+	{{.DiscField}} {{.DiscType}}{{if .Wrap}} `json:{{quote .DiscJSON}}`{{end}}
+{{- range .Cases}}
+	{{.Field}} *{{.Type}}{{if $type.Wrap}} `json:"{{.JSON}},omitzero"`{{end}}
+{{- end}}
+}
+{{- if not .Wrap}}
+
+func (u {{.Name}}) MarshalJSONTo(enc *jsontext.Encoder) error {
+	switch u.{{.DiscField}} {
+{{- range .Cases}}
+	case {{quote .Value}}:
+		if u.{{.Field}} != nil {
+			return json.MarshalEncode(enc, struct {
+				Discriminator {{$type.DiscType}} `json:{{quote $type.DiscJSON}}`
+				*{{.Type}} `json:",embed"`
+			}{u.{{$type.DiscField}}, u.{{.Field}}})
+		}
+{{- end}}
+	}
+	return fmt.Errorf("{{.Name}} has no value for {{.DiscJSON}} %q", u.{{.DiscField}})
+}
+
+// UnmarshalJSONFrom leaves every variant nil for a {{.DiscJSON}} this client does not know yet.
+func (u *{{.Name}}) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	raw, err := dec.ReadValue()
+	if err != nil {
+		return err
+	}
+	var discriminator struct {
+		Value {{.DiscType}} `json:{{quote .DiscJSON}}`
+	}
+	if err := json.Unmarshal(raw, &discriminator); err != nil {
+		return err
+	}
+	*u = {{.Name}}{ {{- .DiscField}}: discriminator.Value}
+	switch discriminator.Value {
+{{- range .Cases}}
+	case {{quote .Value}}:
+		u.{{.Field}} = new({{.Type}})
+		return json.Unmarshal(raw, u.{{.Field}})
+{{- end}}
+	}
+	return nil
+}
+{{- end}}
+{{- else}}type {{.Name}} struct {
+{{- range .Fields}}
+{{- if .Doc}}
+{{comment .Doc}}
+{{- else}}
+{{end}}	{{.Name}} {{.Type}} {{.Tag}}
+{{- end}}
+}
+{{- end}}
+{{- end}}

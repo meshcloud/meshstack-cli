@@ -2,7 +2,6 @@ package openapi
 
 import (
 	"cmp"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"slices"
@@ -54,82 +53,61 @@ func (f Field) Depth() int {
 	return strings.Count(f.Path, ".")
 }
 
-type schema struct {
-	Ref         string         `json:"$ref"`
-	Type        string         `json:"type"`
-	Format      string         `json:"format"`
-	Description string         `json:"description"`
-	Required    []string       `json:"required"`
-	Properties  object         `json:"properties"`
-	Items       jsontext.Value `json:"items"`
-	resolvedRef string
-}
-
 // Doc reads the operation of a Spec, or of a selection of it, which keeps every component.
 func (s Spec) Doc(operation Operation) (OperationDoc, error) {
 	var parsed struct {
 		Summary     string `json:"summary"`
 		Description string `json:"description"`
 		Parameters  []struct {
-			Name        string `json:"name"`
-			In          string `json:"in"`
-			Required    bool   `json:"required"`
 			Description string `json:"description"`
-			Schema      schema `json:"schema"`
 		} `json:"parameters"`
-		RequestBody struct {
-			Content object `json:"content"`
-		} `json:"requestBody"`
 		Responses object `json:"responses"`
 	}
 	if err := json.Unmarshal(operation.raw, &parsed); err != nil {
 		return OperationDoc{}, err
 	}
+	schemas, err := operation.Schemas()
+	if err != nil {
+		return OperationDoc{}, err
+	}
 	doc := OperationDoc{Summary: parsed.Summary, Description: parsed.Description}
-	for _, parameter := range parsed.Parameters {
+	for i, parameter := range schemas.Parameters {
+		schema := cmp.Or(parameter.Schema, &Schema{})
 		doc.Parameters = append(doc.Parameters, Parameter{
 			Name:        parameter.Name,
 			In:          parameter.In,
 			Required:    parameter.Required,
-			Type:        parameter.Schema.typeName(nil),
-			Description: parameter.Description,
+			Type:        schema.typeName(nil, ""),
+			Description: parsed.Parameters[i].Description,
 		})
 	}
-	var err error
-	if doc.RequestBodies, err = s.bodies(parsed.RequestBody.Content); err != nil {
+	if doc.RequestBodies, err = s.bodies(schemas.RequestBody); err != nil {
 		return doc, fmt.Errorf("request body: %w", err)
 	}
-	for _, member := range parsed.Responses {
-		var response struct {
+	for i, response := range schemas.Responses {
+		var described struct {
 			Description string `json:"description"`
-			Content     object `json:"content"`
 		}
-		if err := json.Unmarshal(member.value, &response); err != nil {
-			return doc, fmt.Errorf("response %s: %w", member.name, err)
+		if err := json.Unmarshal(parsed.Responses[i].value, &described); err != nil {
+			return doc, fmt.Errorf("response %s: %w", response.Status, err)
 		}
 		bodies, err := s.bodies(response.Content)
 		if err != nil {
-			return doc, fmt.Errorf("response %s: %w", member.name, err)
+			return doc, fmt.Errorf("response %s: %w", response.Status, err)
 		}
-		doc.Responses = append(doc.Responses, Response{Status: member.name, Description: response.Description, Bodies: bodies})
+		doc.Responses = append(doc.Responses, Response{Status: response.Status, Description: described.Description, Bodies: bodies})
 	}
 	return doc, nil
 }
 
-func (s Spec) bodies(c object) ([]Body, error) {
+func (s Spec) bodies(contents []Content) ([]Body, error) {
 	var bodies []Body
-	for _, member := range c {
-		var mediaType struct {
-			Schema jsontext.Value `json:"schema"`
-		}
-		if err := json.Unmarshal(member.value, &mediaType); err != nil {
-			return nil, err
-		}
-		body := Body{MediaType: member.name}
-		if mediaType.Schema != nil {
+	for _, content := range contents {
+		body := Body{MediaType: content.MediaType}
+		if content.Schema != nil {
 			var err error
-			if body.Fields, err = s.fields("", mediaType.Schema, nil); err != nil {
-				return nil, fmt.Errorf("%s: %w", member.name, err)
+			if body.Fields, err = s.fields("", content.Schema, nil); err != nil {
+				return nil, fmt.Errorf("%s: %w", content.MediaType, err)
 			}
 		}
 		bodies = append(bodies, body)
@@ -138,27 +116,24 @@ func (s Spec) bodies(c object) ([]Body, error) {
 }
 
 // fields stops at a $ref it is already inside of, because a schema may contain itself.
-func (s Spec) fields(path string, raw jsontext.Value, refs []string) ([]Field, error) {
-	resolved, refs, err := s.resolve(raw, refs)
-	if err != nil || resolved.Ref != "" {
-		return nil, err
+func (s Spec) fields(path string, schema *Schema, refs []string) ([]Field, error) {
+	resolved, refs := s.resolve(schema, refs)
+	if resolved.Ref != "" {
+		return nil, nil
 	}
 	if resolved.Items != nil {
 		return s.fields(path+"[]", resolved.Items, refs)
 	}
 	var fields []Field
 	for _, property := range resolved.Properties {
-		child, _, err := s.resolve(property.value, refs)
-		if err != nil {
-			return nil, err
-		}
+		child, _ := s.resolve(property.Schema, refs)
 		field := Field{
-			Path:        strings.TrimPrefix(path+"."+property.name, "."),
-			Type:        child.typeName(s.itemsOf(child, refs)),
-			Required:    slices.Contains(resolved.Required, property.name),
+			Path:        strings.TrimPrefix(path+"."+property.Name, "."),
+			Type:        child.typeName(s.itemsOf(child, refs), property.Schema.RefName()),
+			Required:    resolved.IsRequired(property.Name),
 			Description: child.Description,
 		}
-		below, err := s.fields(field.Path, property.value, refs)
+		below, err := s.fields(field.Path, property.Schema, refs)
 		if err != nil {
 			return nil, err
 		}
@@ -168,50 +143,44 @@ func (s Spec) fields(path string, raw jsontext.Value, refs []string) ([]Field, e
 }
 
 // resolve follows $ref into the components. A schema it cannot follow keeps its Ref.
-func (s Spec) resolve(raw jsontext.Value, refs []string) (schema, []string, error) {
-	var resolved schema
-	if err := json.Unmarshal(raw, &resolved); err != nil {
-		return resolved, refs, err
-	}
-	resolvedRef := resolved.Ref
+func (s Spec) resolve(schema *Schema, refs []string) (*Schema, []string) {
+	resolved := schema
 	for resolved.Ref != "" && !slices.Contains(refs, resolved.Ref) {
-		i := slices.IndexFunc(s.components, func(c component) bool { return c.ref() == resolved.Ref })
-		if i < 0 {
-			return resolved, refs, nil
+		target, err := s.Schema(resolved.RefName())
+		if err != nil {
+			return resolved, refs
 		}
 		refs = append(slices.Clip(refs), resolved.Ref)
-		description := resolved.Description
-		resolved = schema{}
-		if err := json.Unmarshal(s.components[i].value, &resolved); err != nil {
-			return resolved, refs, err
-		}
-		resolved.Description = cmp.Or(description, resolved.Description)
+		target.Description = cmp.Or(resolved.Description, target.Description)
+		resolved = target
 	}
-	resolved.resolvedRef = resolvedRef
-	return resolved, refs, nil
+	return resolved, refs
 }
 
-func (s Spec) itemsOf(array schema, refs []string) *schema {
+func (s Spec) itemsOf(array *Schema, refs []string) *Schema {
 	if array.Items == nil {
 		return nil
 	}
-	items, _, err := s.resolve(array.Items, refs)
-	if err != nil {
-		return nil
+	items, _ := s.resolve(array.Items, refs)
+	if items.Ref == "" && array.Items.Ref != "" {
+		named := *items
+		named.Ref = array.Items.Ref
+		return &named
 	}
-	return &items
+	return items
 }
 
-func (s schema) typeName(items *schema) string {
+// typeName names the component a schema was resolved from, given as resolvedFrom.
+func (s *Schema) typeName(items *Schema, resolvedFrom string) string {
 	name := s.Type
-	if _, component, isRef := strings.CutLast(cmp.Or(s.Ref, s.resolvedRef), "/"); isRef {
+	if component := cmp.Or(s.RefName(), resolvedFrom); component != "" {
 		name = component
 	}
 	if s.Format != "" {
 		name += " (" + s.Format + ")"
 	}
 	if items != nil {
-		return strings.TrimSpace(name + " of " + items.typeName(nil))
+		return strings.TrimSpace(name + " of " + items.typeName(nil, ""))
 	}
 	return name
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblock/v2"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -48,7 +49,8 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 			if err != nil {
 				return err
 			}
-			accepted, err := meshStack.BuildingBlockV2.TriggerRun(ctx, buildingBlockUuid.String())
+			// The endpoint needs dryRun in a body, though the API docs mark it optional.
+			accepted, err := meshStack.MeshBuildingBlock.TriggerRun(ctx, buildingBlockUuid, meshbuildingblock.TriggerRunRequest{DryRun: new(false)})
 			if err != nil {
 				return err
 			}
@@ -77,29 +79,26 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 // building block as meshStack reported it then.
 type runStart struct {
 	raw     jsontext.Value
-	runUuid string
+	runUuid uuid.UUID
 	failure string
 }
 
 // awaitRunStart polls the building block until it reports something the trigger-run answer did not:
 // a new latest run, or a run start failure recorded anew.
-func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID, accepted *client.MeshBuildingBlockV2Status, every, within time.Duration) (runStart, error) {
-	if accepted == nil {
-		accepted = &client.MeshBuildingBlockV2Status{}
-	}
+func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID, accepted meshbuildingblock.StatusResponse, every, within time.Duration) (runStart, error) {
 	ctx, cancel := context.WithTimeoutCause(ctx, within, fmt.Errorf(
 		"meshStack accepted the run of building block %s, but had not started it %s later. `meshstack buildingblockrun list --building-block %s --limit 1` shows the run once it has",
 		buildingBlockUuid, within, buildingBlockUuid))
 	defer cancel()
 	for {
-		current, err := raw.Get[client.MeshBuildingBlockV2](ctx, buildingBlockUuid)
+		current, err := raw.Get[meshbuildingblock.Response](ctx, buildingBlockUuid)
 		if err != nil && ctx.Err() != nil {
 			return runStart{}, context.Cause(ctx)
 		} else if err != nil {
 			return runStart{}, err
 		}
 		var block struct {
-			Status *client.MeshBuildingBlockV2Status `json:"status"`
+			Status *meshbuildingblock.StatusResponse `json:"status"`
 		}
 		if err := json.Unmarshal(current, &block); err != nil {
 			return runStart{}, err
@@ -108,7 +107,7 @@ func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid
 			switch {
 			case status.LatestRunUuid != nil && *status.LatestRunUuid != deref(accepted.LatestRunUuid):
 				return runStart{raw: current, runUuid: *status.LatestRunUuid}, nil
-			case status.RunStartFailure != nil && deref(status.RunStartFailedOn) != deref(accepted.RunStartFailedOn):
+			case status.RunStartFailure != nil && !deref(status.RunStartFailedOn).Equal(deref(accepted.RunStartFailedOn)):
 				return runStart{raw: current, failure: *status.RunStartFailure}, nil
 			}
 		}
@@ -120,9 +119,10 @@ func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid
 	}
 }
 
-func deref(s *string) string {
-	if s == nil {
-		return ""
+func deref[T any](value *T) T {
+	var zero T
+	if value == nil {
+		return zero
 	}
-	return *s
+	return *value
 }

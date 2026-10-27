@@ -2,7 +2,6 @@ package buildingblockrun
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblockrun/v1"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -49,7 +49,7 @@ the run succeeded and 1 otherwise, so a script can wait on a run with it.`,
 					return readRun(ctx, meshStack, runUuid)
 				})
 			}
-			logs, err := meshStack.Raw.Get[client.MeshBuildingBlockRun](ctx, runUuid, "logs")
+			logs, err := meshStack.Raw.Get[meshbuildingblockrun.Response](ctx, runUuid, "logs")
 			if err != nil {
 				return err
 			}
@@ -64,17 +64,6 @@ the run succeeded and 1 otherwise, so a script can wait on a run with it.`,
 	return cmd
 }
 
-// meshStack reports an aborted run as FAILED, so only the status of its steps can tell that it was
-// aborted. MeshBuildingBlockRunRepresentationModelAssembler of ../meshfed-release (meshcloud-internal)
-// maps the states.
-const (
-	runInProgress = "IN_PROGRESS"
-	runSucceeded  = "SUCCEEDED"
-	runFailed     = "FAILED"
-	stepFailed    = "FAILED"
-	stepAborted   = "ABORTED"
-)
-
 const (
 	pollInterval = 2 * time.Second
 	maxPollWait  = time.Minute
@@ -83,24 +72,18 @@ const (
 )
 
 type runSnapshot struct {
-	status string
-	steps  []client.MeshBuildingBlockRunStepLog
+	status meshbuildingblockrun.RunStatus
+	steps  []meshbuildingblockrun.StepLogDTO
 }
 
 // readRun reads the run's status before its logs, so that the logs of a finished run are its
 // last ones.
 func readRun(ctx context.Context, meshStack client.Client, runUuid uuid.UUID) (runSnapshot, error) {
-	rawRun, err := meshStack.Raw.Get[client.MeshBuildingBlockRun](ctx, runUuid)
+	run, err := meshStack.MeshBuildingBlockRun.Get(ctx, runUuid)
 	if err != nil {
 		return runSnapshot{}, err
 	}
-	var run struct {
-		Status string `json:"status"`
-	}
-	if err = json.Unmarshal(rawRun, &run); err != nil {
-		return runSnapshot{}, err
-	}
-	logs, err := meshStack.BuildingBlockRun.GetLogs(ctx, runUuid.String())
+	logs, err := meshStack.MeshBuildingBlockRun.Logs(ctx, runUuid)
 	if err != nil {
 		return runSnapshot{}, err
 	}
@@ -142,10 +125,10 @@ func followRun(ctx context.Context, w io.Writer, runUuid uuid.UUID, read func(co
 			return err
 		}
 		switch run.status {
-		case runInProgress:
-		case runSucceeded:
+		case meshbuildingblockrun.RunStatusInProgress:
+		case meshbuildingblockrun.RunStatusSucceeded:
 			return nil
-		case runFailed:
+		case meshbuildingblockrun.RunStatusFailed:
 			return run.failure(runUuid)
 		default:
 			return fmt.Errorf("building block run %s has the status %q, which the meshStack CLI does not know, so it stops following the run", runUuid, run.status)
@@ -164,16 +147,17 @@ func isClientError(err error) bool {
 	return ok && httpErr.IsClientError()
 }
 
+// meshStack reports an aborted run as FAILED, so only the status of its steps can tell that it was
+// aborted. MeshBuildingBlockRunRepresentationModelAssembler of ../meshfed-release (meshcloud-internal)
+// maps the states.
 func (run runSnapshot) failure(runUuid uuid.UUID) error {
 	var abortedStep string
 	for _, step := range run.steps {
-		switch step.Status {
-		case stepFailed:
+		if step.Status == meshbuildingblockrun.BuildingBlockRunStepStatusFailed {
 			return fmt.Errorf("building block run %s failed at step %q", runUuid, step.DisplayName)
-		case stepAborted:
-			if abortedStep == "" {
-				abortedStep = step.DisplayName
-			}
+		}
+		if step.Status == meshbuildingblockrun.BuildingBlockRunStepStatusAborted && abortedStep == "" {
+			abortedStep = step.DisplayName
 		}
 	}
 	if abortedStep != "" {
@@ -182,7 +166,7 @@ func (run runSnapshot) failure(runUuid uuid.UUID) error {
 	return fmt.Errorf("building block run %s failed", runUuid)
 }
 
-func WriteLogs(w io.Writer, logs client.MeshBuildingBlockRunLogs) error {
+func WriteLogs(w io.Writer, logs meshbuildingblockrun.LogsDTO) error {
 	var written writtenLogs
 	return written.writeNew(w, logs.Steps)
 }
@@ -193,13 +177,13 @@ type writtenLogs []writtenStep
 
 type writtenStep struct {
 	displayName   string
-	status        string
+	status        meshbuildingblockrun.BuildingBlockRunStepStatus
 	statusWritten bool
 	userLines     messageLines
 	systemLines   messageLines
 }
 
-func (written *writtenLogs) writeNew(w io.Writer, steps []client.MeshBuildingBlockRunStepLog) error {
+func (written *writtenLogs) writeNew(w io.Writer, steps []meshbuildingblockrun.StepLogDTO) error {
 	for i, step := range steps {
 		if i == len(*written) {
 			*written = append(*written, writtenStep{displayName: step.DisplayName})

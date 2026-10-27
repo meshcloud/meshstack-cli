@@ -18,11 +18,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
-var (
-	releasedUrl = xurl.MustParsef("https://docs.meshcloud.io/api/meshstack-openapi-docs.json")
-	devUrl      = xurl.MustParsef("https://docs.dev.meshcloud.io/api/meshstack-openapi-docs.json")
-)
-
 // urlEnv names the document of the fake meshStack that the tests and the demo serve. It is no
 // setting.Setting, and no help names it, so that nobody else comes to rely on it.
 const urlEnv = "MESHSTACK_API_DOCS_URL"
@@ -53,9 +48,9 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 			ErrNoConfigDir, dir, config.DirectorySetting.EnvKey())
 	}
 
-	url, path, conditionalGet := releasedUrl, dir.Join("api-docs.json"), false
+	url, path, conditionalGet := openapi.ReleasedUrl, dir.Join("api-docs.json"), false
 	if cliVersion, parseErr := version.Parse(opts.Version); opts.Dev || parseErr != nil || !cliVersion.IsRelease() {
-		url, path, conditionalGet = devUrl, dir.Join("api-docs-dev.json"), true
+		url, path, conditionalGet = openapi.DevUrl, dir.Join("api-docs-dev.json"), true
 	}
 	if customEnv := os.Getenv(urlEnv); customEnv != "" {
 		var custom xurl.URL

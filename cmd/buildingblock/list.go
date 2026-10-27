@@ -3,7 +3,7 @@ package buildingblock
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblock/v2"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -19,14 +19,15 @@ lists every building block the credential can see.`,
   meshstack bb list --limit unlimited -o ndjson`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			var (
-				filter client.MeshBuildingBlockV2ListFilter
-				err    error
-			)
-			if filter.WorkspaceIdentifier, err = internal.ListWorkspace(cmd.Context()); err != nil {
+			workspace, err := internal.ListWorkspace(cmd.Context())
+			if err != nil {
 				return err
 			}
-			return flags.Run[client.MeshBuildingBlockV2](cmd, filter)
+			var filter meshbuildingblock.ListFilter
+			if workspace != nil {
+				filter.WorkspaceIdentifier = *workspace
+			}
+			return flags.Run[meshbuildingblock.Response](cmd, filter)
 		},
 	}
 

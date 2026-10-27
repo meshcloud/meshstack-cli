@@ -7,15 +7,16 @@ import (
 	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/meshbuildingblock/v2"
 )
 
 type buildingBlock struct {
-	Metadata client.MeshBuildingBlockV2Metadata `json:"metadata"`
-	Status   *client.MeshBuildingBlockV2Status  `json:"status"`
+	Metadata meshbuildingblock.Metadata        `json:"metadata"`
+	Status   *meshbuildingblock.StatusResponse `json:"status"`
 }
 
 func readBuildingBlock(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID) (block buildingBlock, err error) {
-	read, err := raw.Get[client.MeshBuildingBlockV2](ctx, buildingBlockUuid)
+	read, err := raw.Get[meshbuildingblock.Response](ctx, buildingBlockUuid)
 	if err != nil {
 		return block, err
 	}
@@ -24,7 +25,8 @@ func readBuildingBlock(ctx context.Context, raw *client.RawClient, buildingBlock
 
 func (block buildingBlock) hasUnfinishedRun() bool {
 	return block.Status != nil &&
-		(block.Status.Status == client.BuildingBlockStatusInProgress || block.Status.Status == client.BuildingBlockStatusPending)
+		//nolint:staticcheck // SA1019: moving to status.action is a change of its own, which this switch of types leaves out
+		(block.Status.Status == meshbuildingblock.StatusValueInProgress || block.Status.Status == meshbuildingblock.StatusValuePending)
 }
 
 // OpenStore opens the state under the building block's own workspace where workspace is empty,
@@ -46,7 +48,7 @@ func NoRunOf(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.
 		return err
 	}
 	if block.hasUnfinishedRun() {
-		return fmt.Errorf("building block %s has a run %s, which writes the state as well", buildingBlockUuid, block.Status.Status)
+		return fmt.Errorf("building block %s has a run %s, which writes the state as well", buildingBlockUuid, block.Status.Status) //nolint:staticcheck // SA1019: as in hasUnfinishedRun
 	}
 	return nil
 }
