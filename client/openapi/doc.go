@@ -23,6 +23,9 @@ type Parameter struct {
 	Required    bool
 	Type        string
 	Description string
+	// PathKey names the metadata field that fills a path parameter, such as metadata.uuid, or a
+	// template of several in braces, such as {metadata.ownedByWorkspace}.{metadata.name}.
+	PathKey string
 }
 
 type Response struct {
@@ -76,6 +79,7 @@ func (s Spec) Doc(operation Operation) (OperationDoc, error) {
 			Required    bool   `json:"required"`
 			Description string `json:"description"`
 			Schema      schema `json:"schema"`
+			PathKey     string `json:"x-meshstack-path-key"`
 		} `json:"parameters"`
 		RequestBody struct {
 			Content object `json:"content"`
@@ -93,6 +97,7 @@ func (s Spec) Doc(operation Operation) (OperationDoc, error) {
 			Required:    parameter.Required,
 			Type:        parameter.Schema.typeName(nil),
 			Description: parameter.Description,
+			PathKey:     parameter.PathKey,
 		})
 	}
 	var err error
