@@ -38,8 +38,9 @@ const Token = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9." //nolint:gosec // 
 var UserAgent = http.UserAgent{GitHubRepo: "meshcloud/fakemeshstack", Version: "test"}
 
 const (
-	ApiDocsPath     = "/api/meshstack-openapi-docs.json"
-	defaultPageSize = 50
+	ApiDocsPath          = "/api/meshstack-openapi-docs.json"
+	MeshStackApiDocsPath = "/api/openapi"
+	defaultPageSize      = 50
 )
 
 type Options struct {
@@ -62,8 +63,8 @@ type Options struct {
 	PageSize int
 
 	TfStates map[TfState][]byte
-	// ApiDocs is served at ApiDocsPath as last modified when New was called, so a conditional GET
-	// gets a 304.
+	// ApiDocs is served at ApiDocsPath and MeshStackApiDocsPath as last modified when New was called,
+	// so a conditional GET gets a 304.
 	ApiDocs []byte
 }
 
@@ -144,10 +145,12 @@ func New(options Options) *Server {
 	s.routes.HandleFunc("/api/terraform/state/workspace/{workspace}/buildingBlock/{uuid}", s.authorized(s.tfState))
 	if options.ApiDocs != nil {
 		modified := time.Now()
-		s.routes.HandleFunc("GET "+ApiDocsPath, func(w gohttp.ResponseWriter, r *gohttp.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			gohttp.ServeContent(w, r, "", modified, bytes.NewReader(options.ApiDocs))
-		})
+		for _, path := range []string{ApiDocsPath, MeshStackApiDocsPath} {
+			s.routes.HandleFunc("GET "+path, func(w gohttp.ResponseWriter, r *gohttp.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				gohttp.ServeContent(w, r, "", modified, bytes.NewReader(options.ApiDocs))
+			})
+		}
 	}
 	if options.Issuer != "" {
 		s.registerKeycloak()

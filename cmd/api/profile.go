@@ -83,6 +83,22 @@ func profileFor(ctx context.Context, requestURL *url.URL) (endpoint xurl.URL, so
 	}}}, nil
 }
 
+func docsEndpoint(ctx context.Context) (xurl.URL, error) {
+	settingSources := internal.SettingSources()
+	var storedEndpoint setting.Sources
+	current, _, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{SettingSources: settingSources, StoredOnly: true})
+	if err == nil {
+		storedEndpoint = setting.Sources{current.EndpointSource()}
+	} else if !errors.Is(err, profile.ErrNoStoredProfile) {
+		return xurl.URL{}, err
+	}
+	endpoint, err := settingSources.ResolveSetting(ctx, meshstack.EndpointSetting, storedEndpoint...)
+	if errors.Is(err, setting.ErrNoSourceProvidedValue) {
+		return xurl.URL{}, nil
+	}
+	return endpoint, err
+}
+
 func notHeldError(profiles profile.Profiles, requestURL *url.URL, endpoint xurl.URL, ofProfile, source string) error {
 	urlEndpoint, _ := profiles.EndpointHolding(requestURL)
 	return fmt.Errorf("%s is for endpoint %s, not for endpoint %s%s from %s; leave out %s, or give the path relative to %s",

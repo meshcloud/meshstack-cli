@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client/openapi"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 )
@@ -47,7 +48,10 @@ version it offers. It takes no path, and no flag of the request.
 
 --output json writes the part of the OpenAPI document instead.
 
---dev uses the development API docs.`,
+The API docs are those your meshStack serves, so they list what it offers. Without an endpoint, or
+for a meshStack too old to serve them, they are those of the latest release on docs.meshcloud.io.
+
+--dev uses the API docs of what meshStack's develop branch has merged instead.`,
 		Example: `  meshstack api-docs
   meshstack api-docs -X DELETE
   meshstack api-docs /api/meshobjects/meshtenants/<uuid>
@@ -65,10 +69,10 @@ version it offers. It takes no path, and no flag of the request.
 			if describe != "" && len(args) > 0 {
 				return fmt.Errorf("--%s takes no path, see --help", describeFlagName)
 			}
+			var endpoint xurl.URL
 			if r.target.IsAbs() {
-				endpoint, _, profileErr := profileFor(cmd.Context(), r.target)
-				if profileErr != nil {
-					return profileErr
+				if endpoint, _, err = profileFor(cmd.Context(), r.target); err != nil {
+					return err
 				}
 				if endpoint.URL == nil {
 					return fmt.Errorf("no stored profile holds %s; give the path relative to the endpoint", r.target.Redacted())
@@ -76,12 +80,14 @@ version it offers. It takes no path, and no flag of the request.
 				if err = r.cutTo(endpoint); err != nil {
 					return err
 				}
+			} else if endpoint, err = docsEndpoint(cmd.Context()); err != nil {
+				return err
 			}
 			selector, err := flags.selector(r)
 			if err != nil {
 				return err
 			}
-			spec, wait, err := flags.loadApiDocs(cmd)
+			spec, wait, err := flags.loadApiDocs(cmd, endpoint)
 			defer wait()
 			if err != nil {
 				return err
