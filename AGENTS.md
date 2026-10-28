@@ -51,7 +51,8 @@ tree, the dependency policy, and what `client/`, `internal/http` and the setting
 
 [`skills/meshstack-cli`](skills/meshstack-cli/SKILL.md) is the skill for those who **use** the CLI;
 other repositories link to it. A change to what a command does, prints or needs updates it in the
-same pull request.
+same pull request. docs.meshcloud.io links to its headings, so rename a heading only together with
+the docs.
 
 ## Always-on rules
 

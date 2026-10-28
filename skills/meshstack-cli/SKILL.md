@@ -16,6 +16,10 @@ This skill is for agents and people who **use** the CLI. It lives in the CLI rep
 changes together with the commands. Repositories that use the CLI link here, and only add their own
 facts (endpoint, profile name, workspaces).
 
+New to meshStack? Start at the [meshStack agent context](https://docs.meshcloud.io/agent-context/index.md).
+It explains what meshStack is, which login to give an agent, the concepts, and the tasks, and it
+links back here for the commands.
+
 `meshstack --help` and `meshstack <command> --help` are the source of truth for flags. When this
 skill and the help disagree, trust the help.
 
@@ -37,15 +41,15 @@ skill and the help disagree, trust the help.
 Some commands are marked **experimental** in their help. Their output shape may still change, so
 re-check a field before you trust a recipe below.
 
-Creating or changing meshStack configuration goes through the
-[meshStack Terraform provider](https://github.com/meshcloud/terraform-provider-meshstack), not this
-CLI. The provider uses the same login: a `provider "meshstack" {}` block takes the endpoint and the
-credential of the profile of the last login, and `profile` in the block picks another. A browser login
-also needs `workspace` in the block or `MESHSTACK_WORKSPACE`, as the provider ignores the profile's
-default workspace; an API key or an API token needs none. For several workspaces in one configuration
-with a browser login, use one aliased provider block per workspace. The exception
-is a one-off order that Terraform cannot converge on,
-such as a starterkit: see [Ordering a building block](#ordering-a-building-block).
+Creating or changing meshStack configuration goes through the meshStack Terraform provider, not
+this CLI: the
+[`terraform-provider-meshstack` skill](https://raw.githubusercontent.com/meshcloud/terraform-provider-meshstack/main/skills/terraform-provider-meshstack/SKILL.md)
+shows how. To build a building block definition from a ready-made module, start with the
+[`meshstack-hub` skill](https://raw.githubusercontent.com/meshcloud/meshstack-hub/main/skills/meshstack-hub/SKILL.md).
+The provider uses the same login as this CLI: see
+[Log in](https://raw.githubusercontent.com/meshcloud/terraform-provider-meshstack/main/skills/terraform-provider-meshstack/SKILL.md#log-in)
+in its skill. The exception is a one-off order that Terraform cannot converge on, such as a
+starterkit: see [Ordering a building block](#ordering-a-building-block).
 
 ## Login and profiles
 
@@ -274,14 +278,16 @@ meshstack bb list --limit unlimited -o ndjson |
   jq -r 'select(.metadata.uuid == "<uuid>") | .status.outputs.summary.value'
 ```
 
-Run history for one block:
+## Why a run failed
+
+Find the run in the history of the block. `status.latestRunUuid` of the block names the newest one:
 
 ```sh
 meshstack bbrun list --building-block <uuid> -o ndjson |
   jq -r '[.metadata.uuid, (.spec.runNumber|tostring), .spec.behavior, .status] | @tsv'
 ```
 
-Why a run failed — only the steps that broke, and their consumer-facing message:
+Then read only the steps that broke, and their consumer-facing message:
 
 ```sh
 meshstack bbrun logs <run-uuid> -o ndjson |
