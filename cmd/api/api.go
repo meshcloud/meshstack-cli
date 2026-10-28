@@ -71,7 +71,7 @@ To see what the API docs say about the request, run the same command line with '
 				selector.Path = r.target.Path
 				args = []string{r.target.String()}
 			}
-			spec, wait, err := flags.loadApiDocs(cmd)
+			spec, wait, err := flags.loadApiDocs(cmd, meshStack.Endpoint)
 			defer wait()
 			if err != nil {
 				slog.WarnContext(ctx, fmt.Sprintf("Sending the request unchanged, because the API docs are not available: %s. "+

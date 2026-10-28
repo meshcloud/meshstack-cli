@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client/openapi"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 )
@@ -43,7 +44,9 @@ Give the request as you would give it to 'meshstack api': a path or a URL, with 
 
 --%[6]s %[7]s prints the matching part of the OpenAPI document as JSON.
 
---%[8]s uses the API docs of meshStack's development version.`,
+The command downloads the API docs from your meshStack, so they list only what your meshStack offers. If no endpoint is set, or if your meshStack is too old to serve its API docs, the command uses the API docs of the latest release on docs.meshcloud.io.
+
+--%[8]s uses the API docs of meshStack's development version instead.`,
 			methodFlagName, headerFlagName, requestJsonFlagName, apiVersionFlagName, describeFlagName,
 			internal.OutputFlagName, internal.OutputJson, devFlagName),
 		Example: `  meshstack api-docs
@@ -63,10 +66,10 @@ Give the request as you would give it to 'meshstack api': a path or a URL, with 
 			if describe != "" && len(args) > 0 {
 				return fmt.Errorf("--%s cannot be combined with a path; see --help", describeFlagName)
 			}
+			var endpoint xurl.URL
 			if r.target.IsAbs() {
-				endpoint, _, profileErr := profileFor(cmd.Context(), r.target)
-				if profileErr != nil {
-					return profileErr
+				if endpoint, _, err = profileFor(cmd.Context(), r.target); err != nil {
+					return err
 				}
 				if endpoint.URL == nil {
 					return fmt.Errorf("no stored profile matches %s; give the path relative to the endpoint", r.target.Redacted())
@@ -74,12 +77,14 @@ Give the request as you would give it to 'meshstack api': a path or a URL, with 
 				if err = r.cutTo(endpoint); err != nil {
 					return err
 				}
+			} else if endpoint, err = docsEndpoint(cmd.Context()); err != nil {
+				return err
 			}
 			selector, err := flags.selector(r)
 			if err != nil {
 				return err
 			}
-			spec, wait, err := flags.loadApiDocs(cmd)
+			spec, wait, err := flags.loadApiDocs(cmd, endpoint)
 			defer wait()
 			if err != nil {
 				return err
