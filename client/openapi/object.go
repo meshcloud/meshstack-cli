@@ -3,6 +3,7 @@ package openapi
 import (
 	"encoding/json/jsontext"
 	"fmt"
+	"slices"
 )
 
 // object keeps the order of its members, which a map would lose, so that a part of the document
@@ -62,4 +63,13 @@ func (o object) get(name string) (jsontext.Value, bool) {
 		}
 	}
 	return nil, false
+}
+
+// set replaces the value of the member, or appends one.
+func (o object) set(name string, value jsontext.Value) object {
+	if i := slices.IndexFunc(o, func(m member) bool { return m.name == name }); i >= 0 {
+		o[i].value = value
+		return o
+	}
+	return append(o, member{name, value})
 }

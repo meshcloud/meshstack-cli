@@ -60,13 +60,26 @@ func Parse(r io.Reader) (Spec, error) {
 		return Spec{}, fmt.Errorf("cannot parse the OpenAPI document: %w", err)
 	}
 	spec := Spec{document: document}
+	for _, kind := range slices.Sorted(maps.Keys(parsed.Components)) {
+		for _, c := range parsed.Components[kind] {
+			spec.components = append(spec.components, component{kind: kind, member: c})
+		}
+	}
 	for _, path := range parsed.Paths {
-		var methods object
-		if err := json.Unmarshal(path.value, &methods); err != nil {
+		var item object
+		if err := json.Unmarshal(path.value, &item); err != nil {
 			return Spec{}, fmt.Errorf("cannot parse path %s: %w", path.name, err)
 		}
-		for _, method := range methods {
-			operation, err := parseOperation(strings.ToUpper(method.name), path.name, method.value)
+		shared, _ := item.get("parameters")
+		for _, method := range item {
+			if !slices.Contains(httpMethods, method.name) {
+				continue
+			}
+			raw, err := spec.inlineOperation(method.value, shared)
+			if err != nil {
+				return Spec{}, fmt.Errorf("cannot parse %s %s: %w", method.name, path.name, err)
+			}
+			operation, err := parseOperation(strings.ToUpper(method.name), path.name, raw)
 			if err != nil {
 				return Spec{}, fmt.Errorf("cannot parse %s %s: %w", method.name, path.name, err)
 			}
@@ -74,13 +87,12 @@ func Parse(r io.Reader) (Spec, error) {
 		}
 	}
 	spec.assignKinds()
-	for _, kind := range slices.Sorted(maps.Keys(parsed.Components)) {
-		for _, c := range parsed.Components[kind] {
-			spec.components = append(spec.components, component{kind: kind, member: c})
-		}
-	}
 	return spec, nil
 }
+
+// httpMethods are the members of a path item that are operations. The others, such as parameters
+// and summary, apply to every operation of the path.
+var httpMethods = []string{"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 
 func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation, error) {
 	type content struct {
@@ -304,6 +316,121 @@ func (s Spec) MarshalJSONTo(enc *jsontext.Encoder) error {
 		document = append(document, member{"components", components.mustMarshal()})
 	}
 	return json.MarshalEncode(enc, document)
+}
+
+// inlineOperation replaces the $ref of a parameter, the request body and a response with the
+// component, so that the media types of an operation are its own, and adds the parameters of the
+// path item. Those of the operation win over one of the same name and location, as OpenAPI says.
+func (s Spec) inlineOperation(operation, sharedParameters jsontext.Value) (jsontext.Value, error) {
+	var members object
+	if err := json.Unmarshal(operation, &members); err != nil {
+		return nil, err
+	}
+	ownParameters, _ := members.get("parameters")
+	own, err := s.inlineParameters(ownParameters)
+	if err != nil {
+		return nil, err
+	}
+	shared, err := s.inlineParameters(sharedParameters)
+	if err != nil {
+		return nil, err
+	}
+	var parameters []jsontext.Value
+	for _, parameter := range shared {
+		if !slices.ContainsFunc(own, parameter.sameAs) {
+			parameters = append(parameters, parameter.value)
+		}
+	}
+	for _, parameter := range own {
+		parameters = append(parameters, parameter.value)
+	}
+	if len(parameters) > 0 {
+		merged, marshalErr := json.Marshal(parameters)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		members = members.set("parameters", merged)
+	}
+	if requestBody, ok := members.get("requestBody"); ok {
+		if requestBody, err = s.inline(requestBody); err != nil {
+			return nil, err
+		}
+		members = members.set("requestBody", requestBody)
+	}
+	if value, ok := members.get("responses"); ok {
+		var responses object
+		if err = json.Unmarshal(value, &responses); err != nil {
+			return nil, err
+		}
+		for i, response := range responses {
+			if responses[i].value, err = s.inline(response.value); err != nil {
+				return nil, err
+			}
+		}
+		members = members.set("responses", responses.mustMarshal())
+	}
+	return json.Marshal(members)
+}
+
+type inlinedParameter struct {
+	Name  string `json:"name"`
+	In    string `json:"in"`
+	value jsontext.Value
+}
+
+func (p inlinedParameter) sameAs(other inlinedParameter) bool {
+	return p.Name == other.Name && p.In == other.In
+}
+
+func (s Spec) inlineParameters(value jsontext.Value) ([]inlinedParameter, error) {
+	if value == nil {
+		return nil, nil
+	}
+	var values []jsontext.Value
+	if err := json.Unmarshal(value, &values); err != nil {
+		return nil, err
+	}
+	parameters := make([]inlinedParameter, len(values))
+	for i, value := range values {
+		inlined, err := s.inline(value)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(inlined, &parameters[i]); err != nil {
+			return nil, fmt.Errorf("parameter %s: %w", value, err)
+		}
+		parameters[i].value = inlined
+	}
+	return parameters, nil
+}
+
+// inline follows the $ref of a value from component to component, and returns the first value that
+// is no $ref, or that refers to no component of the document.
+func (s Spec) inline(value jsontext.Value) (jsontext.Value, error) {
+	var followed []string
+	for {
+		var ref struct {
+			Ref string `json:"$ref"`
+		}
+		if value.Kind() != '{' {
+			return value, nil
+		}
+		if err := json.Unmarshal(value, &ref); err != nil {
+			return nil, err
+		}
+		if ref.Ref == "" {
+			return value, nil
+		}
+		if slices.Contains(followed, ref.Ref) {
+			return nil, fmt.Errorf("$ref %s refers to itself through %s", ref.Ref, strings.Join(followed, ", "))
+		}
+		i := slices.IndexFunc(s.components, func(c component) bool { return c.ref() == ref.Ref })
+		if i < 0 {
+			return value, nil
+		}
+		followed = append(followed, ref.Ref)
+		value = s.components[i].value
+	}
 }
 
 var refRe = regexp.MustCompile(`"\$ref"\s*:\s*"([^"]+)"`)

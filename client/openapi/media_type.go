@@ -14,7 +14,7 @@ import (
 
 // Only a hal+json type carries a meshObject: application/vnd.meshcloud.api.meshobjects.v1+json is
 // a collection of them.
-var versionedMediaTypeRe = regexp.MustCompile(`^application/vnd\.meshcloud\.api\.([a-z]+)\.(v\d+(?:-preview)?)(\.hal)?\+json$`)
+var versionedMediaTypeRe = regexp.MustCompile(`^application/vnd\.meshcloud\.api\.(?:([a-z]+)\.)?(v\d+(?:-preview)?)(\.hal)?\+json$`)
 
 type MediaType struct {
 	Name string
@@ -32,7 +32,7 @@ func newMediaType(name, operationId string) MediaType {
 		return MediaType{Name: name}
 	}
 	mediaType := MediaType{Name: name, ApiVersion: MustParseApiVersion(match[2])}
-	if kind, isMeshObject := match[1], match[3] != ""; isMeshObject {
+	if kind, isMeshObject := match[1], match[1] != "" && match[3] != ""; isMeshObject {
 		mediaType.Kind = kind
 		if prefix := operationId[:min(len(operationId), len(kind))]; strings.EqualFold(prefix, kind) {
 			mediaType.Kind = prefix
