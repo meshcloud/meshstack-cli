@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
+	gourl "net/url"
 	"os"
 	"strings"
 
@@ -32,7 +35,8 @@ const urlEnv = "MESHSTACK_API_DOCS_URL"
 type Options struct {
 	setting.Sources
 
-	Client http.Client
+	Client   http.Client
+	Endpoint xurl.URL
 	// Version is the CLI's. A build of no release reads the docs of develop, as Dev does.
 	Version string
 	Dev     bool
@@ -66,22 +70,38 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 			ErrNoConfigDir, dir, config.DirectorySetting.EnvKey())
 	}
 
-	url, path, conditionalGet := releasedUrl, dir.Join("api-docs.json"), false
-	if cliVersion, parseErr := version.Parse(opts.Version); opts.Dev || parseErr != nil || !cliVersion.IsRelease() {
-		url, path, conditionalGet = devUrl, dir.Join("api-docs-dev.json"), true
-	}
 	if customEnv != "" {
 		var custom xurl.URL
 		if err = custom.UnmarshalText([]byte(customEnv)); err != nil {
 			return spec, wait, fmt.Errorf("%s: %w", urlEnv, err)
 		}
-		// One file per URL, because the conditional GET asks only for a document newer than the stored
-		// one: after a switch to the docs of an older meshStack, it would keep those of the newer one.
-		urlHash := sha256.Sum256([]byte(custom.String()))
-		url, path, conditionalGet = custom, dir.Join(fmt.Sprintf("api-docs-custom-%x.json", urlHash[:6])), true
+		return opts.download(ctx, custom.URL, dir.Join(fmt.Sprintf("api-docs-custom-%s.json", urlHash(custom.URL))), true)
+	}
+	if opts.Endpoint.URL != nil && !opts.Dev {
+		served := opts.Endpoint.JoinPath("api", "openapi")
+		spec, wait, err = opts.download(ctx, served, dir.Join(fmt.Sprintf("api-docs-%s.json", urlHash(served))), true)
+		if httpErr, ok := errors.AsType[http.Error](err); !ok || (!httpErr.IsUnauthorized() && !httpErr.IsNotFound()) {
+			return spec, wait, err
+		}
+		slog.DebugContext(ctx, fmt.Sprintf("%s serves no API docs at /api/openapi, reading those of the docs site", opts.Endpoint))
 	}
 
-	wait, err = opts.Client.Download(ctx, url.URL, path, http.WithConditionalGet(conditionalGet))
+	url, path, conditionalGet := releasedUrl, dir.Join("api-docs.json"), false
+	if cliVersion, parseErr := version.Parse(opts.Version); opts.Dev || parseErr != nil || !cliVersion.IsRelease() {
+		url, path, conditionalGet = devUrl, dir.Join("api-docs-dev.json"), true
+	}
+	return opts.download(ctx, url.URL, path, conditionalGet)
+}
+
+// urlHash names one file per URL, because the conditional GET asks only for a document newer than the
+// stored one: after a switch to the docs of an older meshStack, it would keep those of the newer one.
+func urlHash(url *gourl.URL) string {
+	sum := sha256.Sum256([]byte(url.String()))
+	return hex.EncodeToString(sum[:6])
+}
+
+func (opts Options) download(ctx context.Context, url *gourl.URL, path string, conditionalGet bool) (spec openapi.Spec, wait func(), err error) {
+	wait, err = opts.Client.Download(ctx, url, path, http.WithConditionalGet(conditionalGet))
 	if err != nil {
 		return spec, wait, fmt.Errorf("cannot download the API docs from %s: %w", url, err)
 	}
