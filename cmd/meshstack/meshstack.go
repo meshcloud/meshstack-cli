@@ -55,7 +55,9 @@ Without a profile named, the one whose endpoint matches is used, else the curren
 meshstack login sets.
 
 AI agents and scripts: add -o json to a list or show command to read JSON. meshstack api sends a
-request to any path of the meshStack API, and meshstack api-docs describes that path.
+request to any path of the meshStack API, and meshstack api-docs describes that path. The skill for
+agents is https://github.com/meshcloud/meshstack-cli/blob/main/skills/meshstack-cli/SKILL.md, and
+https://docs.meshcloud.io/llms.txt leads to everything else about meshStack.
 
 Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 		Example: `  meshstack login
