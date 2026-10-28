@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
@@ -23,7 +24,8 @@ var (
 	devUrl      = xurl.MustParsef("https://docs.dev.meshcloud.io/api/meshstack-openapi-docs.json")
 )
 
-// urlEnv names the document of the fake meshStack that the tests and the demo serve. It is no
+// urlEnv names the document of the fake meshStack that the tests and the demo serve, or as a file://
+// URL the one the acceptance suite generates from the meshStack it runs against. It is no
 // setting.Setting, and no help names it, so that nobody else comes to rely on it.
 const urlEnv = "MESHSTACK_API_DOCS_URL"
 
@@ -44,6 +46,17 @@ var ErrNoConfigDir = errors.New("no writable config directory to keep the API do
 // download can finish.
 func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), err error) {
 	wait = func() {}
+	customEnv := os.Getenv(urlEnv)
+	if path, isFile := strings.CutPrefix(customEnv, "file://"); isFile {
+		document, readErr := os.ReadFile(path) //nolint:gosec // G304: the path is the one the acceptance suite sets
+		if readErr != nil {
+			return spec, wait, fmt.Errorf("%s: %w", urlEnv, readErr)
+		}
+		if spec, err = openapi.Parse(bytes.NewReader(document)); err != nil {
+			return spec, wait, fmt.Errorf("%s: %w", path, err)
+		}
+		return spec, wait, nil
+	}
 	dir, err := opts.ResolveSetting(ctx, config.DirectorySetting)
 	if err != nil {
 		return spec, wait, err
@@ -57,7 +70,7 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 	if cliVersion, parseErr := version.Parse(opts.Version); opts.Dev || parseErr != nil || !cliVersion.IsRelease() {
 		url, path, conditionalGet = devUrl, dir.Join("api-docs-dev.json"), true
 	}
-	if customEnv := os.Getenv(urlEnv); customEnv != "" {
+	if customEnv != "" {
 		var custom xurl.URL
 		if err = custom.UnmarshalText([]byte(customEnv)); err != nil {
 			return spec, wait, fmt.Errorf("%s: %w", urlEnv, err)

@@ -10,6 +10,7 @@ import (
 	gohttp "net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -37,23 +38,14 @@ var getExceptions = map[openapi.PathTemplate]getException{
 	"/api/meshobjects/meshapikeys/self": {
 		apiKeyOnly: "it answers 404 to a request that authenticates with no meshApiKey",
 	},
-	"/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/plan-artifact": {
+	"/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/plan-artifact": {
 		skip: "the API docs say it is in development, and answers 404 in normal operation",
-	},
-	"/api/meshobjects/meshprojects/{fullProjectIdentifier}": {
-		parameters: map[string]string{"fullProjectIdentifier": "{ownedByWorkspace}.{name}"},
-	},
-	"/api/meshobjects/meshworkspaceusergroups/{fullWorkspaceUserGroupIdentifier}": {
-		parameters: map[string]string{"fullWorkspaceUserGroupIdentifier": "{ownedByWorkspace}.{name}"},
 	},
 }
 
 type getException struct {
 	// query fills a query parameter that the list requires, and the API docs do not mark as required.
 	query map[string]objectField
-	// parameters give the value of a path parameter that fill does not find on its own, with each
-	// metadata field in braces.
-	parameters map[string]string
 	// skip sends no GET, for the reason it gives.
 	skip string
 	// apiKeyOnly sends the GET only for the API key login, for the reason it gives.
@@ -186,6 +178,10 @@ func (o *firstObjects) get(ctx context.Context, r getRequest, operation openapi.
 // fill replaces each path parameter by a field of the first object's metadata. skip says why there
 // is no request to send.
 func (o *firstObjects) fill(ctx context.Context, operation openapi.Operation, exception getException) (r getRequest, skip string, err error) {
+	doc, err := o.spec.Doc(operation)
+	if err != nil {
+		return r, "", err
+	}
 	segments := strings.Split(string(operation.PathTemplate), "/")
 	for i, segment := range segments {
 		parameter, isParameter := strings.CutPrefix(segment, "{")
@@ -197,7 +193,11 @@ func (o *firstObjects) fill(ctx context.Context, operation openapi.Operation, ex
 		if first.metadata == nil {
 			return r, first.none, nil
 		}
-		value, err := parameterValue(parameter, first.metadata, exception)
+		documented := slices.IndexFunc(doc.Parameters, func(p openapi.Parameter) bool { return p.In == "path" && p.Name == parameter })
+		if documented < 0 {
+			return r, "", fmt.Errorf("the API docs do not document %s", segment)
+		}
+		value, err := parameterValue(doc.Parameters[documented], first.metadata)
 		if err != nil {
 			return r, "", fmt.Errorf("%s of %s: %w", segment, operation.Kind, err)
 		}
@@ -217,37 +217,25 @@ func (o *firstObjects) fill(ctx context.Context, operation openapi.Operation, ex
 	return r, "", nil
 }
 
-var metadataFieldRe = regexp.MustCompile(`\{(\w+)\}`)
+var metadataFieldRe = regexp.MustCompile(`\{metadata\.(\w+)\}`)
 
-// parameterValue takes the field of the metadata whose name the parameter ends with, longest first,
-// so that blockRunUuid takes metadata.uuid. A parameter that ends with identifier or id and with no
-// field takes metadata.name, which identifies most kinds.
-func parameterValue(parameter string, metadata map[string]string, exception getException) (string, error) {
-	if template, ok := exception.parameters[parameter]; ok {
-		var err error
-		value := metadataFieldRe.ReplaceAllStringFunc(template, func(field string) string {
-			value := metadata[strings.Trim(field, "{}")]
-			if value == "" {
-				err = fmt.Errorf("the metadata has no %s: %v", field, metadata)
-			}
-			return value
-		})
-		return value, err
+func parameterValue(parameter openapi.Parameter, metadata map[string]string) (string, error) {
+	template := parameter.PathKey
+	if !strings.Contains(template, "{") {
+		template = "{" + template + "}"
 	}
-	lower := strings.ToLower(parameter)
-	var field string
-	for name := range metadata {
-		if strings.HasSuffix(lower, strings.ToLower(name)) && len(name) > len(field) {
-			field = name
+	var err error
+	value := metadataFieldRe.ReplaceAllStringFunc(template, func(field string) string {
+		value := metadata[metadataFieldRe.FindStringSubmatch(field)[1]]
+		if value == "" {
+			err = fmt.Errorf("the metadata has no %s: %v", field, metadata)
 		}
+		return value
+	})
+	if value == template {
+		return "", fmt.Errorf("x-meshstack-path-key names no metadata field: %q", parameter.PathKey)
 	}
-	if field == "" && (strings.HasSuffix(lower, "identifier") || strings.HasSuffix(lower, "id")) {
-		field = "name"
-	}
-	if metadata[field] == "" {
-		return "", fmt.Errorf("no field of the metadata fills it: %v", metadata)
-	}
-	return metadata[field], nil
+	return value, err
 }
 
 // first lists a kind outside the lock, because the list of one kind can take its query from the
