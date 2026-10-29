@@ -62,8 +62,8 @@ func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format intern
 }
 
 type linkedBuildingBlock struct {
-	Status client.MeshBuildingBlockV2Status   `json:"status"`
-	Links  client.MeshBuildingBlockV2RunLinks `json:"_links"`
+	Status client.MeshBuildingBlockV2Status `json:"status"`
+	Links  client.MeshBuildingBlockV2Links  `json:"_links"`
 }
 
 func (a runAction) readBuildingBlock(ctx context.Context) (jsontext.Value, linkedBuildingBlock, error) {

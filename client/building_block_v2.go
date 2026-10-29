@@ -68,6 +68,7 @@ type MeshBuildingBlockV2 struct {
 	Metadata MeshBuildingBlockV2Metadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshBuildingBlockV2Spec     `json:"spec" tfsdk:"spec"`
 	Status   *MeshBuildingBlockV2Status  `json:"status" tfsdk:"status"`
+	Links    MeshBuildingBlockV2Links    `json:"_links,omitzero" tfsdk:"-"`
 }
 
 type MeshBuildingBlockV2Metadata struct {
@@ -474,6 +475,14 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful(before MeshBuildingBlockV2Stat
 		err = fmt.Errorf("the delete run of building block %s waits with action %s, and goes on only once someone acts on it in meshStack", bb.uuidOrUnknown(), bb.Status.Action)
 	}
 	return
+}
+
+// MeshPanelLink is "" for a block read from a meshStack that sends no meshPanel link.
+func (bb *MeshBuildingBlockV2) MeshPanelLink() string {
+	if bb == nil || bb.Links.MeshPanel == nil {
+		return ""
+	}
+	return bb.Links.MeshPanel.Href
 }
 
 func (bb *MeshBuildingBlockV2) uuidOrUnknown() string {

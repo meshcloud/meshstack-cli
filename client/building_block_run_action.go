@@ -22,11 +22,10 @@ type MeshBuildingBlockRunLinks struct {
 	Abort        *Link `json:"abort"`
 }
 
-// MeshBuildingBlockV2RunLinks are not a field of MeshBuildingBlockV2, because the Terraform provider
-// maps every field of that type to its schema.
-type MeshBuildingBlockV2RunLinks struct {
+type MeshBuildingBlockV2Links struct {
 	LatestRun    *Link `json:"latestRun"`
 	LatestDryRun *Link `json:"latestDryRun"`
+	MeshPanel    *Link `json:"meshPanel"`
 }
 
 type MeshBuildingBlockRunActionClient struct {
