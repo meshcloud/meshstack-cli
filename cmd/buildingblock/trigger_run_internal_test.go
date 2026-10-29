@@ -22,13 +22,13 @@ func TestAwaitRunStartTakesNothingTheTriggerRunAnswerReportedForTheStart(t *test
 	)
 	buildingBlockUuid := uuid.MustParse("b1d2c3e4-0000-4000-8000-000000000001")
 	server := fakemeshstack.Start(t, fakemeshstack.Options{BuildingBlocks: []any{jsontext.Value(`{"metadata": {"uuid": "` + buildingBlockUuid.String() +
-		`"}, "spec": {}, "status": {"status": "PENDING", "latestRunUuid": "` + previousRun +
+		`"}, "spec": {}, "status": {"action": "PENDING", "latestRunUuid": "` + previousRun +
 		`", "runStartFailure": "the previous request failed", "runStartFailedOn": "` + failedOn + `"}}`)}})
 	testlogin.LoggedInTo(t, server.URL)
 	meshStack, err := internal.ResolveClient(t.Context())
 	require.NoError(t, err)
 
-	_, err = awaitRunStart(t.Context(), meshStack.Raw, buildingBlockUuid, &client.MeshBuildingBlockV2Status{
+	_, err = awaitRunStart(t.Context(), meshStack.Raw, buildingBlockUuid, client.MeshBuildingBlockV2Status{
 		LatestRunUuid:    new(previousRun),
 		RunStartFailure:  "the previous request failed",
 		RunStartFailedOn: failedOn,

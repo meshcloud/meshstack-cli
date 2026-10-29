@@ -48,11 +48,15 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 			if err != nil {
 				return err
 			}
-			accepted, err := meshStack.BuildingBlockV2.TriggerRun(ctx, buildingBlockUuid.String())
+			answer, err := meshStack.BuildingBlockV2.TriggerRun(ctx, buildingBlockUuid.String())
 			if err != nil {
 				return err
 			}
-			started, err := awaitRunStart(ctx, meshStack.Raw, buildingBlockUuid, accepted.Status, runStartPollInterval, runStartTimeout)
+			var accepted client.MeshBuildingBlockV2Status
+			if answer.Status != nil {
+				accepted = *answer.Status
+			}
+			started, err := awaitRunStart(ctx, meshStack.Raw, buildingBlockUuid, accepted, runStartPollInterval, runStartTimeout)
 			if err != nil {
 				return err
 			}
@@ -83,10 +87,7 @@ type runStart struct {
 
 // awaitRunStart polls the building block until it reports something the trigger-run answer did not:
 // a new latest run, or a run start failure recorded anew.
-func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID, accepted *client.MeshBuildingBlockV2Status, every, within time.Duration) (runStart, error) {
-	if accepted == nil {
-		accepted = &client.MeshBuildingBlockV2Status{}
-	}
+func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID, accepted client.MeshBuildingBlockV2Status, every, within time.Duration) (runStart, error) {
 	ctx, cancel := context.WithTimeoutCause(ctx, within, fmt.Errorf(
 		"meshStack accepted the run of building block %s, but had not started it %s later. `meshstack buildingblockrun list --building-block %s --limit 1` shows the run once it has",
 		buildingBlockUuid, within, buildingBlockUuid))
@@ -106,9 +107,9 @@ func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid
 		}
 		if status := block.Status; status != nil {
 			switch {
-			case status.LatestRunUuid != nil && *status.LatestRunUuid != deref(accepted.LatestRunUuid):
-				return runStart{raw: current, runUuid: *status.LatestRunUuid}, nil
-			case status.RunStartFailure != "" && status.RunStartFailedOn != accepted.RunStartFailedOn:
+			case status.StartedRunSince(accepted):
+				return runStart{raw: current, runUuid: status.GetLatestRunUuid()}, nil
+			case status.RunStartFailure != "" && status.FailedToStartRunSince(accepted):
 				return runStart{raw: current, failure: status.RunStartFailure}, nil
 			}
 		}
@@ -118,11 +119,4 @@ func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid
 		case <-time.After(every):
 		}
 	}
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }

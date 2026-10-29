@@ -285,6 +285,22 @@ type MeshBuildingBlockV2Status struct {
 	RunStartFailedOn string `json:"runStartFailedOn" tfsdk:"-"`
 }
 
+// GetLatestRunUuid is "" where no modifying run exists. LatestRunUuid stays a pointer, because the
+// Terraform provider writes a nil one to its state as null.
+func (status MeshBuildingBlockV2Status) GetLatestRunUuid() string {
+	if status.LatestRunUuid == nil {
+		return ""
+	}
+	return *status.LatestRunUuid
+}
+
+func (status MeshBuildingBlockV2Status) GetLatestDryRunUuid() string {
+	if status.LatestDryRunUuid == nil {
+		return ""
+	}
+	return *status.LatestDryRunUuid
+}
+
 type MeshBuildingBlockOutput struct {
 	Value          types.Any                                                   `json:"value" tfsdk:"value"`
 	ValueType      enum.Entry[MeshBuildingBlockIOType]                         `json:"valueType" tfsdk:"value_type"`
@@ -369,35 +385,77 @@ func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purg
 	return c.meshObject.Delete(ctx, uuid)
 }
 
-func (bb *MeshBuildingBlockV2) IsWaitingForInput() bool {
-	return bb.Status.Status == BuildingBlockStatusWaitingForOperatorInput ||
-		bb.Status.Status == BuildingBlockStatusWaitingForUserInput ||
-		bb.Status.Status == BuildingBlockStatusWaitingForDependentInput ||
-		bb.Status.Status == BuildingBlockStatusWaitingForApproval
+var (
+	buildingBlockActionsRunning         = []enum.Entry[BuildingBlockAction]{BuildingBlockActionPending, BuildingBlockActionInProgress}
+	buildingBlockActionsWaitingForInput = []enum.Entry[BuildingBlockAction]{BuildingBlockActionProvideInput, BuildingBlockActionWaitingForDependency, BuildingBlockActionApproveRun}
+	buildingBlockActionsRunFailed       = []enum.Entry[BuildingBlockAction]{BuildingBlockActionReviewErrors, BuildingBlockActionReviewAbortedRun}
+)
+
+func (status MeshBuildingBlockV2Status) IsRunning() bool {
+	return slices.Contains(buildingBlockActionsRunning, status.Action)
 }
 
-func (bb *MeshBuildingBlockV2) CreateSuccessful() (done bool, err error) {
+func (status MeshBuildingBlockV2Status) IsWaitingForInput() bool {
+	return slices.Contains(buildingBlockActionsWaitingForInput, status.Action)
+}
+
+func (status MeshBuildingBlockV2Status) RunFailed() bool {
+	return slices.Contains(buildingBlockActionsRunFailed, status.Action)
+}
+
+// RunChangedSince says whether meshStack has reacted to a write since before, by the rules of
+// https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run. A zero before is a block that had no status yet.
+func (status MeshBuildingBlockV2Status) RunChangedSince(before MeshBuildingBlockV2Status) bool {
+	switch {
+	case status.StartedRunSince(before),
+		status.GetLatestDryRunUuid() != before.GetLatestDryRunUuid(),
+		status.FailedToStartRunSince(before):
+		return true
+	case before.RunStartFailedOn != "" && status.RunStartFailedOn == "":
+		// A build that includes the block again only clears the old failure.
+		return false
+	default:
+		return !before.IsRunning() && status.actionOfRun() != before.actionOfRun()
+	}
+}
+
+func (status MeshBuildingBlockV2Status) StartedRunSince(before MeshBuildingBlockV2Status) bool {
+	latest := status.GetLatestRunUuid()
+	return latest != "" && latest != before.GetLatestRunUuid()
+}
+
+func (status MeshBuildingBlockV2Status) FailedToStartRunSince(before MeshBuildingBlockV2Status) bool {
+	return status.RunStartFailedOn != "" && status.RunStartFailedOn != before.RunStartFailedOn
+}
+
+// actionOfRun ignores UPGRADE_AVAILABLE, which a newly released definition version sets without any run.
+func (status MeshBuildingBlockV2Status) actionOfRun() enum.Entry[BuildingBlockAction] {
+	if status.Action == BuildingBlockActionUpgradeAvailable {
+		return BuildingBlockActionNoAction
+	}
+	return status.Action
+}
+
+func (bb *MeshBuildingBlockV2) IsWaitingForInput() bool {
+	return bb.Status != nil && bb.Status.IsWaitingForInput()
+}
+
+// RunEndedSince is done on every action that is not running, a failed or an unknown one included:
+// the caller judges the outcome.
+func (bb *MeshBuildingBlockV2) RunEndedSince(before MeshBuildingBlockV2Status) (done bool, err error) {
 	switch {
 	case bb == nil:
-		err = errors.New("building block not found after creation")
-	case bb.Status == nil:
-		// keep polling
-	case bb.Status.Status == BuildingBlockStatusFailed,
-		bb.Status.Status == BuildingBlockStatusAborted:
-		err = fmt.Errorf("building block %s reached %s state, check run logs in meshStack", bb.uuidOrUnknown(), bb.Status.Status)
-	case bb.IsWaitingForInput():
-		// A waiting run does not go on by itself, so stop polling and leave the warning to the caller.
+		err = errors.New("building block not found")
+	case bb.Status == nil, !bb.Status.RunChangedSince(before), bb.Status.IsRunning():
+	default:
 		done = true
-	case bb.Status.Status == BuildingBlockStatusSucceeded:
-		done = true
-	case !slices.Contains(BuildingBlockStatuses, bb.Status.Status):
-		// Fail now: a status this client does not know would keep the poll going until it times out.
-		err = fmt.Errorf("unknown building block status %q for building block %s; provider may be out of date", bb.Status.Status, bb.uuidOrUnknown())
 	}
 	return
 }
 
-func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
+// DeletionSuccessful takes the status the block had before the deletion, because meshStack reports the
+// action of the run before until the delete run starts.
+func (bb *MeshBuildingBlockV2) DeletionSuccessful(before MeshBuildingBlockV2Status) (done bool, err error) {
 	switch {
 	case bb == nil:
 		// A 404: the block is gone, for example together with its definition.
@@ -406,12 +464,14 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful() (done bool, err error) {
 		// A soft-deleted block does not return 404: the backend keeps returning it with DELETED.
 		// MARKED_FOR_DELETION means the deletion still runs, so polling goes on.
 		done = true
-	case bb.Status != nil && bb.Status.Status == BuildingBlockStatusFailed:
+	case bb.Status == nil, !bb.Status.RunChangedSince(before):
+	case bb.Status.ForcePurge:
 		// A force purge (definition deletion_mode PURGE, or an admin purge) deletes the block whatever
-		// its delete run reports, so FAILED passes and the lifecycle still reaches DELETED.
-		if !bb.Status.ForcePurge {
-			err = fmt.Errorf("building block %s reached FAILED state during deletion. For more details, check the building block run logs in meshStack", bb.uuidOrUnknown())
-		}
+		// its delete run reports, and the lifecycle still reaches DELETED.
+	case bb.Status.RunFailed():
+		err = fmt.Errorf("the delete run of building block %s ended with action %s. For more details, check the building block run logs in meshStack", bb.uuidOrUnknown(), bb.Status.Action)
+	case bb.Status.IsWaitingForInput():
+		err = fmt.Errorf("the delete run of building block %s waits with action %s, and goes on only once someone acts on it in meshStack", bb.uuidOrUnknown(), bb.Status.Action)
 	}
 	return
 }
@@ -423,9 +483,9 @@ func (bb *MeshBuildingBlockV2) uuidOrUnknown() string {
 	return "<unknown>"
 }
 
-// TriggerRun answers with the building block as meshStack left it on accepting the run: Status.Status
-// is PENDING, while LatestRunUuid, RunStartFailure and RunStartFailedOn still report the request
-// before, because meshStack starts the run, or records why it could not, only after it answered.
+// TriggerRun answers with the building block as meshStack left it on accepting the run: Action,
+// LatestRunUuid, RunStartFailure and RunStartFailedOn still report the request before, because
+// meshStack starts the run, or records why it could not, only after it answered.
 func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (*MeshBuildingBlockV2, error) {
 	// dryRun is not optional to the endpoint once a body is sent, so it goes out as false rather
 	// than being omitted.
