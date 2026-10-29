@@ -52,6 +52,28 @@ command. For a command over a meshObject kind, the `meshobject-command` skill ha
 - A **parent command sets `RunE` as well as `Args`**.
 </rules>
 
+## Values, pointers and receivers
+
+<rules id="values-and-pointers">
+**A method takes a value receiver by default.** A value cannot be nil, so the method needs no nil
+check, and a caller can pass a zero value where nothing was read yet. Take a pointer receiver only
+when the method changes its receiver, when the type must not be copied (it holds a mutex, say), or
+when a nil receiver means something: `(*MeshBuildingBlockV2).DeletionSuccessful` reads a nil block
+as one that is gone.
+
+**A DTO field is a plain value** unless a caller must tell null from the zero value, and `""`, `0`
+and `false` already say "absent" for most fields. `encoding/json/v2` decodes a missing or null
+field into the zero value. A field the backend can leave out, and whose zero value a caller reads
+differently, is a pointer; when a request sends it, it also takes `,omitzero`, never `,omitempty`:
+v2 omits whatever encodes as `null`, `""`, `{}` or `[]`, so `,omitempty` drops a `*string` that
+points at `""`, which is how a caller clears a field. A field the Terraform provider maps to its
+state stays a pointer where null and `""` differ there, and gets a value accessor, such as
+`GetLatestRunUuid`, so that no caller dereferences it.
+
+**`new(expression)` makes an inline pointer**: `new("run-1")`, `new(int64(1))`. Do not add a
+`ptr`-style helper.
+</rules>
+
 ## Dependencies
 
 **The `depguard` rules in `.golangci.yml` are the policy**, not only its enforcement: each rule
