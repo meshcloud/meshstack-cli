@@ -52,7 +52,7 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 		`"spec": {"runNumber": 2, "behavior": "APPLY", "buildingBlock": {"uuid": "`+buildingBlockUuid+`", "spec": {"displayName": "my-block"}}}, `+
 		`"_links": {"predecessor": {"href": "`+runsPath+planRun+`"}, "approve": {"href": "`+runsPath+waitingRun+`/approve"}}}`)
 	server := fakemeshstack.Start(t, fakemeshstack.Options{
-		BuildingBlocks: []any{meshObject(t, `{"metadata": {"uuid": "`+buildingBlockUuid+`"}, "status": {"status": "WAITING_FOR_APPROVAL"}, `+
+		BuildingBlocks: []any{meshObject(t, `{"metadata": {"uuid": "`+buildingBlockUuid+`"}, "status": {"action": "APPROVE_RUN"}, `+
 			`"_links": {"latestRun": {"href": "`+runsPath+waitingRun+`"}}}`)},
 		BuildingBlockRuns: []any{run, meshObject(t, `{"metadata": {"uuid": "`+planRun+`"}, "status": "SUCCEEDED", `+
 			`"_links": {"downloadLogs": {"href": "`+runsPath+planRun+`/logs"}}}`)},

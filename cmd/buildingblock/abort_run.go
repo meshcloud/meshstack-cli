@@ -60,11 +60,11 @@ func (a runAction) abort(ctx context.Context) error {
 		return err
 	}
 	if run.Links.Abort == nil {
-		return fmt.Errorf("building block %s has the status %s. Its run %s has the status %s, and it cannot be aborted, or you may not abort it",
-			a.buildingBlockUuid, block.Status.Status, run.Metadata.Uuid, run.Status)
+		return fmt.Errorf("building block %s has the action %s. Its run %s has the status %s, and it cannot be aborted, or you may not abort it",
+			a.buildingBlockUuid, block.Status.Action, run.Metadata.Uuid, run.Status)
 	}
-	if err = a.prompt.Printf("Run %d of building block %q is a %s run with the status %s. The building block has the status %s.\n",
-		run.Spec.RunNumber, run.Spec.BuildingBlock.Spec.DisplayName, run.Spec.Behavior, run.Status, block.Status.Status); err != nil {
+	if err = a.prompt.Printf("Run %d of building block %q is a %s run with the status %s. The building block has the action %s.\n",
+		run.Spec.RunNumber, run.Spec.BuildingBlock.Spec.DisplayName, run.Spec.Behavior, run.Status, block.Status.Action); err != nil {
 		return err
 	}
 	confirmed, err := a.prompt.Confirm(ctx, "Abort this run?")

@@ -75,8 +75,8 @@ func (a runAction) readBuildingBlock(ctx context.Context) (jsontext.Value, linke
 	return raw, block, json.Unmarshal(raw, &block)
 }
 
-// report reads the building block again and writes it, because a run hides the statuses
-// WAITING_FOR_APPROVAL and ABORTED that only the building block shows.
+// report reads the building block again and writes it, because a run hides the actions
+// APPROVE_RUN and REVIEW_ABORTED_RUN that only the building block shows.
 func (a runAction) report(ctx context.Context, done string) error {
 	raw, block, err := a.readBuildingBlock(ctx)
 	if err != nil {
@@ -85,6 +85,6 @@ func (a runAction) report(ctx context.Context, done string) error {
 	if err := a.format.WriteItem(a.out, raw); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("%s Building block %s now has the status %s.", done, a.buildingBlockUuid, block.Status.Status))
+	slog.InfoContext(ctx, fmt.Sprintf("%s Building block %s now has the action %s.", done, a.buildingBlockUuid, block.Status.Action))
 	return nil
 }

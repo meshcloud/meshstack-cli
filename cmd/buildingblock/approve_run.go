@@ -31,7 +31,7 @@ The command shows the plan and asks you to approve it, so it runs only on a term
 exactly the plan it showed. If meshStack planned the run again in the meantime, the approval fails,
 and you can run the command again to review the new plan.
 
-"meshstack buildingblock list --status WAITING_FOR_APPROVAL" lists the building blocks with a run
+A building block whose status.action is APPROVE_RUN in "meshstack buildingblock list" has a run
 that waits for approval. After the approval, the command writes the building block.`,
 		Example: `  meshstack buildingblock approve-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb approve-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
@@ -64,8 +64,8 @@ func (a runAction) approve(ctx context.Context) error {
 		return err
 	}
 	if run.Links.Approve == nil {
-		return fmt.Errorf("building block %s has the status %s. Its latest run %s does not wait for approval, or you may not approve it",
-			a.buildingBlockUuid, block.Status.Status, run.Metadata.Uuid)
+		return fmt.Errorf("building block %s has the action %s. Its latest run %s does not wait for approval, or you may not approve it",
+			a.buildingBlockUuid, block.Status.Action, run.Metadata.Uuid)
 	}
 	if run.Links.Predecessor == nil {
 		return fmt.Errorf("run %s waits for approval, but meshStack names no run that planned it", run.Metadata.Uuid)
