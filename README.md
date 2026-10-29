@@ -45,8 +45,8 @@ output is no terminal, such as in a CI job. GitHub Actions, GitLab CI and Azure 
 without being asked, and the log of a building block run stays plain, since meshPanel shows it as plain text.
 
 `meshstack api` sends an authenticated, `curl`-like request to any path of the API. For a meshObject
-endpoint it picks the latest version the [OpenAPI docs](https://docs.meshcloud.io/api/introduction/) list,
-and `meshstack api-docs` shows what those docs say about a request.
+endpoint it picks the latest version the [OpenAPI docs](https://docs.meshcloud.io/api/introduction/) of your
+meshStack list, and `meshstack api-docs` shows what those docs say about a request.
 
 ![meshstack login picks a profile, logs in through the browser and selects a workspace, meshstack buildingblock list lists the first building blocks, meshstack api sends that request as it is, the same command line with api-docs in place of api describes it, as meshstack api-docs --describe bb.list does, meshstack profile edits a profile, and meshstack profile add completes the endpoint and the workspace of the logged-in profile](docs/demo.gif)
 

@@ -76,7 +76,7 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 				selector.Path = r.target.Path
 				args = []string{r.target.String()}
 			}
-			spec, wait, err := flags.loadApiDocs(cmd)
+			spec, wait, err := flags.loadApiDocs(cmd, meshStack.Endpoint)
 			defer wait()
 			if err != nil {
 				slog.WarnContext(ctx, fmt.Sprintf("Sending the request as given, without the API docs: %s. "+
