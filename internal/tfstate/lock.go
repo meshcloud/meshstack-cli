@@ -9,7 +9,7 @@ import (
 	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 )
 
 type Lock struct {

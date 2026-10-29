@@ -78,7 +78,7 @@ const (
 const (
 	pollInterval = 2 * time.Second
 	maxPollWait  = time.Minute
-	// The HTTP client has retried each failed poll for minutes already, see internal/http.
+	// The HTTP client has retried each failed poll for minutes already, see client/http.
 	maxFailedPollsInARow = 5
 )
 

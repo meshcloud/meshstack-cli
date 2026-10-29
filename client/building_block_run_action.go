@@ -6,8 +6,8 @@ import (
 	gohttp "net/http"
 	"net/url"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 // Link is a HAL link. meshStack sends the link of an action only while the caller may take it.

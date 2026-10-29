@@ -1,6 +1,6 @@
 ---
 name: development
-description: How the meshStack CLI's Go code is laid out and built - where a command, its logic and an HTTP call go, and what the client and settings must keep. Use when writing, changing or reviewing Go code here - a new command or package, a change to client/, pkg/ or internal/http, an HTTP request, a new setting or dependency, or a depguard or forbidigo finding.
+description: How the meshStack CLI's Go code is laid out and built - where a command, its logic and an HTTP call go, and what the client and settings must keep. Use when writing, changing or reviewing Go code here - a new command or package, a change to client/, client/http or pkg/, an HTTP request, a new setting or dependency, or a depguard or forbidigo finding.
 ---
 
 # Developing the meshStack CLI
@@ -125,16 +125,16 @@ would end the user's session.
 `Version` once, the CLI in `cmd/internal.ResolveClientOptions`, and the release check reads the same
 two. So code below `cmd/` takes its client from its caller, and a command that needs one for
 anything but a meshStack client calls `internal.ResolveClientOptions().HttpClient()`. `forbidigo`
-keeps `http.UserAgent` to those options, and the transport to `internal/http`.
+keeps `http.UserAgent` to those options, and the transport to `client/http`.
 
 **`net/http` is always imported as `gohttp`**, which `importas` settles. That leaves the plain name
-to `internal/http`, and `net/http` to the status and method constants and to the loopback server.
+to `client/http`, and `net/http` to the status and method constants and to the loopback server.
 The `forbidigo` rule matches on the type rather than the written name, so it catches `gohttp.Client`
 and leaves `http.Client` alone.
 
 **Logging goes through `slog`'s default logger**, on which each front end installs its own handler:
 `cmd/meshstack` a `charmbracelet/log` one, the Terraform provider a `tflog` bridge. A handler
-installed that late constrains every log call, and `internal/http/logging.go` states how.
+installed that late constrains every log call, and `client/http/logging.go` states how.
 </rules>
 
 ## Settings

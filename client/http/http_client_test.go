@@ -1,5 +1,5 @@
 // Package http_test drives the client from the outside, so that it can parse answers into the
-// types real callers declare. internal/http may not import any of them.
+// types real callers declare. client/http may not import any of them.
 package http_test
 
 import (
@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
