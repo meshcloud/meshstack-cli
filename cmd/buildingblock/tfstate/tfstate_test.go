@@ -100,7 +100,7 @@ type fakeMeshStack struct {
 
 func newFakeMeshStack(t *testing.T) *fakeMeshStack {
 	t.Helper()
-	blockStatus := map[string]any{"status": "SUCCEEDED"}
+	blockStatus := map[string]any{"action": "NO_ACTION"}
 	run := map[string]any{"metadata": map[string]any{"uuid": runUuid}, "status": "IN_PROGRESS"}
 	server := fakemeshstack.Start(t, fakemeshstack.Options{
 		ApiKeys:           []fakemeshstack.ApiKey{apiKey},
@@ -225,18 +225,22 @@ func TestTfstate(t *testing.T) {
 		assert.NotContains(t, meshStack.requests(), "POST "+statePath("my-workspace"))
 	})
 
-	t.Run("exec in readwrite mode refuses while a run is in progress, unless forced", func(t *testing.T) {
-		defer func() { meshStack.blockStatus["status"] = "SUCCEEDED" }()
-		for _, status := range []string{"IN_PROGRESS", "PENDING"} {
-			meshStack.blockStatus["status"] = status
+	t.Run("exec in readwrite mode refuses while a run is in progress or waits for approval, unless forced", func(t *testing.T) {
+		defer func() { meshStack.blockStatus["action"] = "NO_ACTION" }()
+		for action, refusal := range map[string]string{
+			"IN_PROGRESS": "has a run IN_PROGRESS, which writes the state as well",
+			"PENDING":     "has a run PENDING, which writes the state as well",
+			"APPROVE_RUN": "has a run that waits for approval, which writes the state once approved",
+		} {
+			meshStack.blockStatus["action"] = action
 
 			refused := execChild(t, "exit=0", "--mode", "readwrite")
-			require.Error(t, refused.err, status)
-			assert.Contains(t, refused.err.Error(), "has a run "+status+", which writes the state as well")
+			require.Error(t, refused.err, action)
+			assert.Contains(t, refused.err.Error(), refusal)
 			assert.Contains(t, refused.err.Error(), "--force")
 
 			forced := execChild(t, "GET", "--mode", "readwrite", "--force")
-			require.NoError(t, forced.err, status)
+			require.NoError(t, forced.err, action)
 		}
 	})
 

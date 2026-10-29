@@ -85,8 +85,10 @@ changing.
 --mode readwrite stores what the command writes, and locks the state in meshStack whenever tofu
 asks for a lock. A run of the building block waits for that lock for up to 5 minutes, and then
 fails. Unless --force, --mode readwrite refuses
-  - while a run of the building block is pending or in progress;
+  - while a run of the building block is pending, in progress or waits for approval;
   - a state whose lineage is not that of the stored state, or whose serial is not above it.
+With --force, you can stop a destructive run that someone approved by mistake: while tofu holds
+the lock, the run waits for it and then fails.
 With --backup-dir, it copies the stored state into that directory before it replaces or deletes it.`,
 		Example: `  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply`,
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -184,7 +186,7 @@ With --backup-dir, it copies the stored state into that directory before it repl
 
 	flags := cmd.Flags()
 	flags.Var(&access, "mode", "read serves the state, readwrite stores what the command writes as well")
-	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending or in progress, or where it does not follow the stored state")
+	flags.BoolVar(&force, "force", false, "store the state even while a run of the building block is pending, in progress or waits for approval, or where it does not follow the stored state")
 	flags.BoolVar(&overrideBackend, "override-backend", false, "add the backend \"http\" block to the module in tofu's -chdir or the working directory while the command runs")
 	flags.StringVar(&backupDir, "backup-dir", "", "with --mode readwrite, copy the stored state into this directory before each write, in files only you can read, since a state can hold secrets")
 

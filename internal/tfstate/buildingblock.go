@@ -22,11 +22,6 @@ func readBuildingBlock(ctx context.Context, raw *client.RawClient, buildingBlock
 	return block, json.Unmarshal(read, &block)
 }
 
-func (block buildingBlock) hasUnfinishedRun() bool {
-	return block.Status != nil &&
-		(block.Status.Status == client.BuildingBlockStatusInProgress || block.Status.Status == client.BuildingBlockStatusPending)
-}
-
 // OpenStore opens the state under the building block's own workspace where workspace is empty,
 // because that is where the runner stores it.
 func OpenStore(ctx context.Context, raw *client.RawClient, workspace string, buildingBlockUuid uuid.UUID) (Store, error) {
@@ -45,8 +40,12 @@ func NoRunOf(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.
 	if err != nil {
 		return err
 	}
-	if block.hasUnfinishedRun() {
-		return fmt.Errorf("building block %s has a run %s, which writes the state as well", buildingBlockUuid, block.Status.Status)
+	switch {
+	case block.Status == nil:
+	case block.Status.IsRunning():
+		return fmt.Errorf("building block %s has a run %s, which writes the state as well", buildingBlockUuid, block.Status.Action)
+	case block.Status.Action == client.BuildingBlockActionApproveRun:
+		return fmt.Errorf("building block %s has a run that waits for approval, which writes the state once approved", buildingBlockUuid)
 	}
 	return nil
 }
