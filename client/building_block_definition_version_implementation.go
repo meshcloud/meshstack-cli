@@ -29,6 +29,7 @@ type MeshBuildingBlockDefinitionSshKnownHost struct {
 type MeshBuildingBlockDefinitionTerraformImplementation struct {
 	TerraformVersion           string                                   `json:"terraformVersion" tfsdk:"terraform_version"`
 	RepositoryURL              string                                   `json:"repositoryUrl" tfsdk:"repository_url"`
+	Async                      bool                                     `json:"async" tfsdk:"async"`
 	RepositoryPath             *string                                  `json:"repositoryPath,omitzero" tfsdk:"repository_path"`
 	RefName                    *string                                  `json:"refName,omitzero" tfsdk:"ref_name"`
 	SSHKnownHost               *MeshBuildingBlockDefinitionSshKnownHost `json:"sshKnownHost,omitzero" tfsdk:"ssh_known_host"`
