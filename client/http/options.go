@@ -17,6 +17,7 @@ type (
 	requestOptions struct {
 		retryable        bool
 		requestPayload   func() ([]byte, error)
+		bodyFile         string
 		requestModifiers []requestModifier
 	}
 	requestModifier func(req *gohttp.Request) error
@@ -129,6 +130,13 @@ func WithBody(contentType string, body []byte) RequestOption {
 		opts.requestPayload = func() ([]byte, error) {
 			return body, nil
 		}
+	}
+}
+
+func WithBodyFile(contentType, path string) RequestOption {
+	return func(opts *requestOptions) {
+		WithHeader("Content-Type", contentType)(opts)
+		opts.bodyFile = path
 	}
 }
 
