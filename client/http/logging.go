@@ -9,6 +9,7 @@ import (
 	"io"
 	"maps"
 	gohttp "net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -74,6 +75,8 @@ func (l loggedBody) String() string {
 		return "<empty>"
 	case *bytes.Buffer:
 		return bytesToPrettyJson(body.Bytes())
+	case *os.File:
+		return "<file " + body.Name() + ">"
 	default:
 		return fmt.Sprintf("<unknown> %v", body)
 	}

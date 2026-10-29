@@ -12,6 +12,8 @@ import (
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -169,6 +171,25 @@ func TestHttpClient(t *testing.T) {
 			require.NoError(t, err, method)
 			assert.Equal(t, []string{`{"key":"value"}`, `{"key":"value"}`}, bodies, method)
 		}
+	})
+
+	t.Run("DoRequest reopens a body file to replay it", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "plan")
+		require.NoError(t, os.WriteFile(path, []byte("a plan"), 0o600))
+		var bodies []string
+		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, req *gohttp.Request) {
+			body, _ := io.ReadAll(req.Body)
+			bodies = append(bodies, string(body))
+			if len(bodies) == 1 {
+				resp.WriteHeader(gohttp.StatusServiceUnavailable)
+				return
+			}
+			resp.WriteHeader(gohttp.StatusNoContent)
+		}), 3, &retryTestBackoff{})
+
+		_, err := client.DoRequest[any](t.Context(), gohttp.MethodPut, client.ServerUrl, http.WithBodyFile("application/octet-stream", path), http.Retryable())
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a plan", "a plan"}, bodies)
 	})
 
 	t.Run("DoRequest re-mints once on 401", func(t *testing.T) {

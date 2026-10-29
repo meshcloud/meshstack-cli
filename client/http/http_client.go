@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	gohttp "net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"time"
@@ -115,6 +116,24 @@ func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.UR
 	return
 }
 
+// DoStreamingRequest copies a 2xx body to w as it arrives.
+func (c Client) DoStreamingRequest(ctx context.Context, method string, url *url.URL, w io.Writer, options ...RequestOption) error {
+	res, err := c.Send(ctx, method, url, options...)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+	if !isSuccess(res.StatusCode) {
+		_, err = c.readBodyAndCheckSuccess(ctx, res)
+		return err
+	}
+	written, err := io.Copy(w, res.Body)
+	slog.DebugContext(ctx, "response", "status", res.StatusCode, "body", fmt.Sprintf("<streamed,len=%d>", written))
+	return err
+}
+
 // Send returns the response whatever its status, and the caller closes its body.
 func (c Client) Send(ctx context.Context, method string, url *url.URL, options ...RequestOption) (*gohttp.Response, error) {
 	options = slices.Insert(options, 0, WithHeader("User-Agent", c.UserAgent.String()))
@@ -164,7 +183,7 @@ func (c Client) readBodyAndCheckSuccess(ctx context.Context, res *gohttp.Respons
 }
 
 func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, opts requestOptions) (*gohttp.Request, error) {
-	var requestBody io.ReadWriter
+	var requestBody io.Reader
 	if opts.requestPayload != nil {
 		requestBodyData, err := opts.requestPayload()
 		if err != nil {
@@ -181,6 +200,12 @@ func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, o
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	if opts.bodyFile != "" {
+		if err := setFileBody(req, opts.bodyFile); err != nil {
+			return nil, err
+		}
+		requestBody = req.Body
+	}
 	for _, modifier := range opts.requestModifiers {
 		if err := modifier(req); err != nil {
 			return nil, err
@@ -188,4 +213,21 @@ func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, o
 	}
 	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header), "body", loggedBody{requestBody})
 	return req, nil
+}
+
+// setFileBody streams the file, and reopens it when a retry replays the request.
+func setFileBody(req *gohttp.Request, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	open := func() (io.ReadCloser, error) {
+		return os.Open(path) //nolint:gosec // the caller names the file it uploads
+	}
+	if req.Body, err = open(); err != nil {
+		return err
+	}
+	req.GetBody = open
+	req.ContentLength = info.Size()
+	return nil
 }
