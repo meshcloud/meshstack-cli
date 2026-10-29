@@ -24,6 +24,7 @@ skill and the help disagree, trust the help.
 | `meshstack workspace list` | | workspaces this login can see |
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
+| `meshstack buildingblock wait <uuid> --before <file\|->` | `bb` | waits until the run of one block has ended |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
@@ -142,8 +143,10 @@ Field names worth knowing:
   prose. `metadata` also carries `createdOn`, `deletedOn` and `tags`.
 - **Building block** — `metadata` carries **only** `uuid` and `ownedByWorkspace`. Everything else
   lives in `spec.displayName`, `spec.buildingBlockDefinitionVersionRef.uuid`, `spec.targetRef.kind`
-  (`meshWorkspace` or `meshTenant`), `status.status`, `status.lifecycle.state`,
-  `status.latestRunUuid`, `status.latestDryRunUuid`, `status.forcePurge`.
+  (`meshWorkspace` or `meshTenant`), `status.healthStatus` (the outcome of the latest run),
+  `status.action` (what the block needs next, as in meshPanel), `status.lifecycle.state`,
+  `status.latestRunUuid`, `status.latestDryRunUuid`, `status.forcePurge`. `status.status` is
+  deprecated.
 - **Definition** — `metadata.uuid`, `metadata.ownedByWorkspace`, `spec.displayName`,
   `spec.targetType` (`TENANT_LEVEL` or `WORKSPACE_LEVEL`), `spec.supportedPlatforms[]`,
   `spec.approvalPolicies`, `spec.schedule`, and the huge `spec.symbol`. `status.versions[]` maps
@@ -168,7 +171,7 @@ Traps worth knowing before you read any of it:
 **`status.lifecycle.state` decides whether a failure matters.** `ACTIVE` means someone still depends
 on the block. `MARKED_FOR_DELETION` means it is on its way out, and a failure there is usually a
 destroy that did not finish — noise in a health report, not an incident. Always project this field
-next to `status.status`, or you will report several times more problems than exist.
+next to `status.action`, or you will report several times more problems than exist.
 
 **The list commands print only `state` of the lifecycle.** The full `status.lifecycle` — timestamps
 for `created`, `markedForDeletion` and `deleted`, each with an `author` — lives on newer API
@@ -193,14 +196,15 @@ One line per building block — start here, then drill into a single uuid:
 ```sh
 meshstack bb list --limit unlimited -o ndjson |
   jq -r '[.metadata.uuid, .metadata.ownedByWorkspace, .spec.displayName,
-          .status.status, .status.lifecycle.state] | @tsv'
+          .status.action, .status.healthStatus, .status.lifecycle.state] | @tsv'
 ```
 
 Failures that actually need attention — anything still `ACTIVE`:
 
 ```sh
 meshstack bb list --limit unlimited -o ndjson |
-  jq -r 'select(.status.status != "SUCCEEDED" and .status.lifecycle.state == "ACTIVE") |
+  jq -r 'select((.status.action == "REVIEW_ERRORS" or .status.action == "REVIEW_ABORTED_RUN")
+                and .status.lifecycle.state == "ACTIVE") |
          [.metadata.uuid, .metadata.ownedByWorkspace, .spec.displayName,
           .status.latestRunUuid] | @tsv'
 ```
@@ -222,7 +226,7 @@ meshstack bbd list --limit unlimited -o ndjson |
          [.versionUuid, "\($n) v\(.versionNumber)"] | @tsv' | sort > /tmp/bbdv-names.tsv
 
 meshstack bb list --limit unlimited -o ndjson |
-  jq -r '[.spec.buildingBlockDefinitionVersionRef.uuid, .status.status] | @tsv' | sort |
+  jq -r '[.spec.buildingBlockDefinitionVersionRef.uuid, .status.healthStatus] | @tsv' | sort |
   join -t $'\t' - /tmp/bbdv-names.tsv | cut -f2,3 | sort | uniq -c | sort -rn
 ```
 
@@ -304,14 +308,15 @@ meshstack bb trigger-run <uuid> -o ndjson | jq -r '.status.latestRunUuid'
 
 It waits until meshStack has started the run, and prints the block; `status.latestRunUuid` names
 the new run. It never approves: when the definition gates manual triggers
-(`spec.approvalPolicies.manualTriggers`), the run waits until a person approves it in meshPanel.
-Every call starts a run, so trigger once and then poll.
+(`spec.approvalPolicies.manualTriggers`), meshStack starts a preflight run, which
+`status.latestDryRunUuid` names, and the run after it waits until a person approves it in meshPanel.
+Every call starts a run, so trigger once and then wait.
 
 ## Approval gates and preflight runs
 
 A definition with `approvalPolicies` does not apply a gated change straight away. meshStack first
 runs a **preflight**: a dry run, listed with `spec.behavior == "DETECT"`. The `APPLY` run after it
-parks in `WAITING_FOR_APPROVAL` until someone approves it in meshPanel. The approver sees the
+waits, with the block's action `APPROVE_RUN`, until someone approves it in meshPanel. The approver sees the
 preflight's plan, so read it yourself before you ask for the approval:
 
 ```sh
@@ -326,7 +331,8 @@ waiting for input or approval` — that is the gate, not an error.
 
 ## Linking into meshPanel
 
-Give the user a link whenever you ask them to act in meshPanel. A building block, by uuid:
+Give the user a link whenever you ask them to act in meshPanel. A building block read from a recent
+meshStack carries it as `_links.meshPanel.href`. Otherwise build it from the uuid:
 
 ```
 https://<meshpanel-host>/#/s/<workspace>/building-blocks/building-blocks-overview?healthStatus=NONE,SUCCEEDED,FAILED&buildingBlock=<uuid>
@@ -337,23 +343,26 @@ not exposed through the public API, so do not try to build those.
 
 ## Waiting for a run
 
-Poll the block's status until it reaches a terminal state, and print only on change. Every terminal
-state has to end the loop, or a failure looks like a run that is still going:
+Start a run and wait until it has ended:
 
 ```sh
-B=<uuid>; prev=""
-while true; do
-  s=$(meshstack bb list --workspace <workspace> --limit unlimited -o ndjson 2>/dev/null |
-      jq -r "select(.metadata.uuid==\"$B\") | .status.status" || true)
-  [ -n "$s" ] && [ "$s" != "$prev" ] && echo "block status: $s" && prev=$s
-  case "$s" in SUCCEEDED|FAILED|ABORTED) exit 0;; esac
-  sleep 30
-done
+meshstack bb trigger-run <uuid> --wait
 ```
 
-A block that deletes itself at the end of its run, like a starterkit, drops out of `bb list`. Poll
-its runs instead: `meshstack bbrun list --building-block $B --workspace <workspace>` until the
-`APPLY` run is terminal.
+After a write through `meshstack api`, pipe its answer into `bb wait`. meshStack answers before it
+starts the run, so the command compares the block with that answer, by the rules of
+[Waiting for a Run](https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run):
+
+```sh
+meshstack api -X PUT /api/meshobjects/meshbuildingblocks/<uuid> --request-json block.json |
+  meshstack bb wait <uuid> --before=-
+```
+
+Both fail, and name the action, when the run failed or waits for a person or a dependency.
+
+A block that deletes itself at the end of its run, like a starterkit, is gone before `bb wait` can
+read the outcome. Poll its runs instead: `meshstack bbrun list --building-block <uuid> --workspace
+<workspace>` until the `APPLY` run is terminal.
 
 ## Everything else: `meshstack api`
 
@@ -395,7 +404,7 @@ jq -n '{apiVersion: "v2-preview", kind: "meshBuildingBlock", spec: {
     inputs: {name: {value: "my-project", valueType: "STRING"}}}}' |
   meshstack api -X POST /api/meshobjects/meshbuildingblocks --workspace <workspace> \
     --api-version v2-preview --request-json - |
-  jq -c '{uuid: .metadata.uuid, status: .status.status}'
+  jq -c '{uuid: .metadata.uuid, action: .status.action}'
 ```
 
 The order's author is the logged-in user, so a starterkit grants them its roles. A draft definition
