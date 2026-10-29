@@ -1,27 +1,16 @@
 package buildingblock
 
 import (
-	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 	"uuid"
 
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-)
-
-const (
-	// runStartTimeout is runStartTimeout of terraform-provider-meshstack, which waits for the same:
-	// starting a run is a write of meshStack's own, so a meshStack that has not done it within a
-	// minute is not going to.
-	runStartTimeout      = time.Minute
-	runStartPollInterval = time.Second
+	"github.com/meshcloud/meshstack-cli/cmd/internal/buildingblock"
 )
 
 func newTriggerRun() *cobra.Command {
@@ -56,18 +45,18 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 			if answer.Status != nil {
 				accepted = *answer.Status
 			}
-			started, err := awaitRunStart(ctx, meshStack.Raw, buildingBlockUuid, accepted, runStartPollInterval, runStartTimeout)
+			started, err := buildingblock.AwaitRunStart(ctx, meshStack.Raw, buildingBlockUuid, accepted)
 			if err != nil {
 				return err
 			}
-			if err := output.Format.WriteItem(cmd.OutOrStdout(), started.raw); err != nil {
+			if err := output.Format.WriteItem(cmd.OutOrStdout(), started.Raw); err != nil {
 				return err
 			}
-			if started.failure != "" {
-				return errors.New(started.failure)
+			if started.Failure != "" {
+				return errors.New(started.Failure)
 			}
 			slog.InfoContext(ctx, fmt.Sprintf("meshStack started run %s of building block %s. Follow it with `meshstack buildingblockrun logs %s`",
-				started.runUuid, buildingBlockUuid, started.runUuid))
+				started.RunUuid, buildingBlockUuid, started.RunUuid))
 			return nil
 		},
 	}
@@ -75,48 +64,4 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 	output.RegisterForItem(cmd.Flags())
 
 	return cmd
-}
-
-// runStart holds either the run meshStack started or the reason it could not, along with the
-// building block as meshStack reported it then.
-type runStart struct {
-	raw     jsontext.Value
-	runUuid string
-	failure string
-}
-
-// awaitRunStart polls the building block until it reports something the trigger-run answer did not:
-// a new latest run, or a run start failure recorded anew.
-func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID, accepted client.MeshBuildingBlockV2Status, every, within time.Duration) (runStart, error) {
-	ctx, cancel := context.WithTimeoutCause(ctx, within, fmt.Errorf(
-		"meshStack accepted the run of building block %s, but had not started it %s later. `meshstack buildingblockrun list --building-block %s --limit 1` shows the run once it has",
-		buildingBlockUuid, within, buildingBlockUuid))
-	defer cancel()
-	for {
-		current, err := raw.Get[client.MeshBuildingBlockV2](ctx, buildingBlockUuid)
-		if err != nil && ctx.Err() != nil {
-			return runStart{}, context.Cause(ctx)
-		} else if err != nil {
-			return runStart{}, err
-		}
-		var block struct {
-			Status *client.MeshBuildingBlockV2Status `json:"status"`
-		}
-		if err := json.Unmarshal(current, &block); err != nil {
-			return runStart{}, err
-		}
-		if status := block.Status; status != nil {
-			switch {
-			case status.StartedRunSince(accepted):
-				return runStart{raw: current, runUuid: status.GetLatestRunUuid()}, nil
-			case status.RunStartFailure != "" && status.FailedToStartRunSince(accepted):
-				return runStart{raw: current, failure: status.RunStartFailure}, nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return runStart{}, context.Cause(ctx)
-		case <-time.After(every):
-		}
-	}
 }

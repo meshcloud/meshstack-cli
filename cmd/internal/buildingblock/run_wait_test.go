@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/cmd/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
-	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
 
 func TestAwaitRunStartTakesNothingTheTriggerRunAnswerReportedForTheStart(t *testing.T) {
@@ -24,11 +24,9 @@ func TestAwaitRunStartTakesNothingTheTriggerRunAnswerReportedForTheStart(t *test
 	server := fakemeshstack.Start(t, fakemeshstack.Options{BuildingBlocks: []any{jsontext.Value(`{"metadata": {"uuid": "` + buildingBlockUuid.String() +
 		`"}, "spec": {}, "status": {"action": "PENDING", "latestRunUuid": "` + previousRun +
 		`", "runStartFailure": "the previous request failed", "runStartFailedOn": "` + failedOn + `"}}`)}})
-	testlogin.LoggedInTo(t, server.URL)
-	meshStack, err := internal.ResolveClient(t.Context())
-	require.NoError(t, err)
+	raw := client.New(t.Context(), xurl.MustParsef("%s", server.URL), http.NewClient(fakemeshstack.UserAgent), http.BearerToken(fakemeshstack.Token)).Raw
 
-	_, err = awaitRunStart(t.Context(), meshStack.Raw, buildingBlockUuid, client.MeshBuildingBlockV2Status{
+	_, err := awaitRunStart(t.Context(), raw, buildingBlockUuid, client.MeshBuildingBlockV2Status{
 		LatestRunUuid:    new(previousRun),
 		RunStartFailure:  "the previous request failed",
 		RunStartFailedOn: failedOn,
