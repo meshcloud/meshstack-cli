@@ -91,8 +91,8 @@ func (s Store) wrap(action string, err error) error {
 	return fmt.Errorf("cannot %s the state of building block %s in workspace %s: %w", action, s.BuildingBlock, s.Workspace, err)
 }
 
-// path must match EP_State in ../building-block-runner/tf-block-runner/tfrun/runapi.go, the address
-// that the runner's backend uses. meshfed's TfHttpStateController serves it.
+// path must match stateEndpointFormat in ../building-block-runner/internal/executor/tf/tfcmd.go,
+// the address that the runner's backend uses. meshfed's TfHttpStateController serves it.
 func (s Store) path() string {
 	return fmt.Sprintf("/api/terraform/state/workspace/%s/buildingBlock/%s", s.Workspace, s.BuildingBlock)
 }
