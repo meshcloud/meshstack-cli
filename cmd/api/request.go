@@ -4,10 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
-	"io"
 	gohttp "net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -24,7 +22,7 @@ import (
 type requestFlags struct {
 	method      string
 	headers     []string
-	requestJson string
+	requestJson internal.JsonInputFlag[jsontext.Value]
 	apiVersion  string
 	dev         bool
 }
@@ -32,7 +30,7 @@ type requestFlags struct {
 func (f *requestFlags) register(cmd *cobra.Command, defaultMethod, methodUsage string) {
 	cmd.Flags().StringVarP(&f.method, "method", "X", defaultMethod, methodUsage)
 	cmd.Flags().StringArrayVarP(&f.headers, "header", "H", nil, "add a request header, as 'key: value'")
-	cmd.Flags().StringVar(&f.requestJson, "request-json", "", "JSON file to send as the request body, or - for stdin")
+	f.requestJson.Register(cmd.Flags(), "request-json", "JSON file to send as the request body, or - for stdin")
 	cmd.Flags().StringVar(&f.apiVersion, "api-version", "", "version of the meshObject API, such as v1 or v2-preview, instead of the latest")
 	cmd.Flags().BoolVar(&f.dev, "dev", false, "read the API docs of what meshStack's develop branch has merged")
 }
@@ -58,18 +56,10 @@ func (f *requestFlags) parse(cmd *cobra.Command, args []string) (request, error)
 	}
 
 	var err error
-	switch f.requestJson {
-	case "":
-	case "-":
-		r.body, err = io.ReadAll(cmd.InOrStdin())
-	default:
-		r.body, err = os.ReadFile(f.requestJson)
-	}
-	if err != nil {
-		return r, err
-	}
-	if r.body != nil && !r.body.IsValid() {
-		return r, fmt.Errorf("--request-json %s is no JSON", f.requestJson)
+	if f.requestJson.Source != "" {
+		if r.body, err = f.requestJson.Read(cmd); err != nil {
+			return r, err
+		}
 	}
 
 	if len(args) > 0 {
