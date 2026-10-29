@@ -276,14 +276,13 @@ type MeshBuildingBlockV2Status struct {
 	LatestRunUuid *string `json:"latestRunUuid" tfsdk:"latest_run_uuid"`
 	// LatestDryRunUuid is the latest dry (DETECT) run, but only when it is the newest run; nil otherwise.
 	// Ungated like LatestRunUuid.
-	LatestDryRunUuid *string `json:"latestDryRunUuid" tfsdk:"latest_dry_run_uuid"`
-	// BasedOnDraftVersion is nil from a meshStack that predates the field.
-	BasedOnDraftVersion *bool `json:"basedOnDraftVersion" tfsdk:"-"`
+	LatestDryRunUuid    *string `json:"latestDryRunUuid" tfsdk:"latest_dry_run_uuid"`
+	BasedOnDraftVersion bool    `json:"basedOnDraftVersion" tfsdk:"-"`
 	// RunStartFailure says why meshStack could not start the run it was last asked for, phrased for the
-	// user, and is nil while nothing stands in the way of a run. meshStack records it, and stamps
+	// user, and is "" while nothing stands in the way of a run. meshStack records it, and stamps
 	// RunStartFailedOn anew, each time a request for a run fails to start one.
-	RunStartFailure  *string `json:"runStartFailure" tfsdk:"-"`
-	RunStartFailedOn *string `json:"runStartFailedOn" tfsdk:"-"`
+	RunStartFailure  string `json:"runStartFailure" tfsdk:"-"`
+	RunStartFailedOn string `json:"runStartFailedOn" tfsdk:"-"`
 }
 
 type MeshBuildingBlockOutput struct {

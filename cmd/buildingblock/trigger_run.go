@@ -108,8 +108,8 @@ func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid
 			switch {
 			case status.LatestRunUuid != nil && *status.LatestRunUuid != deref(accepted.LatestRunUuid):
 				return runStart{raw: current, runUuid: *status.LatestRunUuid}, nil
-			case status.RunStartFailure != nil && deref(status.RunStartFailedOn) != deref(accepted.RunStartFailedOn):
-				return runStart{raw: current, failure: *status.RunStartFailure}, nil
+			case status.RunStartFailure != "" && status.RunStartFailedOn != accepted.RunStartFailedOn:
+				return runStart{raw: current, failure: status.RunStartFailure}, nil
 			}
 		}
 		select {
