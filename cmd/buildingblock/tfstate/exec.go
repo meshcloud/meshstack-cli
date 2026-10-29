@@ -21,7 +21,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/tfstate"
 )
 
-// runLockTimeout must match stateLockTimeout in ../building-block-runner/tf-block-runner/tfrun/tfcmd.go.
+// runLockTimeout must match stateLockTimeout in ../building-block-runner/internal/executor/tf/tfcmd.go.
 const runLockTimeout = 5 * time.Minute
 
 type mode string
