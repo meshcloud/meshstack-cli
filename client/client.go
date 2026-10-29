@@ -9,7 +9,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
-var MinMeshStackVersion = version.MustParse("2026.36.0")
+var MinMeshStackVersion = version.MustParse("2026.42.0")
 
 // Version is re-exported because MinMeshStackVersion is one and internal/version is closed to
 // another module.
@@ -21,7 +21,6 @@ type Authorization = http.Authorization
 
 type Client struct {
 	ApiKey                         MeshApiKeyClient
-	BuildingBlock                  MeshBuildingBlockClient
 	BuildingBlockV2                MeshBuildingBlockV2Client
 	BuildingBlockRun               MeshBuildingBlockRunClient
 	BuildingBlockRunAction         *MeshBuildingBlockRunActionClient
@@ -62,7 +61,6 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Author
 	workspace := newWorkspaceClient(ctx, authorizedClient)
 	return Client{
 		ApiKey:                         newApiKeyClient(ctx, authorizedClient),
-		BuildingBlock:                  newBuildingBlockClient(ctx, authorizedClient),
 		BuildingBlockV2:                buildingBlockV2,
 		BuildingBlockRun:               buildingBlockRun,
 		BuildingBlockRunAction:         newBuildingBlockRunActionClient(authorizedClient, buildingBlockRun),
