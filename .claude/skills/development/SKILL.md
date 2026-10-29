@@ -109,16 +109,17 @@ git log -- client/client.go client.go   # a path-limited log from client/ alone 
 git blame client/client.go              # traverses the merge on its own
 ```
 
-**`client/` does not log in.** `client.Authorization` produces a bearer token and replaces one that
+**`client/` does not log in.** `http.Authorization` produces a bearer token and replaces one that
 came back 401; resolving a credential, minting a token, caching it and refreshing it is `pkg/auth`.
 Both front ends build their client through `auth.ResolveClient`, so the endpoint and the
 authorization always agree with what was resolved. Do **not** add a login exchange anywhere else: a
 second one gets a static token and starts returning 401 once it expires, and for a browser login it
 would end the user's session.
 
-**`client/` does not own HTTP.** The client, the request options and the retry policy are
-`internal/http`, because `internal/oidc` and `pkg/auth` need them and Go's internal rule closes
-`client/internal` to both. Its names carry no `Http` prefix: `http.Client`, `http.Error`.
+**HTTP is `client/http`.** The client, the request options and the retry policy are there, because
+`internal/oidc` and `pkg/auth` need them as well, and another module calls `client.New` with them.
+No exported name of `client/` may use an `internal/` type, which `TestPublicApiNamesNoInternalType`
+checks. Its names carry no `Http` prefix: `http.Client`, `http.Error`.
 
 **Every request names the front end and version that sent it.** `http.NewClient` takes an
 `http.UserAgent`, which `auth.ResolveSessionOptions` embeds: the front end sets its `GitHubRepo` and

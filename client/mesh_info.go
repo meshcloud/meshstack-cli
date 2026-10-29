@@ -45,7 +45,7 @@ func NewMeshInfoClient(client http.Client, endpoint xurl.URL) MeshInfoClient {
 }
 
 func (c meshInfoClient) Read(ctx context.Context) (MeshInfo, error) {
-	return c.DoRequest[MeshInfo](ctx, "GET", c.Endpoint.JoinPath("/mesh/info"), http.WithAccept("application/json"))
+	return c.DoRequest[MeshInfo](ctx, "GET", c.Endpoint.JoinPath("/mesh/info"), http.WithHeader("Accept", "application/json"))
 }
 
 func (info MeshInfo) CheckVersion() error {

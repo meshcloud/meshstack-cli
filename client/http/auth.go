@@ -94,5 +94,5 @@ func (token BearerToken) Scope() string {
 }
 
 func (token BearerToken) asRequestOption() RequestOption {
-	return withHeader("Authorization", fmt.Sprintf("Bearer %s", token))
+	return WithHeader("Authorization", "Bearer "+string(token))
 }

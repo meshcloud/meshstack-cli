@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"fmt"
-	gohttp "net/http"
 	"net/url"
 
 	"github.com/meshcloud/meshstack-cli/client/http"
@@ -56,7 +55,7 @@ func (c *MeshBuildingBlockRunActionClient) ApproveRun(ctx context.Context, appro
 
 func (c *MeshBuildingBlockRunActionClient) AbortRun(ctx context.Context, abort Link) error {
 	_, err := c.doAtLink[[]byte](ctx, http.MethodPost, abort,
-		http.WithHeaders(gohttp.Header{"Content-Type": {c.run.MeshObjectMimeType()}}))
+		http.WithHeader("Content-Type", c.run.MeshObjectMimeType()))
 	return err
 }
 
@@ -75,5 +74,5 @@ func (c *MeshBuildingBlockRunActionClient) doAtLink[R any](ctx context.Context, 
 	}
 	below := c.httpClient.EndpointUrl.JoinPath(path)
 	below.RawQuery = target.RawQuery
-	return c.httpClient.DoRequest[R](ctx, method, below, append(options, http.WithAccept(c.run.MeshObjectMimeType()))...)
+	return c.httpClient.DoRequest[R](ctx, method, below, append(options, http.WithHeader("Accept", c.run.MeshObjectMimeType()))...)
 }

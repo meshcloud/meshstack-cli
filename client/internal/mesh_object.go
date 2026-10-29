@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/meshcloud/meshstack-cli/client/http"
+	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 )
 
@@ -90,7 +91,7 @@ func (c MeshObjectClient[M]) Get(ctx context.Context, id string) (resp *M, err e
 }
 
 func (c MeshObjectApi) GetAtPath[R any](ctx context.Context, id string, extraPath ...string) (R, error) {
-	return c.DoRequest[R](ctx, http.MethodGet, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.WithAccept(c.MeshObjectMimeType()))
+	return c.DoRequest[R](ctx, http.MethodGet, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.WithHeader("Accept", c.MeshObjectMimeType()))
 }
 
 func (c MeshObjectClient[M]) Post[P any](ctx context.Context, payload P) (*M, error) {
@@ -99,7 +100,7 @@ func (c MeshObjectClient[M]) Post[P any](ctx context.Context, payload P) (*M, er
 
 func (c MeshObjectApi) PostAtPath[R, P any](ctx context.Context, payload P, extraPath ...string) (R, error) {
 	return c.DoRequest[R](ctx, http.MethodPost, c.ApiUrl.JoinPath(extraPath...),
-		http.WithAccept(c.MeshObjectMimeType()), c.withMeshObjectPayload(payload))
+		http.WithHeader("Accept", c.MeshObjectMimeType()), c.withMeshObjectPayload(payload))
 }
 
 func (c MeshObjectClient[M]) Put[P any](ctx context.Context, id string, payload P) (*M, error) {
@@ -111,15 +112,15 @@ func (c MeshObjectClient[M]) Delete(ctx context.Context, id string) (err error) 
 }
 
 func (c MeshObjectApi) DeleteAtPath(ctx context.Context, id string, extraPath ...string) (err error) {
-	_, err = c.DoRequest[any](ctx, http.MethodDelete, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.Retryable(), http.WithAccept(c.MeshObjectMimeType()))
+	_, err = c.DoRequest[any](ctx, http.MethodDelete, c.ApiUrl.JoinPath(id).JoinPath(extraPath...), http.Retryable(), http.WithHeader("Accept", c.MeshObjectMimeType()))
 	return
 }
 
 func (c MeshObjectClient[M]) ListSeq(ctx context.Context, options ...http.RequestOption) iter.Seq2[M, error] {
-	return c.ListSeqAs[M](ctx, ListOptions{}, options...)
+	return c.ListSeqAs[M](ctx, types.ListOptions{}, options...)
 }
 
-func (c MeshObjectApi) ListSeqAs[T any](ctx context.Context, listOptions ListOptions, options ...http.RequestOption) iter.Seq2[T, error] {
+func (c MeshObjectApi) ListSeqAs[T any](ctx context.Context, listOptions types.ListOptions, options ...http.RequestOption) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var noItem T
 		embeddedKey := pluralizeKind(c.Kind)
@@ -150,16 +151,9 @@ func (c MeshObjectApi) ListSeqAs[T any](ctx context.Context, listOptions ListOpt
 	}
 }
 
-type Page struct {
-	Size          int `json:"size"`
-	TotalElements int `json:"totalElements"`
-	TotalPages    int `json:"totalPages"`
-	Number        int `json:"number"`
-}
-
 type paginatedResponse[T any] struct {
 	Embedded map[string][]T `json:"_embedded"`
-	Page     Page           `json:"page"`
+	Page     types.Page     `json:"page"`
 }
 
 // withMeshObjectPayload takes P rather than an any because the `,embed` tag takes a struct, a
@@ -172,13 +166,13 @@ func (c MeshObjectApi) withMeshObjectPayload[P any](payload P) http.RequestOptio
 	}{c.ApiVersion, c.Kind, payload}, c.MeshObjectMimeType())
 }
 
-func (c MeshObjectApi) getPage[T any](ctx context.Context, listOptions ListOptions, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
+func (c MeshObjectApi) getPage[T any](ctx context.Context, listOptions types.ListOptions, pageNumber int, options []http.RequestOption) (paginatedResponse[T], error) {
 	query := map[string]any{"page": pageNumber}
 	if listOptions.PageSize > 0 {
 		query["size"] = listOptions.PageSize
 	}
 	response, err := c.DoRequest[paginatedResponse[T]](ctx, http.MethodGet, c.ApiUrl, append(options,
-		http.WithAccept(c.MeshObjectMimeType()),
+		http.WithHeader("Accept", c.MeshObjectMimeType()),
 		http.WithUrlQuery(query),
 	)...)
 	if err != nil && pageNumber > 0 {
@@ -190,11 +184,6 @@ func (c MeshObjectApi) getPage[T any](ctx context.Context, listOptions ListOptio
 		return response, err
 	}
 	return response, nil
-}
-
-type ListOptions struct {
-	PageSize int
-	OnPage   func(Page)
 }
 
 func (c MeshObjectClient[M]) List(ctx context.Context, options ...http.RequestOption) ([]M, error) {
