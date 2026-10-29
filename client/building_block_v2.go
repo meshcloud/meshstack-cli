@@ -408,9 +408,9 @@ func (status MeshBuildingBlockV2Status) RunFailed() bool {
 // https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run. A zero before is a block that had no status yet.
 func (status MeshBuildingBlockV2Status) RunChangedSince(before MeshBuildingBlockV2Status) bool {
 	switch {
-	case status.StartedRunSince(before),
+	case status.GetLatestRunUuid() != before.GetLatestRunUuid(),
 		status.GetLatestDryRunUuid() != before.GetLatestDryRunUuid(),
-		status.FailedToStartRunSince(before):
+		status.RunStartFailedOn != "" && status.RunStartFailedOn != before.RunStartFailedOn:
 		return true
 	case before.RunStartFailedOn != "" && status.RunStartFailedOn == "":
 		// A build that includes the block again only clears the old failure.
@@ -418,15 +418,6 @@ func (status MeshBuildingBlockV2Status) RunChangedSince(before MeshBuildingBlock
 	default:
 		return !before.IsRunning() && status.actionOfRun() != before.actionOfRun()
 	}
-}
-
-func (status MeshBuildingBlockV2Status) StartedRunSince(before MeshBuildingBlockV2Status) bool {
-	latest := status.GetLatestRunUuid()
-	return latest != "" && latest != before.GetLatestRunUuid()
-}
-
-func (status MeshBuildingBlockV2Status) FailedToStartRunSince(before MeshBuildingBlockV2Status) bool {
-	return status.RunStartFailedOn != "" && status.RunStartFailedOn != before.RunStartFailedOn
 }
 
 // actionOfRun ignores UPGRADE_AVAILABLE, which a newly released definition version sets without any run.

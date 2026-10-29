@@ -1,4 +1,5 @@
-// Package buildingblock waits for the run of a building block.
+// Package buildingblock waits for the run of a building block, by the rules of
+// [client.MeshBuildingBlockV2Status.RunChangedSince].
 package buildingblock
 
 import (
@@ -20,49 +21,65 @@ const (
 	runStartPollInterval = time.Second
 )
 
-func AwaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID, accepted client.MeshBuildingBlockV2Status) (RunStart, error) {
-	return awaitRunStart(ctx, raw, buildingBlockUuid, accepted, runStartPollInterval, runStartTimeout)
+type RunWait struct {
+	raw               *client.RawClient
+	buildingBlockUuid uuid.UUID
+	startEvery        time.Duration
+	startWithin       time.Duration
 }
 
-// RunStart holds either the run meshStack started or the reason it could not, along with the
-// building block as meshStack reported it then.
-type RunStart struct {
-	Raw     jsontext.Value
-	RunUuid string
-	Failure string
+func NewRunWait(raw *client.RawClient, buildingBlockUuid uuid.UUID) RunWait {
+	return RunWait{raw, buildingBlockUuid, runStartPollInterval, runStartTimeout}
 }
 
-// awaitRunStart polls the building block until it reports something the trigger-run answer did not:
-// a new latest run, or a run start failure recorded anew.
-func awaitRunStart(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID, accepted client.MeshBuildingBlockV2Status, every, within time.Duration) (RunStart, error) {
-	ctx, cancel := context.WithTimeoutCause(ctx, within, fmt.Errorf(
-		"meshStack accepted the run of building block %s, but had not started it %s later. `meshstack buildingblockrun list --building-block %s --limit 1` shows the run once it has",
-		buildingBlockUuid, within, buildingBlockUuid))
+// AwaitReaction returns the building block once meshStack has reacted to a write since before.
+func (w RunWait) AwaitReaction(ctx context.Context, before client.MeshBuildingBlockV2Status) (jsontext.Value, *client.MeshBuildingBlockV2, error) {
+	ctx, cancel := context.WithTimeoutCause(ctx, w.startWithin, fmt.Errorf(
+		"meshStack did not react to the write of building block %s within %s: it started no run and reported no failure to start one",
+		w.buildingBlockUuid, w.startWithin))
 	defer cancel()
+	reacted, block, err := w.poll(ctx, w.startEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
+		return block.Status != nil && block.Status.RunChangedSince(before), nil
+	})
+	return reacted, block, withMeshPanelLink(err, block)
+}
+
+func (w RunWait) StartFailure(block *client.MeshBuildingBlockV2) error {
+	if block.Status.RunStartFailure == "" {
+		return nil
+	}
+	return withMeshPanelLink(fmt.Errorf("meshStack could not start the run of building block %s: %s", w.buildingBlockUuid, block.Status.RunStartFailure), block)
+}
+
+func withMeshPanelLink(err error, block *client.MeshBuildingBlockV2) error {
+	if link := block.MeshPanelLink(); err != nil && link != "" {
+		return fmt.Errorf("%w. Open it in meshPanel: %s", err, link)
+	}
+	return err
+}
+
+// poll reads the building block every interval until done says so, and returns the last read, also
+// when ctx ends the poll.
+func (w RunWait) poll(ctx context.Context, every time.Duration, done func(*client.MeshBuildingBlockV2) (bool, error)) (jsontext.Value, *client.MeshBuildingBlockV2, error) {
+	var last *client.MeshBuildingBlockV2
 	for {
-		current, err := raw.Get[client.MeshBuildingBlockV2](ctx, buildingBlockUuid)
+		current, err := w.raw.Get[client.MeshBuildingBlockV2](ctx, w.buildingBlockUuid)
 		if err != nil && ctx.Err() != nil {
-			return RunStart{}, context.Cause(ctx)
+			return nil, last, context.Cause(ctx)
 		} else if err != nil {
-			return RunStart{}, err
+			return nil, last, err
 		}
-		var block struct {
-			Status *client.MeshBuildingBlockV2Status `json:"status"`
-		}
+		var block client.MeshBuildingBlockV2
 		if err := json.Unmarshal(current, &block); err != nil {
-			return RunStart{}, err
+			return nil, last, err
 		}
-		if status := block.Status; status != nil {
-			switch {
-			case status.StartedRunSince(accepted):
-				return RunStart{Raw: current, RunUuid: status.GetLatestRunUuid()}, nil
-			case status.RunStartFailure != "" && status.FailedToStartRunSince(accepted):
-				return RunStart{Raw: current, Failure: status.RunStartFailure}, nil
-			}
+		last = &block
+		if ended, err := done(last); ended || err != nil {
+			return current, last, err
 		}
 		select {
 		case <-ctx.Done():
-			return RunStart{}, context.Cause(ctx)
+			return nil, last, context.Cause(ctx)
 		case <-time.After(every):
 		}
 	}

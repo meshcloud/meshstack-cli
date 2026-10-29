@@ -40,6 +40,6 @@ func TestTriggerRunPrintsTheBuildingBlockAndFailsWithTheReasonMeshStackCouldNotS
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"trigger-run", buildingBlockUuid})
 
-	require.EqualError(t, cmd.ExecuteContext(t.Context()), reason)
+	require.ErrorContains(t, cmd.ExecuteContext(t.Context()), "meshStack could not start the run of building block "+buildingBlockUuid+": "+reason)
 	assert.Contains(t, stdout.String(), `"runStartFailedOn": "2026-10-01T10:05:00Z"`, "the building block still goes to stdout, for a script to read the failure from")
 }

@@ -1,7 +1,6 @@
 package buildingblock
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"uuid"
@@ -26,7 +25,9 @@ func newTriggerRun() *cobra.Command {
 reports as metadata.uuid.
 
 The command waits until meshStack has started the run, and writes the building block, whose
-status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>" shows how far it got.
+status.latestRunUuid names the run. Where the definition asks for an approval of the run,
+status.latestDryRunUuid names the preflight run, whose plan the approver sees.
+"meshstack buildingblockrun logs <run-uuid>" shows how far a run got.
 "meshstack api-docs --describe buildingblock.trigger-run" shows the fields of the answer.`,
 		Example: `  meshstack buildingblock trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -o ndjson | jq -r .status.latestRunUuid`,
@@ -45,18 +46,18 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 			if answer.Status != nil {
 				accepted = *answer.Status
 			}
-			started, err := buildingblock.AwaitRunStart(ctx, meshStack.Raw, buildingBlockUuid, accepted)
+			runWait := buildingblock.NewRunWait(meshStack.Raw, buildingBlockUuid)
+			reacted, block, err := runWait.AwaitReaction(ctx, accepted)
 			if err != nil {
 				return err
 			}
-			if err := output.Format.WriteItem(cmd.OutOrStdout(), started.Raw); err != nil {
+			if err := output.Format.WriteItem(cmd.OutOrStdout(), reacted); err != nil {
 				return err
 			}
-			if started.Failure != "" {
-				return errors.New(started.Failure)
+			if err := runWait.StartFailure(block); err != nil {
+				return err
 			}
-			slog.InfoContext(ctx, fmt.Sprintf("meshStack started run %s of building block %s. Follow it with `meshstack buildingblockrun logs %s`",
-				started.RunUuid, buildingBlockUuid, started.RunUuid))
+			slog.InfoContext(ctx, startedRunMessage(buildingBlockUuid, accepted, *block.Status))
 			return nil
 		},
 	}
@@ -64,4 +65,17 @@ status.latestRunUuid names the run. "meshstack buildingblockrun logs <run-uuid>"
 	output.RegisterForItem(cmd.Flags())
 
 	return cmd
+}
+
+func startedRunMessage(buildingBlockUuid uuid.UUID, accepted, reacted client.MeshBuildingBlockV2Status) string {
+	switch dryRun, run := reacted.GetLatestDryRunUuid(), reacted.GetLatestRunUuid(); {
+	case dryRun != "" && dryRun != accepted.GetLatestDryRunUuid():
+		return fmt.Sprintf("meshStack started the preflight run %s of building block %s. A run that changes something waits for approval "+
+			"after it. Follow it with `meshstack buildingblockrun logs %s`", dryRun, buildingBlockUuid, dryRun)
+	case run != "" && run != accepted.GetLatestRunUuid():
+		return fmt.Sprintf("meshStack started run %s of building block %s. Follow it with `meshstack buildingblockrun logs %s`",
+			run, buildingBlockUuid, run)
+	default:
+		return fmt.Sprintf("Building block %s now has the action %s.", buildingBlockUuid, reacted.Action)
+	}
 }
