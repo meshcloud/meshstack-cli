@@ -166,7 +166,7 @@ type listed struct {
 func (o *firstObjects) get(ctx context.Context, r getRequest, operation openapi.Operation) (int, string, error) {
 	options := []http.RequestOption{http.WithUrlQuery(r.query)}
 	if mediaType, ok := operation.LatestMediaType(); ok {
-		options = append(options, http.WithAccept(mediaType.Name))
+		options = append(options, http.WithHeader("Accept", mediaType.Name))
 	}
 	body, err := o.meshStack.Raw.DoRequest(ctx, gohttp.MethodGet, r.path, options...)
 	if httpErr, ok := errors.AsType[client.HttpError](err); ok {

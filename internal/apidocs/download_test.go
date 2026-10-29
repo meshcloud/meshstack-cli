@@ -1,9 +1,11 @@
-package http_test
+package apidocs
 
 import (
 	"compress/gzip"
 	"log/slog"
 	gohttp "net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 type fakeDocument struct {
@@ -59,10 +62,10 @@ func (d *fakeDocument) serve(resp gohttp.ResponseWriter, req *gohttp.Request) {
 func TestDownload(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "doc.json")
 	document := &fakeDocument{body: `{"version": 1}`, modified: time.Date(2026, 9, 30, 13, 49, 36, 0, time.UTC)}
-	download := func(t *testing.T, options ...http.DownloadOption) (wait func()) {
+	get := func(t *testing.T, conditionalGet bool) (wait func()) {
 		t.Helper()
-		client := newTestClientWithServer(t, document.serve)
-		wait, err := client.Download(t.Context(), client.ServerUrl, path, options...)
+		client, serverUrl := newTestClient(t, document.serve)
+		wait, err := download(t.Context(), client, serverUrl, path, conditionalGet)
 		require.NoError(t, err)
 		return wait
 	}
@@ -71,7 +74,7 @@ func TestDownload(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			captured := logs.Capture(t)
 
-			download(t)()
+			get(t, false)()
 			assert.Equal(t, []string{"gzip"}, document.contentEncodings, "the 4.7MB of the API docs come as 0.5MB")
 			assert.JSONEq(t, `{"version": 1}`, readDocument(t, path), "the stored document is decompressed")
 			stat, err := os.Stat(path)
@@ -79,18 +82,18 @@ func TestDownload(t *testing.T) {
 			assert.True(t, document.modified.Equal(stat.ModTime()), "the mtime is the Last-Modified")
 
 			synctest.Sleep(23 * time.Hour)
-			download(t)()
+			get(t, false)()
 			assert.Equal(t, []int{gohttp.StatusOK}, document.answers, "a check within a day is not due")
 
 			synctest.Sleep(time.Hour)
-			download(t)()
+			get(t, false)()
 			assert.Equal(t, []int{gohttp.StatusOK, gohttp.StatusNotModified}, document.answers)
 			assert.Empty(t, captured.Records(slog.LevelWarn))
 
 			synctest.Sleep(24 * time.Hour)
 			document.missing = true
-			download(t)()
-			download(t)()
+			get(t, false)()
+			get(t, false)()
 			assert.Equal(t, []int{gohttp.StatusOK, gohttp.StatusNotModified, gohttp.StatusNotFound}, document.answers)
 			require.Len(t, captured.Records(slog.LevelWarn), 1)
 			assert.Contains(t, captured.Lines(slog.LevelWarn)[0], "Cannot update "+path)
@@ -105,7 +108,7 @@ func TestDownload(t *testing.T) {
 			document.body, document.modified = `{"version": 2}`, document.modified.Add(time.Hour)
 			document.release = make(chan struct{})
 
-			wait := download(t, http.WithConditionalGet(true))
+			wait := get(t, true)
 			assert.JSONEq(t, `{"version": 1}`, readDocument(t, path), "the caller reads the stored document")
 			require.Len(t, captured.Records(slog.LevelWarn), 1)
 			assert.Contains(t, captured.Lines(slog.LevelWarn)[0], "The command ends once the download has finished.")
@@ -117,16 +120,26 @@ func TestDownload(t *testing.T) {
 	})
 
 	t.Run("fails without a stored document to fall back to, and leaves nothing behind", func(t *testing.T) {
-		client := newTestClientWithServer(t, (&fakeDocument{missing: true}).serve)
+		client, serverUrl := newTestClient(t, (&fakeDocument{missing: true}).serve)
 		dir := t.TempDir()
 
-		_, err := client.Download(t.Context(), client.ServerUrl, filepath.Join(dir, "doc.json"))
+		_, err := download(t.Context(), client, serverUrl, filepath.Join(dir, "doc.json"), false)
 
 		require.ErrorContains(t, err, "404")
 		entries, err := os.ReadDir(dir)
 		require.NoError(t, err)
 		assert.Empty(t, entries)
 	})
+}
+
+func newTestClient(t *testing.T, handlerFunc gohttp.HandlerFunc) (http.Client, *url.URL) {
+	t.Helper()
+	// In memory, so that a test can run inside a synctest bubble.
+	server := httptest.NewTestServer(t, handlerFunc)
+	client := http.Client{Client: server.Client(), UserAgent: fakemeshstack.UserAgent}
+	serverUrl, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	return client, serverUrl
 }
 
 func readDocument(t *testing.T, path string) string {

@@ -81,7 +81,7 @@ func Load(ctx context.Context, opts Options) (spec openapi.Spec, wait func(), er
 		url, path, conditionalGet = custom, dir.Join(fmt.Sprintf("api-docs-custom-%x.json", urlHash[:6])), true
 	}
 
-	wait, err = opts.Client.Download(ctx, url.URL, path, http.WithConditionalGet(conditionalGet))
+	wait, err = download(ctx, opts.Client, url.URL, path, conditionalGet)
 	if err != nil {
 		return spec, wait, fmt.Errorf("cannot download the API docs from %s: %w", url, err)
 	}

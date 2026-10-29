@@ -83,7 +83,7 @@ func TestHttpClient(t *testing.T) {
 						}
 						resp.WriteHeader(gohttp.StatusOK)
 						_, _ = resp.Write([]byte(`{}`))
-					}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff})
+					}), 3, &retryTestBackoff)
 					start := time.Now()
 
 					_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
@@ -108,7 +108,7 @@ func TestHttpClient(t *testing.T) {
 		backoff := retryTestBackoff{}
 		client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 			resp.WriteHeader(gohttp.StatusBadGateway)
-		}), http.RetryOptions{MaxRetries: 2, Backoff: &backoff})
+		}), 2, &backoff)
 		_, err := client.DoRequest[any](t.Context(), gohttp.MethodGet, client.ServerUrl.JoinPath("get"))
 		var httpErr http.Error
 		require.ErrorAs(t, err, &httpErr)
@@ -128,7 +128,7 @@ func TestHttpClient(t *testing.T) {
 			backoff := retryTestBackoff{WaitTime: 10 * time.Second}
 			client := withTestRetry(newTestClientWithServer(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
 				resp.WriteHeader(gohttp.StatusBadGateway)
-			}), http.RetryOptions{MaxRetries: 3, Backoff: &backoff})
+			}), 3, &backoff)
 			// The bubble's clock only moves once the 502 has arrived and the backoff waits, so this
 			// cancels inside the wait. Cancelling from the handler raced the 502 back to the client.
 			ctx, cancel := context.WithCancel(t.Context())
@@ -155,7 +155,7 @@ func TestHttpClient(t *testing.T) {
 				return
 			}
 			resp.WriteHeader(gohttp.StatusNoContent)
-		}), http.RetryOptions{MaxRetries: 3, Backoff: &retryTestBackoff{}})
+		}), 3, &retryTestBackoff{})
 		payload := http.WithJsonPayload(map[string]string{"key": "value"}, "application/json")
 
 		for _, method := range []string{gohttp.MethodPatch, gohttp.MethodPost, gohttp.MethodPut, gohttp.MethodDelete} {
@@ -251,6 +251,46 @@ func TestHttpClient(t *testing.T) {
 		body, err = client.DoRequest[[]byte](t.Context(), gohttp.MethodDelete, client.ServerUrl.JoinPath("delete"))
 		require.NoError(t, err)
 		assert.Empty(t, body)
+	})
+}
+
+func TestClientOptions(t *testing.T) {
+	serve := func(t *testing.T, handler gohttp.HandlerFunc) *url.URL {
+		t.Helper()
+		server := httptest.NewServer(handler)
+		t.Cleanup(server.Close)
+		serverUrl, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		return serverUrl
+	}
+
+	t.Run("WithoutRedirects answers with the 3xx", func(t *testing.T) {
+		serverUrl := serve(t, gohttp.RedirectHandler("/elsewhere", gohttp.StatusFound).ServeHTTP)
+		client := http.NewClient(fakemeshstack.UserAgent, http.WithoutRedirects())
+
+		_, err := client.DoRequest[[]byte](t.Context(), http.MethodGet, serverUrl)
+
+		httpErr, ok := errors.AsType[http.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, gohttp.StatusFound, httpErr.StatusCode)
+	})
+
+	t.Run("WithRetry retries a POST on 503 and stops at 502", func(t *testing.T) {
+		var answered []int
+		serverUrl := serve(t, func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
+			status := []int{gohttp.StatusServiceUnavailable, gohttp.StatusBadGateway}[len(answered)]
+			answered = append(answered, status)
+			resp.Header().Set("Retry-After", "0")
+			resp.WriteHeader(status)
+		})
+		client := http.NewClient(fakemeshstack.UserAgent, http.WithRetry(func(string, bool) http.RetryOn { return http.RetryOnBusy }))
+
+		_, err := client.DoRequest[any](t.Context(), http.MethodPost, serverUrl)
+
+		httpErr, ok := errors.AsType[http.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, []int{gohttp.StatusServiceUnavailable, gohttp.StatusBadGateway}, answered)
+		assert.Equal(t, http.Error{Method: http.MethodPost, Url: serverUrl.String(), StatusCode: gohttp.StatusBadGateway, ResponseBody: []byte{}}, httpErr)
 	})
 }
 
@@ -418,10 +458,8 @@ func newTestClientWithServer(t *testing.T, handlerFunc gohttp.HandlerFunc) TestC
 	return TestClient{http.Client{Client: client, UserAgent: fakemeshstack.UserAgent}, serverUrl}
 }
 
-// withTestRetry gives one test client its own retry policy. The shipped client is the one shared
-// one and takes no configuration, so a test that needs a backoff it can count builds its own.
-func withTestRetry(c TestClient, options http.RetryOptions) TestClient {
-	options.ApplyTo(c.Client.Client)
+func withTestRetry(c TestClient, maxRetries int, backoff *retryTestBackoff) TestClient {
+	c.Client = http.WithTestRetry(c.Client, maxRetries, backoff)
 	return c
 }
 

@@ -15,8 +15,6 @@ type Version = version.Version
 
 type HttpError = http.Error
 
-type Authorization = http.Authorization
-
 type Client struct {
 	ApiKey                         MeshApiKeyClient
 	BuildingBlock                  MeshBuildingBlockClient
@@ -48,7 +46,7 @@ type Client struct {
 	Endpoint xurl.URL
 }
 
-func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Authorization) Client {
+func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth http.Authorization) Client {
 	authorizedClient := internal.HttpClient{
 		AuthorizedClient: client.WithAuthorization(auth),
 		EndpointUrl:      endpoint,
