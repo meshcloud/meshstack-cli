@@ -59,6 +59,45 @@ func triggerRunNamesTheRunItStarted(c *cli) func(*testing.T) {
 	}
 }
 
+// waitEndsTheRun accepts a run that failed or waits for someone, since the outcome is the building
+// block's, and checks only that the wait has ended.
+func waitEndsTheRun(c *cli) func(*testing.T) {
+	return func(t *testing.T) {
+		output, err := c.run("", "buildingblock", "list", "--limit", "1", "-o", "ndjson")
+		require.NoErrorf(t, err, "the building block list failed:\n%s", output)
+		buildingBlock := firstUuid(output)
+		if buildingBlock == "" {
+			t.Skip("the local stack holds no building block to run")
+		}
+		requireEnded := func(t *testing.T, output string, err error) {
+			t.Helper()
+			written := ndjsonObjects[struct {
+				Status struct {
+					Action string `json:"action"`
+				} `json:"status"`
+			}](output)
+			require.Lenf(t, written, 1, "the wait wrote no building block:\n%s", output)
+			assert.NotContains(t, []string{"PENDING", "IN_PROGRESS"}, written[0].Status.Action)
+			if err != nil {
+				assert.Contains(t, err.Error(), written[0].Status.Action, "a failed wait names the action")
+			}
+		}
+
+		t.Run("trigger-run --wait", func(t *testing.T) {
+			output, err := c.run("", "buildingblock", "trigger-run", buildingBlock, "--wait", "-o", "ndjson")
+			requireEnded(t, output, err)
+		})
+
+		t.Run("wait --before=- with the answer of a write through api", func(t *testing.T) {
+			write := c.start(`{"dryRun": false}`, "api", "-X", "POST", "/api/meshobjects/meshbuildingblocks/"+buildingBlock+"/trigger-run", "--request-json", "-")
+			require.NoErrorf(t, write.wait(), "the trigger-run through api failed:\n%s", write.output)
+
+			output, err := c.run(write.stdout.String(), "buildingblock", "wait", buildingBlock, "--before=-", "-o", "ndjson")
+			requireEnded(t, output, err)
+		})
+	}
+}
+
 func runListIsNewestFirst(c *cli) func(*testing.T) {
 	return func(t *testing.T) {
 		output, err := c.run("", "buildingblockrun", "list", "--limit", "unlimited", "-o", "ndjson")

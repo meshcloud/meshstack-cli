@@ -16,6 +16,7 @@ func newTriggerRun() *cobra.Command {
 	var (
 		output            internal.OutputFlag
 		buildingBlockUuid uuid.UUID
+		wait              bool
 	)
 
 	cmd := &cobra.Command{
@@ -28,6 +29,8 @@ The command waits until meshStack has started the run, and writes the building b
 status.latestRunUuid names the run. Where the definition asks for an approval of the run,
 status.latestDryRunUuid names the preflight run, whose plan the approver sees.
 "meshstack buildingblockrun logs <run-uuid>" shows how far a run got.
+With --wait, the command waits until the run has ended, the same as piping the answer of
+meshStack to the request for the run into "meshstack buildingblock wait <uuid> --before=-".
 "meshstack api-docs --describe buildingblock.trigger-run" shows the fields of the answer.`,
 		Example: `  meshstack buildingblock trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -o ndjson | jq -r .status.latestRunUuid`,
@@ -46,6 +49,9 @@ status.latestDryRunUuid names the preflight run, whose plan the approver sees.
 			if answer.Status != nil {
 				accepted = *answer.Status
 			}
+			if wait {
+				return awaitRunEnd(ctx, cmd.OutOrStdout(), output.Format, meshStack.Raw, buildingBlockUuid, accepted)
+			}
 			runWait := buildingblock.NewRunWait(meshStack.Raw, buildingBlockUuid)
 			reacted, block, err := runWait.AwaitReaction(ctx, accepted)
 			if err != nil {
@@ -63,6 +69,7 @@ status.latestDryRunUuid names the preflight run, whose plan the approver sees.
 	}
 
 	output.RegisterForItem(cmd.Flags())
+	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the run has ended, and fail when it failed or waits for someone")
 
 	return cmd
 }
