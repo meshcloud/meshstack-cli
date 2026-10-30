@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/apidocs"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 )
 
@@ -166,7 +166,7 @@ type listed struct {
 func (o *firstObjects) get(ctx context.Context, r getRequest, operation openapi.Operation) (int, string, error) {
 	options := []http.RequestOption{http.WithUrlQuery(r.query)}
 	if mediaType, ok := operation.LatestMediaType(); ok {
-		options = append(options, http.WithAccept(mediaType.Name))
+		options = append(options, http.WithHeader("Accept", mediaType.Name))
 	}
 	body, err := o.meshStack.Raw.DoRequest(ctx, gohttp.MethodGet, r.path, options...)
 	if httpErr, ok := errors.AsType[client.HttpError](err); ok {

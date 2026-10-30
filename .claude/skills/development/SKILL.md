@@ -1,6 +1,6 @@
 ---
 name: development
-description: How the meshStack CLI's Go code is laid out and built - where a command, its logic and an HTTP call go, and what the client and settings must keep. Use when writing, changing or reviewing Go code here - a new command or package, a change to client/, pkg/ or internal/http, an HTTP request, a new setting or dependency, or a depguard or forbidigo finding.
+description: How the meshStack CLI's Go code is laid out and built - where a command, its logic and an HTTP call go, and what the client and settings must keep. Use when writing, changing or reviewing Go code here - a new command or package, a change to client/, client/http or pkg/, an HTTP request, a new setting or dependency, or a depguard or forbidigo finding.
 ---
 
 # Developing the meshStack CLI
@@ -109,32 +109,33 @@ git log -- client/client.go client.go   # a path-limited log from client/ alone 
 git blame client/client.go              # traverses the merge on its own
 ```
 
-**`client/` does not log in.** `client.Authorization` produces a bearer token and replaces one that
+**`client/` does not log in.** `http.Authorization` produces a bearer token and replaces one that
 came back 401; resolving a credential, minting a token, caching it and refreshing it is `pkg/auth`.
 Both front ends build their client through `auth.ResolveClient`, so the endpoint and the
 authorization always agree with what was resolved. Do **not** add a login exchange anywhere else: a
 second one gets a static token and starts returning 401 once it expires, and for a browser login it
 would end the user's session.
 
-**`client/` does not own HTTP.** The client, the request options and the retry policy are
-`internal/http`, because `internal/oidc` and `pkg/auth` need them and Go's internal rule closes
-`client/internal` to both. Its names carry no `Http` prefix: `http.Client`, `http.Error`.
+**HTTP is `client/http`.** The client, the request options and the retry policy are there, because
+`internal/oidc` and `pkg/auth` need them as well, and another module calls `client.New` with them.
+No exported name of `client/` may use an `internal/` type, which `TestPublicApiNamesNoInternalType`
+checks. Its names carry no `Http` prefix: `http.Client`, `http.Error`.
 
 **Every request names the front end and version that sent it.** `http.NewClient` takes an
 `http.UserAgent`, which `auth.ResolveSessionOptions` embeds: the front end sets its `GitHubRepo` and
 `Version` once, the CLI in `cmd/internal.ResolveClientOptions`, and the release check reads the same
 two. So code below `cmd/` takes its client from its caller, and a command that needs one for
 anything but a meshStack client calls `internal.ResolveClientOptions().HttpClient()`. `forbidigo`
-keeps `http.UserAgent` to those options, and the transport to `internal/http`.
+keeps `http.UserAgent` to those options, and the transport to `client/http`.
 
 **`net/http` is always imported as `gohttp`**, which `importas` settles. That leaves the plain name
-to `internal/http`, and `net/http` to the status and method constants and to the loopback server.
+to `client/http`, and `net/http` to the status and method constants and to the loopback server.
 The `forbidigo` rule matches on the type rather than the written name, so it catches `gohttp.Client`
 and leaves `http.Client` alone.
 
 **Logging goes through `slog`'s default logger**, on which each front end installs its own handler:
 `cmd/meshstack` a `charmbracelet/log` one, the Terraform provider a `tflog` bridge. A handler
-installed that late constrains every log call, and `internal/http/logging.go` states how.
+installed that late constrains every log call, and `client/http/logging.go` states how.
 </rules>
 
 ## Settings

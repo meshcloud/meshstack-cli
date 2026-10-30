@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json/jsontext"
 	"fmt"
 	"maps"
@@ -18,13 +17,14 @@ type (
 	requestOptions struct {
 		retryable        bool
 		requestPayload   func() ([]byte, error)
+		bodyFile         string
 		requestModifiers []requestModifier
 	}
 	requestModifier func(req *gohttp.Request) error
 )
 
-// Retryable declares that replaying this request cannot do harm, which is the only way a method
-// other than GET is ever retried. meshStack's /api/login is the case it exists for: it mints a
+// Retryable declares that replaying this request cannot do harm, which the default [RetryPolicy]
+// requires of any method other than GET. meshStack's /api/login is the case it exists for: it mints a
 // token and invalidates nothing, so a replay after a gateway 503 costs one token.
 //
 // Never put it on an OIDC refresh grant: that grant rotates the refresh token, and keycloak ends
@@ -40,8 +40,8 @@ func Retryable() RequestOption {
 // because gohttp.Client passes the context on to the request it issues for a redirect.
 type retryableKey struct{}
 
-func isRetryable(ctx context.Context) bool {
-	retryable, _ := ctx.Value(retryableKey{}).(bool)
+func isRetryable(req *gohttp.Request) bool {
+	retryable, _ := req.Context().Value(retryableKey{}).(bool)
 	return retryable
 }
 
@@ -111,39 +111,33 @@ func appendRequestModifier(modifier requestModifier) RequestOption {
 	}
 }
 
-func WithAccept(accept string) RequestOption {
-	return withHeader("Accept", accept)
-}
-
-func WithHeaders(header gohttp.Header) RequestOption {
+func WithHeader(key string, values ...string) RequestOption {
 	return appendRequestModifier(func(req *gohttp.Request) error {
-		for key, values := range header {
-			req.Header.Del(key)
-			for _, value := range values {
-				req.Header.Add(key, value)
-			}
+		req.Header.Del(key)
+		for _, value := range values {
+			req.Header.Add(key, value)
 		}
 		return nil
 	})
 }
 
-// WithBody sends the bytes as they are, so the caller names their type in a Content-Type header.
-func WithBody(body []byte) RequestOption {
+func WithBody(contentType string, body []byte) RequestOption {
 	return func(opts *requestOptions) {
 		if body == nil {
 			return
 		}
+		WithHeader("Content-Type", contentType)(opts)
 		opts.requestPayload = func() ([]byte, error) {
 			return body, nil
 		}
 	}
 }
 
-func withHeader(key, value string) RequestOption {
-	return appendRequestModifier(func(req *gohttp.Request) error {
-		req.Header.Set(key, value)
-		return nil
-	})
+func WithBodyFile(contentType, path string) RequestOption {
+	return func(opts *requestOptions) {
+		WithHeader("Content-Type", contentType)(opts)
+		opts.bodyFile = path
+	}
 }
 
 // WithJsonPayload sends a value as a JSON body, and both sends and asks for the given content
@@ -153,8 +147,8 @@ func WithJsonPayload(payload any, contentType string) RequestOption {
 		if payload == nil {
 			return
 		}
-		WithAccept(contentType)(opts)
-		withHeader("Content-Type", contentType)(opts)
+		WithHeader("Accept", contentType)(opts)
+		WithHeader("Content-Type", contentType)(opts)
 		opts.requestPayload = func() ([]byte, error) {
 			return json.Marshal(payload)
 		}
@@ -169,8 +163,8 @@ func WithFormPayload(payload any) RequestOption {
 		if payload == nil {
 			return
 		}
-		WithAccept("application/json")(opts)
-		withHeader("Content-Type", "application/x-www-form-urlencoded")(opts)
+		WithHeader("Accept", "application/json")(opts)
+		WithHeader("Content-Type", "application/x-www-form-urlencoded")(opts)
 		opts.requestPayload = func() ([]byte, error) {
 			values, err := convertStructOrMapToUrlValues(payload)
 			if err != nil {
