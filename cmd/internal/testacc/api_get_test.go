@@ -35,9 +35,6 @@ var getExceptions = map[openapi.PathTemplate]getException{
 	"/api/meshobjects/meshbuildingblockruns": {
 		query: map[string]objectField{"buildingBlockUuid": {"meshBuildingBlock", "uuid"}},
 	},
-	"/api/meshobjects/meshapikeys/self": {
-		apiKeyOnly: "it answers 404 to a request that authenticates with no meshApiKey",
-	},
 	"/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/plan-artifact": {
 		skip: "the API docs say it is in development, and answers 404 in normal operation",
 	},
@@ -48,8 +45,6 @@ type getException struct {
 	query map[string]objectField
 	// skip sends no GET, for the reason it gives.
 	skip string
-	// apiKeyOnly sends the GET only for the API key login, for the reason it gives.
-	apiKeyOnly string
 }
 
 // objectField is a field of the metadata of the first object of a kind.
@@ -57,7 +52,7 @@ type objectField struct {
 	kind, field string
 }
 
-func everyGetOperationAnswers(c *cli, apiKey bool) func(*testing.T) {
+func everyGetOperationAnswers(c *cli) func(*testing.T) {
 	return func(t *testing.T) {
 		spec := devApiDocs(t)
 		objects := firstObjects{spec: spec, meshStack: c.client(t)}
@@ -70,9 +65,6 @@ func everyGetOperationAnswers(c *cli, apiKey bool) func(*testing.T) {
 				exception := getExceptions[operation.PathTemplate]
 				if exception.skip != "" {
 					t.Skip(exception.skip)
-				}
-				if exception.apiKeyOnly != "" && !apiKey {
-					t.Skip(exception.apiKeyOnly)
 				}
 				r, skip, err := objects.fill(t.Context(), operation, exception)
 				require.NoError(t, err)

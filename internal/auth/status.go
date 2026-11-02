@@ -11,10 +11,8 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -33,8 +31,7 @@ type CredentialStatus struct {
 	// cached.
 	Token *TokenStatus `json:"token,omitzero"`
 
-	// OidcLogin is set for a browser login. ApiKey is set for an API key, and for an API token that
-	// an API key minted.
+	// OidcLogin is set for a browser login. ApiKey is set for an API key.
 	OidcLogin *OidcLoginStatus `json:"oidcLogin,omitzero"`
 	ApiKey    *ApiKeyStatus    `json:"apiKey,omitzero"`
 
@@ -94,26 +91,11 @@ func BrowserLoginEnded(ctx context.Context, p *profile.Profile) bool {
 }
 
 type ApiKeyStatus struct {
-	ClientId uuid.UUID      `json:"clientId"`
-	Details  *ApiKeyDetails `json:"details,omitzero"`
+	ClientId uuid.UUID `json:"clientId"`
 }
 
-type ApiKeyDetails struct {
-	DisplayName      string    `json:"displayName"`
-	OwnedByWorkspace string    `json:"ownedByWorkspace"`
-	ExpiresAt        time.Time `json:"expiresAt,omitzero"`
-	// ExpiresOn is the expiry date, set only by a meshStack that does not send the expiry time
-	// yet. It is not turned into a time: the date of an ephemeral key is the day it expires on,
-	// not the last day it works.
-	ExpiresOn        string                   `json:"expiresOn,omitzero"`
-	Permissions      []string                 `json:"permissions"`
-	PermissionGroups client.ApiKeyPermissions `json:"-"`
-}
-
-const statusTimeout = 10 * time.Second
-
-// Status never renews a browser login, which would rotate its refresh token. Only an API key, or an
-// API token it minted, calls meshStack, to read the key's own details.
+// Status reads only the stored credential and its cached token, and calls no meshStack. It never
+// renews a browser login, which would rotate its refresh token.
 func (s Session) Status(ctx context.Context) CredentialStatus {
 	status := CredentialStatus{
 		Profile:  s.CurrentProfile.Name,
@@ -137,18 +119,10 @@ func (s Session) Status(ctx context.Context) CredentialStatus {
 			token, found = oidcTokenFor(cred, workspace)
 		}
 	case *credential.ApiKey:
-		status.ApiKey = &ApiKeyStatus{ClientId: cred.ClientId, Details: apiKeyDetails(ctx, s.Client)}
+		status.ApiKey = &ApiKeyStatus{ClientId: cred.ClientId}
 		token, found = cred.CachedToken(ctx, s.getWorkspace)
 	case *credential.Manual:
 		token, found = cred.CachedToken(ctx, s.getWorkspace)
-		// A pasted API token is most likely the token of a building block run, which its ephemeral
-		// API key minted. An expired one would only fail to read the key.
-		if clientId, err := uuid.Parse(token.GetClaim(jwt.ClientIdClaim)); err == nil {
-			status.ApiKey = &ApiKeyStatus{ClientId: clientId}
-			if !tokenStatusOf(token).Expired() {
-				status.ApiKey.Details = apiKeyDetails(ctx, s.Client)
-			}
-		}
 	}
 	if found {
 		status.Token = tokenStatusOf(token)
@@ -217,47 +191,4 @@ func tokenStatusOf(token jwt.JWT) *TokenStatus {
 		ClientId:    token.GetClaim(jwt.ClientIdClaim),
 		AccessLevel: level,
 	}
-}
-
-func apiKeyDetails(ctx context.Context, newClient func() (client.Client, error)) *ApiKeyDetails {
-	c, err := newClient()
-	if err != nil {
-		slog.WarnContext(ctx, "Cannot read the details of the API key: "+err.Error())
-		return nil
-	}
-	readCtx, cancel := context.WithTimeoutCause(ctx, statusTimeout,
-		fmt.Errorf("meshStack did not answer within %s", statusTimeout))
-	defer cancel()
-	apiKey, err := c.ApiKey.ReadSelf(readCtx)
-	if cause := context.Cause(readCtx); err != nil && cause != nil {
-		err = cause
-	}
-	switch httpErr, isHttpErr := errors.AsType[http.Error](err); {
-	// A meshStack without /self takes it for the uuid of a key: without APIKEY_LIST that is a 403,
-	// and with it a 404, which ReadSelf returns as nil.
-	case isHttpErr && httpErr.IsForbidden(), err == nil && apiKey == nil:
-		slog.WarnContext(ctx, "Cannot read the details of the API key: this meshStack does not let an API key read itself yet")
-		return nil
-	case err != nil:
-		slog.WarnContext(ctx, "Cannot read the details of the API key: "+err.Error())
-		return nil
-	}
-	codes := make([]string, 0, len(apiKey.Spec.Permissions))
-	for _, code := range apiKey.Spec.Permissions {
-		codes = append(codes, string(code))
-	}
-	slices.Sort(codes)
-	details := &ApiKeyDetails{
-		DisplayName:      apiKey.Spec.DisplayName,
-		OwnedByWorkspace: apiKey.Metadata.OwnedByWorkspace,
-		Permissions:      codes,
-		PermissionGroups: client.Permissions.Only(apiKey.Spec.Permissions),
-	}
-	if apiKey.Status != nil {
-		details.ExpiresAt = apiKey.Status.ExpiresAt
-	}
-	if details.ExpiresAt.IsZero() && apiKey.Spec.ExpiresAt != nil {
-		details.ExpiresOn = *apiKey.Spec.ExpiresAt
-	}
-	return details
 }

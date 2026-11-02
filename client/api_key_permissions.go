@@ -43,39 +43,6 @@ func (p ApiKeyPermissions) WorkspaceCodes() []string {
 	return codes
 }
 
-// Only keeps the codes of p that are among codes, in the order of p, and puts the codes p does
-// not know into a last group named Other.
-func (p ApiKeyPermissions) Only(codes []ApiPermission) ApiKeyPermissions {
-	remaining := slices.Clone(codes)
-	var only ApiKeyPermissions
-	for _, group := range p {
-		kept := ApiKeyPermissionGroup{Name: group.Name}
-		for _, suffixGroup := range group.Actions {
-			var held []ApiPermission
-			for _, code := range suffixGroup {
-				if index := slices.Index(remaining, code); index >= 0 {
-					remaining = slices.Delete(remaining, index, index+1)
-					held = append(held, code)
-				}
-			}
-			if len(held) > 0 {
-				kept.Actions = append(kept.Actions, held)
-			}
-		}
-		if len(kept.Actions) > 0 {
-			only = append(only, kept)
-		}
-	}
-	if len(remaining) > 0 {
-		other := ApiKeyPermissionGroup{Name: "Other"}
-		for _, code := range remaining {
-			other.Actions = append(other.Actions, []ApiPermission{code})
-		}
-		only = append(only, other)
-	}
-	return only
-}
-
 func (p ApiKeyPermissions) MarkdownString() string {
 	var lines []string
 	for _, group := range p {

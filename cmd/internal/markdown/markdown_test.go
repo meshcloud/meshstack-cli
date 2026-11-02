@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
@@ -47,16 +46,13 @@ func TestABrowserLoginShowsItsUserAccessAndSessionEnd(t *testing.T) {
 	})
 }
 
-func TestAnApiKeyShowsItsPermissionsBelowTheCredential(t *testing.T) {
+func TestAnApiKeyShowsItsClientIdAndNoCachedTokenYet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		clientId := uuid.MustParse("11111111-45bf-42ba-a965-2097b9d0d181")
 		status := auth.CredentialStatus{
 			Profile: "ci", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
 			Kind: credential.ApiKeyName, Sources: []string{"env MESHSTACK_API_KEY", "env MESHSTACK_API_SECRET"},
-			ApiKey: &auth.ApiKeyStatus{ClientId: clientId, Details: &auth.ApiKeyDetails{
-				DisplayName: "CI | nightly", OwnedByWorkspace: "ops",
-				PermissionGroups: client.ApiKeyPermissions{{Name: "Tenants", Actions: [][]client.ApiPermission{{"TENANT_LIST", "ADM_TENANT_LIST"}, {"TENANT_SAVE", "ADM_TENANT_SAVE"}}}},
-			}},
+			ApiKey: &auth.ApiKeyStatus{ClientId: clientId},
 			Unused: []auth.UnusedCredential{
 				{Kind: credential.ApiKeyName, ClientId: "22222222-45bf-42ba-a965-2097b9d0d181"},
 				{Kind: credential.OidcLoginName, Selected: true, Token: &auth.TokenStatus{User: "jane", Email: "jane@example.com"}},
@@ -72,9 +68,7 @@ func TestAnApiKeyShowsItsPermissionsBelowTheCredential(t *testing.T) {
 			"| Endpoint | https://meshstack.example.com |\n"+
 			"| Workspace | none |\n"+
 			"| Credential | API key 11111111-45bf-42ba-a965-2097b9d0d181, from env MESHSTACK_API_KEY, env MESHSTACK_API_SECRET |\n"+
-			`|  | CI \| nightly, owned by workspace ops, never expires |`+"\n"+
 			"|  | No token cached yet, minted on next use |\n"+
-			"|  | • Tenants: `[ADM_]TENANT_(LIST\\|SAVE)` |\n"+
 			"| Unused credentials | • API key 22222222-45bf-42ba-a965-2097b9d0d181 |\n"+
 			"|  | • Browser login jane (jane@example.com), selected by the profile |\n"+
 			"|  | • API token, expired 1999-12-31 23:00 (1h ago) |", shown)
@@ -94,36 +88,6 @@ func TestAnExpiredApiTokenSaysItCannotBeRenewed(t *testing.T) {
 	assert.Contains(t, shown, "cannot be renewed, run `meshstack login -p run --apitoken`, for workspace ops |")
 	assert.Contains(t, shown, "| Credential | API token of API key 11111111-45bf-42ba-a965-2097b9d0d181, from env MESHSTACK_API_TOKEN |")
 	assert.NotContains(t, shown, "| Workspace |", "the token carries its workspace")
-}
-
-func TestAnApiKeyShowsWhenItExpires(t *testing.T) {
-	for _, tt := range []struct {
-		name      string
-		expiresIn time.Duration
-		expiresOn string
-		want      string
-	}{
-		{name: "a key with an expiry time", expiresIn: 30 * 24 * time.Hour, want: "expires 2000-01-31 00:00 (in 30d)"},
-		{name: "a meshStack that sends only the expiry date", expiresOn: "2000-01-31", want: "expires on 2000-01-31"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				details := &auth.ApiKeyDetails{DisplayName: "CI", OwnedByWorkspace: "ops", ExpiresOn: tt.expiresOn}
-				if tt.expiresIn != 0 {
-					details.ExpiresAt = time.Now().UTC().Add(tt.expiresIn)
-				}
-				status := auth.CredentialStatus{
-					Profile: "ci", Endpoint: xurl.MustParsef("https://meshstack.example.com"), Kind: credential.ApiKeyName,
-					ApiKey: &auth.ApiKeyStatus{Details: details},
-				}
-
-				shown, err := Execute(credentialOnly, status)
-
-				require.NoError(t, err)
-				assert.Contains(t, shown, "\n|  | CI, owned by workspace ops, "+tt.want+" |\n")
-			})
-		})
-	}
 }
 
 func TestATimeIsShownWithHowFarAwayItIs(t *testing.T) {

@@ -151,7 +151,7 @@ func TestAccBrowserLogin(t *testing.T) {
 		completeKeycloakLogin(t, run.awaitStartURL(t), "read", admin.Username, admin.Password)
 		require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
 	})
-	t.Run("every GET operation answers the organization admin", everyGetOperationAnswers(c, false))
+	t.Run("every GET operation answers the organization admin", everyGetOperationAnswers(c))
 	t.Run("--apitoken logs in with the token auth token prints", apiTokenLogsIn(c))
 }
 
@@ -238,7 +238,7 @@ func TestAccApiKeyLogin(t *testing.T) {
 		c.setEnv(envWorkspace, workspace)
 	}
 	t.Run("every list command answers", everyListCommandAnswers(c))
-	t.Run("every GET operation answers the API key", everyGetOperationAnswers(c, true))
+	t.Run("every GET operation answers the API key", everyGetOperationAnswers(c))
 	t.Run("a meshObject endpoint refuses JSON, and api sends --request-json in its media type", apiAsksForJson(c))
 	t.Run("api picks the profile for the self link of a list answer by its URL alone, with no endpoint in the environment", apiFollowsASelfLink(c))
 	t.Run("a wait ends once the run has ended", waitEndsTheRun(c))
@@ -283,8 +283,6 @@ func (c *cli) authToken(t *testing.T) string {
 	return token
 }
 
-// requireAuthStatus does not check whether this meshStack lets an API key read itself through
-// /self yet, so it accepts the warnings about the key's details.
 func requireAuthStatus(t *testing.T, c *cli, wantCredential string) {
 	t.Helper()
 	status, err := c.run("", "auth", "status")

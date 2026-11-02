@@ -1,23 +1,16 @@
 package profile
 
 import (
-	"context"
 	"encoding/json/v2"
 	"log/slog"
 	"maps"
-	gohttp "net/http"
-	"net/http/httptest"
 	"slices"
 	"testing"
-	"time"
-	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -137,29 +130,4 @@ func requireStoredNames(t *testing.T, want ...profile.Name) {
 	stored, err := profile.LoadProfiles(t.Context(), profile.LoadProfilesOptions{SettingSources: internal.SettingSources()})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, want, slices.Collect(maps.Keys(stored.Profiles)))
-}
-
-func TestShowSaysWhereTheStatusCannotBeReadInTime(t *testing.T) {
-	unreachable := httptest.NewServer(gohttp.HandlerFunc(func(_ gohttp.ResponseWriter, r *gohttp.Request) {
-		<-r.Context().Done()
-	}))
-	t.Cleanup(unreachable.CloseClientConnections)
-	endpoint := xurl.MustParsef("%s", unreachable.URL)
-	profiles := storedProfiles(t, profile.Profile{Name: "ci", Endpoint: endpoint, Credential: credential.ApiKeyName})
-	credentials, err := profiles.Profiles["ci"].Credentials(t.Context())
-	require.NoError(t, err)
-	credentials.Set(&credential.ApiKey{Endpoint: endpoint, ClientId: uuid.MustParse("11111111-45bf-42ba-a965-2097b9d0d181"), ClientSecret: "test-secret"})
-	require.NoError(t, credentials.Store(t.Context()))
-	logs.Capture(t)
-	// A deadline of the caller stands in for statusReadTime, which a test would wait for in full.
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-	defer cancel()
-
-	s := showOf(ctx, profiles, profiles.Profiles["ci"])
-
-	assert.Nil(t, s.Status)
-	shownMarkdown, err := markdown.Execute(showTemplate, s)
-	require.NoError(t, err)
-	assert.Contains(t, shownMarkdown, "| Endpoint | "+unreachable.URL+" |\n")
-	assert.Contains(t, shownMarkdown, "| Credential | API key, whose status could not be read: context deadline exceeded |\n")
 }

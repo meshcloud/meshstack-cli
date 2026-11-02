@@ -3,9 +3,7 @@ package auth_test
 import (
 	"encoding/base64"
 	"encoding/json/v2"
-	"fmt"
 	"log/slog"
-	gohttp "net/http"
 	"testing"
 	"time"
 	"uuid"
@@ -13,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
@@ -78,77 +75,24 @@ func TestStatusOfABrowserLogin(t *testing.T) {
 	})
 }
 
-func TestStatusOfAnApiKeyReadsTheKeyFromMeshStack(t *testing.T) {
-	tests := []struct {
-		name     string
-		status   int
-		body     string
-		want     *auth.ApiKeyDetails
-		wantWarn string
-	}{
-		{
-			name:   "a key reads itself",
-			status: gohttp.StatusOK,
-			body: `{"metadata":{"uuid":"` + testApiKey1.ClientId + `","ownedByWorkspace":"ops"},` +
-				`"spec":{"displayName":"CI","permissions":["WORKSPACE_LIST","APIKEY_LIST"],"expiresAt":"2027-01-31"},` +
-				`"status":{"clientId":"` + testApiKey1.ClientId + `","expiresAt":"2027-02-01T00:00:00Z"}}`,
-			want: &auth.ApiKeyDetails{
-				DisplayName: "CI", OwnedByWorkspace: "ops", ExpiresAt: time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC),
-				Permissions: []string{"APIKEY_LIST", "WORKSPACE_LIST"},
-				PermissionGroups: client.ApiKeyPermissions{
-					{Name: "API Keys", Actions: [][]client.ApiPermission{{"APIKEY_LIST"}}},
-					{Name: "Workspaces", Actions: [][]client.ApiPermission{{"WORKSPACE_LIST"}}},
-				},
-			},
-		},
-		{
-			name:   "a meshStack that sends no expiry time leaves the expiry date",
-			status: gohttp.StatusOK,
-			body: `{"metadata":{"uuid":"` + testApiKey1.ClientId + `","ownedByWorkspace":"ops"},` +
-				`"spec":{"displayName":"CI","permissions":[],"expiresAt":"2027-01-31"},"status":{"clientId":"` + testApiKey1.ClientId + `"}}`,
-			want: &auth.ApiKeyDetails{DisplayName: "CI", OwnedByWorkspace: "ops", ExpiresOn: "2027-01-31", Permissions: []string{}},
-		},
-		{name: "a meshStack without /self forbids it to a key without APIKEY_LIST", status: gohttp.StatusForbidden, wantWarn: "does not let an API key read itself"},
-		{name: "a meshStack without /self finds no key of that uuid", status: gohttp.StatusNotFound, wantWarn: "does not let an API key read itself"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := newTestServer(t)
-			// The version check would ask GitHub for the latest release.
-			t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
-			server.Route("/api/meshobjects/meshapikeys/self", func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-				resp.WriteHeader(tt.status)
-				_, _ = fmt.Fprint(resp, tt.body)
-			})
-			setApiKeyEnv(t, testApiKey1)
-			captured := logs.Capture(t)
+func TestStatusOfAnApiKeyIsReadFromFilesAndTheEnvironment(t *testing.T) {
+	newTestServer(t)
+	setApiKeyEnv(t, testApiKey1)
+	captured := logs.Capture(t)
 
-			session, err := auth.ResolveSession(t.Context(), testSessionOpts)
-			require.NoError(t, err)
-			status := session.Status(t.Context())
+	session, err := auth.ResolveSession(t.Context(), testSessionOpts)
+	require.NoError(t, err)
+	status := session.Status(t.Context())
 
-			assert.Equal(t, []string{"env MESHSTACK_API_KEY", "env MESHSTACK_API_SECRET"}, status.Sources)
-			require.NotNil(t, status.ApiKey)
-			assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId.String())
-			assert.Equal(t, tt.want, status.ApiKey.Details)
-			if tt.wantWarn != "" {
-				assert.Contains(t, captured.String(), "level=WARN")
-				assert.Contains(t, captured.String(), tt.wantWarn)
-			} else {
-				assert.Empty(t, captured.Records(slog.LevelWarn))
-			}
-			assert.NotNil(t, status.Token, "reading the key minted a token")
-		})
-	}
+	assert.Equal(t, []string{"env MESHSTACK_API_KEY", "env MESHSTACK_API_SECRET"}, status.Sources)
+	require.NotNil(t, status.ApiKey)
+	assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId.String())
+	assert.Nil(t, status.Token, "no token is cached before the key is first used")
+	assert.Empty(t, captured.Records(slog.LevelWarn))
 }
 
 func TestStatusOfAnApiToken(t *testing.T) {
-	server := newTestServer(t)
-	t.Setenv(meshstack.SkipVersionCheckSetting.EnvKey(), "true")
-	server.Route("/api/meshobjects/meshapikeys/self", func(resp gohttp.ResponseWriter, _ *gohttp.Request) {
-		_, _ = fmt.Fprint(resp, `{"metadata":{"uuid":"`+testApiKey1.ClientId+`","ownedByWorkspace":"ops"},`+
-			`"spec":{"displayName":"run 42","permissions":["BUILDINGBLOCK_SAVE"]}}`)
-	})
+	newTestServer(t)
 	statusWithTokenInTheEnvironment := func(t *testing.T, claims map[string]any) auth.CredentialStatus {
 		t.Helper()
 		t.Setenv(auth.ApiTokenSetting.EnvKey(), testToken(t, claims).String())
@@ -172,26 +116,21 @@ func TestStatusOfAnApiToken(t *testing.T) {
 		assert.Equal(t, "stored", status.Unused[0].Token.User)
 	})
 
-	t.Run("the token of a building block run reads its ephemeral API key", func(t *testing.T) {
+	t.Run("the token of a building block run shows the client id of its API key", func(t *testing.T) {
 		status := statusWithTokenInTheEnvironment(t, map[string]any{"exp": validFor(time.Hour), "client_id": testApiKey1.ClientId})
 
 		assert.Equal(t, credential.ManualName, status.Kind)
-		require.NotNil(t, status.ApiKey)
-		assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId.String())
-		require.NotNil(t, status.ApiKey.Details)
-		assert.Equal(t, "run 42", status.ApiKey.Details.DisplayName)
-		assert.Equal(t, []string{"BUILDINGBLOCK_SAVE"}, status.ApiKey.Details.Permissions)
+		require.NotNil(t, status.Token)
+		assert.Equal(t, testApiKey1.ClientId, status.Token.ClientId)
 	})
 
-	t.Run("an expired token says so, and cannot read its API key", func(t *testing.T) {
+	t.Run("an expired token says so", func(t *testing.T) {
 		captured := logs.Capture(t)
 		status := statusWithTokenInTheEnvironment(t, map[string]any{"exp": validFor(-time.Hour), "client_id": testApiKey1.ClientId})
 
 		require.NotNil(t, status.Token)
 		assert.True(t, status.Token.Expired())
 		assert.Equal(t, testApiKey1.ClientId, status.Token.ClientId)
-		require.NotNil(t, status.ApiKey)
-		assert.Nil(t, status.ApiKey.Details)
 		warnings := captured.Lines(slog.LevelWarn)
 		require.Len(t, warnings, 1)
 		assert.Contains(t, warnings[0], "set a credential over 'manual' stored in profile 'default'")

@@ -23,19 +23,6 @@ func TestPermissions(t *testing.T) {
 		}
 	})
 
-	t.Run("Only keeps the held codes in their groups, and the unknown ones in Other", func(t *testing.T) {
-		held := Permissions.Only([]ApiPermission{
-			"WORKSPACE_LIST", "NOT_A_KNOWN_CODE", "TENANT_DELETE", "ADM_TENANT_IMPORT", "MANAGED_TENANT_IMPORT", "ADM_TENANT_DELETE",
-		})
-
-		assert.Equal(t, ApiKeyPermissions{
-			{Name: "Tenants", Actions: [][]ApiPermission{{"TENANT_DELETE", "ADM_TENANT_DELETE"}, {"MANAGED_TENANT_IMPORT", "ADM_TENANT_IMPORT"}}},
-			{Name: "Workspaces", Actions: [][]ApiPermission{{"WORKSPACE_LIST"}}},
-			{Name: "Other", Actions: [][]ApiPermission{{"NOT_A_KNOWN_CODE"}}},
-		}, held)
-		assert.Empty(t, Permissions.Only(nil))
-	})
-
 	t.Run("MarkdownString merges the codes into patterns that stand for no other code", func(t *testing.T) {
 		permissions := ApiKeyPermissions{
 			{Name: "Tenants", Actions: [][]ApiPermission{

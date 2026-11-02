@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -40,13 +39,7 @@ type shown struct {
 	New bool `json:"new,omitzero"`
 
 	Status *auth.CredentialStatus `json:"status,omitzero"`
-	// StatusError says why there is no status for a stored credential.
-	StatusError string `json:"statusError,omitzero"`
 }
-
-// statusReadTime is shorter than a command waits for an unreachable meshStack, which is about 30s,
-// as edit reads the status before it asks anything.
-const statusReadTime = 5 * time.Second
 
 // showOf has no status where p stores no usable credential, and logs a warning for it, unless p was
 // never logged in, which show.md.tmpl says itself.
@@ -55,20 +48,12 @@ func showOf(ctx context.Context, profiles profile.Profiles, p *profile.Profile) 
 	if p.Credential == "" {
 		return s
 	}
-	ctx, cancel := context.WithTimeoutCause(ctx, statusReadTime, fmt.Errorf("meshStack did not answer within %s", statusReadTime))
-	defer cancel()
 	session, err := auth.StoredSession(ctx, p, internal.ResolveClientOptions())
 	if err != nil {
 		slog.WarnContext(ctx, "Cannot read the credential of profile '"+string(p.Name)+"': "+err.Error())
 		return s
 	}
 	status := session.Status(ctx)
-	// Status reads what it can, and logs what it cannot, so a status read past the deadline lacks
-	// what meshStack would have answered.
-	if ctx.Err() != nil {
-		s.StatusError = context.Cause(ctx).Error()
-		return s
-	}
 	s.Status = &status
 	return s
 }
@@ -81,8 +66,7 @@ func newShow() *cobra.Command {
 		Long: `Show the profile another command would use, and the status of the credential it stores, which
 a flag or the environment would replace there.
 
-A profile that is not stored yet is shown as a first login would create it, and nothing is stored.
-Where meshStack does not answer within ` + statusReadTime.String() + `, it shows what the profile stores without the status.`,
+A profile that is not stored yet is shown as a first login would create it, and nothing is stored.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
