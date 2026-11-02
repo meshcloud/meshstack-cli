@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockRunnerImplementationType string
@@ -71,8 +72,14 @@ type MeshRunnerWifProviderConfig struct {
 type MeshBuildingBlockRunnerClient interface {
 	Create(ctx context.Context, runner MeshBuildingBlockRunner) (*MeshBuildingBlockRunner, error)
 	Read(ctx context.Context, uuid string) (*MeshBuildingBlockRunner, error)
+	List(ctx context.Context, filter MeshBuildingBlockRunnerFilter) ([]MeshBuildingBlockRunner, error)
 	Update(ctx context.Context, runner MeshBuildingBlockRunner) (*MeshBuildingBlockRunner, error)
 	Delete(ctx context.Context, uuid string) error
+}
+
+// MeshBuildingBlockRunnerFilter narrows a list that always holds the caller's own runners and every shared one.
+type MeshBuildingBlockRunnerFilter struct {
+	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
 }
 
 type meshBuildingBlockRunnerClient struct {
@@ -89,6 +96,10 @@ func (c meshBuildingBlockRunnerClient) Create(ctx context.Context, runner MeshBu
 
 func (c meshBuildingBlockRunnerClient) Read(ctx context.Context, uuid string) (*MeshBuildingBlockRunner, error) {
 	return c.meshObject.Get(ctx, uuid)
+}
+
+func (c meshBuildingBlockRunnerClient) List(ctx context.Context, filter MeshBuildingBlockRunnerFilter) ([]MeshBuildingBlockRunner, error) {
+	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }
 
 func (c meshBuildingBlockRunnerClient) Update(ctx context.Context, runner MeshBuildingBlockRunner) (*MeshBuildingBlockRunner, error) {
