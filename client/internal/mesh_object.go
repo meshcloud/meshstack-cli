@@ -102,8 +102,8 @@ func (c MeshObjectApi) PostAtPath[R, P any](ctx context.Context, payload P, extr
 		http.WithAccept(c.MeshObjectMimeType()), c.withMeshObjectPayload(payload))
 }
 
-func (c MeshObjectClient[M]) Put[P any](ctx context.Context, id string, payload P) (*M, error) {
-	return c.DoRequest[*M](ctx, http.MethodPut, c.ApiUrl.JoinPath(id), c.withMeshObjectPayload(payload), http.Retryable())
+func (c MeshObjectClient[M]) Put[P any](ctx context.Context, id string, payload P, options ...http.RequestOption) (*M, error) {
+	return c.DoRequest[*M](ctx, http.MethodPut, c.ApiUrl.JoinPath(id), append(options, c.withMeshObjectPayload(payload), http.Retryable())...)
 }
 
 func (c MeshObjectClient[M]) Delete(ctx context.Context, id string) (err error) {

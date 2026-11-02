@@ -336,12 +336,19 @@ type MeshBuildingBlockV2ListFilter struct {
 	Sort                         SortCriteria `json:"sort"`
 }
 
+// MeshBuildingBlockV2UpdateOptions go out as query parameters, and a zero field as none, so the
+// zero value works against a meshStack that does not know them.
+type MeshBuildingBlockV2UpdateOptions struct {
+	// SkipRun saves the update without starting a run.
+	SkipRun bool `json:"skipRun"`
+}
+
 type MeshBuildingBlockV2Client interface {
 	Read(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
 	ReadFunc(uuid string) func(ctx context.Context) (*MeshBuildingBlockV2, error)
 	List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error)
 	Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
-	Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
+	Update(ctx context.Context, bb *MeshBuildingBlockV2, options MeshBuildingBlockV2UpdateOptions) (*MeshBuildingBlockV2, error)
 	Delete(ctx context.Context, uuid string, purge bool) error
 	TriggerRun(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
 }
@@ -372,11 +379,11 @@ func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingB
 	return c.meshObject.Post(ctx, bb)
 }
 
-func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
+func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingBlockV2, options MeshBuildingBlockV2UpdateOptions) (*MeshBuildingBlockV2, error) {
 	if bb.Metadata.Uuid == nil {
 		return nil, errors.New("cannot update building block without UUID")
 	}
-	return c.meshObject.Put(ctx, *bb.Metadata.Uuid, bb)
+	return c.meshObject.Put(ctx, *bb.Metadata.Uuid, bb, http.WithUrlQuery(options))
 }
 
 func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purge bool) error {
