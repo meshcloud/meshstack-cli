@@ -77,7 +77,6 @@ type MeshBuildingBlockRunnerClient interface {
 	Delete(ctx context.Context, uuid string) error
 }
 
-// MeshBuildingBlockRunnerFilter narrows a list that always holds the caller's own runners and every shared one.
 type MeshBuildingBlockRunnerFilter struct {
 	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
 }
