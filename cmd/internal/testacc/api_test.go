@@ -15,8 +15,9 @@ import (
 func apiAsksForJson(c *cli) func(*testing.T) {
 	return func(t *testing.T) {
 		output, err := c.run("", "api", "/api/meshobjects/meshworkspaces", "-H", "Accept: application/json")
-		require.EqualErrorf(t, err, "meshStack answered HTTP 406. Run meshstack api-docs /api/meshobjects/meshworkspaces "+
-			"-X GET -H 'Accept: application/json' to see what the API takes", "a meshObject endpoint refuses application/json, output:\n%s", output)
+		require.ErrorContainsf(t, err, "meshStack answered HTTP 406: value in 'Accept' header not supported. (errorCode HttpMediaTypeNotAcceptable, errorId ",
+			"a meshObject endpoint refuses application/json, output:\n%s", output)
+		require.ErrorContains(t, err, "). Run meshstack api-docs /api/meshobjects/meshworkspaces -X GET -H 'Accept: application/json' to see what the API takes")
 
 		// A body of no metadata, which meshStack refuses before it creates anything.
 		output, err = c.run(`{}`, "api", "-X", "POST", "/api/meshobjects/meshworkspaces", "--request-json", "-")
