@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -96,11 +95,11 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 				}
 				// The body is on stdout already, so the error says only what it adds.
 				if httpErr.IsClientError() && !httpErr.IsUnauthorized() && !httpErr.IsForbidden() && !r.objectNotFound(httpErr) {
-					return fmt.Errorf("meshStack answered HTTP %d. Run %s to see what the API takes",
-						httpErr.StatusCode, docsCommand(cmd, args))
+					return withHint(fmt.Sprintf("%s. Run %s to see what the API takes",
+						httpErr.Summary(), docsCommand(cmd, args)), httpErr)
 				}
 				// What wraps the HTTP error, such as the auth scope of a 403, stays.
-				return errors.New(strings.Replace(err.Error(), httpErr.Error(), fmt.Sprintf("meshStack answered HTTP %d", httpErr.StatusCode), 1))
+				return withHint(strings.Replace(err.Error(), httpErr.Error(), httpErr.Summary(), 1), httpErr)
 			}
 			if err != nil {
 				return err
@@ -120,10 +119,16 @@ func (r *request) objectNotFound(httpErr client.HttpError) bool {
 	if !httpErr.IsNotFound() || !r.documented {
 		return false
 	}
-	var answer struct {
-		ErrorCode string `json:"errorCode"`
+	return httpErr.ErrorCode() != noHandlerFound
+}
+
+// withHint adds the hint on a line of its own. Stdout carries the raw body, which the error does not
+// repeat.
+func withHint(message string, httpErr client.HttpError) error {
+	if hint := httpErr.ClientVersionHint(); hint != "" {
+		message += "\n" + hint
 	}
-	return json.Unmarshal(httpErr.ResponseBody, &answer) != nil || answer.ErrorCode != noHandlerFound
+	return errors.New(message)
 }
 
 // noHandlerFound is the errorCode of meshStack's answer to a path it serves nothing at.
