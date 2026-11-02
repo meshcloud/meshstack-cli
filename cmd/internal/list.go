@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/pkg/auth"
 )
 
@@ -41,22 +42,22 @@ func ListWorkspace(ctx context.Context) (*string, error) {
 
 // Run lists the objects of M that filter narrows.
 func (f *ListFlags) Run[M any](cmd *cobra.Command, filter any) error {
-	return f.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error] {
+	return f.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options types.ListOptions) iter.Seq2[jsontext.Value, error] {
 		return meshStack.Raw.List[M](ctx, filter, options)
 	})
 }
 
 // RunSeq is Run for a listing that is not one kind's, such as the runs of every building block.
-func (f *ListFlags) RunSeq(cmd *cobra.Command, list func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error]) error {
+func (f *ListFlags) RunSeq(cmd *cobra.Command, list func(ctx context.Context, meshStack client.Client, options types.ListOptions) iter.Seq2[jsontext.Value, error]) error {
 	ctx := cmd.Context()
 	meshStack, err := ResolveClient(ctx)
 	if err != nil {
 		return err
 	}
 	result := ListResult{Limit: int(f.limit), Defaulted: !cmd.Flags().Changed(limitFlagName)}
-	listOptions := client.ListOptions{
+	listOptions := types.ListOptions{
 		PageSize: result.Limit,
-		OnPage: func(page client.Page) {
+		OnPage: func(page types.Page) {
 			if result.Total == nil {
 				result.Total = &page.TotalElements
 			}

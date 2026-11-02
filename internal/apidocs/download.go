@@ -1,4 +1,4 @@
-package http
+package apidocs
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
@@ -25,36 +26,18 @@ const (
 	downloadCheckInterval = 24 * time.Hour
 )
 
-type (
-	DownloadOption func(opts *downloadOptions)
-
-	downloadOptions struct {
-		conditionalGet bool
-	}
-)
-
-// WithConditionalGet asks for a newer document on every download. Without it, Download asks
-// once per downloadCheckInterval, to save the round trip.
-func WithConditionalGet(conditionalGet bool) DownloadOption {
-	return func(opts *downloadOptions) {
-		opts.conditionalGet = conditionalGet
-	}
-}
-
-// Download waits at most waitForNewerDownload for a newer document where path holds one already.
+// download waits at most waitForNewerDownload for a newer document where path holds one already.
 // After that, the caller reads the stored document, and wait lets the download finish for the next
-// command.
-func (c Client) Download(ctx context.Context, url *url.URL, path string, options ...DownloadOption) (wait func(), err error) {
-	var opts downloadOptions
-	for _, option := range options {
-		option(&opts)
-	}
+// command. Without conditionalGet, it asks for a newer document once per downloadCheckInterval, to
+// save the round trip.
+func download(ctx context.Context, client http.Client, url *url.URL, path string, conditionalGet bool) (wait func(), err error) {
+	opts := downloadOptions{conditionalGet: conditionalGet}
 	noWait := func() {}
 	stored, statErr := os.Stat(path)
 	if statErr != nil {
 		downloadCtx, cancel := context.WithTimeout(ctx, downloadTimeout)
 		defer cancel()
-		if err := c.download(downloadCtx, url, path, nil); err != nil {
+		if err := downloadTo(downloadCtx, client, url, path); err != nil {
 			return noWait, err
 		}
 		return noWait, opts.recordCheck(ctx, path)
@@ -69,9 +52,8 @@ func (c Client) Download(ctx context.Context, url *url.URL, path string, options
 		// signal.NotifyContext swallows every further Ctrl-C.
 		downloadCtx, cancel := context.WithTimeout(ctx, downloadTimeout)
 		defer cancel()
-		err := c.download(downloadCtx, url, path, []RequestOption{
-			withHeader("If-Modified-Since", stored.ModTime().UTC().Format(gohttp.TimeFormat)),
-		})
+		err := downloadTo(downloadCtx, client, url, path,
+			http.WithHeader("If-Modified-Since", stored.ModTime().UTC().Format(gohttp.TimeFormat)))
 		// A cancelled download leaves the check due, so that the next command tries again.
 		if ctx.Err() != nil {
 			done <- nil
@@ -93,6 +75,10 @@ func (c Client) Download(ctx context.Context, url *url.URL, path string, options
 			"The command ends once the download has finished.", path, waitForNewerDownload, stored.ModTime().Format(time.DateTime)))
 		return func() { warnIfFailed(<-done) }, nil
 	}
+}
+
+type downloadOptions struct {
+	conditionalGet bool
 }
 
 type downloadCheck struct {
@@ -127,11 +113,11 @@ func (opts downloadOptions) recordCheck(ctx context.Context, path string) error 
 	return json.MarshalTo(ctx, lastCheckJson(path), downloadCheck{time.Now()})
 }
 
-func (c Client) download(ctx context.Context, url *url.URL, path string, options []RequestOption) (err error) {
+func downloadTo(ctx context.Context, client http.Client, url *url.URL, path string, options ...http.RequestOption) (err error) {
 	// No option sets an Accept-Encoding, so that net/http asks for gzip and decompresses the answer:
 	// the API docs then come as 0.5MB rather than 4.7MB. CloudFront serves brotli as well, but it
 	// saves only 4 to 8% over gzip, too little for a dependency.
-	res, err := c.send(ctx, gohttp.MethodGet, url, options)
+	res, err := client.Send(ctx, http.MethodGet, url, options...)
 	if err != nil {
 		return err
 	}
@@ -142,9 +128,9 @@ func (c Client) download(ctx context.Context, url *url.URL, path string, options
 		slog.DebugContext(ctx, path+" is up to date")
 		return nil
 	}
-	if !isSuccess(res.StatusCode) {
-		_, err = c.readBodyAndCheckSuccess(ctx, res)
-		return err
+	if res.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(res.Body)
+		return http.Error{Method: http.MethodGet, Url: url.String(), StatusCode: res.StatusCode, ResponseBody: body}
 	}
 
 	// The document is renamed into place, so that no reader sees half of it.

@@ -87,12 +87,12 @@ linters:
           - gosec
         text: G101
         path: _test\.go
-      - path: internal/http/
+      - path: client/http/
         linters:
           - forbidigo
         text: one HTTP client
       # The options of a session carry the user agent the front end sets.
-      - path: (internal/http/|internal/auth/session\.go|internal/testutil/|_test\.go)
+      - path: (client/http/|internal/auth/session\.go|internal/testutil/|_test\.go)
         linters:
           - forbidigo
         text: user agent of the front end
@@ -125,17 +125,17 @@ linters:
           - gosec
 
   settings:
-    # The process has one HTTP client, built in internal/http.
+    # The process has one HTTP client, built in client/http.
     forbidigo:
       analyze-types: true
       forbid:
         # Anchored to the package, as net/http has more methods named Get, such as Header.Get.
         - pattern: ^http\.(Client|DefaultClient|Transport|DefaultTransport|Get|Head|Post|PostForm)$
           pkg: ^net/http$
-          msg: the process has one HTTP client, built in internal/http; take it from there rather than making another
+          msg: the process has one HTTP client, built in client/http; take it from there rather than making another
         # A user agent made anywhere else drifts from the one the front end names itself by.
         - pattern: ^http\.UserAgent$
-          pkg: ^github\.com/meshcloud/meshstack-cli/internal/http$
+          pkg: ^github\.com/meshcloud/meshstack-cli/client/http$
           msg: a client carries the user agent of the front end; take the client from your caller, or from auth.ResolveSessionOptions.HttpClient
         # A test that sleeps for real is slow, and flaky once the machine is slower than the
         # sleep assumed. synctest.Sleep panics outside a bubble, so it cannot be used the same way.
@@ -290,9 +290,6 @@ linters:
             - encoding/json/v2
             - github.com/meshcloud/meshstack-cli/cmd/internal
             - github.com/meshcloud/meshstack-cli/client
-            # the request options client.Raw.DoRequest takes, which pkg/ does not expose: they are for the
-            # CLI alone
-            - github.com/meshcloud/meshstack-cli/internal/http
             # the API docs choose the version of a request
             - github.com/meshcloud/meshstack-cli/internal/apidocs
             # a full URL picks the stored profile whose endpoint holds it, and has to fit an endpoint
@@ -318,8 +315,7 @@ linters:
           allow:
             - $gostd
             - log/slog
-            # the proxy that serves the state to tofu. It needs the request options of
-            # client.Raw.DoRequest, and pkg/ does not expose them, because they are for the CLI alone.
+            # the proxy that serves the state to tofu
             - github.com/meshcloud/meshstack-cli/internal/tfstate
             - github.com/meshcloud/meshstack-cli/cmd/internal
             - github.com/meshcloud/meshstack-cli/pkg/setting
@@ -423,7 +419,7 @@ linters:
             - github.com/charmbracelet/colorprofile
 
         # The package the Terraform provider consumes most directly, so it reaches nothing
-        # beyond the standard library and the three packages below.
+        # beyond the standard library and the packages below.
         client:
           files:
             # Both patterns are needed: '**/dir/**/*.go' only matches files in
@@ -443,9 +439,7 @@ linters:
             - encoding/json/jsontext
             - log/slog
             - github.com/meshcloud/meshstack-cli/client
-            - github.com/meshcloud/meshstack-cli/internal/http
             - github.com/meshcloud/meshstack-cli/internal/json
-            - github.com/meshcloud/meshstack-cli/internal/version
 
         pkg:
           files:
@@ -465,9 +459,9 @@ linters:
             - github.com/meshcloud/meshstack-cli/internal
 
         # client reaches these two, so whatever they may import, client gets.
-        internal-http:
+        client-http:
           files:
-            - "**/internal/http/*.go"
+            - "**/client/http/*.go"
             - "**/internal/json/*.go"
             - "!$test"
           list-mode: strict
@@ -480,9 +474,9 @@ linters:
             - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli/internal/json
 
-        internal-version:
+        client-types-version:
           files:
-            - "**/internal/version/*.go"
+            - "**/client/types/version/*.go"
             - "!$test"
           list-mode: strict
           deny:

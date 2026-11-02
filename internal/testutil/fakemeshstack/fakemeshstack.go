@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 )
 
 // DefaultVersion is at least client.MinMeshStackVersion, or the CLI refuses the backend.

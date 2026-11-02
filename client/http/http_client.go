@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	gohttp "net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"time"
@@ -15,17 +16,48 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
-var sharedClient = func() (client *gohttp.Client) {
-	client = &gohttp.Client{Transport: newTransport(1 * time.Minute)}
-	RetryOptions{
-		// Sized to ride out a full meshStack backend restart, which can leave the gateway
-		// returning 503 for two to three minutes. This backoff sequence sums to about four
-		// minutes: 1+2+4+8+16+30*7 seconds.
-		MaxRetries: 12,
-		Backoff:    ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
-	}.ApplyTo(client)
-	return
-}()
+// Sized to ride out a full meshStack backend restart, which can leave the gateway returning 503
+// for two to three minutes. This backoff sequence sums to about four minutes: 1+2+4+8+16+30*7
+// seconds.
+var defaultRetry = retryOptions{
+	policy:     defaultRetryPolicy,
+	maxRetries: 12,
+	backoff:    exponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
+}
+
+var sharedClient = newHttpClient(clientOptions{retry: defaultRetry})
+
+type (
+	ClientOption func(opts *clientOptions)
+
+	clientOptions struct {
+		retry       retryOptions
+		noRedirects bool
+	}
+)
+
+// WithoutRedirects returns a 3xx as it came.
+func WithoutRedirects() ClientOption {
+	return func(opts *clientOptions) {
+		opts.noRedirects = true
+	}
+}
+
+// WithRetry replaces the default policy, which retries a GET or a [Retryable] request on
+// [RetryOnTransient] and nothing else.
+func WithRetry(policy RetryPolicy) ClientOption {
+	return func(opts *clientOptions) {
+		opts.retry.policy = policy
+	}
+}
+
+func newHttpClient(opts clientOptions) *gohttp.Client {
+	client := &gohttp.Client{Transport: opts.retry.wrap(newTransport(1 * time.Minute))}
+	if opts.noRedirects {
+		client.CheckRedirect = func(*gohttp.Request, []*gohttp.Request) error { return gohttp.ErrUseLastResponse }
+	}
+	return client
+}
 
 func newTransport(silenceTimeout time.Duration) gohttp.RoundTripper {
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone() //nolint:forcetypeassert // net/http declares it a *Transport
@@ -40,11 +72,19 @@ type Client struct {
 }
 
 // NewClient panics on a UserAgent that does not validate, as a request has to name its front end.
-func NewClient(userAgent UserAgent) Client {
+// Without options, every client shares one connection pool.
+func NewClient(userAgent UserAgent, options ...ClientOption) Client {
 	if err := userAgent.Validate(); err != nil {
 		panic(err)
 	}
-	return Client{sharedClient, userAgent}
+	if len(options) == 0 {
+		return Client{sharedClient, userAgent}
+	}
+	opts := clientOptions{retry: defaultRetry}
+	for _, option := range options {
+		option(&opts)
+	}
+	return Client{newHttpClient(opts), userAgent}
 }
 
 // DoRequest sends one request and parses the answer as JSON, or returns it as it came, empty
@@ -76,19 +116,27 @@ func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.UR
 	return
 }
 
-func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {
-	res, err := c.send(ctx, method, url, options)
+// DoStreamingRequest copies a 2xx body to w as it arrives.
+func (c Client) DoStreamingRequest(ctx context.Context, method string, url *url.URL, w io.Writer, options ...RequestOption) error {
+	res, err := c.Send(ctx, method, url, options...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() {
 		_ = res.Body.Close()
 	}()
-	return c.readBodyAndCheckSuccess(ctx, res)
+	if !isSuccess(res.StatusCode) {
+		_, err = c.readBodyAndCheckSuccess(ctx, res)
+		return err
+	}
+	written, err := io.Copy(w, res.Body)
+	slog.DebugContext(ctx, "response", "status", res.StatusCode, "body", fmt.Sprintf("<streamed,len=%d>", written))
+	return err
 }
 
-func (c Client) send(ctx context.Context, method string, url *url.URL, options []RequestOption) (*gohttp.Response, error) {
-	options = slices.Insert(options, 0, withHeader("User-Agent", c.UserAgent.String()))
+// Send returns the response whatever its status, and the caller closes its body.
+func (c Client) Send(ctx context.Context, method string, url *url.URL, options ...RequestOption) (*gohttp.Response, error) {
+	options = slices.Insert(options, 0, WithHeader("User-Agent", c.UserAgent.String()))
 	opts := requestOptions{}
 	for _, option := range options {
 		option(&opts)
@@ -98,6 +146,17 @@ func (c Client) send(ctx context.Context, method string, url *url.URL, options [
 		return nil, err
 	}
 	return c.Do(req)
+}
+
+func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {
+	res, err := c.Send(ctx, method, url, options...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+	return c.readBodyAndCheckSuccess(ctx, res)
 }
 
 func isSuccess(statusCode int) bool {
@@ -116,13 +175,15 @@ func (c Client) readBodyAndCheckSuccess(ctx context.Context, res *gohttp.Respons
 	}
 
 	return responseBody, Error{
+		Method:       res.Request.Method,
+		Url:          res.Request.URL.Redacted(),
 		StatusCode:   res.StatusCode,
 		ResponseBody: responseBody,
 	}
 }
 
 func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, opts requestOptions) (*gohttp.Request, error) {
-	var requestBody io.ReadWriter
+	var requestBody io.Reader
 	if opts.requestPayload != nil {
 		requestBodyData, err := opts.requestPayload()
 		if err != nil {
@@ -139,6 +200,12 @@ func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, o
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	if opts.bodyFile != "" {
+		if err := setFileBody(req, opts.bodyFile); err != nil {
+			return nil, err
+		}
+		requestBody = req.Body
+	}
 	for _, modifier := range opts.requestModifiers {
 		if err := modifier(req); err != nil {
 			return nil, err
@@ -146,4 +213,21 @@ func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, o
 	}
 	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header), "body", loggedBody{requestBody})
 	return req, nil
+}
+
+// setFileBody streams the file, and reopens it when a retry replays the request.
+func setFileBody(req *gohttp.Request, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	open := func() (io.ReadCloser, error) {
+		return os.Open(path) //nolint:gosec // the caller names the file it uploads
+	}
+	if req.Body, err = open(); err != nil {
+		return err
+	}
+	req.GetBody = open
+	req.ContentLength = info.Size()
+	return nil
 }

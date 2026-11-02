@@ -3,21 +3,17 @@ package client
 import (
 	"context"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/version"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 var MinMeshStackVersion = version.MustParse("2026.36.0")
 
-// Version is re-exported because MinMeshStackVersion is one and internal/version is closed to
-// another module.
 type Version = version.Version
 
 type HttpError = http.Error
-
-type Authorization = http.Authorization
 
 type Client struct {
 	ApiKey                         MeshApiKeyClient
@@ -45,12 +41,13 @@ type Client struct {
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
 	Raw                            *RawClient
+	Runner                         MeshRunnerClient
 
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
 	Endpoint xurl.URL
 }
 
-func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Authorization) Client {
+func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth http.Authorization) Client {
 	authorizedClient := internal.HttpClient{
 		AuthorizedClient: client.WithAuthorization(auth),
 		EndpointUrl:      endpoint,
@@ -92,6 +89,7 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Author
 			with(buildingBlockDefinition.meshObject).
 			withOwnOrder(buildingBlockDefinitionVersion.meshObject).
 			with(newEventLogMeshObject(ctx, authorizedClient)),
+		Runner: newRunnerClient(authorizedClient),
 
 		Endpoint: endpoint,
 	}

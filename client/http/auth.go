@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	gohttp "net/http"
 	"net/url"
@@ -41,6 +42,13 @@ func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, u
 		err = fmt.Errorf("auth scope %s: %w", c.Authorization.Scope(), err)
 	}
 	return result, err
+}
+
+func (c AuthorizedClient) DoStreamingRequest(ctx context.Context, method string, url *url.URL, w io.Writer, options ...RequestOption) error {
+	_, err := withBearerToken(ctx, c.Authorization, method, url, func(token RequestOption) (any, error) {
+		return nil, c.Client.DoStreamingRequest(ctx, method, url, w, append(options, token)...)
+	})
+	return err
 }
 
 // Authorize is for a request that this client does not send itself, such as one a reverse proxy
@@ -94,5 +102,5 @@ func (token BearerToken) Scope() string {
 }
 
 func (token BearerToken) asRequestOption() RequestOption {
-	return withHeader("Authorization", fmt.Sprintf("Bearer %s", token))
+	return WithHeader("Authorization", "Bearer "+string(token))
 }

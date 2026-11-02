@@ -6,12 +6,17 @@ import (
 )
 
 type Error struct {
+	Method, Url  string
 	StatusCode   int
 	ResponseBody []byte
 }
 
 func (e Error) Error() string {
-	return fmt.Sprintf("http error %d, response '%s'", e.StatusCode, string(e.ResponseBody))
+	message := fmt.Sprintf("http error %d, response '%s'", e.StatusCode, string(e.ResponseBody))
+	if e.Method == "" {
+		return message
+	}
+	return e.Method + " " + e.Url + ": " + message
 }
 
 func (e Error) IsClientError() bool {

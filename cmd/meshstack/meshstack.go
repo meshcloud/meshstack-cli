@@ -28,7 +28,7 @@ import (
 
 func main() {
 	// No deadline bounds a command as a whole, since a listing takes as long as it is long. The
-	// HTTP client gives up on a server that stopped answering, see internal/http.
+	// HTTP client gives up on a server that stopped answering, see client/http.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	err := newRootCommand().ExecuteContext(ctx)
 	stop()

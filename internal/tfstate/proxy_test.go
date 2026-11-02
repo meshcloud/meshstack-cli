@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
@@ -347,9 +347,8 @@ func TestServeCountsTheRequestsUntilTheCommandEnds(t *testing.T) {
 		var apiToken jwt.JWT
 		require.NoError(t, apiToken.UnmarshalText([]byte(vars["MESHSTACK_API_TOKEN"])), "the provider since v0.26.0 takes only a JWT")
 		assert.False(t, apiToken.GetClaim(jwt.ExpiryClaim).Expired(time.Hour))
-		authorization := gohttp.Header{}
-		authorization.Set("Authorization", "Basic "+basicAuth(vars["TF_HTTP_USERNAME"], vars["TF_HTTP_PASSWORD"]))
-		served, err = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](t.Context(), http.MethodGet, address, http.WithHeaders(authorization))
+		authorization := http.WithHeader("Authorization", "Basic "+basicAuth(vars["TF_HTTP_USERNAME"], vars["TF_HTTP_PASSWORD"]))
+		served, err = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](t.Context(), http.MethodGet, address, authorization)
 		require.NoError(t, err)
 	})
 

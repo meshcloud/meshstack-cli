@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/types/version"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 // MeshFeatureFlag names an optional meshStack capability. /mesh/info reports each one as a bool of
@@ -45,7 +45,7 @@ func NewMeshInfoClient(client http.Client, endpoint xurl.URL) MeshInfoClient {
 }
 
 func (c meshInfoClient) Read(ctx context.Context) (MeshInfo, error) {
-	return c.DoRequest[MeshInfo](ctx, "GET", c.Endpoint.JoinPath("/mesh/info"), http.WithAccept("application/json"))
+	return c.DoRequest[MeshInfo](ctx, "GET", c.Endpoint.JoinPath("/mesh/info"), http.WithHeader("Accept", "application/json"))
 }
 
 func (info MeshInfo) CheckVersion() error {

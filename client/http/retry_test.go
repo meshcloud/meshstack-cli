@@ -30,7 +30,7 @@ func TestExponentialBackoff_Calculate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("attempt %d", tt.attempt), func(t *testing.T) {
-			b := ExponentialBackoff{
+			b := exponentialBackoff{
 				MinWait: 1 * time.Second,
 				MaxWait: 5 * time.Second,
 			}
@@ -41,7 +41,7 @@ func TestExponentialBackoff_Calculate(t *testing.T) {
 
 func TestRetryAfterBackoff(t *testing.T) {
 	bubbleStart := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	fallback := ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 10 * time.Second}
+	fallback := exponentialBackoff{MinWait: 1 * time.Second, MaxWait: 10 * time.Second}
 
 	tests := []struct {
 		name   string
@@ -83,15 +83,14 @@ func TestRetryStopsOnceTheContextIsDone(t *testing.T) {
 	require.NoError(t, err)
 
 	calls := 0
-	retrying := &retryRoundTripper{
-		Next: roundTripperFunc(func(req *gohttp.Request) (*gohttp.Response, error) {
-			calls++
-			return nil, context.Cause(req.Context())
-		}),
-		MaxRetries:          3,
-		ShouldRetryRequest:  func(*gohttp.Request) bool { return true },
-		ShouldRetryResponse: func(*gohttp.Response, error) RetryBackoff { return ExponentialBackoff{} },
-	}
+	retrying := retryOptions{
+		policy:     func(string, bool) RetryOn { return RetryOnTransient },
+		maxRetries: 3,
+		backoff:    exponentialBackoff{},
+	}.wrap(roundTripperFunc(func(req *gohttp.Request) (*gohttp.Response, error) {
+		calls++
+		return nil, context.Cause(req.Context())
+	}))
 
 	_, err = retrying.RoundTrip(req) //nolint:bodyclose // no response comes back
 	require.ErrorIs(t, err, interrupted)
@@ -106,7 +105,7 @@ func TestRetryGivesUpOnAServerThatDoesNotAnswer(t *testing.T) {
 	}))
 	defer server.Close()
 	client := &gohttp.Client{Transport: newTransport(10 * time.Millisecond)}
-	RetryOptions{MaxRetries: 3, Backoff: ExponentialBackoff{}}.ApplyTo(client)
+	client.Transport = retryOptions{policy: defaultRetryPolicy, maxRetries: 3, backoff: exponentialBackoff{}}.wrap(client.Transport)
 
 	_, err := client.Get(server.URL) //nolint:bodyclose,noctx // no response comes back
 
@@ -122,7 +121,7 @@ func TestRetryGivesUpOnARefusedConnection(t *testing.T) {
 		calls.Add(1)
 		return gohttp.DefaultTransport.RoundTrip(req)
 	})}
-	RetryOptions{MaxRetries: 3, Backoff: ExponentialBackoff{}}.ApplyTo(client)
+	client.Transport = retryOptions{policy: defaultRetryPolicy, maxRetries: 3, backoff: exponentialBackoff{}}.wrap(client.Transport)
 
 	_, err := client.Get(server.URL) //nolint:bodyclose,noctx // no response comes back
 
@@ -150,7 +149,7 @@ func TestRetryRecoversFromABrokenConnection(t *testing.T) {
 			}))
 			defer server.Close()
 			client := &gohttp.Client{Transport: newTransport(time.Minute)}
-			RetryOptions{MaxRetries: 3, Backoff: ExponentialBackoff{}}.ApplyTo(client)
+			client.Transport = retryOptions{policy: defaultRetryPolicy, maxRetries: 3, backoff: exponentialBackoff{}}.wrap(client.Transport)
 
 			resp, err := client.Get(server.URL) //nolint:noctx // the test server answers at once
 

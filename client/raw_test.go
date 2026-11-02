@@ -13,9 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
@@ -41,7 +42,7 @@ func TestRawClient(t *testing.T) {
 	httpClient := newTestHttpClient(server)
 	raw := newRawClient(httpClient).with(newWorkspaceClient(t.Context(), httpClient).meshObject)
 	var requests []fakemeshstack.Request
-	list := func(t *testing.T, filter MeshWorkspaceListFilter, options ListOptions) (listed []string) {
+	list := func(t *testing.T, filter MeshWorkspaceListFilter, options types.ListOptions) (listed []string) {
 		t.Helper()
 		server.TakeRequests()
 		for item, err := range raw.List[MeshWorkspace](t.Context(), filter, options) {
@@ -63,7 +64,7 @@ func TestRawClient(t *testing.T) {
 	// kind, which a POST of the edited object needs, and _links, which shows an LLM agent how
 	// meshObjects relate.
 	t.Run("a list yields every item of every page as meshStack sent it", func(t *testing.T) {
-		assert.Equal(t, workspaces, list(t, MeshWorkspaceListFilter{}, ListOptions{}))
+		assert.Equal(t, workspaces, list(t, MeshWorkspaceListFilter{}, types.ListOptions{}))
 	})
 
 	t.Run("the list asks for newest first, and every page ends at the instant the list started", func(t *testing.T) {
@@ -81,19 +82,19 @@ func TestRawClient(t *testing.T) {
 	})
 
 	t.Run("a page size asks for pages of that size, and takes the smaller ones meshStack caps it to", func(t *testing.T) {
-		assert.Equal(t, workspaces, list(t, MeshWorkspaceListFilter{}, ListOptions{PageSize: 3}))
+		assert.Equal(t, workspaces, list(t, MeshWorkspaceListFilter{}, types.ListOptions{PageSize: 3}))
 		assert.Equal(t, []string{"3", "3", "3"}, asked("size"))
 	})
 
 	t.Run("the sort of a filter replaces newest first", func(t *testing.T) {
-		list(t, MeshWorkspaceListFilter{Sort: []string{"createdAt,desc", "name,asc"}}, ListOptions{})
+		list(t, MeshWorkspaceListFilter{Sort: []string{"createdAt,desc", "name,asc"}}, types.ListOptions{})
 		assert.Equal(t, slices.Repeat([]string{"createdAt,desc name,asc"}, 3), asked("sort"))
 	})
 
 	t.Run("a kind without a typed client fails before it asks meshStack", func(t *testing.T) {
 		server.TakeRequests()
 		var failed error
-		for _, err := range raw.List[MeshTenant](t.Context(), nil, ListOptions{}) {
+		for _, err := range raw.List[MeshTenant](t.Context(), nil, types.ListOptions{}) {
 			failed = err
 		}
 		require.ErrorContains(t, failed, "client.MeshTenant")
