@@ -94,7 +94,7 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 					return writeErr
 				}
 				// The body is on stdout already, so the error says only what it adds.
-				if httpErr.IsClientError() && !httpErr.IsUnauthorized() && !httpErr.IsForbidden() && !r.objectNotFound(httpErr) {
+				if r.docsHelpWith(httpErr) {
 					return withHint(fmt.Sprintf("%s. Run %s to see what the API takes",
 						httpErr.Summary(), docsCommand(cmd, args)), httpErr)
 				}
@@ -113,13 +113,17 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 	return cmd
 }
 
-// objectNotFound tells a 404 for a path that exists, whose object is missing, from one for a path that
-// does not: only the latter is something the API docs help with.
-func (r *request) objectNotFound(httpErr client.HttpError) bool {
-	if !httpErr.IsNotFound() || !r.documented {
+// docsHelpWith is false for a 404 of a path meshStack serves nothing at, and of an object missing at a
+// documented path: the API docs say nothing about either.
+func (r *request) docsHelpWith(httpErr client.HttpError) bool {
+	switch {
+	case !httpErr.IsClientError(), httpErr.IsUnauthorized(), httpErr.IsForbidden():
 		return false
+	case httpErr.IsNotFound():
+		return !r.documented && httpErr.ErrorCode() != noHandlerFound
+	default:
+		return true
 	}
-	return httpErr.ErrorCode() != noHandlerFound
 }
 
 // withHint adds the hint on a line of its own. Stdout carries the raw body, which the error does not
@@ -154,7 +158,7 @@ func (r *request) negotiate(ctx context.Context, spec openapi.Spec, selector ope
 	// The request goes out as given where the docs know no better, because they can lag behind the
 	// meshStack it is sent to.
 	selected, err := spec.Select(selector)
-	r.documented = err == nil
+	r.documented = err == nil && len(selected.Operations) > 0
 	if err != nil {
 		if !openapi.ParseMediaType(r.header.Get("Accept")).ApiVersion.IsZero() {
 			slog.WarnContext(ctx, fmt.Sprintf("Sending the request as given: %s", err))
