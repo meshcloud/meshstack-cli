@@ -16,6 +16,12 @@ func TestErrorIsReadFromTheFieldsOfTheBody(t *testing.T) {
 		assert.Equal(t, "meshStack answered HTTP 404: not found (errorCode NoHandlerFound, errorId abc)\nUpgrade to v0.9.0.", err.Error())
 	})
 
+	t.Run("ignores a field it does not know", func(t *testing.T) {
+		err := Error{StatusCode: 409, ResponseBody: []byte(`{"errorCode":"X","message":"m","other":1}`)}
+
+		assert.Equal(t, "meshStack answered HTTP 409: m (errorCode X)", err.Error())
+	})
+
 	t.Run("shows no hint where there is none", func(t *testing.T) {
 		err := Error{StatusCode: 422, ResponseBody: []byte(
 			`{"errorCode":"Invalid","message":"bad","errorId":"x1"}`)}
@@ -25,10 +31,9 @@ func TestErrorIsReadFromTheFieldsOfTheBody(t *testing.T) {
 	})
 
 	for name, body := range map[string]string{
-		"a field it does not know": `{"errorCode":"X","message":"m","errorId":"i","other":1}`,
-		"no JSON":                  `<html>Bad Gateway</html>`,
-		"no body":                  ``,
-		"an empty object":          `{}`,
+		"no JSON":         `<html>Bad Gateway</html>`,
+		"no body":         ``,
+		"an empty object": `{}`,
 	} {
 		t.Run("shows the raw body for "+name, func(t *testing.T) {
 			err := Error{StatusCode: 502, ResponseBody: []byte(body)}

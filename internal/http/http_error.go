@@ -93,9 +93,8 @@ func (e Error) IsLocked() bool {
 	return e.StatusCode == gohttp.StatusLocked
 }
 
-// body is not ok for a response that is no JSON object of exactly the fields of errorBody.
 func (e Error) body() (body errorBody, ok bool) {
-	if err := json.Unmarshal(e.ResponseBody, &body, json.RejectUnknownMembers(true)); err != nil {
+	if err := json.Unmarshal(e.ResponseBody, &body); err != nil {
 		return errorBody{}, false
 	}
 	return body, body.ErrorCode != "" || body.Message != ""
