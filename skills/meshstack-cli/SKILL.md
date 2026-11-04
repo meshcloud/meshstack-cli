@@ -119,6 +119,8 @@ workspace identifier as meshPanel shows it (`metadata.name`, for example
 Commands for people (`auth status`, `profile list`) write Markdown. The others write one JSON array
 by default. For anything you consume yourself, use `-o ndjson`: one JSON object per line, so `jq`
 filters stream. A listing stops at 100 items unless you pass `--limit <n>` or `--limit unlimited`.
+A listing that fails part way leaves the lines it got and exits non-zero, which a pipe hides: run
+with `set -o pipefail`.
 
 ```sh
 meshstack bb list --limit unlimited -o ndjson | jq -r '...'
