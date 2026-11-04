@@ -56,7 +56,8 @@ func (f *OutputFlag) Type() string {
 }
 
 // WriteList leaves a listing that fails part way through unterminated, so that json output which
-// stopped early does not parse as a complete array.
+// stopped early does not parse as a complete array. ndjson has no end to leave out, so there only
+// the exit status tells a cut listing from a complete one.
 func (format OutputFormat) WriteList(w io.Writer, items iter.Seq2[jsontext.Value, error]) error {
 	list, err := format.listing()
 	if err != nil {
