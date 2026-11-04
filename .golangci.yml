@@ -96,6 +96,11 @@ linters:
         linters:
           - forbidigo
         text: user agent of the front end
+      # A test's child process stands in for a program whose stdout is its output.
+      - path: _test\.go
+        linters:
+          - forbidigo
+        text: stdout is a command's output
       - path: internal/tfstate/apiproxy/
         linters:
           - forbidigo
@@ -142,6 +147,14 @@ linters:
         - pattern: ^time\.Sleep$
           pkg: ^time$
           msg: a test waits on synctest's fake clock; run it inside synctest.Test and call synctest.Sleep
+        # stdout carries only what a command outputs, so that a pipe reads nothing else. Taking it
+        # from the command lets a test capture it.
+        - pattern: ^fmt\.Print(f|ln)?$
+          pkg: ^fmt$
+          msg: &stdout-only stdout is a command's output; write that to cmd.OutOrStdout(), and anything for a person through slog or cmd.ErrOrStderr()
+        - pattern: ^os\.Stdout$
+          pkg: ^os$
+          msg: *stdout-only
 
     gocritic:
       disabled-checks:
