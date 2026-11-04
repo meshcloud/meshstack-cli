@@ -36,9 +36,6 @@ type MeshApiKeyStatus struct {
 type MeshApiKeyClient interface {
 	Create(ctx context.Context, apiKey *MeshApiKey) (*MeshApiKey, error)
 	Read(ctx context.Context, uuid string) (*MeshApiKey, error)
-	// ReadSelf returns the key the request authenticates with. Unlike Read, it needs no APIKEY_LIST
-	// and also finds a hidden key, such as one bootstrapped from the meshStack configuration.
-	ReadSelf(ctx context.Context) (*MeshApiKey, error)
 	Update(ctx context.Context, uuid string, apiKey *MeshApiKey) (*MeshApiKey, error)
 	Delete(ctx context.Context, uuid string) error
 }
@@ -61,10 +58,6 @@ func (c meshApiKeyClient) Read(ctx context.Context, uuid string) (*MeshApiKey, e
 
 func (c meshApiKeyClient) Update(ctx context.Context, uuid string, apiKey *MeshApiKey) (*MeshApiKey, error) {
 	return c.meshObject.Put(ctx, uuid, apiKey)
-}
-
-func (c meshApiKeyClient) ReadSelf(ctx context.Context) (*MeshApiKey, error) {
-	return c.meshObject.Get(ctx, "self")
 }
 
 func (c meshApiKeyClient) Delete(ctx context.Context, uuid string) error {

@@ -44,7 +44,7 @@ func newStatus() *cobra.Command {
 where it comes from, who it is for, and until when it lasts. It never shows a secret.
 
 A browser login is not renewed for this, so its token may show as expired, and it is renewed on
-next use. An API key reads its own details from meshStack.`,
+next use.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			session, err := auth.ResolveSession(cmd.Context(), internal.ResolveClientOptions())

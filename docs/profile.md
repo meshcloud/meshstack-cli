@@ -54,9 +54,8 @@ Without a terminal, `add` and `edit` ask one question per line on standard input
 `--profile`, `show` shows the profile another command would use, and `edit` and `delete` ask which
 profile to change: from a list on a terminal, and by its number otherwise.
 
-`show`, and `edit` before it asks, read the status of the stored credential, for which meshStack
-answers about an API key. Where it does not answer within 5s, they show what the profile stores,
-and say that the status could not be read.
+`show`, and `edit` before it asks, read the status of the stored credential from the files of the
+profile. They do not call meshStack for it.
 
 Where standard input ends before an answer, the question takes its default answer, so the flags can
 give every answer:

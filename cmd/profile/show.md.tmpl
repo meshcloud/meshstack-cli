@@ -6,7 +6,7 @@
 | --- | --- |
 | Endpoint | {{with .Endpoint.URL}}{{cell .}}{{else}}none{{end}} |
 | Default workspace | {{or .DefaultWorkspace "none"}} |
-| Credential | {{with .StatusError}}{{$.Credential.Label}}, whose status could not be read: {{cell .}}{{else}}none, run `meshstack login -p {{.Name}}`{{end}} |
+| Credential | none, run `meshstack login -p {{.Name}}` |
 {{- end}}
 {{- if .New}}
 

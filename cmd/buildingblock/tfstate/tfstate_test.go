@@ -254,7 +254,7 @@ func TestTfstate(t *testing.T) {
 
 		require.NoError(t, ran.err)
 		assert.Contains(t, ran.log, "level=WARN")
-		assert.Contains(t, ran.log, "http error 500")
+		assert.Contains(t, ran.log, "meshStack answered HTTP 500")
 	})
 
 	t.Run("a refusal of meshStack says which rights the state takes", func(t *testing.T) {
@@ -265,7 +265,7 @@ func TestTfstate(t *testing.T) {
 		err := execChild(t, "GET").err
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "http error 403")
+		assert.Contains(t, err.Error(), "meshStack answered HTTP 403")
 		assert.Contains(t, err.Error(), "MANAGED_TFSTATE_LIST")
 		assert.Contains(t, err.Error(), "meshstack login --apikey")
 	})

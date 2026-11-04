@@ -158,7 +158,7 @@ func (m model) dialog(content string) string {
 	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, box)
 }
 
-// startForm loads the details and looks up the workspaces in the background, as both call meshStack.
+// startForm loads the details and looks up the workspaces in the background, as the lookup calls meshStack.
 func (m model) startForm() tea.Cmd {
 	original := m.form.original
 	ctx, profiles := m.ctx, m.Profiles

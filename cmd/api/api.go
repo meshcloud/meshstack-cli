@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -95,12 +94,12 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 					return writeErr
 				}
 				// The body is on stdout already, so the error says only what it adds.
-				if httpErr.IsClientError() && !httpErr.IsUnauthorized() && !httpErr.IsForbidden() && !r.objectNotFound(httpErr) {
-					return fmt.Errorf("meshStack answered HTTP %d. Run %s to see what the API takes",
-						httpErr.StatusCode, docsCommand(cmd, args))
+				if r.docsHelpWith(httpErr) {
+					return withHint(fmt.Sprintf("%s. Run %s to see what the API takes",
+						httpErr.Summary(), docsCommand(cmd, args)), httpErr)
 				}
 				// What wraps the HTTP error, such as the auth scope of a 403, stays.
-				return errors.New(strings.Replace(err.Error(), httpErr.Error(), fmt.Sprintf("meshStack answered HTTP %d", httpErr.StatusCode), 1))
+				return withHint(strings.Replace(err.Error(), httpErr.Error(), httpErr.Summary(), 1), httpErr)
 			}
 			if err != nil {
 				return err
@@ -114,16 +113,26 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 	return cmd
 }
 
-// objectNotFound tells a 404 for a path that exists, whose object is missing, from one for a path that
-// does not: only the latter is something the API docs help with.
-func (r *request) objectNotFound(httpErr client.HttpError) bool {
-	if !httpErr.IsNotFound() || !r.documented {
+// docsHelpWith is false for a 404 of a path meshStack serves nothing at, and of an object missing at a
+// documented path: the API docs say nothing about either.
+func (r *request) docsHelpWith(httpErr client.HttpError) bool {
+	switch {
+	case !httpErr.IsClientError(), httpErr.IsUnauthorized(), httpErr.IsForbidden():
 		return false
+	case httpErr.IsNotFound():
+		return !r.documented && httpErr.ErrorCode() != noHandlerFound
+	default:
+		return true
 	}
-	var answer struct {
-		ErrorCode string `json:"errorCode"`
+}
+
+// withHint adds the hint on a line of its own. Stdout carries the raw body, which the error does not
+// repeat.
+func withHint(message string, httpErr client.HttpError) error {
+	if hint := httpErr.ClientVersionHint(); hint != "" {
+		message += "\n" + hint
 	}
-	return json.Unmarshal(httpErr.ResponseBody, &answer) != nil || answer.ErrorCode != noHandlerFound
+	return errors.New(message)
 }
 
 // noHandlerFound is the errorCode of meshStack's answer to a path it serves nothing at.
@@ -149,7 +158,7 @@ func (r *request) negotiate(ctx context.Context, spec openapi.Spec, selector ope
 	// The request goes out as given where the docs know no better, because they can lag behind the
 	// meshStack it is sent to.
 	selected, err := spec.Select(selector)
-	r.documented = err == nil
+	r.documented = err == nil && len(selected.Operations) > 0
 	if err != nil {
 		if !openapi.ParseMediaType(r.header.Get("Accept")).ApiVersion.IsZero() {
 			slog.WarnContext(ctx, fmt.Sprintf("Sending the request as given: %s", err))
