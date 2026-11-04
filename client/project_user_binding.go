@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/enum"
 	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
@@ -14,7 +15,8 @@ type MeshProjectUserBinding struct {
 }
 
 type MeshUserBindingStatus struct {
-	UserDisabled bool `json:"userDisabled" tfsdk:"user_disabled"`
+	UserDisabled bool                            `json:"userDisabled" tfsdk:"user_disabled"`
+	Approval     enum.Entry[MeshBindingApproval] `json:"approval,omitempty" tfsdk:"approval"`
 }
 
 type MeshProjectUserBindingClient interface {
