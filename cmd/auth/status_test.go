@@ -61,6 +61,7 @@ func TestStatusOfAnApiTokenFromTheEnvironment(t *testing.T) {
 		assert.Contains(t, output, "| Credential | API token, from env MESHSTACK_API_TOKEN |\n")
 		assert.Contains(t, output, "|  | User runner |\n")
 		assert.Contains(t, output, "| meshStack | 2026.40.0 |\n")
+		assert.Contains(t, output, "| AI agents | Read https://docs.meshcloud.io/agent-context/index.md")
 		assert.NotContains(t, output, "\x1b[", "no terminal styling")
 	})
 
