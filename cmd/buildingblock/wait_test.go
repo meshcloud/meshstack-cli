@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	gohttp "net/http"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -26,7 +25,6 @@ func buildingBlockWithRun(action, latestRunUuid string) string {
 }
 
 func TestWaitFailsOnAnOutcomeThatNeedsSomeoneToAct(t *testing.T) {
-	before := buildingBlockWithRun("NO_ACTION", "run-1")
 	var current atomic.Pointer[string]
 	meshStack := fakemeshstack.Start(t, fakemeshstack.Options{})
 	meshStack.Route("GET /api/meshobjects/meshbuildingblocks/{uuid}", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
@@ -34,24 +32,18 @@ func TestWaitFailsOnAnOutcomeThatNeedsSomeoneToAct(t *testing.T) {
 	})
 	testlogin.LoggedInTo(t, meshStack.URL)
 
-	run := func(stdin string, args ...string) (string, error) {
+	run := func(args ...string) (string, error) {
 		cmd := buildingblock.New()
 		var stdout bytes.Buffer
 		cmd.SetOut(&stdout)
-		cmd.SetIn(strings.NewReader(stdin))
 		cmd.SetArgs(args)
 		err := cmd.ExecuteContext(t.Context())
 		return stdout.String(), err
 	}
 
-	t.Run("wait needs the building block from before the write", func(t *testing.T) {
-		_, err := run("", "wait", waitedBuildingBlock)
-		require.ErrorContains(t, err, `required flag(s) "before" not set`)
-	})
-
 	t.Run("a failed run fails the wait with its action and the meshPanel link", func(t *testing.T) {
 		current.Store(new(buildingBlockWithRun("REVIEW_ERRORS", "run-2")))
-		stdout, err := run(before, "wait", waitedBuildingBlock, "--before=-")
+		stdout, err := run("wait", waitedBuildingBlock)
 		require.ErrorContains(t, err, "ended with action REVIEW_ERRORS")
 		require.ErrorContains(t, err, "https://panel.example/#/go/buildingblock/"+waitedBuildingBlock)
 		assert.Contains(t, stdout, `"action": "REVIEW_ERRORS"`, "the building block still goes to stdout")
@@ -59,7 +51,7 @@ func TestWaitFailsOnAnOutcomeThatNeedsSomeoneToAct(t *testing.T) {
 
 	t.Run("a run that waits for approval fails the wait", func(t *testing.T) {
 		current.Store(new(buildingBlockWithRun("APPROVE_RUN", "run-2")))
-		_, err := run(before, "wait", waitedBuildingBlock, "--before=-")
+		_, err := run("wait", waitedBuildingBlock)
 		require.ErrorContains(t, err, "waits with action APPROVE_RUN")
 	})
 }

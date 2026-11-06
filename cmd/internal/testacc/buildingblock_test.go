@@ -88,11 +88,11 @@ func waitEndsTheRun(c *cli) func(*testing.T) {
 			requireEnded(t, output, err)
 		})
 
-		t.Run("wait --before=- with the answer of a write through api", func(t *testing.T) {
+		t.Run("wait after a write through api", func(t *testing.T) {
 			write := c.start(`{"dryRun": false}`, "api", "-X", "POST", "/api/meshobjects/meshbuildingblocks/"+buildingBlock+"/trigger-run", "--request-json", "-")
 			require.NoErrorf(t, write.wait(), "the trigger-run through api failed:\n%s", write.output)
 
-			output, err := c.run(write.stdout.String(), "buildingblock", "wait", buildingBlock, "--before=-", "-o", "ndjson")
+			output, err := c.run("", "buildingblock", "wait", buildingBlock, "-o", "ndjson")
 			requireEnded(t, output, err)
 		})
 	}
