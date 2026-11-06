@@ -24,18 +24,18 @@ func newWait() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "wait <building-block-uuid> --before <file|->",
 		Short: "Wait until the run of a building block has ended",
-		Long: `Wait until meshStack has reacted to a write of a building block, named by its uuid, and until the
-run it started has ended.
+		Long: `Wait until meshStack has reacted to a write of a building block, and until the run that the
+write started has ended. Give the building block by its uuid.
 
-meshStack answers a write before it starts the run, so right after the write the building block
-still shows the action of the run before. --before names that answer: the response of a create
-(POST), an update (PUT) or a trigger-run, or a read taken before a change. The command first waits
-up to a minute until meshStack has reacted, by the rules of
-https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run, and then until the run has
-ended. Ctrl-C ends the wait.
+meshStack responds to a write before it starts the run. So right after the write, the building
+block still shows the action of the previous run. Pass that response with --before: the response
+of a create (POST), an update (PUT) or a trigger-run, or a read taken before the change. The
+command first waits up to a minute until meshStack has reacted, following the rules of
+https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run. Then it waits until the run
+has ended. Press Ctrl-C to stop waiting.
 
-The command writes the building block. It fails, and names the action, when the run failed, was
-aborted or could not start, or when it waits for a person or a dependency.`,
+The command prints the building block. It fails and names the action if the run failed, was aborted
+or could not start, or if the run is waiting for a person or a dependency.`,
 		Example: `  meshstack api -X PUT /api/meshobjects/meshbuildingblocks/0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --request-json block.json |
     meshstack bb wait 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --before=-`,
 		Args: internal.UuidArg(&buildingBlockUuid),
@@ -67,9 +67,9 @@ func readBefore(cmd *cobra.Command, input internal.JsonInputFlag[client.MeshBuil
 	}
 	switch {
 	case before.Metadata.Uuid != nil && *before.Metadata.Uuid != buildingBlockUuid.String():
-		return client.MeshBuildingBlockV2Status{}, fmt.Errorf("--before %s holds building block %s, and the command waits for %s", source, *before.Metadata.Uuid, buildingBlockUuid)
+		return client.MeshBuildingBlockV2Status{}, fmt.Errorf("--before %s contains building block %s, but the command waits for %s", source, *before.Metadata.Uuid, buildingBlockUuid)
 	case before.Status == nil:
-		return client.MeshBuildingBlockV2Status{}, fmt.Errorf("--before %s holds no status of the building block", source)
+		return client.MeshBuildingBlockV2Status{}, fmt.Errorf("--before %s contains no status of the building block", source)
 	}
 	return *before.Status, nil
 }

@@ -71,7 +71,7 @@ func profileFor(ctx context.Context, requestURL *url.URL) (endpoint xurl.URL, so
 			return xurl.URL{}, nil, err
 		}
 		if !current {
-			slog.WarnContext(ctx, fmt.Sprintf("Using profile '%s' for %s, as its endpoint %s holds it, rather than the current profile '%s'",
+			slog.WarnContext(ctx, fmt.Sprintf("Using profile '%s' for %s, because its endpoint %s matches the URL; the current profile is '%s'",
 				selected, requestURL.Redacted(), selected.Endpoint, profiles.CurrentProfile))
 		}
 		endpoint = selected.Endpoint
@@ -85,6 +85,6 @@ func profileFor(ctx context.Context, requestURL *url.URL) (endpoint xurl.URL, so
 
 func notHeldError(profiles profile.Profiles, requestURL *url.URL, endpoint xurl.URL, ofProfile, source string) error {
 	urlEndpoint, _ := profiles.EndpointHolding(requestURL)
-	return fmt.Errorf("%s is for endpoint %s, not for endpoint %s%s from %s; leave out %s, or give the path relative to %s",
+	return fmt.Errorf("%s is under endpoint %s, which does not match the endpoint %s%s from %s; leave out %s, or give the path relative to %s",
 		requestURL.Redacted(), urlEndpoint, endpoint, ofProfile, source, source, endpoint)
 }

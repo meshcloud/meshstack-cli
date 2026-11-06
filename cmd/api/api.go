@@ -28,19 +28,20 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api <path or URL>",
 		Short: "Send an authorized request to the meshStack API",
-		Long: `Send an authorized request to a path of the meshStack API, and return the response (typically JSON).
-The path is relative to the endpoint but can also be an absolute one, as long as a matching profile with authentication credentials can be found.
+		Long: `Send an authorized request to a path of the meshStack API, and print the response (typically
+JSON). The path is relative to the endpoint. It can also be a full URL, as long as a stored profile
+with credentials matches its endpoint.
 
-This exposes everything that the other CLI commands do not cover.
-It supports you by taking over versioned content negotiation of meshStack's public API unless you specify it explicitly.
+Use this command for everything that the other commands do not cover. It sets the API version
+headers of meshStack's public API for you, unless you set them yourself.
 
---request-json sends a JSON file, or stdin for '-'. For a path
-of no version in the API docs, the Content-Type and Accept headers default to application/json, and
-without the API docs the Content-Type alone does.
+--request-json sends a JSON file, or stdin for '-'. For a path that has no version in the API docs,
+the Content-Type and Accept headers default to application/json. Without the API docs, only the
+Content-Type header does.
 
-An answer outside 2xx still writes its body but the command then fails.
+If the response status is not 2xx, the command still prints the response body, and then fails.
 
-Replace the same command line with 'api-docs' in place of 'api' to describe the request.`,
+To describe the request, run the same command line with 'api' replaced by 'api-docs'.`,
 		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace'
   meshstack api -X DELETE /api/meshobjects/meshbuildingblocks/<uuid>/purge
   meshstack api -X POST /api/meshobjects/meshworkspaces --request-json workspace.json
@@ -78,7 +79,7 @@ Replace the same command line with 'api-docs' in place of 'api' to describe the 
 			spec, wait, err := flags.loadApiDocs(cmd)
 			defer wait()
 			if err != nil {
-				slog.WarnContext(ctx, fmt.Sprintf("Sending the request as given, without the API docs: %s. "+
+				slog.WarnContext(ctx, fmt.Sprintf("Sending the request unchanged, because the API docs are not available: %s. "+
 					"Run %s to see why.", err, docsCommand(cmd, args)))
 			} else if negotiateErr := r.negotiate(ctx, spec, selector); negotiateErr != nil {
 				return negotiateErr
@@ -161,7 +162,7 @@ func (r *request) negotiate(ctx context.Context, spec openapi.Spec, selector ope
 	r.documented = err == nil && len(selected.Operations) > 0
 	if err != nil {
 		if !openapi.ParseMediaType(r.header.Get("Accept")).ApiVersion.IsZero() {
-			slog.WarnContext(ctx, fmt.Sprintf("Sending the request as given: %s", err))
+			slog.WarnContext(ctx, fmt.Sprintf("Sending the request unchanged: %s", err))
 			return nil
 		}
 		return err
@@ -174,7 +175,7 @@ func (r *request) negotiate(ctx context.Context, spec openapi.Spec, selector ope
 	}
 	if mediaType.ApiVersion.IsZero() {
 		if !selector.ApiVersion.IsZero() && r.header.Get("Accept") == "" {
-			slog.WarnContext(ctx, fmt.Sprintf("The API docs list no version of %s %s, so no Accept header asks for %s",
+			slog.WarnContext(ctx, fmt.Sprintf("The API docs have no version of %s %s, so the request gets no Accept header for %s",
 				selector.Method, selector.Path, selector.ApiVersion))
 		} else {
 			slog.DebugContext(ctx, fmt.Sprintf("The API docs list no version of %s %s", selector.Method, selector.Path))

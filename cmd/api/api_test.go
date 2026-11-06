@@ -103,10 +103,10 @@ func TestApi(t *testing.T) {
 
 	t.Run("refuses a body of no JSON, or one that names another version than --api-version", func(t *testing.T) {
 		_, err := postBlock(t, `spec: {}`)
-		require.EqualError(t, err, "--request-json - is no JSON")
+		require.EqualError(t, err, "--request-json - is not valid JSON")
 
 		_, err = postBlock(t, `{"apiVersion": "v1"}`, "--api-version", "v2-preview")
-		require.EqualError(t, err, "the Accept and Content-Type headers, --api-version and the body's apiVersion ask for v2-preview, v1")
+		require.EqualError(t, err, "the Accept and Content-Type headers, --api-version and the body's apiVersion request different versions: v2-preview, v1")
 	})
 
 	t.Run("sends and asks for JSON on a path of no version, unless a header says otherwise", func(t *testing.T) {
@@ -214,7 +214,7 @@ func TestApi(t *testing.T) {
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "-X", "PATCH")
 
-		require.EqualError(t, err, "the API docs list no operation of PATCH")
+		require.EqualError(t, err, "the API docs have no operation for PATCH")
 	})
 
 	t.Run("api-docs describes the request of a command line of api", func(t *testing.T) {
@@ -267,7 +267,7 @@ func TestApi(t *testing.T) {
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "/api/meshobjects/meshunknowns")
 
-		require.EqualError(t, err, "the API docs list no operation of /api/meshobjects/meshunknowns")
+		require.EqualError(t, err, "the API docs have no operation for /api/meshobjects/meshunknowns")
 	})
 
 	t.Run("api-docs --describe writes the latest version of each operation of a kind as Markdown", func(t *testing.T) {
@@ -289,10 +289,10 @@ func TestApi(t *testing.T) {
 
 	t.Run("api-docs --describe takes a kind of the API docs, and neither a path nor a request", func(t *testing.T) {
 		_, err := meshStack.run(t, api.NewDocs(), "", "--describe", "workspace")
-		require.EqualError(t, err, `the API docs list no meshObject kind "workspace", write one of buildingblock, buildingblockrun, tenant`)
+		require.EqualError(t, err, `the API docs have no meshObject kind "workspace"; use one of buildingblock, buildingblockrun, tenant`)
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "--describe", "tenant.list")
-		require.EqualError(t, err, `the API docs list no action "list" of meshTenant, write one of show, delete`)
+		require.EqualError(t, err, `the API docs have no action "list" for meshTenant; use one of show, delete`)
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "--describe", "bb", "/api/meshobjects/meshbuildingblocks")
 		require.EqualError(t, err, "--describe takes no path, see --help")
@@ -315,7 +315,7 @@ func TestApi(t *testing.T) {
 		require.Len(t, meshStack.requests, 1)
 		assert.Empty(t, meshStack.requests[0].accept, "a meshObject endpoint answers application/json with a 406 that names no version")
 		assert.Equal(t, "application/json", meshStack.requests[0].contentType)
-		assert.Contains(t, captured.String(), "Sending the request as given, without the API docs")
+		assert.Contains(t, captured.String(), "Sending the request unchanged, because the API docs are not available")
 		assert.Contains(t, captured.String(), "Run meshstack api-docs /api/meshobjects/meshbuildingblocks -X POST to see why.")
 
 		_, err = meshStack.run(t, api.NewDocs(), "")

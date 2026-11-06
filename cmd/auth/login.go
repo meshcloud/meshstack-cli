@@ -41,15 +41,15 @@ func newLogin(profileSources setting.Sources) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in to meshStack",
-		Long: `Log in to meshStack and store the credential in a profile, creating that profile where it
-does not exist yet.
+		Long: `Log in to meshStack and store the credential in a profile. The command creates the profile if
+it does not exist yet.
 
-Without a profile named, it asks which stored profile to log in to, among those for the endpoint.
-With no flag this is a browser login, and it asks which workspace to work in unless one is named.
-A browser login with another access level than the profile's earlier one ends that earlier login
-first.
+Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the stored profiles for the endpoint to log in to. Without
+--apikey or --apitoken, it opens a browser login and asks which workspace to work in. Use
+--` + internal.WorkspaceFlag.Name.String() + ` to choose the workspace without the question. If you choose a different access level
+than in the profile's previous browser login, the command ends that previous login first.
 
-It ends with what meshstack auth status shows for the new login.`,
+Afterwards it prints the same output as meshstack auth status for the new login.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
@@ -58,7 +58,7 @@ It ends with what meshstack auth status shows for the new login.`,
 				return fmt.Errorf("an API key id needs an equals sign: write `--%s=%s`",
 					apiKeyFlag.Name, args[0])
 			}
-			return fmt.Errorf("%s takes no arguments such as %q; everything comes from flags and the environment", cmd.CommandPath(), args[0])
+			return fmt.Errorf("%s takes no arguments (got %q); use flags or environment variables", cmd.CommandPath(), args[0])
 		},
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			ctx := cmd.Context()
@@ -84,7 +84,7 @@ It ends with what meshstack auth status shows for the new login.`,
 				opts.SettingSources = append(opts.SettingSources, newPromptingSource(setting.ApiToken.EnvKey(), &openStdinFlag, promptedFrom, "API Token"))
 			default:
 				if openStdinFlag.Value {
-					return fmt.Errorf("--%s reads the secret of --%s or --%s, and a browser login has none",
+					return fmt.Errorf("--%s works only with --%s or --%s; a browser login has no secret to read",
 						openStdinFlag.Name, apiKeyFlag.Name, apiTokenFlag.Name)
 				}
 				authWith = credential.OidcLoginName
@@ -96,7 +96,7 @@ It ends with what meshstack auth status shows for the new login.`,
 			session, storeSession, unlock, err := auth.Login(ctx, authWith, opts)
 			if errors.Is(err, profile.ErrInUse) {
 				// Only the cause, as the setting a lookup failed for adds nothing to do about it.
-				return fmt.Errorf("cannot log in while %w, such as meshstack profile or another login; quit it and try again", profile.ErrInUse)
+				return fmt.Errorf("cannot log in, because %w, such as 'meshstack login' or 'meshstack profile'; wait for it to finish, then try again", profile.ErrInUse)
 			}
 			if err != nil {
 				return err

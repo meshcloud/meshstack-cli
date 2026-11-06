@@ -60,6 +60,6 @@ func TestWaitFailsOnAnOutcomeThatNeedsSomeoneToAct(t *testing.T) {
 	t.Run("a run that waits for approval fails the wait", func(t *testing.T) {
 		current.Store(new(buildingBlockWithRun("APPROVE_RUN", "run-2")))
 		_, err := run(before, "wait", waitedBuildingBlock, "--before=-")
-		require.ErrorContains(t, err, "waits with action APPROVE_RUN")
+		require.ErrorContains(t, err, "is paused at action APPROVE_RUN")
 	})
 }

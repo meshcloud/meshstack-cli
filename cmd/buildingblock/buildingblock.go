@@ -53,7 +53,7 @@ func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format intern
 	p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
 	// A script cannot approve or abort: the decision belongs to a person who saw the run.
 	if !p.UsesTerminal() {
-		return runAction{}, fmt.Errorf("%s asks you before it acts, so it runs only on a terminal", cmd.Name())
+		return runAction{}, fmt.Errorf("%s needs a terminal, because it asks you to confirm", cmd.Name())
 	}
 	meshStack, err := internal.ResolveClient(cmd.Context())
 	if err != nil {

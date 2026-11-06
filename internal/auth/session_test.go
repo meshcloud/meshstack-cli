@@ -304,7 +304,7 @@ func TestSessionWarnsWhenTheEnvironmentOverridesTheStoredLogin(t *testing.T) {
 		require.NoError(t, err)
 		lines := captured.Lines(slog.LevelWarn)
 		require.Len(t, lines, 1)
-		assert.Contains(t, lines[0], "'dev' over 'default' from the current profile")
+		assert.Contains(t, lines[0], "'dev', which overrides 'default' from the current profile")
 	})
 
 	t.Run("a workspace in the environment overrides the default workspace", func(t *testing.T) {
@@ -319,6 +319,6 @@ func TestSessionWarnsWhenTheEnvironmentOverridesTheStoredLogin(t *testing.T) {
 		require.NoError(t, err)
 		lines := captured.Lines(slog.LevelWarn)
 		require.Len(t, lines, 1)
-		assert.Contains(t, lines[0], "'env-workspace' over 'stored-workspace' from the default workspace in profile default")
+		assert.Contains(t, lines[0], "'env-workspace', which overrides 'stored-workspace' from the default workspace in profile default")
 	})
 }

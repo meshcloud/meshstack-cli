@@ -75,8 +75,8 @@ func Login(ctx context.Context, client oidc.Client, previous Previous) (oidc.Tok
 		return token, chosen, nil
 	}
 	if chosen != meshstack.AccessFull {
-		return oidc.Token{}, "", fmt.Errorf("%s did not grant the access level %q, so this meshStack does not support access levels yet "+
-			"and the login would have full access; log in again and choose %q", client.Issuer, chosen.Label(), meshstack.AccessFull.Label())
+		return oidc.Token{}, "", fmt.Errorf("this meshStack does not support access levels yet: %s did not grant the access level %q, "+
+			"so the login would have full access; log in again and choose %q", client.Issuer, chosen.Label(), meshstack.AccessFull.Label())
 	}
 	return token, "", nil
 }

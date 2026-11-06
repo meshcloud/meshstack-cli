@@ -130,7 +130,7 @@ func (f *LimitFlag) Set(value string) error {
 	}
 	limit, err := strconv.Atoi(value)
 	if err != nil || limit <= 0 {
-		return fmt.Errorf("%q is no limit, write a number of items, or unlimited for all of them", value)
+		return fmt.Errorf("%q is not a valid limit; use a number of items, or unlimited for all of them", value)
 	}
 	*f = LimitFlag(limit)
 	return nil

@@ -133,7 +133,7 @@ func TestStatusOfAnApiToken(t *testing.T) {
 		assert.Equal(t, testApiKey1.ClientId, status.Token.ClientId)
 		warnings := captured.Lines(slog.LevelWarn)
 		require.Len(t, warnings, 1)
-		assert.Contains(t, warnings[0], "set a credential over 'manual' stored in profile 'default'")
+		assert.Contains(t, warnings[0], "overrides the credential 'manual' stored in profile 'default'")
 	})
 }
 

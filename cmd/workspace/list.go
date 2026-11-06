@@ -15,8 +15,8 @@ func newList() *cobra.Command {
 		Short: "List the workspaces visible from the current workspace, newest first",
 		Long: `List the workspaces visible from the current workspace, newest first.
 
-From the workspace behind meshPanel's admin area, a role that may list every workspace, such as
-Organization Admin, lists them all. From any other workspace the list holds that workspace alone.`,
+If you work in the admin workspace and have a role that can list all workspaces, such as
+Organization Admin, the command lists all workspaces. Otherwise it lists only the current workspace.`,
 		Example: `  meshstack workspace list
   meshstack ws list --workspace admin-workspace --limit unlimited -o ndjson`,
 		Args: cobra.NoArgs,

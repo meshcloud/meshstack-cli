@@ -47,7 +47,7 @@ func (l Lock) NoUnfinishedRun(ctx context.Context, raw *client.RawClient) error 
 	}
 	runUuid, err := uuid.Parse(l.Holder.RunUuid)
 	if err != nil {
-		return fmt.Errorf("the lock names the run %q, which is no uuid: %w", l.Holder.RunUuid, err)
+		return fmt.Errorf("the lock belongs to run %q, which is not a valid uuid: %w", l.Holder.RunUuid, err)
 	}
 	read, err := raw.Get[client.MeshBuildingBlockRun](ctx, runUuid)
 	if err != nil {
@@ -58,12 +58,12 @@ func (l Lock) NoUnfinishedRun(ctx context.Context, raw *client.RawClient) error 
 		return err
 	}
 	if run.IsRunning() {
-		return fmt.Errorf("building block run %s, which holds the lock, is %s and still writes the state", runUuid, run.Status)
+		return fmt.Errorf("building block run %s holds the lock, is %s and is still writing the state", runUuid, run.Status)
 	}
 	return nil
 }
 
-var ErrLockReplaced = errors.New("the state has another lock now, so the lock to release is released already")
+var ErrLockReplaced = errors.New("the lock was already released, and the state now has a different lock")
 
 // Release releases lock by the ID it was read with, so that a lock taken since stays.
 func (s Store) Release(ctx context.Context, lock Lock) error {

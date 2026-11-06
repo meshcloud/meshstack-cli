@@ -24,7 +24,7 @@ func selectProfile(ctx context.Context, cmd *cobra.Command, p prompt.Prompt, pro
 	}
 	candidates := selection.Candidates()
 	if selection.Endpoint != nil && len(candidates) == 0 {
-		return nil, false, fmt.Errorf("no profile is for endpoint '%s'", selection.Endpoint)
+		return nil, false, fmt.Errorf("no profile has the endpoint '%s'", selection.Endpoint)
 	}
 	selected, err = prompt.Select(ctx, p, "profile", candidates, func(candidate *profile.Profile) bool {
 		return candidate.Name == selection.Current

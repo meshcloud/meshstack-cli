@@ -29,11 +29,11 @@ func newLogs() *cobra.Command {
 		Short: "Show the logs of a building block run",
 		Long: `Show the logs of a building block run.
 
-The run is named by its uuid, which "meshstack buildingblockrun list" reports as metadata.uuid.
-"meshstack api-docs --describe buildingblockrun.logs" shows the fields of the answer.
+Give the run by its uuid; "meshstack buildingblockrun list" shows it as metadata.uuid.
+"meshstack api-docs --describe buildingblockrun.logs" shows the fields of the response.
 
---follow writes what is new as text until the run has finished, and ends with exit status 0 when
-the run succeeded and 1 otherwise, so a script can wait on a run with it.`,
+--follow prints new log lines as text until the run has finished. It exits with status 0 if the run
+succeeded and 1 otherwise, so a script can use it to wait for a run.`,
 		Example: `  meshstack buildingblockrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c -o ndjson
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c --follow`,
@@ -58,7 +58,7 @@ the run succeeded and 1 otherwise, so a script can wait on a run with it.`,
 	}
 
 	output.RegisterForItem(cmd.Flags())
-	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "write the log as text as it grows, until the run has finished")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "keep printing new log lines until the run has finished")
 	cmd.MarkFlagsMutuallyExclusive("follow", "output")
 
 	return cmd
@@ -148,7 +148,7 @@ func followRun(ctx context.Context, w io.Writer, runUuid uuid.UUID, read func(co
 		case runFailed:
 			return run.failure(runUuid)
 		default:
-			return fmt.Errorf("building block run %s has the status %q, which the meshStack CLI does not know, so it stops following the run", runUuid, run.status)
+			return fmt.Errorf("stopped following building block run %s, because the meshStack CLI does not know its status %q", runUuid, run.status)
 		}
 	}
 }

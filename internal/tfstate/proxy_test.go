@@ -164,10 +164,10 @@ func TestAWritableProxy(t *testing.T) {
 
 	t.Run("refuses a state that does not follow the stored one", func(t *testing.T) {
 		for written, wantProblem := range map[string]string{
-			`{"version":4,"serial":2,"lineage":"lineage-2"}`: "the state written has the lineage lineage-2, but the stored state lineage-1, so it is another state",
-			firstState: "the state written has the serial 1, which is not above the serial 1 of the stored state, so it misses a write",
-			`{"version":4,"serial":0,"lineage":"lineage-1"}`: "the state written has the serial 0, which is not above the serial 1 of the stored state, so it misses a write",
-			`{"version":4,"serial":2}`:                       "the state written is no state of tofu, as it has no lineage",
+			`{"version":4,"serial":2,"lineage":"lineage-2"}`: "the new state has the lineage lineage-2, but the stored state has the lineage lineage-1, so they are different states",
+			firstState: "the new state has the serial 1, which is not higher than the serial 1 of the stored state, so it misses a write",
+			`{"version":4,"serial":0,"lineage":"lineage-1"}`: "the new state has the serial 0, which is not higher than the serial 1 of the stored state, so it misses a write",
+			`{"version":4,"serial":2}`:                       "the new state is not a valid tofu state, because it has no lineage",
 		} {
 			p.problems = nil
 			assert.Equal(t, gohttp.StatusConflict, p.send(gohttp.MethodPost, written).Code, written)
@@ -464,7 +464,7 @@ func TestAWritableProxyPassesTheLockOn(t *testing.T) {
 		assert.Equal(t, gohttp.StatusLocked, w.Code)
 		assert.JSONEq(t, lockInfo("theirs"), w.Body.String())
 		assert.Empty(t, p.problems, "the client reports the refusal itself")
-		assert.Contains(t, log.String(), `as \"someone@somewhere\" holds the lock theirs`)
+		assert.Contains(t, log.String(), `because \"someone@somewhere\" holds the lock theirs`)
 	})
 
 	t.Run("with Force, stores a state that does not follow the stored one", func(t *testing.T) {
@@ -497,7 +497,7 @@ func TestAWritableProxyPassesTheLockOn(t *testing.T) {
 	t.Run("warns where tofu holds the lock longer than LockWarning, and not after it released it", func(t *testing.T) {
 		p.LockWarning = 20 * time.Millisecond
 		defer func() { p.LockWarning = 0 }()
-		const warning = "every run of the building block waits until it is released"
+		const warning = "Every run of the building block waits until the lock is released"
 
 		p.sendTo(gohttp.MethodPost, lockPath, lockInfo("released"))
 		p.sendTo(gohttp.MethodDelete, lockPath, lockInfo("released"))

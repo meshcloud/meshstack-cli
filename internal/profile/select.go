@@ -98,7 +98,7 @@ func (ps *Profiles) ForEndpoint(endpoint xurl.URL, requestURL *url.URL) (p Profi
 	for _, p := range matching {
 		names = append(names, "'"+string(p.Name)+"'")
 	}
-	return Profile{}, false, fmt.Errorf("profiles %s are all for endpoint %s of %s, and none is the current profile; name one with --profile or %s",
+	return Profile{}, false, fmt.Errorf("profiles %s all have the endpoint %s of %s, and none of them is the current profile; use --profile or %s to choose one",
 		strings.Join(names, ", "), endpoint, requestURL.Redacted(), NameSetting.EnvKey())
 }
 

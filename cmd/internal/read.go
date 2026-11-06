@@ -46,10 +46,10 @@ func (f *JsonInputFlag[T]) Read(cmd *cobra.Command) (value T, err error) {
 	case err != nil:
 		return value, err
 	case !read.IsValid():
-		return value, fmt.Errorf("--%s %s is no JSON", f.name, f.Source)
+		return value, fmt.Errorf("--%s %s is not valid JSON", f.name, f.Source)
 	}
 	if err = json.Unmarshal(read, &value); err != nil {
-		return value, fmt.Errorf("--%s %s holds JSON of another shape: %w", f.name, f.Source, err)
+		return value, fmt.Errorf("--%s %s contains JSON of an unexpected shape: %w", f.name, f.Source, err)
 	}
 	return value, nil
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -16,11 +17,11 @@ func newEdit() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit a profile",
-		Long: `Edit a profile, in a form on a terminal and line by line otherwise, where an empty answer keeps
-the value. Without --profile, it asks which profile to edit, among those for the endpoint.
---workspace gives the default answer for the default workspace.
+		Long: `Edit a profile. In a terminal, a form opens; otherwise, the command asks one question per line.
+Leave an answer empty to keep the current value. Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the profiles
+for the endpoint to edit. --` + internal.WorkspaceFlag.Name.String() + ` pre-fills the default workspace.
 
-A new endpoint removes the stored credentials.`,
+Changing the endpoint deletes the stored credentials.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

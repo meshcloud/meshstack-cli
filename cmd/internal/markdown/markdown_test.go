@@ -41,7 +41,7 @@ func TestABrowserLoginShowsItsUserAccessAndSessionEnd(t *testing.T) {
 			"| Workspace | ops |\n"+
 			"| Credential | Browser login, from file credentials/dev.json |\n"+
 			"|  | User jane (jane@example.com) with Full access, but the token grants Read-only |\n"+
-			"|  | Session ends at the latest 2000-01-01 03:00 (in 3h), then run `meshstack login -p dev` |\n"+
+			"|  | Session ends at the latest 2000-01-01 03:00 (in 3h), then run `meshstack login --profile dev` |\n"+
 			"|  | Token expired 1999-12-31 23:59 (1m ago), renewed on next use |", shown)
 	})
 }
@@ -68,7 +68,7 @@ func TestAnApiKeyShowsItsClientIdAndNoCachedTokenYet(t *testing.T) {
 			"| Endpoint | https://meshstack.example.com |\n"+
 			"| Workspace | none |\n"+
 			"| Credential | API key 11111111-45bf-42ba-a965-2097b9d0d181, from env MESHSTACK_API_KEY, env MESHSTACK_API_SECRET |\n"+
-			"|  | No token cached yet, minted on next use |\n"+
+			"|  | No token cached yet; one is created on next use |\n"+
 			"| Unused credentials | • API key 22222222-45bf-42ba-a965-2097b9d0d181 |\n"+
 			"|  | • Browser login jane (jane@example.com), selected by the profile |\n"+
 			"|  | • API token, expired 1999-12-31 23:00 (1h ago) |", shown)
@@ -85,7 +85,7 @@ func TestAnExpiredApiTokenSaysItCannotBeRenewed(t *testing.T) {
 	shown, err := Execute(credentialOnly, status)
 
 	require.NoError(t, err)
-	assert.Contains(t, shown, "cannot be renewed, run `meshstack login -p run --apitoken`, for workspace ops |")
+	assert.Contains(t, shown, "cannot be renewed, run `meshstack login --profile run --apitoken`, for workspace ops |")
 	assert.Contains(t, shown, "| Credential | API token of API key 11111111-45bf-42ba-a965-2097b9d0d181, from env MESHSTACK_API_TOKEN |")
 	assert.NotContains(t, shown, "| Workspace |", "the token carries its workspace")
 }

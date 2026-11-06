@@ -92,7 +92,7 @@ func (sources Sources) warnOfOverriddenStoredValues(ctx context.Context, key, de
 		if fallback, ok := source.(FallbackSource); ok && fallback.Stored {
 			stored, err := fallback.Lookup(ctx, key)
 			if stored = strings.TrimSpace(stored); err == nil && stored != "" && stored != text {
-				slog.WarnContext(ctx, fmt.Sprintf("%s sets '%s' over '%s' from the %s", description, text, stored, fallback.Describe(key)))
+				slog.WarnContext(ctx, fmt.Sprintf("%s sets '%s', which overrides '%s' from the %s", description, text, stored, fallback.Describe(key)))
 			}
 		}
 	}

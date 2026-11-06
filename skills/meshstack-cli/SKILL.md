@@ -106,7 +106,7 @@ workspace identifier as meshPanel shows it (`metadata.name`, for example
 - A login works only in a workspace where it holds a role, **also for an Organization Admin**:
 
   ```
-  Error: this login has no role in workspace 'x'. A token for a workspace takes a role in it, also for an Organization Admin ...
+  Error: this login has no role in workspace 'x'. To get a token for a workspace, you need a role in that workspace, even as an Organization Admin ...
   ```
 
   An admin can still read across workspaces from a session in the admin workspace.

@@ -32,7 +32,7 @@ func (f *requestFlags) register(cmd *cobra.Command, defaultMethod, methodUsage s
 	cmd.Flags().StringArrayVarP(&f.headers, "header", "H", nil, "add a request header, as 'key: value'")
 	f.requestJson.Register(cmd.Flags(), "request-json", "JSON file to send as the request body, or - for stdin")
 	cmd.Flags().StringVar(&f.apiVersion, "api-version", "", "version of the meshObject API, such as v1 or v2-preview, instead of the latest")
-	cmd.Flags().BoolVar(&f.dev, "dev", false, "read the API docs of what meshStack's develop branch has merged")
+	cmd.Flags().BoolVar(&f.dev, "dev", false, "use the API docs of meshStack's development version")
 }
 
 type request struct {
@@ -50,7 +50,7 @@ func (f *requestFlags) parse(cmd *cobra.Command, args []string) (request, error)
 	for _, line := range f.headers {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok || strings.TrimSpace(key) == "" {
-			return r, fmt.Errorf("header '%s' is not of 'key: value' format", line)
+			return r, fmt.Errorf("header '%s' is not in the format 'key: value'", line)
 		}
 		r.header.Add(strings.TrimSpace(key), strings.TrimSpace(value))
 	}
@@ -67,7 +67,7 @@ func (f *requestFlags) parse(cmd *cobra.Command, args []string) (request, error)
 			return r, err
 		}
 		if r.target.Host != "" && !r.target.IsAbs() {
-			return r, fmt.Errorf("'%s' names a host but no scheme; give a full URL or a path relative to the endpoint", args[0])
+			return r, fmt.Errorf("'%s' has a host but no scheme; give a full URL or a path relative to the endpoint", args[0])
 		}
 	}
 	return r, nil
@@ -76,7 +76,7 @@ func (f *requestFlags) parse(cmd *cobra.Command, args []string) (request, error)
 func (r *request) cutTo(endpoint xurl.URL) error {
 	path, held := endpoint.PathTo(r.target)
 	if !held {
-		return fmt.Errorf("endpoint %s does not hold %s", endpoint, r.target.Redacted())
+		return fmt.Errorf("%s is not under endpoint %s", r.target.Redacted(), endpoint)
 	}
 	r.target = &url.URL{Path: path, RawQuery: r.target.RawQuery}
 	return nil
@@ -105,7 +105,7 @@ func (f *requestFlags) selector(r request) (openapi.Selector, error) {
 		}
 	}
 	if len(slices.Compact(slices.Clone(given))) > 1 {
-		return selector, fmt.Errorf("the Accept and Content-Type headers, --api-version and the body's apiVersion ask for %s", strings.Join(given, ", "))
+		return selector, fmt.Errorf("the Accept and Content-Type headers, --api-version and the body's apiVersion request different versions: %s", strings.Join(given, ", "))
 	}
 	if len(given) > 0 {
 		var err error

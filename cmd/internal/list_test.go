@@ -76,7 +76,7 @@ func TestTheLimitFlagTakesACountOfItemsOrAll(t *testing.T) {
 			err := limit.Set(value)
 
 			if wantErr {
-				assert.ErrorContains(t, err, "is no limit")
+				assert.ErrorContains(t, err, "is not a valid limit")
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, value, limit.String())

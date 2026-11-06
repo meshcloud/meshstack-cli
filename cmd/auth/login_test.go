@@ -67,8 +67,8 @@ func TestProfileSelection(t *testing.T) {
 		{
 			name:      "an endpoint no profile is for suggests creating one",
 			selection: profile.Selection{Profiles: []*profile.Profile{second}, Current: "second", Endpoint: &unknown},
-			wantErr: "no profile is for endpoint 'https://unknown.example.io', only second (https://b.example.io); " +
-				"create a new profile for it with `meshstack login --endpoint https://unknown.example.io --profile <new profile name>`",
+			wantErr: "no profile has the endpoint 'https://unknown.example.io', only second (https://b.example.io); " +
+				"create a new profile for it with 'meshstack login --endpoint https://unknown.example.io --profile <new-profile-name>'",
 		},
 		{
 			name:      "an input that ends takes the current profile",
@@ -93,7 +93,7 @@ func TestProfileSelection(t *testing.T) {
 			name:      "with --stdin a current profile for another endpoint is an error",
 			selection: profile.Selection{Profiles: all, Current: "second", Endpoint: &endpointA},
 			stdin:     true,
-			wantErr:   "name one with --profile",
+			wantErr:   "use --profile to choose one",
 		},
 	}
 	for _, tt := range tests {
@@ -146,7 +146,7 @@ func TestWorkspaceSelection(t *testing.T) {
 	}{
 		{name: "an answer selects", answers: answer("2"), want: "second"},
 		{name: "an optional selection answered selects as well", optional: true, answers: answer("2"), want: "second"},
-		{name: "an input that ends is an error", answers: answer(""), wantErr: "nothing was entered for the workspace selection: the prompt reached the end of its input; name one with --workspace"},
+		{name: "an input that ends is an error", answers: answer(""), wantErr: "nothing was entered for the workspace selection: no more input to read from stdin; use --workspace to choose a workspace"},
 		{name: "an input that ends takes the profile's default", profileDefault: "second", answers: answer(""), want: "second"},
 		{name: "an answer selects over the profile's default", profileDefault: "second", answers: answer("1"), want: "first"},
 		{name: "an optional selection takes an input that ends as none", optional: true, answers: answer("")},

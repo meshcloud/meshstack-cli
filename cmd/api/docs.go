@@ -35,17 +35,18 @@ func NewDocs() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api-docs [<path or URL>]",
 		Short: "Show what the meshStack API docs say about a request or a meshObject kind",
-		Long: `Show what the meshStack API docs say about a request, given as 'meshstack api' takes it, or about
-the operations of a meshObject kind.
+		Long: `Show what the meshStack API docs say about a request, given in the same form that 'meshstack api'
+takes, or about the operations of a meshObject kind.
 
-Without a path, it lists every operation of the API, or those of the method and version the flags
-name.
+Without a path, it lists every operation of the API, filtered by --method and --api-version if
+given.
 
---describe names a kind as its command does, buildingblock or the alias bb, and optionally one of
-its actions after a dot, as in bb.list. It describes each operation of the kind, in the latest
-version it offers. It takes no path, and no flag of the request.
+--describe takes a kind by its command name, such as buildingblock or the alias bb, optionally
+followed by one of its actions after a dot, as in bb.list. It describes each operation of the kind,
+in the latest version that the kind offers. It cannot be combined with a path or with the request
+flags.
 
---output json writes the part of the OpenAPI document instead.
+--output json prints that part of the OpenAPI document.
 
 --dev uses the development API docs.`,
 		Example: `  meshstack api-docs
@@ -71,7 +72,7 @@ version it offers. It takes no path, and no flag of the request.
 					return profileErr
 				}
 				if endpoint.URL == nil {
-					return fmt.Errorf("no stored profile holds %s; give the path relative to the endpoint", r.target.Redacted())
+					return fmt.Errorf("no stored profile matches %s; give the path relative to the endpoint", r.target.Redacted())
 				}
 				if err = r.cutTo(endpoint); err != nil {
 					return err
@@ -120,12 +121,12 @@ version it offers. It takes no path, and no flag of the request.
 func noOperationError(selector openapi.Selector) error {
 	of := strings.TrimSpace(selector.Method + " " + selector.Path)
 	if of != "" {
-		of = " of " + of
+		of = " for " + of
 	}
 	if !selector.ApiVersion.IsZero() {
 		of += " in " + selector.ApiVersion.String()
 	}
-	return errors.New("the API docs list no operation" + of)
+	return errors.New("the API docs have no operation" + of)
 }
 
 // methodOrder puts reading before writing. A method the list leaves out, such as PATCH, goes last.

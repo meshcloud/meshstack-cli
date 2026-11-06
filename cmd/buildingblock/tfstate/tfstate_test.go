@@ -200,7 +200,7 @@ func TestTfstate(t *testing.T) {
 		ran := execChild(t, "exit=0")
 
 		require.NoError(t, ran.err)
-		assert.Contains(t, ran.log, `asked for no state, so the module likely has no backend \"http\" block`)
+		assert.Contains(t, ran.log, `did not request any state. The module probably has no backend \"http\" block`)
 		assert.Contains(t, ran.log, "--override-backend -- tofu init")
 	})
 
@@ -228,9 +228,9 @@ func TestTfstate(t *testing.T) {
 	t.Run("exec in readwrite mode refuses while a run is in progress or waits for approval, unless forced", func(t *testing.T) {
 		defer func() { meshStack.blockStatus["action"] = "NO_ACTION" }()
 		for action, refusal := range map[string]string{
-			"IN_PROGRESS": "has a run IN_PROGRESS, which writes the state as well",
-			"PENDING":     "has a run PENDING, which writes the state as well",
-			"APPROVE_RUN": "has a run that waits for approval, which writes the state once approved",
+			"IN_PROGRESS": "has a run that is IN_PROGRESS and also writes the state",
+			"PENDING":     "has a run that is PENDING and also writes the state",
+			"APPROVE_RUN": "has a run that is waiting for approval and writes the state once approved",
 		} {
 			meshStack.blockStatus["action"] = action
 
@@ -288,7 +288,7 @@ func TestForceUnlock(t *testing.T) {
 	lockOfTheRun := []byte(`{"lockInfo":{"ID":"the-lock","Operation":"OperationTypeApply","Who":"building block run ` + runUuid + `"},` +
 		`"holder":{"runUuid":"` + runUuid + `","principal":"the runner"},"createdOn":"2026-10-05T09:00:00Z"}`)
 
-	const question = "Release the lock the-lock? Only yes releases it: "
+	const question = "Release the lock the-lock? Type yes to release it: "
 
 	t.Run("refuses to release the lock of a run in progress, before it asks", func(t *testing.T) {
 		lock = lockOfTheRun
@@ -296,7 +296,7 @@ func TestForceUnlock(t *testing.T) {
 		refused := runAnswering(t, "yes\n", "force-unlock", buildingBlockUuid)
 
 		require.Error(t, refused.err)
-		assert.Contains(t, refused.err.Error(), "building block run "+runUuid+", which holds the lock, is IN_PROGRESS")
+		assert.Contains(t, refused.err.Error(), "building block run "+runUuid+" holds the lock, is IN_PROGRESS")
 		assert.Contains(t, refused.log, "is locked by building block run "+runUuid)
 		assert.NotContains(t, refused.stderr, question)
 		assert.NotNil(t, lock)

@@ -21,17 +21,18 @@ func newForceUnlock() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "force-unlock <building-block-uuid>",
-		Short: "Release a lock on the state of a building block that nobody releases",
-		Long: `Release the lock on the state of a building block, named by its uuid, that its holder left
-behind, such as a tofu process that was killed. Unlike tofu force-unlock, it needs no module
-directory and no lock ID: it names the holder, and asks before it releases the lock it found. Only
-the answer yes releases it; a script can pipe yes to stdin.
+		Short: "Release a stale lock on the state of a building block",
+		Long: `Release a lock on the state of a building block that its holder left behind, for example
+because a tofu process was killed. Give the building block by its uuid. Unlike tofu force-unlock,
+this command needs no module directory and no lock ID. It shows who holds the lock, and asks before
+it releases the lock. Only the answer yes releases the lock; a script can pipe yes to stdin.
 
-It refuses to release the lock of a run of the building block that is pending or in progress,
-unless --force: that run is still writing the state. --force does not skip the question.
+If the lock belongs to a run of the building block that is pending or in progress, the command
+refuses to release it, because that run is still writing the state. Use --force to release it
+anyway. --force does not skip the question.
 
-The state is the one stored under the workspace of the building block, metadata.ownedByWorkspace,
-unless --workspace names another one.`,
+By default, the command uses the state stored in the building block's own workspace,
+metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.`,
 		Example: `  meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   echo yes | meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --force`,
 		Args: internal.UuidArg(&buildingBlockUuid),
@@ -60,14 +61,14 @@ unless --workspace names another one.`,
 				}
 			}
 			p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
-			if err = p.Printf("Release the lock %s? Only yes releases it: ", lock.Info.ID); err != nil {
+			if err = p.Printf("Release the lock %s? Type yes to release it: ", lock.Info.ID); err != nil {
 				return err
 			}
 			answer, err := p.Next(ctx, "confirmation")
 			if err != nil {
 				return fmt.Errorf("kept the lock %s: %w", lock.Info.ID, err)
 			} else if answer != "yes" {
-				return fmt.Errorf("kept the lock %s: the answer was %q, and only yes releases it", lock.Info.ID, answer)
+				return fmt.Errorf("kept the lock %s: the answer was %q, and only yes releases the lock", lock.Info.ID, answer)
 			}
 			if err = store.Release(ctx, lock); errors.Is(err, tfstate.ErrLockReplaced) {
 				return fmt.Errorf("%w; run again to see the new one", err)
@@ -79,7 +80,7 @@ unless --workspace names another one.`,
 		},
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, "release the lock even of a run that is pending or in progress")
+	cmd.Flags().BoolVar(&force, "force", false, "release the lock even if it belongs to a run that is pending or in progress")
 
 	return cmd
 }

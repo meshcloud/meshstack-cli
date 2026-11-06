@@ -102,13 +102,13 @@ func TestAddAsksLineByLineWithTheFlagsAsDefaults(t *testing.T) {
 		},
 		{
 			name:      "an input that ends where a question has no valid default adds nothing",
-			wantErr:   "nothing was entered for the endpoint: the prompt reached the end of its input; a profile needs an endpoint",
+			wantErr:   "nothing was entered for the endpoint: no more input to read from stdin; a profile needs an endpoint",
 			wantAsked: "Endpoint: ",
 		},
 		{
 			name:      "an input that ends at a name that is taken adds nothing",
 			args:      []string{"--profile", "prod", "--endpoint", "https://c.example.io"},
-			wantErr:   "nothing was entered for the name: the prompt reached the end of its input; a profile named 'prod' exists already",
+			wantErr:   "nothing was entered for the name: no more input to read from stdin; a profile named 'prod' exists already",
 			wantAsked: "Endpoint [https://c.example.io]: Default workspace: Name [prod]: ",
 		},
 	}
@@ -140,7 +140,7 @@ func TestAddAsksLineByLineWithTheFlagsAsDefaults(t *testing.T) {
 
 func TestEditAsksLineByLineWhereAnEmptyAnswerKeepsTheValue(t *testing.T) {
 	const askedForProd = "| Profile | prod |\n| --- | --- |\n| Endpoint | https://b.example.io |\n| Default workspace | ops |\n" +
-		"| Credential | none, run `meshstack login -p prod` |\n\n" +
+		"| Credential | none, run `meshstack login --profile prod` |\n\n" +
 		"Endpoint [https://b.example.io]: Default workspace [ops]: Name [prod]: "
 	tests := []struct {
 		name          string
@@ -227,7 +227,7 @@ func TestDeleteAsksUnlessYesGoesWithAFlagThatNamesTheProfile(t *testing.T) {
 		{
 			name:      "--yes deletes nothing without --profile or --endpoint",
 			args:      []string{"--yes"},
-			wantErr:   "--yes deletes only the profile --profile or --endpoint names",
+			wantErr:   "--yes needs --profile, or an --endpoint that matches exactly one profile",
 			wantNames: []profile.Name{"dev", "prod"},
 		},
 		{
@@ -251,7 +251,7 @@ func TestDeleteAsksUnlessYesGoesWithAFlagThatNamesTheProfile(t *testing.T) {
 		{
 			name:      "an endpoint no profile is for is an error",
 			args:      []string{"--endpoint", "https://c.example.io", "--yes"},
-			wantErr:   "no profile is for endpoint 'https://c.example.io'",
+			wantErr:   "no profile has the endpoint 'https://c.example.io'",
 			wantNames: []profile.Name{"dev", "prod"},
 		},
 		{
@@ -296,7 +296,7 @@ func TestCommandsWithoutADefaultWorkspaceToStoreRefuseWorkspace(t *testing.T) {
 
 			_, err := execute(t, "", append(args, "-w", "ops")...)
 
-			require.ErrorContains(t, err, `invalid argument "ops" for "-w, --workspace" flag: has no effect here`)
+			require.ErrorContains(t, err, `invalid argument "ops" for "-w, --workspace" flag: this command does not use --workspace`)
 		})
 	}
 }
@@ -317,7 +317,7 @@ func TestTheCommandsThatChangeTheProfilesFailWhileALoginHoldsThem(t *testing.T) 
 
 				require.ErrorIs(t, err, profile.ErrInUse)
 				require.EqualError(t, err, "another meshstack command is changing the profiles, "+
-					"such as a login or another meshstack profile; let it finish and try again")
+					"such as 'meshstack login' or 'meshstack profile'; wait for it to finish, then try again")
 			})
 			requireStoredNames(t, "dev", "prod")
 		})

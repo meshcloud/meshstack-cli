@@ -13,12 +13,13 @@ func newToken() *cobra.Command {
 	return &cobra.Command{
 		Use:   "token",
 		Short: "Print an access token for the meshStack API",
-		Long: `Print the access token a command run with the same flags and environment would send, renewed
-where it is about to expire. Nothing else goes to stdout, so $(meshstack auth token) works.
+		Long: `Print the access token that other commands with the same flags and environment would send.
+The command renews the token first if it is about to expire. It prints nothing else to stdout, so
+$(meshstack auth token) works.
 
-Paste it as the Bearer token in the API docs to try a request against your meshStack. The token is
-short-lived: run this again once the API answers 401. For scripts, meshstack api renews the token by
-itself. A browser login prints a token for the workspace this run resolves.`,
+Paste the token as the Bearer token in the API docs to try a request against your meshStack. The
+token is short-lived: run this command again once the API returns 401. In scripts, use meshstack
+api, which renews the token by itself. For a browser login, the token is for the current workspace.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			session, err := auth.ResolveSession(cmd.Context(), internal.ResolveClientOptions())

@@ -75,7 +75,7 @@ func (w RunWait) Outcome(block *client.MeshBuildingBlockV2) error {
 	case status.RunFailed():
 		err = fmt.Errorf("the run of building block %s ended with action %s", w.buildingBlockUuid, status.Action)
 	case status.IsWaitingForInput():
-		err = fmt.Errorf("the run of building block %s waits with action %s, and goes on only once someone acts on it", w.buildingBlockUuid, status.Action)
+		err = fmt.Errorf("the run of building block %s is paused at action %s and continues only after someone acts on it", w.buildingBlockUuid, status.Action)
 	}
 	return withMeshPanelLink(err, block)
 }

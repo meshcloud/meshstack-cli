@@ -20,9 +20,9 @@ func newList() *cobra.Command {
 		Short: "List the versions of a building block definition",
 		Long: `List the versions of a building block definition.
 
-The definition is named by its uuid, which "meshstack buildingblockdefinition list" reports as
-metadata.uuid. It is required: meshStack serves the versions of one definition at a time, and
-reading them takes a permission on the workspace that owns it.`,
+Give the definition by its uuid; "meshstack buildingblockdefinition list" shows it as
+metadata.uuid. --definition is required, because meshStack returns the versions of one definition
+at a time. Reading them needs a permission in the workspace that owns the definition.`,
 		Example: `  meshstack buildingblockdefinitionversion list --definition 3c9e1f7a-2b4d-4e6f-8a1c-5d7b9e2f4a6c
   meshstack bbdv list --definition 3c9e1f7a-2b4d-4e6f-8a1c-5d7b9e2f4a6c --limit 1`,
 		Args: cobra.NoArgs,

@@ -20,7 +20,7 @@ import (
 
 // ErrEndOfInput is what Next returns once the input has ended, which a caller can accept as no
 // answer at all where one is optional.
-var ErrEndOfInput = errors.New("the prompt reached the end of its input")
+var ErrEndOfInput = errors.New("no more input to read from stdin")
 
 type Prompt struct {
 	input *input

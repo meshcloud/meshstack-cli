@@ -63,10 +63,11 @@ func newShow() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show a profile and the status of its stored credential",
-		Long: `Show the profile another command would use, and the status of the credential it stores, which
-a flag or the environment would replace there.
+		Long: `Show the profile that other commands would use, and the status of its stored credential.
+Flags and environment variables can override that credential.
 
-A profile that is not stored yet is shown as a first login would create it, and nothing is stored.`,
+If the profile does not exist yet, the command shows what the first login would create, without
+saving anything.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -80,7 +81,7 @@ A profile that is not stored yet is shown as a first login would create it, and 
 				return err
 			}
 			if endpoint, source, err := opts.ResolveSettingWithSource(ctx, meshstack.EndpointSetting); err == nil && !endpoint.Equal(shownProfile.Endpoint) {
-				slog.WarnContext(ctx, fmt.Sprintf("Profile '%s' is for endpoint '%s', so a command for endpoint '%s' (from %s) fails with it",
+				slog.WarnContext(ctx, fmt.Sprintf("Profile '%s' has the endpoint '%s', which does not match the endpoint '%s' from %s, so commands fail with this profile",
 					shownProfile.Name, shownProfile.Endpoint, endpoint, source.Describe(meshstack.EndpointSetting.EnvKey())))
 			}
 			s := showOf(ctx, stored, shownProfile)

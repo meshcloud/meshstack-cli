@@ -42,20 +42,20 @@ func newProfileSelectionSource(p prompt.Prompt, stdinCarriesSecret bool) setting
 				return "", nil
 			case len(candidates) == 0:
 				// A profile for another endpoint would send its credential there.
-				return "", fmt.Errorf("no profile is for endpoint '%s', only %s; "+
-					"create a new profile for it with `meshstack login --%s %s --%s <new profile name>`",
+				return "", fmt.Errorf("no profile has the endpoint '%s', only %s; "+
+					"create a new profile for it with 'meshstack login --%s %s --%s <new-profile-name>'",
 					selection.Endpoint, labelProfiles(selection.Profiles),
 					internal.EndpointFlag.Name, selection.Endpoint, internal.ProfileFlag.Name)
 			case stdinCarriesSecret && len(candidates) > 1:
 				if currentIsCandidate {
 					return string(selection.Current), nil
 				}
-				return "", fmt.Errorf("this login could go to any of %s; name one with --%s, as --%s leaves no stdin to ask on",
+				return "", fmt.Errorf("several profiles match: %s; use --%s to choose one, because --%s reads the secret from stdin, so the CLI cannot ask which profile to use",
 					labelProfiles(candidates), internal.ProfileFlag.Name, stdinFlagName)
 			}
 			selected, err := prompt.Select(ctx, p, "profile", candidates, isCurrent)
 			if currentIsCandidate && errors.Is(err, prompt.ErrEndOfInput) {
-				slog.InfoContext(ctx, fmt.Sprintf("Selecting the current profile '%s', as the input ended before an answer", selection.Current))
+				slog.InfoContext(ctx, fmt.Sprintf("No answer was given, so the current profile '%s' is used", selection.Current))
 				return string(selection.Current), nil
 			}
 			if err != nil {

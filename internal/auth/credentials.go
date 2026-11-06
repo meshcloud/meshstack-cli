@@ -38,7 +38,7 @@ func (s Session) resolveCredentials(ctx context.Context, opts ResolveSessionOpti
 	case 1:
 		slog.DebugContext(ctx, fmt.Sprintf("Using uniquely resolved credential %s from environment MESHSTACK_* and/or explicit config", resolved[0].Name()))
 		if stored := s.CurrentProfile.Credential; stored != "" {
-			slog.WarnContext(ctx, fmt.Sprintf("%s set a credential over '%s' stored in profile '%s'",
+			slog.WarnContext(ctx, fmt.Sprintf("%s overrides the credential '%s' stored in profile '%s'",
 				strings.Join(resolved[0].Sources, " and "), stored, s.CurrentProfile))
 		}
 		return resolved[0], nil
@@ -55,7 +55,7 @@ func (s Session) storedCredential(ctx context.Context, noSourceErrs []error) (Cr
 	currentProfile := s.CurrentProfile
 	if currentProfile.Credential == "" {
 		return Credential{}, errors.Join(append([]error{
-			fmt.Errorf("profile '%s' selects no credential; run 'meshstack login -p %s'", currentProfile, currentProfile),
+			fmt.Errorf("profile '%s' selects no credential; run 'meshstack login --profile %s'", currentProfile, currentProfile),
 		}, noSourceErrs...)...)
 	}
 	creds, err := currentProfile.Credentials(ctx)
@@ -64,7 +64,7 @@ func (s Session) storedCredential(ctx context.Context, noSourceErrs []error) (Cr
 	}
 	current := creds.ByName(currentProfile.Credential)
 	if current == nil {
-		return Credential{}, fmt.Errorf("profile '%s' selects credential '%s', but %s holds none; run 'meshstack login -p %s'",
+		return Credential{}, fmt.Errorf("profile '%s' selects credential '%s', but %s holds none; run 'meshstack login --profile %s'",
 			currentProfile, currentProfile.Credential, creds.FilePath, currentProfile)
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using credential %s of profile %s", currentProfile.Credential, currentProfile))

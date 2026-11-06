@@ -145,7 +145,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() tea.View {
 	status := cmp.Or(m.problem, m.warned.String())
 	if m.number != "" {
-		status = fmt.Sprintf("Number: %s (Enter takes it, Esc clears it)", m.number)
+		status = fmt.Sprintf("Number: %s (Enter to select, Esc to clear)", m.number)
 	}
 	more := ""
 	if _, end := m.list.Paginator.GetSliceBounds(len(m.list.VisibleItems())); end < len(m.list.VisibleItems()) {

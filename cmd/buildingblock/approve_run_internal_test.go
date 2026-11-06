@@ -75,7 +75,7 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 		cmd.SetErr(io.Discard)
 		cmd.SetArgs([]string{"approve-run", buildingBlockUuid})
 
-		require.EqualError(t, cmd.ExecuteContext(t.Context()), "approve-run asks you before it acts, so it runs only on a terminal")
+		require.EqualError(t, cmd.ExecuteContext(t.Context()), "approve-run needs a terminal, because it asks you to confirm")
 		assert.Empty(t, server.TakeRequests())
 	})
 

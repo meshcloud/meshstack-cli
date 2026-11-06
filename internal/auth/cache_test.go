@@ -76,7 +76,7 @@ func TestCache(t *testing.T) {
 		require.NoError(t, auth.CacheFor(p, loggedIn).Load(t.Context()))
 		assert.Nil(t, loggedIn.Cache)
 		assert.Contains(t, captured.String(), "level=WARN")
-		assert.Contains(t, captured.String(), "run 'meshstack login -p cache-test' to update it")
+		assert.Contains(t, captured.String(), "run 'meshstack login --profile cache-test' to update it")
 
 		loggedIn.Cache = withToken(token)
 		require.NoError(t, auth.CacheFor(p, loggedIn).Write(t.Context()))

@@ -20,7 +20,7 @@ func newLogout() *cobra.Command {
 		Long: `Remove this profile's stored credentials. For a browser login, this also ends the login's
 session at meshStack, so its tokens stop working. Your browser stays signed in to meshStack.
 
-Without a profile named, it asks which stored profile to log out of, among those for the endpoint.`,
+Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the stored profiles for the endpoint to log out of.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -29,7 +29,7 @@ Without a profile named, it asks which stored profile to log out of, among those
 				StoredOnly:     true,
 			})
 			if errors.Is(err, profile.ErrNoStoredProfile) {
-				slog.WarnContext(ctx, "Nothing to log out of, as "+err.Error())
+				slog.WarnContext(ctx, "Nothing to log out of: "+err.Error())
 				return nil
 			} else if err != nil {
 				return err

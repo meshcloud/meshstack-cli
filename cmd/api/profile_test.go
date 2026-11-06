@@ -80,8 +80,8 @@ func TestProfileForARequestURL(t *testing.T) {
 
 		_, _, _, err = resolve(t, "https://localhost:1337/api")
 
-		require.ErrorContains(t, err, "https://localhost:1337/api is for endpoint https://localhost:1337, "+
-			"not for endpoint https://meshstack.example.com/a of profile 'a' from env "+profile.NameSetting.EnvKey())
+		require.ErrorContains(t, err, "https://localhost:1337/api is under endpoint https://localhost:1337, "+
+			"which does not match the endpoint https://meshstack.example.com/a of profile 'a' from env "+profile.NameSetting.EnvKey())
 	})
 
 	t.Run("an explicit endpoint fails where it does not hold the URL", func(t *testing.T) {
@@ -89,8 +89,8 @@ func TestProfileForARequestURL(t *testing.T) {
 
 		_, _, _, err := resolve(t, "https://meshstack.example.com/a/api")
 
-		require.ErrorContains(t, err, "https://meshstack.example.com/a/api is for endpoint https://meshstack.example.com/a, "+
-			"not for endpoint https://localhost:1337 from env "+meshstack.EndpointSetting.EnvKey())
+		require.ErrorContains(t, err, "https://meshstack.example.com/a/api is under endpoint https://meshstack.example.com/a, "+
+			"which does not match the endpoint https://localhost:1337 from env "+meshstack.EndpointSetting.EnvKey())
 	})
 
 	t.Run("with no profile stored, an explicit endpoint that holds the URL leaves the name of the first profile to the session", func(t *testing.T) {

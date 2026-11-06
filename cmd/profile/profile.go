@@ -14,11 +14,12 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profile",
 		Short: "Manage the stored profiles",
-		Long: `Manage the profiles that meshstack login stores, each an endpoint with its credential and
-default workspace.
+		Long: `Manage your profiles. A profile stores an endpoint, a credential and a default workspace.
+meshstack login creates profiles as well.
 
-On a terminal, this lists the profiles to add, edit, delete, or make the current one. Elsewhere it
-shows this help: list and show print the profiles, and add, edit and delete ask line by line.`,
+In a terminal, this command opens an interactive list where you can add, edit and delete profiles,
+and choose the current one. Outside a terminal, it shows this help. Use the subcommands there: list
+and show print the profiles, and add, edit and delete ask one question per line.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -60,7 +61,8 @@ type workspaceRefused struct{}
 func (workspaceRefused) String() string { return "" }
 func (workspaceRefused) Type() string   { return "string" }
 func (workspaceRefused) Set(string) error {
-	return fmt.Errorf("has no effect here; set the default workspace of a profile with 'meshstack profile edit --%s'", internal.WorkspaceFlag.Name)
+	return fmt.Errorf("this command does not use --%s; to set the default workspace of a profile, run 'meshstack profile edit --%s <workspace>'",
+		internal.WorkspaceFlag.Name, internal.WorkspaceFlag.Name)
 }
 
 func defaultWorkspaceFlag() internal.Flag[string] {

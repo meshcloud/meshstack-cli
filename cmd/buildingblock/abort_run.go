@@ -24,10 +24,10 @@ func newAbortRun() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "abort-run <building-block-uuid>",
 		Short: "Abort the latest run of a building block",
-		Long: `Abort the latest run of a building block, or its dry run when the dry run is newer.
+		Long: `Abort the latest run of a building block, or its dry run if the dry run is newer.
 
-The command shows the run and asks you to confirm, so it runs only on a terminal. After the abort,
-it writes the building block.`,
+The command shows the run and asks you to confirm, so it needs a terminal. After the abort, it
+prints the building block.`,
 		Example: `  meshstack buildingblock abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
 		Args: internal.UuidArg(&buildingBlockUuid),
@@ -60,8 +60,8 @@ func (a runAction) abort(ctx context.Context) error {
 		return err
 	}
 	if run.Links.Abort == nil {
-		return fmt.Errorf("building block %s has the action %s. Its run %s has the status %s, and it cannot be aborted, or you may not abort it",
-			a.buildingBlockUuid, block.Status.Action, run.Metadata.Uuid, run.Status)
+		return fmt.Errorf("run %s of building block %s (action %s) has the status %s and cannot be aborted, or you are not allowed to abort it",
+			run.Metadata.Uuid, a.buildingBlockUuid, block.Status.Action, run.Status)
 	}
 	if err = a.prompt.Printf("Run %d of building block %q is a %s run with the status %s. The building block has the action %s.\n",
 		run.Spec.RunNumber, run.Spec.BuildingBlock.Spec.DisplayName, run.Spec.Behavior, run.Status, block.Status.Action); err != nil {

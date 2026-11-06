@@ -22,7 +22,7 @@ func TestAccProfiles(t *testing.T) {
 
 		output, err := c.run("1\n", "login", "--apikey")
 		require.Errorf(t, err, "the login ran while meshstack profile held the profiles:\n%s", output)
-		assert.Contains(t, err.Error(), "cannot log in while "+profilesInUse+", such as meshstack profile")
+		assert.Contains(t, err.Error(), "cannot log in, because "+profilesInUse+", such as 'meshstack login'")
 		assert.NoFileExists(t, c.credentialsJson())
 
 		release()
@@ -59,7 +59,7 @@ func browserLoginHoldsTheProfiles(endpoint string, login devLogin) func(*testing
 
 		added, err := c.run("", "profile", "add")
 		require.Errorf(t, err, "meshstack profile add ran while the login waited for the browser:\n%s", added)
-		assert.Contains(t, err.Error(), profilesInUse+", such as a login")
+		assert.Contains(t, err.Error(), profilesInUse+", such as 'meshstack login'")
 		listed, err := c.run("", "profile", "list")
 		require.NoErrorf(t, err, "meshstack profile list only reads, and runs alongside a login:\n%s", listed)
 

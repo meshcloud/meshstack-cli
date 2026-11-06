@@ -80,7 +80,7 @@ func (oidcLogin *OidcLogin) RefreshCachedToken(ctx context.Context, client http.
 	} else if notNamed, ok := errors.AsType[meshstack.WorkspaceNotNamedError](err); ok {
 		return notNamed
 	} else if err != nil {
-		return fmt.Errorf("a browser login needs a workspace; name one, or give the profile a default workspace with 'meshstack profile edit' or 'meshstack login --endpoint %s': %w", oidcLogin.Endpoint, err)
+		return fmt.Errorf("a browser login needs a workspace; use --workspace to choose one, or set the profile's default workspace with 'meshstack profile edit' or 'meshstack login --endpoint %s': %w", oidcLogin.Endpoint, err)
 	}
 	oidcClient, err := oidc.NewClient(ctx, client, oidcLogin.Issuer, oidcLogin.ClientId)
 	if err != nil {

@@ -133,7 +133,7 @@ func (c Credential) read(ctx context.Context) (matched bool, err error) {
 	switch {
 	case file.Version != cacheVersion:
 		// Not an error: the cache only saves minting a token, and a login writes a compatible one.
-		slog.WarnContext(ctx, fmt.Sprintf("Ignoring cache %s of version %d, as this meshstack reads version %d; run 'meshstack login -p %s' to update it",
+		slog.WarnContext(ctx, fmt.Sprintf("Ignoring cache %s of version %d, as this meshstack reads version %d; run 'meshstack login --profile %s' to update it",
 			c.cachePath, file.Version, cacheVersion, c.profile))
 	case file.Identity != c.Identity().Hash:
 		// Debug, not Warn: a credential from the environment next to the profile's own is normal.

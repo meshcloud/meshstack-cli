@@ -55,7 +55,7 @@ func TestTheFiltersOfAnEventLogList(t *testing.T) {
 
 	t.Run("refuse a malformed date or an empty range before the list asks meshStack", func(t *testing.T) {
 		for args, wantError := range map[string]string{
-			"--from 01.07.2026":                    `"01.07.2026" is no date or instant`,
+			"--from 01.07.2026":                    `"01.07.2026" is not a valid date or instant`,
 			"--from 2026-07-02 --until 2026-07-01": "--from 2026-07-02T00:00:00Z is not before --until 2026-07-01T00:00:00Z, so no event log can match",
 			"--from 2026-07-01 --until 2026-07-01": "is not before --until",
 		} {

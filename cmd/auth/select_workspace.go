@@ -25,7 +25,7 @@ func newWorkspaceSelectionSource(p prompt.Prompt, optional bool) setting.Fallbac
 		func(ctx context.Context) (string, error) {
 			workspaces, err := setting.WorkspacesFromContext(ctx)
 			if optional && err != nil {
-				slog.WarnContext(ctx, "No workspace to select, the profile keeps its default workspace: "+err.Error())
+				slog.WarnContext(ctx, "Cannot offer workspaces to select, so the profile's default workspace stays unchanged: "+err.Error())
 				return "", nil //nolint:nilerr // an optional selection goes on without one, as the warning says
 			}
 			if err != nil {
@@ -42,13 +42,13 @@ func newWorkspaceSelectionSource(p prompt.Prompt, optional bool) setting.Fallbac
 			if errors.Is(err, prompt.ErrEndOfInput) {
 				switch {
 				case profileDefault != nil:
-					slog.InfoContext(ctx, fmt.Sprintf("Selecting the profile's default workspace '%s', as the input ended before an answer", profileDefault.Name()))
+					slog.InfoContext(ctx, fmt.Sprintf("No answer was given, so the profile's default workspace '%s' is used", profileDefault.Name()))
 					return string(profileDefault.Name()), nil
 				case optional:
-					slog.InfoContext(ctx, "No workspace was selected, as the input ended; the profile keeps its default workspace")
+					slog.InfoContext(ctx, "No answer was given, so the profile's default workspace stays unchanged")
 					return "", nil
 				default:
-					return "", fmt.Errorf("%w; name one with --%s", err, internal.WorkspaceFlag.Name)
+					return "", fmt.Errorf("%w; use --%s to choose a workspace", err, internal.WorkspaceFlag.Name)
 				}
 			}
 			if err != nil {

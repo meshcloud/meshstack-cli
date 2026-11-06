@@ -18,8 +18,8 @@ var NameSetting = setting.Setting[Name]{
 	Long: func(envKey string) string {
 		return fmt.Sprintf("The profile whose credentials and defaults this run uses, also read from `%s`.\n\n"+
 			"A profile is a named bundle of endpoint and credential, written by "+
-			"`meshstack login` into the meshStack CLI's configuration directory. It supplies each of those "+
-			"only where nothing above it did, so it is never an override.\n\n"+
+			"`meshstack login` into the meshStack CLI's configuration directory. Flags and environment "+
+			"variables take precedence over the values in a profile.\n\n"+
 			"With no name given, the profile is the one whose endpoint matches the endpoint in use, else the one "+
 			"the last `meshstack login` selected, else `default`.", envKey)
 	},

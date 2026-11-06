@@ -118,7 +118,7 @@ func TestFollowEndsWithTheRun(t *testing.T) {
 		{"failed with no steps", finished(runFailed), "building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c failed"},
 		{
 			"in a status the CLI does not know", finished("WAITING"),
-			`building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c has the status "WAITING", which the meshStack CLI does not know, so it stops following the run`,
+			`stopped following building block run 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c, because the meshStack CLI does not know its status "WAITING"`,
 		},
 	}
 	for _, test := range tests {

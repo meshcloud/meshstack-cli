@@ -26,8 +26,8 @@ func newList() *cobra.Command {
 --from and --until take a date such as 2026-07-01, which means midnight UTC, or an instant such as
 2026-07-01T12:00:00Z.
 
-The list holds the event logs of the workspace. An admin credential in a session that works in no
-workspace lists those of every workspace.`,
+The command lists the event logs of the workspace. With an admin credential and no workspace set,
+it lists the event logs of all workspaces.`,
 		Example: `  meshstack eventlog list --from 2026-07-01 --until 2026-07-02
   meshstack elog list --title "Building Block Run" --exclude-title "Building Block Run Executed"
   meshstack elog list --workspace my-workspace --limit unlimited -o ndjson`,
@@ -79,7 +79,7 @@ func (f *instantFlag) Set(value string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("%q is no date or instant, write 2026-07-01 or 2026-07-01T12:00:00Z", value)
+	return fmt.Errorf("%q is not a valid date or instant; use 2026-07-01 or 2026-07-01T12:00:00Z", value)
 }
 
 func (f *instantFlag) Type() string {

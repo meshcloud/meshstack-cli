@@ -97,11 +97,11 @@ func TestAskTakesTheDefaultForAnEmptyAnswerAndAsksAgainUntilValid(t *testing.T) 
 		{name: "an input that ends without default is empty", wantAsked: "Name: "},
 		{
 			name: "an input that ends fails where validate refuses the default", validate: notEmpty,
-			wantErr: "nothing was entered for the name: the prompt reached the end of its input; an answer is needed", wantAsked: "Name: ",
+			wantErr: "nothing was entered for the name: no more input to read from stdin; an answer is needed", wantAsked: "Name: ",
 		},
 		{
 			name: "an input that ends after a refused answer fails", validate: notEmpty, answers: "\n",
-			wantErr: "nothing was entered for the name: the prompt reached the end of its input; an answer is needed", wantAsked: "Name: an answer is needed\nName: ",
+			wantErr: "nothing was entered for the name: no more input to read from stdin; an answer is needed", wantAsked: "Name: an answer is needed\nName: ",
 		},
 	}
 	for _, tt := range tests {

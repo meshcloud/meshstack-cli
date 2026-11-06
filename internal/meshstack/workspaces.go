@@ -64,7 +64,7 @@ func (ws Workspaces) ProfileDefault(ctx context.Context) (r *MeshWorkspace) {
 			return &item
 		}
 	}
-	slog.WarnContext(ctx, fmt.Sprintf("Your profile carries the default workspace '%s', which you have no access to currently", ws.ProfileDefaultWorkspace))
+	slog.WarnContext(ctx, fmt.Sprintf("You currently have no access to '%s', the default workspace of your profile", ws.ProfileDefaultWorkspace))
 	return nil
 }
 

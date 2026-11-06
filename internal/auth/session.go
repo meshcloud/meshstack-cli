@@ -108,8 +108,9 @@ func newSession(ctx context.Context, opts ResolveSessionOptions, exclusiveLock b
 		return Session{}, profile.Profiles{}, err
 	} else if !endpoint.Equal(currentProfile.Endpoint) {
 		// this prevents accidentally sending credentials to the wrong endpoint
-		return Session{}, profile.Profiles{}, fmt.Errorf("profile '%s' is for endpoint '%s', not for endpoint '%s' of this run; "+
-			"select a profile for that endpoint, or log in with a new profile name to create one", currentProfile, currentProfile.Endpoint, endpoint)
+		return Session{}, profile.Profiles{}, fmt.Errorf("profile '%s' has the endpoint '%s', which does not match the endpoint '%s' of this command; "+
+			"use --profile to choose a profile for that endpoint, or create one with 'meshstack login --endpoint %s --profile <new-profile-name>'",
+			currentProfile, currentProfile.Endpoint, endpoint, endpoint)
 	}
 
 	session, err := newSessionFor(ctx, currentProfile, opts)

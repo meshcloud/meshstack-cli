@@ -377,7 +377,7 @@ func (l login) Run() error              { return l.RunE(l.Command, nil) }
 func (m model) withDeletion(p *profile.Profile) (model, tea.Cmd) {
 	d := &deletion{profile: p}
 	confirm := huh.NewConfirm().Title(fmt.Sprintf("❌ Delete profile '%s'?", p.Name)).
-		Description("Its stored credentials go as well.").Affirmative("Delete").Negative("Keep").Value(&d.confirmed)
+		Description("Its stored credentials are deleted too.").Affirmative("Delete").Negative("Keep").Value(&d.confirmed)
 	d.Form = huh.NewForm(huh.NewGroup(confirm)).WithKeyMap(formKeyMap()).WithWidth(50)
 	d.SubmitCmd = func() tea.Msg { return formSubmitted{} }
 	d.CancelCmd = func() tea.Msg { return formCancelled{} }
@@ -406,7 +406,7 @@ func (m model) replayBackground() tea.Cmd {
 
 // errFormCancelled fails add and edit as the line prompts fail at the end of their input, so that
 // a script does not go on as though the profile was stored.
-var errFormCancelled = errors.New("the form was cancelled, nothing was stored")
+var errFormCancelled = errors.New("the form was cancelled, and nothing was saved")
 
 func (m model) finish(highlight profile.Name, done string, err error) (model, tea.Cmd) {
 	m.form, m.detailsMarkdown, m.renderedDetails = nil, "", ""

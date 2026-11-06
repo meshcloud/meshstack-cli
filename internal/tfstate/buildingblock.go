@@ -43,9 +43,9 @@ func NoRunOf(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.
 	switch {
 	case block.Status == nil:
 	case block.Status.IsRunning():
-		return fmt.Errorf("building block %s has a run %s, which writes the state as well", buildingBlockUuid, block.Status.Action)
+		return fmt.Errorf("building block %s has a run that is %s and also writes the state", buildingBlockUuid, block.Status.Action)
 	case block.Status.Action == client.BuildingBlockActionApproveRun:
-		return fmt.Errorf("building block %s has a run that waits for approval, which writes the state once approved", buildingBlockUuid)
+		return fmt.Errorf("building block %s has a run that is waiting for approval and writes the state once approved", buildingBlockUuid)
 	}
 	return nil
 }

@@ -42,12 +42,12 @@ func describeSelector(spec openapi.Spec, value string) (openapi.Selector, error)
 			continue
 		}
 		if actions := spec.Actions(kind); action != "" && !slices.Contains(actions, action) {
-			return openapi.Selector{}, fmt.Errorf("the API docs list no action %q of %s, write one of %s",
+			return openapi.Selector{}, fmt.Errorf("the API docs have no action %q for %s; use one of %s",
 				action, kind, strings.Join(actions, ", "))
 		}
 		return openapi.Selector{Kind: kind, Action: action}, nil
 	}
-	return openapi.Selector{}, fmt.Errorf("the API docs list no meshObject kind %q, write one of %s",
+	return openapi.Selector{}, fmt.Errorf("the API docs have no meshObject kind %q; use one of %s",
 		name, strings.Join(commands, ", "))
 }
 

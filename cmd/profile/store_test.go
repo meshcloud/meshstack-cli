@@ -128,8 +128,8 @@ func TestTheStoredProfiles(t *testing.T) {
 		require.NoError(t, profiles.Put(t.Context(), nil, profile.Profile{Name: "staging", Endpoint: endpointC}))
 		require.NoError(t, profiles.Put(t.Context(), nil, profile.Profile{Name: "dev", Endpoint: endpointA}))
 
-		assert.Contains(t, removeWarning(t, "prod"), "No profile is current now. Make one the current one in meshstack profile, "+
-			"or log in to it with meshstack login --profile <name>.")
+		assert.Contains(t, removeWarning(t, "prod"), "No profile is current now. Choose the current profile in 'meshstack profile', "+
+			"or log in to a profile with 'meshstack login --profile <name>'.")
 		assert.Empty(t, reloadedCurrent(t))
 	})
 

@@ -36,7 +36,7 @@ type NoWorkspaceToWorkInError struct {
 
 func (e NoWorkspaceToWorkInError) Error() string {
 	if e.MayNotList {
-		return "this login has no workspace to work in, as it may not list workspaces; ask for access to one in meshPanel, or name one with --workspace"
+		return "this login has no workspace to work in, as it may not list workspaces; ask for access to one in meshPanel, or use --workspace to choose a workspace"
 	}
 	return "this login has no workspace to work in; ask for access to one in meshPanel"
 }
@@ -46,7 +46,7 @@ type WorkspaceNotNamedError struct {
 }
 
 func (e WorkspaceNotNamedError) Error() string {
-	return "a browser login needs an explicitly set workspace, it is not taken from the profile: " + e.Resolution.Error()
+	return "a browser login needs a workspace, and the profile's default workspace is not used here: " + e.Resolution.Error()
 }
 
 func (e WorkspaceNotNamedError) Unwrap() error {
@@ -69,7 +69,8 @@ const (
 )
 
 func (e NoRoleInWorkspaceError) Error() string {
-	const roleNeeded = "A token for a workspace takes a role in it, also for an Organization Admin, whose login can still read the workspace without --workspace"
+	const roleNeeded = "To get a token for a workspace, you need a role in that workspace, even as an Organization Admin. " +
+		"An Organization Admin can still read the workspace without --workspace"
 	switch e.Existence {
 	case DoesNotExist:
 		return fmt.Sprintf("workspace '%s' does not exist; check its identifier", e.Workspace)

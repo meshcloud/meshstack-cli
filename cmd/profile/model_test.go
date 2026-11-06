@@ -305,8 +305,8 @@ func TestAWarningWhileTheProgramRunsShowsInTheViewAndIsLoggedInOrderOnceItEnds(t
 		assert.Contains(t, m.View().Content, "1 warning was logged, read it once you quit: No profile is current now.")
 		assert.Equal(t, []string{
 			"Profile 'prod' is the current one.",
-			"No profile is current now. Make one the current one in meshstack profile, " +
-				"or log in to it with meshstack login --profile <name>.",
+			"No profile is current now. Choose the current profile in 'meshstack profile', " +
+				"or log in to a profile with 'meshstack login --profile <name>'.",
 			"Deleted profile 'prod'.",
 		}, logged(captured))
 	})

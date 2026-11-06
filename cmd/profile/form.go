@@ -52,7 +52,7 @@ type question struct {
 func (d *draft) questions(profiles profile.Profiles) []question {
 	endpointHint := "The meshStack to log in to."
 	if d.original != nil {
-		endpointHint += " A new endpoint logs the profile out."
+		endpointHint += " Changing the endpoint logs the profile out."
 	}
 	// localEndpoint comes last, so that a known https endpoint wins over it for a prefix of both,
 	// such as "http".
@@ -68,7 +68,7 @@ func (d *draft) questions(profiles profile.Profiles) []question {
 			},
 		},
 		{
-			title: "Default workspace", description: "Optional. The workspace a command works in unless --workspace names one.",
+			title: "Default workspace", description: fmt.Sprintf("Default workspace is used for commands if --%s flag is not overriding it", internal.WorkspaceFlag.Name),
 			value: &d.workspace, suggestedLater: true,
 		},
 		{

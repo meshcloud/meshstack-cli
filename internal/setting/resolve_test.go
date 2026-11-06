@@ -173,7 +173,7 @@ func TestResolveSettingWarnsWhenTheEnvironmentOverridesAStoredValue(t *testing.T
 		t.Setenv(stored.EnvKey(), "dev")
 		lines := warnings(t, sources)
 		require.Len(t, lines, 1)
-		assert.Contains(t, lines[0], "env MESHSTACK_TEST_STORED sets 'dev' over 'default' from the current profile")
+		assert.Contains(t, lines[0], "env MESHSTACK_TEST_STORED sets 'dev', which overrides 'default' from the current profile")
 	})
 
 	t.Run("a front end source over the environment is no reason to look up the stored value", func(t *testing.T) {

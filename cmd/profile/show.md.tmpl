@@ -6,11 +6,11 @@
 | --- | --- |
 | Endpoint | {{with .Endpoint.URL}}{{cell .}}{{else}}none{{end}} |
 | Default workspace | {{or .DefaultWorkspace "none"}} |
-| Credential | none, run `meshstack login -p {{.Name}}` |
+| Credential | none, run `meshstack login --profile {{.Name}}` |
 {{- end}}
 {{- if .New}}
 
-This profile is not stored yet, a first login stores it.
+This profile is not saved yet. It is saved on the first login.
 {{- else if .Current}}
 
 This is the current profile.

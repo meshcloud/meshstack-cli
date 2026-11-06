@@ -39,12 +39,12 @@ func newStatus() *cobra.Command {
 	var output internal.ShowFlag
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show the credential this run authenticates with",
-		Long: `Show the credential a command run with the same flags and environment would authenticate with:
-where it comes from, who it is for, and until when it lasts. It never shows a secret.
+		Short: "Show which credential commands authenticate with",
+		Long: `Show which credential other commands with the same flags and environment would authenticate
+with: where it comes from, who it is for, and how long it is valid. It never shows a secret.
 
-A browser login is not renewed for this, so its token may show as expired, and it is renewed on
-next use.`,
+This command does not renew the token of a browser login, so the token may show as expired. The
+next command that needs the token renews it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			session, err := auth.ResolveSession(cmd.Context(), internal.ResolveClientOptions())

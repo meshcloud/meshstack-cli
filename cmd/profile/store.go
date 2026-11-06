@@ -28,7 +28,7 @@ func loadLockedProfiles(ctx context.Context) (profile.Profiles, error) {
 	profiles, err := profile.LoadProfiles(ctx, profile.LoadProfilesOptions{SettingSources: internal.SettingSources(), ExclusiveLock: true})
 	if errors.Is(err, profile.ErrInUse) {
 		// Only the cause, as the setting a lookup failed for adds nothing to do about it.
-		return profiles, fmt.Errorf("%w, such as a login or another meshstack profile; let it finish and try again", profile.ErrInUse)
+		return profiles, fmt.Errorf("%w, such as 'meshstack login' or 'meshstack profile'; wait for it to finish, then try again", profile.ErrInUse)
 	}
 	return profiles, err
 }
@@ -45,8 +45,8 @@ func remove(ctx context.Context, profiles *profile.Profiles, name profile.Name) 
 	case profiles.CurrentProfile != "":
 		slog.WarnContext(ctx, fmt.Sprintf("Profile '%s' is the current one now, as it is the only one left.", profiles.CurrentProfile))
 	case len(profiles.Profiles) > 0:
-		slog.WarnContext(ctx, "No profile is current now. Make one the current one in meshstack profile, "+
-			"or log in to it with meshstack login --profile <name>.")
+		slog.WarnContext(ctx, "No profile is current now. Choose the current profile in 'meshstack profile', "+
+			"or log in to a profile with 'meshstack login --"+internal.ProfileFlag.Name.String()+" <name>'.")
 	}
 	return nil
 }

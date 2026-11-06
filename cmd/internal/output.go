@@ -27,13 +27,13 @@ type OutputFlag struct{ Format OutputFormat }
 
 func (f *OutputFlag) Register(flags *pflag.FlagSet) {
 	f.Format = OutputJson
-	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for one array, %s for one item per line", OutputJson, OutputNdjson))
+	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for one array, or %s for one item per line", OutputJson, OutputNdjson))
 }
 
 // RegisterForItem is Register for a command that writes one object through [OutputFormat.WriteItem].
 func (f *OutputFlag) RegisterForItem(flags *pflag.FlagSet) {
 	f.Format = OutputJson
-	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s, or %s for one line", OutputJson, OutputNdjson))
+	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for indented JSON, or %s for JSON on one line", OutputJson, OutputNdjson))
 }
 
 func (f *OutputFlag) String() string {
@@ -47,7 +47,7 @@ func (f *OutputFlag) Set(value string) error {
 		f.Format = format
 		return nil
 	default:
-		return fmt.Errorf("%q is no output format, write %s or %s", value, OutputJson, OutputNdjson)
+		return fmt.Errorf("%q is not a valid output format; use %s or %s", value, OutputJson, OutputNdjson)
 	}
 }
 
@@ -133,7 +133,7 @@ type ShowFlag struct{ Format OutputFormat }
 
 func (f *ShowFlag) Register(flags *pflag.FlagSet) {
 	f.Format = OutputMarkdown
-	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s, or %s for scripts", OutputMarkdown, OutputJson))
+	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for people, or %s for scripts", OutputMarkdown, OutputJson))
 }
 
 func (f *ShowFlag) String() string {
@@ -147,7 +147,7 @@ func (f *ShowFlag) Set(value string) error {
 		f.Format = format
 		return nil
 	default:
-		return fmt.Errorf("%q is no output format, write %s or %s", value, OutputMarkdown, OutputJson)
+		return fmt.Errorf("%q is not a valid output format; use %s or %s", value, OutputMarkdown, OutputJson)
 	}
 }
 
@@ -173,5 +173,5 @@ func (f *ShowFlag) Show(w io.Writer, markdownTemplate *template.Template, data a
 }
 
 func (format OutputFormat) unknown() error {
-	return fmt.Errorf("%q is no output format, write %s or %s", format, OutputJson, OutputNdjson)
+	return fmt.Errorf("%q is not a valid output format; use %s or %s", format, OutputJson, OutputNdjson)
 }

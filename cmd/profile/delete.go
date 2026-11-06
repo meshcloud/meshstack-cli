@@ -13,20 +13,21 @@ import (
 )
 
 func newDelete() *cobra.Command {
-	yesFlag := internal.Flag[bool]{Name: "yes", Help: "delete the profile --profile or --endpoint names without asking"}
+	yesFlag := internal.Flag[bool]{Name: "yes", Help: "delete the profile selected by --profile or --endpoint without asking for confirmation"}
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a profile and its stored credentials",
 		Long: `Delete a profile and its stored credentials. For a browser login, this also ends the login's
 session at meshStack, as meshstack auth logout does. Your browser stays signed in to meshStack.
 
-Without --profile, it asks which profile to delete, among those for the endpoint. It asks before it
-deletes, unless --yes goes with --profile, or with an --endpoint that only one profile is for.`,
+Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the profiles for the endpoint to delete. It asks for confirmation
+before it deletes. Use --yes to skip the confirmation; --yes needs --` + internal.ProfileFlag.Name.String() + `, or an --` + internal.EndpointFlag.Name.String() + `
+that matches exactly one profile.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			if yesFlag.Value && !cmd.Flags().Changed(internal.ProfileFlag.Name.String()) && !cmd.Flags().Changed(internal.EndpointFlag.Name.String()) {
-				return fmt.Errorf("--%s deletes only the profile --%s or --%s names", yesFlag.Name, internal.ProfileFlag.Name, internal.EndpointFlag.Name)
+				return fmt.Errorf("--%s needs --%s, or an --%s that matches exactly one profile", yesFlag.Name, internal.ProfileFlag.Name, internal.EndpointFlag.Name)
 			}
 			p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
 			return withLockedProfiles(ctx, func(profiles profile.Profiles) error {

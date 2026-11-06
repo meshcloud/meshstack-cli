@@ -15,31 +15,31 @@ import (
 )
 
 const rights = `meshStack gives the state to a login that has the rights of one of these rows in the
-workspace it works in:
+workspace that the login works in:
 
   Workspace the login works in            To read                To write (--mode readwrite)
   the building block's workspace          TFSTATE_LIST           TFSTATE_SAVE
   the workspace owning its definition     MANAGED_TFSTATE_LIST   MANAGED_TFSTATE_SAVE
   the admin workspace                     ADM_TFSTATE_LIST       ADM_TFSTATE_SAVE
 
-The roles Workspace Owner and Workspace Manager have the rights of the second row, so a browser login
-works where its workspace owns the definition of the building block. Any other row takes an API key
-with these rights, meshstack login --apikey. Locking the state, and force-unlock, take the right to
-write it. To delete the state, the login needs TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or
-ADM_TFSTATE_DELETE in the same row.`
+The roles Workspace Owner and Workspace Manager have the rights of the second row. So a browser
+login works if its workspace owns the definition of the building block. For the other rows, you need
+an API key with these rights; log in with meshstack login --apikey. Locking the state and
+force-unlock need the right to write the state. To delete the state, the login needs
+TFSTATE_DELETE, MANAGED_TFSTATE_DELETE or ADM_TFSTATE_DELETE in the same row.`
 
 func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tfstate",
-		Short: "Read and write the OpenTofu state meshStack keeps for a building block",
-		Long: `Read and write the OpenTofu state that meshStack keeps for a building block, which its runner
-reads and writes through tofu's http backend.
+		Short: "Read and write the OpenTofu state that meshStack stores for a building block",
+		Long: `Read and write the OpenTofu state that meshStack stores for a building block. The runner of the
+building block reads and writes this state through tofu's http backend.
 
 ` + rights + `
 
-"meshstack buildingblock tfstate exec" serves the state to tofu's http backend, so the module needs
-a backend "http" block. The runner adds one only while it runs, and exec with --override-backend
-adds one while its command runs. Run tofu init through it once:
+"meshstack buildingblock tfstate exec" passes the state to tofu's http backend, so the module needs
+a backend "http" block. The runner adds this block only during its own runs. exec with
+--override-backend adds it while its command runs. Run tofu init through exec once:
 
   meshstack buildingblock tfstate exec <building-block-uuid> --override-backend -- tofu init`,
 		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources

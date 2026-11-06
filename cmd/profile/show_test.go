@@ -98,7 +98,7 @@ func TestShow(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Contains(t, output, "| Profile | dev |\n")
-		assert.Contains(t, captured.String(), "Profile 'dev' is for endpoint 'https://a.example.io', so a command for endpoint 'https://b.example.io' (from flag --endpoint) fails with it")
+		assert.Contains(t, captured.String(), "Profile 'dev' has the endpoint 'https://a.example.io', which does not match the endpoint 'https://b.example.io' from flag --endpoint, so commands fail with this profile")
 	})
 
 	t.Run("shows the profile a first command would create, without storing it, where no profile is current", func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestShow(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n| Endpoint | https://b.example.io |\n")
-		assert.Contains(t, output, "This profile is not stored yet, a first login stores it.")
+		assert.Contains(t, output, "This profile is not saved yet. It is saved on the first login.")
 		requireStoredNames(t, "dev", "prod", "staging")
 	})
 
@@ -120,7 +120,7 @@ func TestShow(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n| Endpoint | none |\n| Default workspace | none |\n")
-		assert.Contains(t, output, "This profile is not stored yet, a first login stores it.")
+		assert.Contains(t, output, "This profile is not saved yet. It is saved on the first login.")
 		requireStoredNames(t)
 	})
 }

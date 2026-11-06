@@ -33,7 +33,7 @@ func newPromptingSource(settingEnvKey string, openStdinFlag *internal.Flag[bool]
 			// An error, not an empty value: ResolveSetting reads an empty value as this source
 			// having nothing and falls through to the environment, and a token exported there is
 			// not what was asked for at this prompt.
-			return "", errors.New("no non-whitespace input provided in prompt")
+			return "", errors.New("nothing was entered")
 		}
 		return answer, nil
 	})

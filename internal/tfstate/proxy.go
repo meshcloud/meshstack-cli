@@ -208,7 +208,7 @@ func (p *Proxy) lock(w gohttp.ResponseWriter, r *gohttp.Request) {
 		p.stopLockTimer()
 		warnCtx := context.WithoutCancel(ctx)
 		p.lockTimer = time.AfterFunc(p.LockWarning, func() {
-			slog.WarnContext(warnCtx, fmt.Sprintf("The command has held the lock on the state of building block %s for %s, and every run of the building block waits until it is released",
+			slog.WarnContext(warnCtx, fmt.Sprintf("The command has held the lock on the state of building block %s for %s. Every run of the building block waits until the lock is released",
 				p.Store.BuildingBlock, p.LockWarning))
 		})
 	}
@@ -307,7 +307,7 @@ func (p *Proxy) failOrPassLock(w gohttp.ResponseWriter, r *gohttp.Request, err e
 	}
 	var holder LockInfo
 	_ = json.Unmarshal(httpErr.ResponseBody, &holder)
-	slog.WarnContext(r.Context(), fmt.Sprintf("meshStack refused to %s the state of building block %s, as %q holds the lock %s on it",
+	slog.WarnContext(r.Context(), fmt.Sprintf("meshStack refused to %s the state of building block %s, because %q holds the lock %s",
 		action, p.Store.BuildingBlock, holder.Who, holder.ID))
 	passLock(w, httpErr)
 }
@@ -333,27 +333,27 @@ func (next version) follows(previous *version) error {
 		return nil
 	}
 	if next.Lineage != previous.Lineage {
-		return fmt.Errorf("the state written has the lineage %s, but the stored state %s, so it is another state", next.Lineage, previous.Lineage)
+		return fmt.Errorf("the new state has the lineage %s, but the stored state has the lineage %s, so they are different states", next.Lineage, previous.Lineage)
 	}
 	if next.Serial <= previous.Serial {
-		return fmt.Errorf("the state written has the serial %d, which is not above the serial %d of the stored state, so it misses a write", next.Serial, previous.Serial)
+		return fmt.Errorf("the new state has the serial %d, which is not higher than the serial %d of the stored state, so it misses a write", next.Serial, previous.Serial)
 	}
 	return nil
 }
 
 func versionsOf(written, stored []byte) (next version, previous *version, err error) {
 	if err = json.Unmarshal(written, &next); err != nil {
-		return next, nil, fmt.Errorf("the state written is no state of tofu: %w", err)
+		return next, nil, fmt.Errorf("the new state is not a valid tofu state: %w", err)
 	}
 	if next.Lineage == "" {
-		return next, nil, errors.New("the state written is no state of tofu, as it has no lineage")
+		return next, nil, errors.New("the new state is not a valid tofu state, because it has no lineage")
 	}
 	if stored == nil {
 		return next, nil, nil
 	}
 	previous = new(version)
 	if err = json.Unmarshal(stored, previous); err != nil {
-		return next, nil, fmt.Errorf("the stored state is no state of tofu: %w", err)
+		return next, nil, fmt.Errorf("the stored state is not a valid tofu state: %w", err)
 	}
 	return next, previous, nil
 }
