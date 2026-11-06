@@ -29,7 +29,7 @@ func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *crede
 			replaced.RefreshToken = previous.Cache.RefreshToken
 		}
 	}
-	token, level, err := browser.Login(ctx, oidcClient, replaced)
+	token, level, err := browser.Login(ctx, s.CurrentProfile.Endpoint, oidcClient, replaced)
 	if err != nil {
 		return Credential{}, err
 	}

@@ -25,10 +25,10 @@ var (
 )
 
 type pageData struct {
-	Logo           template.URL
-	Title, Message string
-	Failed         bool
-	Form           *accessLevelForm
+	Logo                                  template.URL
+	Title, Endpoint, AccessLevel, Message string
+	Failed                                bool
+	Form                                  *accessLevelForm
 }
 
 type accessLevelForm struct {

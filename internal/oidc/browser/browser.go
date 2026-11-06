@@ -36,7 +36,7 @@ const (
 // opens on a page of the loopback server first, where the person picks the access level, and that
 // page redirects on to the identity provider. It returns the level the identity provider granted,
 // which is none on a meshStack older than access levels.
-func Login(ctx context.Context, client oidc.Client, previous Previous) (oidc.Token, meshstack.AccessLevel, error) {
+func Login(ctx context.Context, endpoint xurl.URL, client oidc.Client, previous Previous) (oidc.Token, meshstack.AccessLevel, error) {
 	ctx, cancel := context.WithTimeout(ctx, loginTime)
 	defer cancel()
 
@@ -57,6 +57,7 @@ func Login(ctx context.Context, client oidc.Client, previous Previous) (oidc.Tok
 	// redirect URI of //callback is not the one keycloak has registered.
 	login := &loginPages{
 		flow:     client.NewAuthorizationCode(xurl.MustParsef("http://%s%s", addr, callbackPath)),
+		endpoint: endpoint,
 		previous: previous,
 		nonce:    rand.Text(),
 		arrived:  make(chan callback, 1),
@@ -140,6 +141,7 @@ func await(ctx context.Context, listener net.Listener, login *loginPages, startU
 
 type loginPages struct {
 	flow     oidc.AuthorizationCodeFlow
+	endpoint xurl.URL
 	previous Previous
 	// nonce ties a submitted access level to the page this login served, so that another site
 	// cannot post a level to the loopback port.
@@ -169,9 +171,10 @@ func (l *loginPages) showAccessLevels(w gohttp.ResponseWriter, r *gohttp.Request
 		message = "Choose one of the access levels below."
 	}
 	page(r.Context(), w, status, pageData{
-		Title:   "Choose an access level",
-		Message: message,
-		Form:    newAccessLevelForm(l.nonce, l.previous.Level),
+		Title:    "Choose an access level",
+		Endpoint: l.endpoint.Redacted(),
+		Message:  message,
+		Form:     newAccessLevelForm(l.nonce, l.previous.Level),
 	})
 }
 
@@ -227,8 +230,10 @@ func (l *loginPages) receiveRedirect(w gohttp.ResponseWriter, r *gohttp.Request)
 		return
 	}
 	page(r.Context(), w, gohttp.StatusOK, pageData{
-		Title:   "You are logged in",
-		Message: fmt.Sprintf("The meshStack CLI has your login with the access level %q. You can close this tab and return to your terminal.", l.chosenLevel().Label()),
+		Title:       "You are logged in",
+		Endpoint:    l.endpoint.Redacted(),
+		AccessLevel: l.chosenLevel().Label(),
+		Message:     "You can close this tab and return to your terminal.",
 	})
 	l.arrive(callback{code: query.Get("code")})
 }

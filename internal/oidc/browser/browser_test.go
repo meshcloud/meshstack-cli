@@ -19,6 +19,7 @@ func newLoginPages(previous meshstack.AccessLevel) *loginPages {
 	client := oidc.Client{Id: "meshstack-cli", AuthorizationEndpoint: xurl.MustParsef("https://keycloak.example/auth")}
 	return &loginPages{
 		flow:     client.NewAuthorizationCode(xurl.MustParsef("http://127.0.0.1:1234/callback")),
+		endpoint: xurl.MustParsef("https://meshstack.example"),
 		previous: Previous{Level: previous},
 		nonce:    "the-nonce",
 		arrived:  make(chan callback, 1),
