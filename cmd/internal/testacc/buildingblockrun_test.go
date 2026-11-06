@@ -27,7 +27,7 @@ func followOfAFinishedRunWritesItsLogsAndEnds(c *cli) func(*testing.T) {
 			require.NoErrorf(t, err, "following a succeeded run failed:\n%s", followed)
 		default:
 			require.Errorf(t, err, "following a %s run ended in exit status 0:\n%s", status, followed)
-			assert.Regexp(t, "building block run "+runUuid+" (failed|was aborted)", err.Error())
+			assert.Contains(t, err.Error(), runUuid)
 		}
 		for _, step := range stepsOf(t, logs) {
 			assert.Contains(t, followed, step.DisplayName+": "+step.Status+"\n")

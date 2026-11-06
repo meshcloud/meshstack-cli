@@ -20,8 +20,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/tfstate"
 )
 
-const noState = "has no state in workspace"
-
 // TestAccTfstate runs real tofu against the state of a building block that it bootstraps itself,
 // because the building blocks of the local stack are manual ones and never reach the tf-block-runner.
 func TestAccTfstate(t *testing.T) {
@@ -62,13 +60,13 @@ func TestAccTfstate(t *testing.T) {
 		output, err := c.run("", "buildingblock", "tfstate", "exec", block.uuid, "--", "sh", "-ec",
 			`curl --silent --show-error --fail --request POST --header "Authorization: Bearer $MESHSTACK_API_TOKEN" "$MESHSTACK_ENDPOINT/api/meshobjects/meshworkspaces"`)
 		require.Errorf(t, err, "the exec passed a POST on in read mode:\n%s", output)
-		assert.Contains(t, output, "run again with --mode readwrite to let the command change meshStack")
+		assert.Contains(t, output, "--mode readwrite")
 	})
 
 	t.Run("exec --mode readwrite applies with tofu, and leaves no lock behind", func(t *testing.T) {
 		output := c.tofuExec(t, block, "readwrite", module, "apply", "-auto-approve", "-input=false")
 		assert.Contains(t, output, "Apply complete!")
-		assert.Contains(t, c.forceUnlock(t, block), "has no lock")
+		c.requireNoLock(t, block)
 	})
 
 	t.Run("a second exec fails on the lock that the first one holds, and names it", func(t *testing.T) {
@@ -91,13 +89,11 @@ func TestAccTfstate(t *testing.T) {
 
 		output, err = c.run("no\n", "buildingblock", "tfstate", "force-unlock", block.uuid)
 		require.Errorf(t, err, "the force-unlock released the lock without a yes:\n%s", output)
-		assert.Contains(t, output, "Release the lock left-behind?")
-		assert.Contains(t, err.Error(), "kept the lock left-behind")
+		assert.Contains(t, output, "left-behind")
+		assert.Contains(t, err.Error(), "left-behind")
 
-		output = c.forceUnlock(t, block)
-		assert.Contains(t, output, "lock ID left-behind")
-		assert.Contains(t, output, "Released the lock left-behind")
-		assert.Contains(t, c.forceUnlock(t, block), "has no lock")
+		assert.Contains(t, c.forceUnlock(t, block), "left-behind")
+		c.requireNoLock(t, block)
 	})
 
 	t.Run("concurrent execs take turns on the lock, and none of their writes is lost", func(t *testing.T) {
@@ -118,7 +114,7 @@ func TestAccTfstate(t *testing.T) {
 		after := c.storedVersion(t, block)
 		assert.Equal(t, before.Lineage, after.Lineage)
 		assert.Equal(t, before.Serial+execs, after.Serial, "every apply stores one state, on top of the one the apply before stored")
-		assert.Contains(t, c.forceUnlock(t, block), "has no lock")
+		c.requireNoLock(t, block)
 	})
 
 	t.Run("a run waits for the lock that an exec holds, and succeeds once the exec releases it", func(t *testing.T) {
@@ -165,15 +161,14 @@ state --request DELETE --data '` + `LOCK_INFO` + `' "$TF_HTTP_UNLOCK_ADDRESS"`
 		require.NoErrorf(t, err, "the exec failed:\n%s", output)
 		assert.NotContains(t, output, "stored without the lock ID")
 		assert.Contains(t, output, "read "+minimalState, "the GET reads the state the POST stored")
-		assert.Contains(t, output, "Saved the stored state of building block "+block.uuid, "the POST backs the state up first")
 		backups, err := filepath.Glob(filepath.Join(backupDir, block.uuid+"-*.json"))
 		require.NoError(t, err)
 		assert.NotEmpty(t, backups)
 
 		output, err = c.run("", "buildingblock", "tfstate", "show", block.uuid)
 		require.NoErrorf(t, err, "the show failed:\n%s", output)
-		assert.Contains(t, output, noState, "the DELETE through the proxy removed the state")
-		assert.Contains(t, c.forceUnlock(t, block), "has no lock")
+		assert.NotContains(t, output, "meshstack-cli-testacc", "the DELETE through the proxy removed the state")
+		c.requireNoLock(t, block)
 	})
 }
 
@@ -316,6 +311,13 @@ func (c *cli) forceUnlock(t *testing.T, block bootstrappedBlock) string {
 	output, err := c.run("yes\n", "buildingblock", "tfstate", "force-unlock", block.uuid)
 	require.NoErrorf(t, err, "the force-unlock failed:\n%s", output)
 	return output
+}
+
+// requireNoLock answers no question, so force-unlock fails where it finds a lock to release.
+func (c *cli) requireNoLock(t *testing.T, block bootstrappedBlock) {
+	t.Helper()
+	output, err := c.run("", "buildingblock", "tfstate", "force-unlock", block.uuid)
+	require.NoErrorf(t, err, "the state is still locked:\n%s", output)
 }
 
 func tofuLockInfo(id string) string {

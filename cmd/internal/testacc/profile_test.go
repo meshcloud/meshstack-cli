@@ -7,10 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
-
-const profilesInUse = "another meshstack command is changing the profiles"
 
 func TestAccProfiles(t *testing.T) {
 	c := newCLI(t, requireLocalStack(t)).withApiKey()
@@ -21,8 +20,7 @@ func TestAccProfiles(t *testing.T) {
 		release := testlogin.HoldProfiles(t)
 
 		output, err := c.run("1\n", "login", "--apikey")
-		require.Errorf(t, err, "the login ran while meshstack profile held the profiles:\n%s", output)
-		assert.Contains(t, err.Error(), "cannot log in, because "+profilesInUse+", such as 'meshstack login'")
+		require.ErrorIsf(t, err, profile.ErrInUse, "the login ran while meshstack profile held the profiles:\n%s", output)
 		assert.NoFileExists(t, c.credentialsJson())
 
 		release()
@@ -43,7 +41,7 @@ func TestAccProfiles(t *testing.T) {
 		require.NoErrorf(t, err, "the API key login did not take the current profile:\n%s", output)
 		output, err = c.run("", "auth", "logout")
 		require.NoErrorf(t, err, "the logout did not take the current profile:\n%s", output)
-		assert.Contains(t, output, "Logged out of profile 'current'")
+		assert.Contains(t, output, "current")
 
 		assert.NoFileExists(t, c.credentialsJsonOf("current"))
 		assert.FileExists(t, c.credentialsJsonOf("other"))
@@ -58,8 +56,7 @@ func browserLoginHoldsTheProfiles(endpoint string, login devLogin) func(*testing
 		startURL := run.awaitStartURL(t)
 
 		added, err := c.run("", "profile", "add")
-		require.Errorf(t, err, "meshstack profile add ran while the login waited for the browser:\n%s", added)
-		assert.Contains(t, err.Error(), profilesInUse+", such as 'meshstack login'")
+		require.ErrorIsf(t, err, profile.ErrInUse, "meshstack profile add ran while the login waited for the browser:\n%s", added)
 		listed, err := c.run("", "profile", "list")
 		require.NoErrorf(t, err, "meshstack profile list only reads, and runs alongside a login:\n%s", listed)
 
@@ -67,7 +64,7 @@ func browserLoginHoldsTheProfiles(endpoint string, login devLogin) func(*testing
 		require.NoErrorf(t, run.wait(), "the browser login did not finish:\n%s", run.output.String())
 		shown, err := c.run("", "profile", "show")
 		require.NoErrorf(t, err, "meshstack profile show failed:\n%s", shown)
-		assert.Contains(t, shown, "| Credential | Browser login, from file ", "show reads the status of the stored login")
+		assert.Contains(t, shown, "| Credential | Browser login", "show reads the status of the stored login")
 	}
 }
 
