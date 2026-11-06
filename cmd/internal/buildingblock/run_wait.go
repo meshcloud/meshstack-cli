@@ -41,7 +41,7 @@ func (w RunWait) AwaitReaction(ctx context.Context, before client.MeshBuildingBl
 		w.buildingBlockUuid, w.startWithin))
 	defer cancel()
 	reacted, block, err := w.poll(ctx, w.startEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
-		return block.Status != nil && block.Status.RunChangedSince(before), nil
+		return block.Status != nil && (block.Status.IsLocked() || block.Status.RunChangedSince(before)), nil
 	})
 	return reacted, block, withMeshPanelLink(err, block)
 }
@@ -72,6 +72,8 @@ func (w RunWait) Outcome(block *client.MeshBuildingBlockV2) error {
 	switch {
 	case status.RunStartFailure != "":
 		return w.StartFailure(block)
+	case status.IsLocked():
+		err = fmt.Errorf("building block %s is locked, and meshStack starts no run of it until `meshstack bb unlock %s`", w.buildingBlockUuid, w.buildingBlockUuid)
 	case status.RunFailed():
 		err = fmt.Errorf("the run of building block %s ended with action %s", w.buildingBlockUuid, status.Action)
 	case status.IsWaitingForInput():

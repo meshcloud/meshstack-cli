@@ -55,4 +55,13 @@ func TestRunWait(t *testing.T) {
 
 		require.ErrorContains(t, wait.StartFailure(block), "meshStack could not start the run of building block "+buildingBlockUuid.String()+": no runner")
 	})
+
+	t.Run("a locked block ends the wait, and someone has to unlock it", func(t *testing.T) {
+		status.Store(new(`"action": "UNLOCK_RUNS", "latestRunUuid": "run-1"`))
+
+		_, block, err := wait.AwaitEnd(t.Context(), client.MeshBuildingBlockV2Status{Action: client.BuildingBlockActionUnlockRuns, LatestRunUuid: new("run-1")})
+		require.NoError(t, err)
+
+		require.ErrorContains(t, wait.Outcome(block), "building block "+buildingBlockUuid.String()+" is locked")
+	})
 }
