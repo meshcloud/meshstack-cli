@@ -28,7 +28,7 @@ skill and the help disagree, trust the help.
 | `meshstack workspace list` | | workspaces this login can see |
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
-| `meshstack buildingblock wait <uuid> --before <file\|->` | `bb` | waits until the run of one block has ended |
+| `meshstack buildingblock wait <uuid>` | `bb` | waits until the run of one block has ended |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
@@ -357,13 +357,13 @@ Start a run and wait until it has ended:
 meshstack bb trigger-run <uuid> --wait
 ```
 
-After a write through `meshstack api`, pipe its answer into `bb wait`. meshStack answers before it
-starts the run, so the command compares the block with that answer, by the rules of
-[Waiting for a Run](https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run):
+After a write through `meshstack api`, run `bb wait`. From a write that asks for a run, meshStack
+shows the action `PENDING` until it has started the run, so the command waits while the action is
+`PENDING` or `IN_PROGRESS`:
 
 ```sh
-meshstack api -X PUT /api/meshobjects/meshbuildingblocks/<uuid> --request-json block.json |
-  meshstack bb wait <uuid> --before=-
+meshstack api -X PUT /api/meshobjects/meshbuildingblocks/<uuid> --request-json block.json &&
+  meshstack bb wait <uuid>
 ```
 
 Both fail, and name the action, when the run failed or waits for a person or a dependency.
