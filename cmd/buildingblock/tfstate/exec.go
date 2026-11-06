@@ -61,37 +61,23 @@ func newExec() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exec <building-block-uuid> -- <command> [args...]",
 		Short: "Run tofu against the state of a building block",
-		Long: `Run a command, such as tofu plan, against the state of a building block. Give the building
-block by its uuid.
+		Long: `Run a command, such as tofu plan, against the state of a building block. Give the building block by its uuid.
 
-exec passes the state to tofu's http backend through the TF_HTTP_* variables. It exits with the exit
-code of the command. By default, it uses the state stored in the building block's own workspace,
-metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.
+exec passes the state to tofu's http backend through the TF_HTTP_* variables. It exits with the exit code of the command. By default, it uses the state stored in the building block's own workspace, metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.
 
-The module needs a backend "http" block. The runner adds this block only during its own runs. With
---override-backend, exec adds the block while the command runs: it writes the file
-` + tfstate.BackendOverrideFile + ` into the directory given by tofu -chdir, or into the working
-directory if there is no -chdir. In that directory, the file also replaces any backend that the
-module defines. exec removes the file when the command ends. If the command is a wrapper that runs
-tofu, run it in the module's directory. Run tofu init through exec with --override-backend once.
+The module needs a backend "http" block. The runner adds this block only during its own runs. With --override-backend, exec adds the block while the command runs: it writes the file ` + tfstate.BackendOverrideFile + ` into the directory given by tofu -chdir, or into the working directory if there is no -chdir. In that directory, the file also replaces any backend that the module defines. exec removes the file when the command ends. If the command is a wrapper that runs tofu, run it in the module's directory. Run tofu init through exec with --override-backend once.
 
-tofu's meshstack provider also connects to meshStack through exec, with the login of the meshStack
-CLI. This works with any version of the provider, as long as its provider "meshstack" block sets no
-endpoint and no credentials. Settings in that block take precedence over the ones exec provides.
+tofu's meshstack provider also connects to meshStack through exec, with the login of the meshStack CLI. This works with any version of the provider, as long as its provider "meshstack" block sets no endpoint and no credentials. Settings in that block take precedence over the ones exec provides.
 
---mode read is the default. In this mode, exec refuses to store a state, and the provider can only
-read. exec takes no lock, so a run of the building block never has to wait for it. A plan may read
-a state that a run is changing at the same time.
+--mode read is the default. In this mode, exec refuses to store a state, and the provider can only read. exec takes no lock, so a run of the building block never has to wait for it. A plan may read a state that a run is changing at the same time.
 
---mode readwrite stores what the command writes, and locks the state in meshStack whenever tofu asks
-for a lock. A run of the building block waits up to 5 minutes for that lock, and then fails. Without
---force, --mode readwrite fails in these cases:
+--mode readwrite stores what the command writes, and locks the state in meshStack whenever tofu asks for a lock. A run of the building block waits up to 5 minutes for that lock, and then fails. Without --force, --mode readwrite fails in these cases:
   - a run of the building block is pending, in progress or waiting for approval;
   - the new state has another lineage than the stored state, or its serial is not higher.
-With --force, you can stop a destructive run that someone approved by mistake: while tofu holds the
-lock, the run waits for it and then fails.
-With --backup-dir, exec copies the stored state into that directory before it replaces or deletes
-it.`,
+
+With --force, you can stop a destructive run that someone approved by mistake: while tofu holds the lock, the run waits for it and then fails.
+
+With --backup-dir, exec copies the stored state into that directory before it replaces or deletes it.`,
 		Example: `  meshstack bb tfstate exec 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --mode readwrite -- tofu apply`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if cmd.ArgsLenAtDash() != 1 || len(args) < 2 {

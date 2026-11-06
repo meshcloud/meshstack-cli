@@ -23,11 +23,9 @@ func newList() *cobra.Command {
 		Short: "List event logs, newest first",
 		Long: `List event logs, newest first.
 
---from and --until take a date such as 2026-07-01, which means midnight UTC, or an instant such as
-2026-07-01T12:00:00Z.
+--from and --until take a date such as 2026-07-01, which means midnight UTC, or an instant such as 2026-07-01T12:00:00Z.
 
-The command lists the event logs of the workspace. With an admin credential and no workspace set,
-it lists the event logs of all workspaces.`,
+The command lists the event logs of the workspace. With an admin credential and no workspace set, it lists the event logs of all workspaces.`,
 		Example: `  meshstack eventlog list --from 2026-07-01 --until 2026-07-02
   meshstack elog list --title "Building Block Run" --exclude-title "Building Block Run Executed"
   meshstack elog list --workspace my-workspace --limit unlimited -o ndjson`,

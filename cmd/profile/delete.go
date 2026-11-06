@@ -17,12 +17,9 @@ func newDelete() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a profile and its stored credentials",
-		Long: `Delete a profile and its stored credentials. For a browser login, this also ends the login's
-session at meshStack, as meshstack auth logout does. Your browser stays signed in to meshStack.
+		Long: `Delete a profile and its stored credentials. For a browser login, this also ends the login's session at meshStack, as meshstack auth logout does. Your browser stays signed in to meshStack.
 
-Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the profiles for the endpoint to delete. It asks for confirmation
-before it deletes. Use --yes to skip the confirmation; --yes needs --` + internal.ProfileFlag.Name.String() + `, or an --` + internal.EndpointFlag.Name.String() + `
-that matches exactly one profile.`,
+Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the profiles for the endpoint to delete. It asks for confirmation before it deletes. Use --yes to skip the confirmation; --yes needs --` + internal.ProfileFlag.Name.String() + `, or an --` + internal.EndpointFlag.Name.String() + ` that matches exactly one profile.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

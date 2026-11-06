@@ -41,13 +41,9 @@ func newLogin(profileSources setting.Sources) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in to meshStack",
-		Long: `Log in to meshStack and store the credential in a profile. The command creates the profile if
-it does not exist yet.
+		Long: `Log in to meshStack and store the credential in a profile. The command creates the profile if it does not exist yet.
 
-Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the stored profiles for the endpoint to log in to. Without
---apikey or --apitoken, it opens a browser login and asks which workspace to work in. Use
---` + internal.WorkspaceFlag.Name.String() + ` to choose the workspace without the question. If you choose a different access level
-than in the profile's previous browser login, the command ends that previous login first.
+Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the stored profiles for the endpoint to log in to. Without --apikey or --apitoken, it opens a browser login and asks which workspace to work in. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose the workspace without the question. If you choose a different access level than in the profile's previous browser login, the command ends that previous login first.
 
 Afterwards it prints the same output as meshstack auth status for the new login.`,
 		Args: func(cmd *cobra.Command, args []string) error {

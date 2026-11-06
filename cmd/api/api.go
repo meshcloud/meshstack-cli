@@ -28,16 +28,11 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api <path or URL>",
 		Short: "Send an authorized request to the meshStack API",
-		Long: `Send an authorized request to a path of the meshStack API, and print the response (typically
-JSON). The path is relative to the endpoint. It can also be a full URL, as long as a stored profile
-with credentials matches its endpoint.
+		Long: `Send an authorized request to a path of the meshStack API, and print the response (typically JSON). The path is relative to the endpoint. It can also be a full URL, as long as a stored profile with credentials matches its endpoint.
 
-Use this command for everything that the other commands do not cover. It sets the API version
-headers of meshStack's public API for you, unless you set them yourself.
+Use this command for everything that the other commands do not cover. It sets the API version headers of meshStack's public API for you, unless you set them yourself.
 
---request-json sends a JSON file, or stdin for '-'. For a path that has no version in the API docs,
-the Content-Type and Accept headers default to application/json. Without the API docs, only the
-Content-Type header does.
+--request-json sends a JSON file, or stdin for '-'. For a path that has no version in the API docs, the Content-Type and Accept headers default to application/json. Without the API docs, only the Content-Type header does.
 
 If the response status is not 2xx, the command still prints the response body, and then fails.
 

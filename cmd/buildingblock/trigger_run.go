@@ -22,15 +22,12 @@ func newTriggerRun() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trigger-run <building-block-uuid>",
 		Short: "Ask meshStack to run a building block",
-		Long: `Ask meshStack to run a building block. Give the building block by its uuid; "meshstack
-buildingblock list" shows it as metadata.uuid.
+		Long: `Ask meshStack to run a building block. Give the building block by its uuid; "meshstack buildingblock list" shows it as metadata.uuid.
 
-The command waits until meshStack has started the run, and then prints the building block. Its
-status.latestRunUuid is the run. If the definition requires an approval of the run,
-status.latestDryRunUuid is the preflight run, whose plan the approver sees.
-"meshstack buildingblockrun logs <run-uuid>" shows how far a run got.
-With --wait, the command waits until the run has ended. This is the same as piping meshStack's
-response to the run request into "meshstack buildingblock wait <uuid> --before=-".
+The command waits until meshStack has started the run, and then prints the building block. Its status.latestRunUuid is the run. If the definition requires an approval of the run, status.latestDryRunUuid is the preflight run, whose plan the approver sees. "meshstack buildingblockrun logs <run-uuid>" shows how far a run got.
+
+With --wait, the command waits until the run has ended. This is the same as piping meshStack's response to the run request into "meshstack buildingblock wait <uuid> --before=-".
+
 "meshstack api-docs --describe buildingblock.trigger-run" shows the fields of the response.`,
 		Example: `  meshstack buildingblock trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 -o ndjson | jq -r .status.latestRunUuid`,

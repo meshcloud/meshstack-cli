@@ -63,11 +63,9 @@ func newShow() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show a profile and the status of its stored credential",
-		Long: `Show the profile that other commands would use, and the status of its stored credential.
-Flags and environment variables can override that credential.
+		Long: `Show the profile that other commands would use, and the status of its stored credential. Flags and environment variables can override that credential.
 
-If the profile does not exist yet, the command shows what the first login would create, without
-saving anything.`,
+If the profile does not exist yet, the command shows what the first login would create, without saving anything.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

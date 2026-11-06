@@ -13,9 +13,7 @@ func newList() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List building block definitions, newest first",
-		Long: `List the building block definitions that the workspace owns, and those published to the whole
-platform, newest first. If no workspace is set, the command lists every definition that your
-credential can access.`,
+		Long:  `List the building block definitions that the workspace owns, and those published to the whole platform, newest first. If no workspace is set, the command lists every definition that your credential can access.`,
 		Example: `  meshstack buildingblockdefinition list
   meshstack bbd list --workspace my-workspace`,
 		Args: cobra.NoArgs,

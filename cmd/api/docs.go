@@ -35,16 +35,11 @@ func NewDocs() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api-docs [<path or URL>]",
 		Short: "Show what the meshStack API docs say about a request or a meshObject kind",
-		Long: `Show what the meshStack API docs say about a request, given in the same form that 'meshstack api'
-takes, or about the operations of a meshObject kind.
+		Long: `Show what the meshStack API docs say about a request, given in the same form that 'meshstack api' takes, or about the operations of a meshObject kind.
 
-Without a path, it lists every operation of the API, filtered by --method and --api-version if
-given.
+Without a path, it lists every operation of the API, filtered by --method and --api-version if given.
 
---describe takes a kind by its command name, such as buildingblock or the alias bb, optionally
-followed by one of its actions after a dot, as in bb.list. It describes each operation of the kind,
-in the latest version that the kind offers. It cannot be combined with a path or with the request
-flags.
+--describe takes a kind by its command name, such as buildingblock or the alias bb, optionally followed by one of its actions after a dot, as in bb.list. It describes each operation of the kind, in the latest version that the kind offers. It cannot be combined with a path or with the request flags.
 
 --output json prints that part of the OpenAPI document.
 

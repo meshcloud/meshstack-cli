@@ -29,11 +29,9 @@ func newLogs() *cobra.Command {
 		Short: "Show the logs of a building block run",
 		Long: `Show the logs of a building block run.
 
-Give the run by its uuid; "meshstack buildingblockrun list" shows it as metadata.uuid.
-"meshstack api-docs --describe buildingblockrun.logs" shows the fields of the response.
+Give the run by its uuid; "meshstack buildingblockrun list" shows it as metadata.uuid. "meshstack api-docs --describe buildingblockrun.logs" shows the fields of the response.
 
---follow prints new log lines as text until the run has finished. It exits with status 0 if the run
-succeeded and 1 otherwise, so a script can use it to wait for a run.`,
+--follow prints new log lines as text until the run has finished. It exits with status 0 if the run succeeded and 1 otherwise, so a script can use it to wait for a run.`,
 		Example: `  meshstack buildingblockrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c -o ndjson
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c --follow`,

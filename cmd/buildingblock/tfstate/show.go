@@ -17,11 +17,9 @@ func newShow() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <building-block-uuid>",
 		Short: "Show the state of a building block",
-		Long: `Show the state of a building block as meshStack stores it. Give the building block by its uuid.
-If the building block has no state yet, the command prints nothing and succeeds.
+		Long: `Show the state of a building block as meshStack stores it. Give the building block by its uuid. If the building block has no state yet, the command prints nothing and succeeds.
 
-By default, the command uses the state stored in the building block's own workspace,
-metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.`,
+By default, the command uses the state stored in the building block's own workspace, metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.`,
 		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources`,
 		Args:    internal.UuidArg(&buildingBlockUuid),
 		RunE: func(cmd *cobra.Command, _ []string) error {

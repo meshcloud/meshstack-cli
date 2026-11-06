@@ -27,12 +27,9 @@ func newApproveRun() *cobra.Command {
 		Short: "Approve the plan of a building block run that is waiting for approval",
 		Long: `Approve the plan of the latest run of a building block, if the run is waiting for approval.
 
-The command shows the plan and asks you to approve it, so it needs a terminal. It approves
-exactly the plan it showed. If meshStack planned the run again in the meantime, the approval fails,
-and you can run the command again to review the new plan.
+The command shows the plan and asks you to approve it, so it needs a terminal. It approves exactly the plan it showed. If meshStack planned the run again in the meantime, the approval fails, and you can run the command again to review the new plan.
 
-A building block whose status.action is APPROVE_RUN in "meshstack buildingblock list" has a run
-that is waiting for approval. After the approval, the command prints the building block.`,
+A building block whose status.action is APPROVE_RUN in "meshstack buildingblock list" has a run that is waiting for approval. After the approval, the command prints the building block.`,
 		Example: `  meshstack buildingblock approve-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb approve-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
 		Args: internal.UuidArg(&buildingBlockUuid),

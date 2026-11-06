@@ -13,9 +13,8 @@ func newAdd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a profile",
-		Long: `Add a profile. In a terminal, a form opens; otherwise, the command asks one question per line.
---` + internal.ProfileFlag.Name.String() + `, --` + internal.EndpointFlag.Name.String() + ` and --` + internal.WorkspaceFlag.Name.String() + ` pre-fill the answers.`,
-		Args: cobra.NoArgs,
+		Long:  `Add a profile. In a terminal, a form opens; otherwise, the command asks one question per line. --` + internal.ProfileFlag.Name.String() + `, --` + internal.EndpointFlag.Name.String() + ` and --` + internal.WorkspaceFlag.Name.String() + ` pre-fill the answers.`,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())

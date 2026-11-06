@@ -17,9 +17,7 @@ func newEdit() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit a profile",
-		Long: `Edit a profile. In a terminal, a form opens; otherwise, the command asks one question per line.
-Leave an answer empty to keep the current value. Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the profiles
-for the endpoint to edit. --` + internal.WorkspaceFlag.Name.String() + ` pre-fills the default workspace.
+		Long: `Edit a profile. In a terminal, a form opens; otherwise, the command asks one question per line. Leave an answer empty to keep the current value. Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the profiles for the endpoint to edit. --` + internal.WorkspaceFlag.Name.String() + ` pre-fills the default workspace.
 
 Changing the endpoint deletes the stored credentials.`,
 		Args: cobra.NoArgs,

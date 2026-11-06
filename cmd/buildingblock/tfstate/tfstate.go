@@ -32,14 +32,11 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tfstate",
 		Short: "Read and write the OpenTofu state that meshStack stores for a building block",
-		Long: `Read and write the OpenTofu state that meshStack stores for a building block. The runner of the
-building block reads and writes this state through tofu's http backend.
+		Long: `Read and write the OpenTofu state that meshStack stores for a building block. The runner of the building block reads and writes this state through tofu's http backend.
 
 ` + rights + `
 
-"meshstack buildingblock tfstate exec" passes the state to tofu's http backend, so the module needs
-a backend "http" block. The runner adds this block only during its own runs. exec with
---override-backend adds it while its command runs. Run tofu init through exec once:
+"meshstack buildingblock tfstate exec" passes the state to tofu's http backend, so the module needs a backend "http" block. The runner adds this block only during its own runs. exec with --override-backend adds it while its command runs. Run tofu init through exec once:
 
   meshstack buildingblock tfstate exec <building-block-uuid> --override-backend -- tofu init`,
 		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources

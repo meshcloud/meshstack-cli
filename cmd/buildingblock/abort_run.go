@@ -26,8 +26,7 @@ func newAbortRun() *cobra.Command {
 		Short: "Abort the latest run of a building block",
 		Long: `Abort the latest run of a building block, or its dry run if the dry run is newer.
 
-The command shows the run and asks you to confirm, so it needs a terminal. After the abort, it
-prints the building block.`,
+The command shows the run and asks you to confirm, so it needs a terminal. After the abort, it prints the building block.`,
 		Example: `  meshstack buildingblock abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
 		Args: internal.UuidArg(&buildingBlockUuid),

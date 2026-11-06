@@ -22,17 +22,11 @@ func newForceUnlock() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "force-unlock <building-block-uuid>",
 		Short: "Release a stale lock on the state of a building block",
-		Long: `Release a lock on the state of a building block that its holder left behind, for example
-because a tofu process was killed. Give the building block by its uuid. Unlike tofu force-unlock,
-this command needs no module directory and no lock ID. It shows who holds the lock, and asks before
-it releases the lock. Only the answer yes releases the lock; a script can pipe yes to stdin.
+		Long: `Release a lock on the state of a building block that its holder left behind, for example because a tofu process was killed. Give the building block by its uuid. Unlike tofu force-unlock, this command needs no module directory and no lock ID. It shows who holds the lock, and asks before it releases the lock. Only the answer yes releases the lock; a script can pipe yes to stdin.
 
-If the lock belongs to a run of the building block that is pending or in progress, the command
-refuses to release it, because that run is still writing the state. Use --force to release it
-anyway. --force does not skip the question.
+If the lock belongs to a run of the building block that is pending or in progress, the command refuses to release it, because that run is still writing the state. Use --force to release it anyway. --force does not skip the question.
 
-By default, the command uses the state stored in the building block's own workspace,
-metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.`,
+By default, the command uses the state stored in the building block's own workspace, metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.`,
 		Example: `  meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   echo yes | meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --force`,
 		Args: internal.UuidArg(&buildingBlockUuid),

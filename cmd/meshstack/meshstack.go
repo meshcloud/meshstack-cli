@@ -49,17 +49,11 @@ func newRootCommand() *cobra.Command {
 
 Start with meshstack login. It logs you in and keeps the login in a profile.
 
-AI agents: read https://docs.meshcloud.io/agent-context/index.md before you act, starting with its
-guardrails. The skill for this CLI is
-https://github.com/meshcloud/meshstack-cli/blob/main/skills/meshstack-cli/SKILL.md.
+AI agents: read https://docs.meshcloud.io/agent-context/index.md before you act, starting with its guardrails. The skill for this CLI is https://github.com/meshcloud/meshstack-cli/blob/main/skills/meshstack-cli/SKILL.md.
 
-The endpoint, the profile and the workspace come from a flag, else from the environment variable
-that the flag's help names, else from the profile, which holds an endpoint and a default workspace.
-Without a profile named, the one whose endpoint matches is used, else the current profile, which
-meshstack login sets.
+The endpoint, the profile and the workspace come from a flag, else from the environment variable that the flag's help names, else from the profile, which holds an endpoint and a default workspace. Without a profile named, the one whose endpoint matches is used, else the current profile, which meshstack login sets.
 
-AI agents and scripts: add -o json to a list or show command to read JSON. meshstack api sends a
-request to any path of the meshStack API, and meshstack api-docs describes that path.
+AI agents and scripts: add -o json to a list or show command to read JSON. meshstack api sends a request to any path of the meshStack API, and meshstack api-docs describes that path.
 
 Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 		Example: `  meshstack login
@@ -101,6 +95,7 @@ Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
 	cmd.AddCommand(profile.New())
 	cmd.AddCommand(workspace.New())
 
+	internal.WrapHelpToTerminal(cmd)
 	showUsageOnMisuse(cmd)
 	return cmd
 }
