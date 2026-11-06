@@ -1,12 +1,15 @@
 package client
 
 import (
+	"io"
+	gohttp "net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 func TestMeshBuildingBlockV2Status_RunChangedSince(t *testing.T) {
@@ -169,4 +172,29 @@ func TestMeshBuildingBlockV2_DeletionSuccessful(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMeshBuildingBlockV2Client_UpdateSendsSkipRunOnOnlyWhenSet(t *testing.T) {
+	server := fakemeshstack.Start(t, fakemeshstack.Options{})
+	server.Route("/", func(w gohttp.ResponseWriter, _ *gohttp.Request) { _, _ = io.WriteString(w, `{}`) })
+	blocks := newBuildingBlockV2Client(t.Context(), newTestHttpClient(server))
+	bb := &MeshBuildingBlockV2{Metadata: MeshBuildingBlockV2Metadata{Uuid: new("0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90")}}
+	unknown := enum.Entry[BuildingBlockSkipRunOn]("SOMETHING_NEW")
+
+	for _, skipRunOn := range [][]enum.Entry[BuildingBlockSkipRunOn]{
+		nil,
+		{},
+		{BuildingBlockSkipRunOnVersionUpgrade},
+		{BuildingBlockSkipRunOnVersionUpgrade, unknown},
+	} {
+		_, err := blocks.Update(t.Context(), bb, MeshBuildingBlockV2UpdateOptions{SkipRunOn: skipRunOn})
+		require.NoError(t, err)
+	}
+
+	requests := server.TakeRequests()
+	require.Len(t, requests, 4)
+	assert.Empty(t, requests[0].URL.RawQuery)
+	assert.Empty(t, requests[1].URL.RawQuery)
+	assert.Equal(t, "skipRunOn=VERSION_UPGRADE", requests[2].URL.RawQuery)
+	assert.Equal(t, "skipRunOn=VERSION_UPGRADE&skipRunOn=SOMETHING_NEW", requests[3].URL.RawQuery)
 }
