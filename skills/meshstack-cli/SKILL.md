@@ -29,6 +29,8 @@ skill and the help disagree, trust the help.
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
 | `meshstack buildingblock wait <uuid> --before <file\|->` | `bb` | waits until the run of one block has ended |
+| `meshstack buildingblock lock <uuid>` | `bb` | stops meshStack from running one block |
+| `meshstack buildingblock unlock <uuid>` | `bb` | lets meshStack run a locked block again |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
@@ -366,11 +368,28 @@ meshstack api -X PUT /api/meshobjects/meshbuildingblocks/<uuid> --request-json b
   meshstack bb wait <uuid> --before=-
 ```
 
-Both fail, and name the action, when the run failed or waits for a person or a dependency.
+Both fail, and name the action, when the run failed or waits for a person or a dependency, or when
+the block is locked.
 
 A block that deletes itself at the end of its run, like a starterkit, is gone before `bb wait` can
 read the outcome. Poll its runs instead: `meshstack bbrun list --building-block <uuid> --workspace
 <workspace>` until the `APPLY` run is terminal.
+
+## Locked building blocks
+
+A locked block has the action `UNLOCK_RUNS`, and meshStack starts no run of it until it is unlocked.
+An update with the query parameter `skipRunOn=VERSION_UPGRADE` that upgrades the definition version
+locks the block, so that the new version and its inputs are saved without a run. `bb lock` locks
+any block; a run that is going on goes to its end. A locked block accepts updates and stays locked,
+`trigger-run` fails with 409, and `bb wait` fails with the hint to unlock.
+
+```sh
+meshstack bb list -o ndjson | jq -r 'select(.status.action == "UNLOCK_RUNS") | .metadata.uuid'
+meshstack bb unlock <uuid>
+```
+
+After the unlock, meshStack decides whether the block runs, as after an update, and approval
+policies apply. Both commands change nothing on a block that is already in the state they ask for.
 
 ## Everything else: `meshstack api`
 

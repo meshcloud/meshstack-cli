@@ -28,7 +28,7 @@ func newWait() *cobra.Command {
 
 meshStack responds to a write before it starts the run. So right after the write, the building block still shows the action of the previous run. Pass that response with --` + beforeFlagName + `: the response of a create (POST), an update (PUT) or a trigger-run, or a read taken before the change. The command first waits up to a minute until meshStack has reacted, following the rules of https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run. Then it waits until the run has ended. Press Ctrl-C to stop waiting.
 
-The command prints the building block. It fails and names the action if the run failed, was aborted or could not start, or if the run is waiting for a person or a dependency.`,
+The command prints the building block. It fails and names the action if the run failed, was aborted or could not start, if the run is waiting for a person or a dependency, or if the building block is locked.`,
 		Example: `  meshstack api -X PUT /api/meshobjects/meshbuildingblocks/0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --request-json block.json |
     meshstack bb wait 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --before=-`,
 		Args: internal.UuidArg(&buildingBlockUuid),
