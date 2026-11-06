@@ -71,14 +71,14 @@ func profileFor(ctx context.Context, requestURL *url.URL) (endpoint xurl.URL, so
 			return xurl.URL{}, nil, err
 		}
 		if !current {
-			slog.WarnContext(ctx, fmt.Sprintf("Using profile '%s' for %s, because its endpoint %s matches the URL; the current profile is '%s'",
-				selected, requestURL.Redacted(), selected.Endpoint, profiles.CurrentProfile))
+			slog.WarnContext(ctx, fmt.Sprintf("Using profile '%s' for '%s' instead of the current profile ('%s') because its endpoint matches the given URL.",
+				selected, requestURL.Redacted(), profiles.CurrentProfile))
 		}
 		endpoint = selected.Endpoint
 	}
 	return endpoint, setting.Sources{setting.FallbackSource{Source: setting.LookupSource{
 		MatchingKey: profile.NameSetting.EnvKey(),
-		Description: "profile whose endpoint holds " + requestURL.Redacted(),
+		Description: "profile whose endpoint matches " + requestURL.Redacted(),
 		Func:        func(context.Context) (string, error) { return string(selected.Name), nil },
 	}}}, nil
 }

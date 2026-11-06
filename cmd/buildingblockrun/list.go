@@ -17,6 +17,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
+const buildingBlockFlagName = "building-block"
+
 func newList() *cobra.Command {
 	var (
 		flags             internal.ListFlags
@@ -28,7 +30,7 @@ func newList() *cobra.Command {
 		Short: "List building block runs, newest first",
 		Long: `List building block runs, newest first.
 
---building-block lists the runs of that building block. Without it, the command lists the runs of every building block in the workspace. If no workspace is set, it lists the runs of every building block that your credential can access.`,
+With --` + buildingBlockFlagName + `, the command lists only the runs of that building block. Without it, the command lists the runs of every building block in the workspace. If no workspace is set, it lists the runs of every building block that your credential can access.`,
 		Example: `  meshstack buildingblockrun list --building-block 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bbrun list --workspace my-workspace --limit 20`,
 		Args: cobra.NoArgs,
@@ -49,7 +51,7 @@ func newList() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().Var((*internal.UuidFlag)(&buildingBlockUuid), "building-block", "list the runs of the building block with this uuid")
+	cmd.Flags().Var((*internal.UuidFlag)(&buildingBlockUuid), buildingBlockFlagName, "list the runs of the building block with this uuid")
 	flags.Register(cmd.Flags())
 
 	return cmd

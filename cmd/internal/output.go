@@ -13,6 +13,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 )
 
+const OutputFlagName = "output"
+
 type OutputFormat string
 
 const (
@@ -27,13 +29,13 @@ type OutputFlag struct{ Format OutputFormat }
 
 func (f *OutputFlag) Register(flags *pflag.FlagSet) {
 	f.Format = OutputJson
-	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for one array, or %s for one item per line", OutputJson, OutputNdjson))
+	flags.VarP(f, OutputFlagName, "o", fmt.Sprintf("output format: %s for one array, or %s for one item per line", OutputJson, OutputNdjson))
 }
 
 // RegisterForItem is Register for a command that writes one object through [OutputFormat.WriteItem].
 func (f *OutputFlag) RegisterForItem(flags *pflag.FlagSet) {
 	f.Format = OutputJson
-	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for indented JSON, or %s for JSON on one line", OutputJson, OutputNdjson))
+	flags.VarP(f, OutputFlagName, "o", fmt.Sprintf("output format: %s for indented JSON, or %s for JSON on one line", OutputJson, OutputNdjson))
 }
 
 func (f *OutputFlag) String() string {
@@ -133,7 +135,7 @@ type ShowFlag struct{ Format OutputFormat }
 
 func (f *ShowFlag) Register(flags *pflag.FlagSet) {
 	f.Format = OutputMarkdown
-	flags.VarP(f, "output", "o", fmt.Sprintf("output format: %s for people, or %s for scripts", OutputMarkdown, OutputJson))
+	flags.VarP(f, OutputFlagName, "o", fmt.Sprintf("output format: %s for people, or %s for scripts", OutputMarkdown, OutputJson))
 }
 
 func (f *ShowFlag) String() string {

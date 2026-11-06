@@ -128,7 +128,7 @@ func TestApi(t *testing.T) {
 
 	t.Run("writes the body of a failed answer, and fails with a hint to api-docs on a client error", func(t *testing.T) {
 		for status, wantError := range map[int]string{
-			gohttp.StatusConflict:   "meshStack answered HTTP 409: still in use. Run meshstack api-docs /api/x -H 'Accept: application/json' -X DELETE to see what the API takes",
+			gohttp.StatusConflict:   "meshStack answered HTTP 409: still in use. Run meshstack api-docs /api/x -H 'Accept: application/json' -X DELETE to see what the API expects",
 			gohttp.StatusBadGateway: "meshStack answered HTTP 502: still in use",
 			gohttp.StatusForbidden:  "auth scope profile default: meshStack answered HTTP 403: still in use",
 		} {
@@ -143,7 +143,7 @@ func TestApi(t *testing.T) {
 
 	t.Run("points to api-docs on a 404 only for a path the API docs do not list", func(t *testing.T) {
 		for path, wantError := range map[string]string{
-			"/api/x": "meshStack answered HTTP 404: gone (errorCode NotFound). Run meshstack api-docs /api/x -X GET -H 'Accept: application/json' to see what the API takes",
+			"/api/x": "meshStack answered HTTP 404: gone (errorCode NotFound). Run meshstack api-docs /api/x -X GET -H 'Accept: application/json' to see what the API expects",
 			"/api/meshobjects/meshtenants/0c9ef6d1-5c5d-4b0c-9a4b-1e0e3c1f2a3b": "meshStack answered HTTP 404: gone (errorCode NotFound)",
 		} {
 			meshStack.answer(gohttp.StatusNotFound, `{"errorCode":"NotFound","message":"gone"}`)
@@ -295,7 +295,7 @@ func TestApi(t *testing.T) {
 		require.EqualError(t, err, `the API docs have no action "list" for meshTenant; use one of show, delete`)
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "--describe", "bb", "/api/meshobjects/meshbuildingblocks")
-		require.EqualError(t, err, "--describe takes no path, see --help")
+		require.EqualError(t, err, "--describe cannot be combined with a path; see --help")
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "--describe", "bb", "--api-version", "v1")
 		require.ErrorContains(t, err, "[api-version describe] were all set")

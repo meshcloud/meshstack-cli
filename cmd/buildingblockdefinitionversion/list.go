@@ -9,6 +9,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
+const definitionFlagName = "definition"
+
 func newList() *cobra.Command {
 	var (
 		flags          internal.ListFlags
@@ -20,7 +22,7 @@ func newList() *cobra.Command {
 		Short: "List the versions of a building block definition",
 		Long: `List the versions of a building block definition.
 
-Give the definition by its uuid; "meshstack buildingblockdefinition list" shows it as metadata.uuid. --definition is required, because meshStack returns the versions of one definition at a time. Reading them needs a permission in the workspace that owns the definition.`,
+Give the definition by its uuid; 'meshstack buildingblockdefinition list' shows it as metadata.uuid. --` + definitionFlagName + ` is required, because meshStack returns the versions of one definition at a time. Reading them needs a permission in the workspace that owns the definition.`,
 		Example: `  meshstack buildingblockdefinitionversion list --definition 3c9e1f7a-2b4d-4e6f-8a1c-5d7b9e2f4a6c
   meshstack bbdv list --definition 3c9e1f7a-2b4d-4e6f-8a1c-5d7b9e2f4a6c --limit 1`,
 		Args: cobra.NoArgs,
@@ -31,7 +33,7 @@ Give the definition by its uuid; "meshstack buildingblockdefinition list" shows 
 		},
 	}
 
-	cmd.Flags().Var((*internal.UuidFlag)(&definitionUuid), "definition", "list the versions of the building block definition with this uuid")
+	cmd.Flags().Var((*internal.UuidFlag)(&definitionUuid), definitionFlagName, "list the versions of the building block definition with this uuid")
 	_ = cmd.MarkFlagRequired("definition")
 	flags.Register(cmd.Flags())
 

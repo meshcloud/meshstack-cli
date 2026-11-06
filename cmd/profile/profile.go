@@ -14,9 +14,9 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profile",
 		Short: "Manage the stored profiles",
-		Long: `Manage your profiles. A profile stores an endpoint, a credential and a default workspace. meshstack login creates profiles as well.
+		Long: `Manage your profiles. A profile stores an endpoint, a credential and a default workspace. 'meshstack login' also creates profiles.
 
-In a terminal, this command opens an interactive list where you can add, edit and delete profiles, and choose the current one. Outside a terminal, it shows this help. Use the subcommands there: list and show print the profiles, and add, edit and delete ask one question per line.`,
+In a terminal, this command opens an interactive list where you can add, edit and delete profiles, and choose the current one. Outside a terminal, it shows this help. There, use the subcommands: list and show print the profiles, and add, edit and delete ask one question per line.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

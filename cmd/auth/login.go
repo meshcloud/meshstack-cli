@@ -33,7 +33,7 @@ func NewLoginTo(name profile.Name) *cobra.Command {
 func newLogin(profileSources setting.Sources) *cobra.Command {
 	var (
 		openStdinFlag = newStdinFlag()
-		apiKeyFlag    = internal.NewFlagForSetting[uuid.UUID]("apikey", setting.ApiKeyClientId)
+		apiKeyFlag    = internal.NewFlagForSetting[uuid.UUID](apiKeyFlagName, setting.ApiKeyClientId)
 		apiTokenFlag  = internal.NewFlagForSetting[bool]("apitoken", setting.ApiToken)
 		output        internal.ShowFlag
 	)
@@ -43,9 +43,9 @@ func newLogin(profileSources setting.Sources) *cobra.Command {
 		Short: "Log in to meshStack",
 		Long: `Log in to meshStack and store the credential in a profile. The command creates the profile if it does not exist yet.
 
-Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the stored profiles for the endpoint to log in to. Without --apikey or --apitoken, it opens a browser login and asks which workspace to work in. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose the workspace without the question. If you choose a different access level than in the profile's previous browser login, the command ends that previous login first.
+Without --` + internal.ProfileFlag.Name.String() + `, the command asks which of the stored profiles for the endpoint to log in to. Without --` + apiKeyFlag.Name.String() + ` or --` + apiTokenFlag.Name.String() + `, it opens a browser login and asks which workspace to work in. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose the workspace without the question. If you choose a different access level than in the profile's previous browser login, the command ends that previous login first.
 
-Afterwards it prints the same output as meshstack auth status for the new login.`,
+Afterwards, the command prints the same output as 'meshstack auth status' for the new login.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
@@ -129,6 +129,8 @@ Afterwards it prints the same output as meshstack auth status for the new login.
 	return cmd
 }
 
+const apiKeyFlagName internal.FlagName = "apikey"
+
 const apiKeyIdFromEnvironment = "<id>"
 
 type bareApiKeyFlag struct{ pflag.Value }
@@ -138,7 +140,7 @@ func (f bareApiKeyFlag) Set(id string) error {
 	case apiKeyIdFromEnvironment:
 		return nil
 	case "":
-		return errors.New("the API key id is empty; give a bare --apikey to read it from the environment")
+		return fmt.Errorf("the API key id is empty; give a bare --%s to read it from the environment", apiKeyFlagName)
 	}
 	return f.Value.Set(id)
 }

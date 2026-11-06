@@ -16,10 +16,10 @@ import (
 func newLogout() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logout",
-		Short: "Remove this profile's stored credentials",
-		Long: `Remove this profile's stored credentials. For a browser login, this also ends the login's session at meshStack, so its tokens stop working. Your browser stays signed in to meshStack.
+		Short: "Log out by removing the stored credentials of a profile",
+		Long: `Remove the stored credentials of a profile. For a browser login, this also ends the login's session at meshStack, so its tokens stop working. Your browser stays signed in to meshStack.
 
-Without --` + internal.ProfileFlag.Name.String() + `, it asks which of the stored profiles for the endpoint to log out of.`,
+Without --` + internal.ProfileFlag.Name.String() + `, the command asks which of the stored profiles for the endpoint to log out of.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

@@ -10,11 +10,11 @@ import (
 var EndpointSetting = setting.Setting[xurl.URL]{
 	Env: "MESHSTACK_ENDPOINT",
 	Short: func(envKey string) string {
-		return fmt.Sprintf("The meshStack API to act against, such as https://api.example.meshcloud.io. Also read from %s.", envKey)
+		return fmt.Sprintf("The URL of the meshStack API, such as https://api.example.meshcloud.io. Also read from %s.", envKey)
 	},
 	Long: func(envKey string) string {
-		return fmt.Sprintf("The meshStack API to act against, such as `https://api.example.meshcloud.io`, "+
-			"also read from `%s` and inferred from current profile if possible.", envKey)
+		return fmt.Sprintf("The URL of the meshStack API, such as `https://api.example.meshcloud.io`, "+
+			"also read from `%s`, else taken from the current profile.", envKey)
 	},
 	Parse: setting.ParseTextUnmarshaler[xurl.URL],
 }

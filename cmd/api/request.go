@@ -19,6 +19,14 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/apidocs"
 )
 
+const (
+	methodFlagName      = "method"
+	headerFlagName      = "header"
+	requestJsonFlagName = "request-json"
+	apiVersionFlagName  = "api-version"
+	devFlagName         = "dev"
+)
+
 type requestFlags struct {
 	method      string
 	headers     []string
@@ -28,11 +36,11 @@ type requestFlags struct {
 }
 
 func (f *requestFlags) register(cmd *cobra.Command, defaultMethod, methodUsage string) {
-	cmd.Flags().StringVarP(&f.method, "method", "X", defaultMethod, methodUsage)
-	cmd.Flags().StringArrayVarP(&f.headers, "header", "H", nil, "add a request header, as 'key: value'")
-	f.requestJson.Register(cmd.Flags(), "request-json", "JSON file to send as the request body, or - for stdin")
-	cmd.Flags().StringVar(&f.apiVersion, "api-version", "", "version of the meshObject API, such as v1 or v2-preview, instead of the latest")
-	cmd.Flags().BoolVar(&f.dev, "dev", false, "use the API docs of meshStack's development version")
+	cmd.Flags().StringVarP(&f.method, methodFlagName, "X", defaultMethod, methodUsage)
+	cmd.Flags().StringArrayVarP(&f.headers, headerFlagName, "H", nil, "add a request header, as 'key: value'")
+	f.requestJson.Register(cmd.Flags(), requestJsonFlagName, "JSON file to send as the request body, or - for stdin")
+	cmd.Flags().StringVar(&f.apiVersion, apiVersionFlagName, "", "version of the meshObject API, such as v1 or v2-preview, instead of the latest")
+	cmd.Flags().BoolVar(&f.dev, devFlagName, false, "use the API docs of meshStack's development version")
 }
 
 type request struct {
@@ -105,7 +113,7 @@ func (f *requestFlags) selector(r request) (openapi.Selector, error) {
 		}
 	}
 	if len(slices.Compact(slices.Clone(given))) > 1 {
-		return selector, fmt.Errorf("the Accept and Content-Type headers, --api-version and the body's apiVersion request different versions: %s", strings.Join(given, ", "))
+		return selector, fmt.Errorf("the Accept and Content-Type headers, --%s and the body's apiVersion request different versions: %s", apiVersionFlagName, strings.Join(given, ", "))
 	}
 	if len(given) > 0 {
 		var err error
@@ -134,11 +142,11 @@ func (f *requestFlags) loadApiDocs(cmd *cobra.Command) (openapi.Spec, func(), er
 func docsCommand(cmd *cobra.Command, args []string) string {
 	words := []string{"meshstack", "api-docs"}
 	words = append(words, args...)
-	if method := cmd.Flags().Lookup("method"); !method.Changed {
+	if method := cmd.Flags().Lookup(methodFlagName); !method.Changed {
 		words = append(words, "-X", method.Value.String())
 	}
 	cmd.Flags().Visit(func(flag *pflag.Flag) {
-		if flag.Name == "request-json" && flag.Value.String() == "-" {
+		if flag.Name == requestJsonFlagName && flag.Value.String() == "-" {
 			return
 		}
 		name := "--" + flag.Name

@@ -52,6 +52,35 @@ command. For a command over a meshObject kind, the `meshobject-command` skill ha
 - A **parent command sets `RunE` as well as `Args`**.
 </rules>
 
+## Help text and messages
+
+<rules id="help-text">
+These rules cover `Short`, `Long`, `Example` and flag help, and every error and log message a user
+reads.
+
+- **Open with what the command does.** The first sentence of `Long` says it in plain words. Details,
+  caveats and pointers to other commands come after it.
+  Bad: "Show what the API docs say about a request, given in the same form that 'meshstack api'
+  takes, …". Good: "Show what the meshStack API docs say about a request or a meshObject kind."
+- **Plain English.** Use common words, natural word order and complete sentences that name who
+  acts: "the command prints …", "you". Write literally, without metaphors such as "names one",
+  "takes", "holds" or "carries". Every sentence must make sense to a user who does not know the
+  CLI's code. Bad: "Without the API docs, only the Content-Type header does." Good: "If the command
+  cannot download the API docs, it sets only the Content-Type header."
+- **No line breaks inside a paragraph.** The root command wraps help to the terminal width
+  (`cmd/internal/help.go`). Break lines only between paragraphs and list items, and around indented
+  examples.
+- **Build flag names from the flag's definition**: `"--" + internal.WorkspaceFlag.Name.String()`,
+  and for a command's own flag, the const or variable that registers it, so that a rename leaves no
+  stale text. Write a flag name literally only where its package cannot import the definition, as
+  in `internal/`, and in an `Example`, which is a command line as the user types it.
+- **Quote a command** with single quotes: 'meshstack login'. A Markdown template uses backticks.
+- **Use the same phrase for the same thing** in every command: "Use --workspace to choose another
+  workspace", "prints" for output, "response" for what meshStack sends back.
+- **An error says what went wrong and what the user can do next**: "no stored profile has the
+  endpoint X; run 'meshstack login --endpoint X' to create one".
+</rules>
+
 ## Values, pointers and receivers
 
 <rules id="values-and-pointers">

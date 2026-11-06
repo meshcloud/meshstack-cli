@@ -10,6 +10,11 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
+const (
+	fromFlagName  = "from"
+	untilFlagName = "until"
+)
+
 func newList() *cobra.Command {
 	var (
 		flags       internal.ListFlags
@@ -23,7 +28,7 @@ func newList() *cobra.Command {
 		Short: "List event logs, newest first",
 		Long: `List event logs, newest first.
 
---from and --until take a date such as 2026-07-01, which means midnight UTC, or an instant such as 2026-07-01T12:00:00Z.
+--` + fromFlagName + ` and --` + untilFlagName + ` accept a date such as 2026-07-01, which means midnight UTC, or an instant such as 2026-07-01T12:00:00Z.
 
 The command lists the event logs of the workspace. With an admin credential and no workspace set, it lists the event logs of all workspaces.`,
 		Example: `  meshstack eventlog list --from 2026-07-01 --until 2026-07-02
@@ -32,7 +37,7 @@ The command lists the event logs of the workspace. With an admin credential and 
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if !from.instant.IsZero() && !until.instant.IsZero() && !from.instant.Before(until.instant) {
-				return fmt.Errorf("--from %s is not before --until %s, so no event log can match", &from, &until)
+				return fmt.Errorf("--%s %s is not before --%s %s, so no event log can match", fromFlagName, &from, untilFlagName, &until)
 			}
 			workspace, err := internal.ListWorkspace(cmd.Context())
 			if err != nil {
@@ -53,8 +58,8 @@ The command lists the event logs of the workspace. With an admin credential and 
 
 	cmd.Flags().StringVar(&title, "title", "", "list the event logs whose title contains this text")
 	cmd.Flags().StringArrayVar(&exclude, "exclude-title", nil, "leave out the event logs of exactly this title")
-	cmd.Flags().Var(&from, "from", "list the event logs created at or after this date or instant")
-	cmd.Flags().Var(&until, "until", "list the event logs created before this date or instant")
+	cmd.Flags().Var(&from, fromFlagName, "list the event logs created at or after this date or instant")
+	cmd.Flags().Var(&until, untilFlagName, "list the event logs created before this date or instant")
 	flags.Register(cmd.Flags())
 
 	return cmd

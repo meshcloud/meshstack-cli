@@ -35,15 +35,17 @@ func NewDocs() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api-docs [<path or URL>]",
 		Short: "Show what the meshStack API docs say about a request or a meshObject kind",
-		Long: `Show what the meshStack API docs say about a request, given in the same form that 'meshstack api' takes, or about the operations of a meshObject kind.
+		Long: fmt.Sprintf(`Show what the meshStack API docs say about a request or about a meshObject kind.
 
-Without a path, it lists every operation of the API, filtered by --method and --api-version if given.
+Give the request as you would give it to 'meshstack api': a path or a URL, with --%[1]s, --%[2]s, --%[3]s and --%[4]s if needed. Without a path, the command lists every operation of the API. With --%[1]s or --%[4]s, it lists only the operations of that method or version.
 
---describe takes a kind by its command name, such as buildingblock or the alias bb, optionally followed by one of its actions after a dot, as in bb.list. It describes each operation of the kind, in the latest version that the kind offers. It cannot be combined with a path or with the request flags.
+--%[5]s describes every operation of a meshObject kind, in the latest version of the kind. Give the kind by its command name, such as buildingblock, or by its alias, such as bb. To describe one action of the kind, add the action after a dot, as in bb.list. --%[5]s cannot be combined with a path or with the flags of a request.
 
---output json prints that part of the OpenAPI document.
+--%[6]s %[7]s prints the matching part of the OpenAPI document as JSON.
 
---dev uses the development API docs.`,
+--%[8]s uses the API docs of meshStack's development version.`,
+			methodFlagName, headerFlagName, requestJsonFlagName, apiVersionFlagName, describeFlagName,
+			internal.OutputFlagName, internal.OutputJson, devFlagName),
 		Example: `  meshstack api-docs
   meshstack api-docs -X DELETE
   meshstack api-docs /api/meshobjects/meshtenants/<uuid>
@@ -59,7 +61,7 @@ Without a path, it lists every operation of the API, filtered by --method and --
 				return err
 			}
 			if describe != "" && len(args) > 0 {
-				return fmt.Errorf("--%s takes no path, see --help", describeFlagName)
+				return fmt.Errorf("--%s cannot be combined with a path; see --help", describeFlagName)
 			}
 			if r.target.IsAbs() {
 				endpoint, _, profileErr := profileFor(cmd.Context(), r.target)
@@ -104,10 +106,10 @@ Without a path, it lists every operation of the API, filtered by --method and --
 
 	flags.register(cmd, "", "show only the operations of this HTTP method")
 	cmd.Flags().StringVar(&describe, describeFlagName, "", "describe the operations of a meshObject kind, such as buildingblock, or one of them, such as bb.list")
-	cmd.MarkFlagsMutuallyExclusive(describeFlagName, "method")
-	cmd.MarkFlagsMutuallyExclusive(describeFlagName, "header")
-	cmd.MarkFlagsMutuallyExclusive(describeFlagName, "request-json")
-	cmd.MarkFlagsMutuallyExclusive(describeFlagName, "api-version")
+	cmd.MarkFlagsMutuallyExclusive(describeFlagName, methodFlagName)
+	cmd.MarkFlagsMutuallyExclusive(describeFlagName, headerFlagName)
+	cmd.MarkFlagsMutuallyExclusive(describeFlagName, requestJsonFlagName)
+	cmd.MarkFlagsMutuallyExclusive(describeFlagName, apiVersionFlagName)
 	output.Register(cmd.Flags())
 
 	return cmd

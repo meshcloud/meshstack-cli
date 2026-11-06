@@ -13,10 +13,10 @@ type Directory string
 var DirectorySetting = setting.Setting[Directory]{
 	Env: "MESHSTACK_CONFIG_DIR",
 	Short: func(envKey string) string {
-		return fmt.Sprintf("The directory holding profiles.json and one credentials file per profile. Also read from %s.", envKey)
+		return fmt.Sprintf("The directory that contains profiles.json and one credentials file per profile. Also read from %s.", envKey)
 	},
 	Long: func(envKey string) string {
-		return fmt.Sprintf("The directory holding the meshStack CLI's configuration, also read from `%s`.\n\n"+
+		return fmt.Sprintf("The directory that contains the meshStack CLI's configuration, also read from `%s`.\n\n"+
 			"`profiles.json` describes every profile, and `credentials/<profile>.json` holds that profile's "+
 			"credentials and its cached tokens.", envKey)
 	},

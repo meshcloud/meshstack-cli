@@ -39,7 +39,8 @@ The help says how to use a command, never what its kind is or does: the parent's
 such as that a uuid parses, because meshStack answers a malformed one with an empty list or a 404.
 The root help says once where the endpoint, the profile and the workspace come from, so a leaf
 names them only where it deviates, as tfstate does, which takes the building block's own workspace.
-The `Long` stays a few lines that get a user started; the errors say the rest.
+The `Long` stays a few lines that get a user started; the errors say the rest. The wording follows
+the `help-text` rule of the `development` skill.
 
 ## Leaf
 

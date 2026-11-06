@@ -37,9 +37,9 @@ func (command KindCommand) Aliases() []string {
 func (command KindCommand) Long(short string) string {
 	return fmt.Sprintf(`%s.
 
-The meshStack API docs say what each operation on them takes and returns:
+The meshStack API docs describe the request and the response of each operation on them:
 
   meshstack api-docs --describe %s
 
-meshstack api sends an operation that no command here covers.`, short, command)
+'meshstack api' sends a request that none of these commands covers.`, short, command)
 }

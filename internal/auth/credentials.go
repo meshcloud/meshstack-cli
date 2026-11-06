@@ -64,7 +64,7 @@ func (s Session) storedCredential(ctx context.Context, noSourceErrs []error) (Cr
 	}
 	current := creds.ByName(currentProfile.Credential)
 	if current == nil {
-		return Credential{}, fmt.Errorf("profile '%s' selects credential '%s', but %s holds none; run 'meshstack login --profile %s'",
+		return Credential{}, fmt.Errorf("profile '%s' selects credential '%s', but %s contains none; run 'meshstack login --profile %s'",
 			currentProfile, currentProfile.Credential, creds.FilePath, currentProfile)
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using credential %s of profile %s", currentProfile.Credential, currentProfile))

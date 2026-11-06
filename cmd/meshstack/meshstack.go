@@ -45,17 +45,17 @@ func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "meshstack",
 		Short: "Command line interface for meshStack",
-		Long: `Command line interface for meshStack.
+		Long: fmt.Sprintf(`Command line interface for meshStack.
 
-Start with meshstack login. It logs you in and keeps the login in a profile.
+Start with 'meshstack login'. It logs you in and stores the login in a profile.
 
 AI agents: read https://docs.meshcloud.io/agent-context/index.md before you act, starting with its guardrails. The skill for this CLI is https://github.com/meshcloud/meshstack-cli/blob/main/skills/meshstack-cli/SKILL.md.
 
-The endpoint, the profile and the workspace come from a flag, else from the environment variable that the flag's help names, else from the profile, which holds an endpoint and a default workspace. Without a profile named, the one whose endpoint matches is used, else the current profile, which meshstack login sets.
+A command reads the endpoint, the profile and the workspace from its flag, else from the environment variable that the flag's help lists, else from the profile. A profile stores an endpoint and a default workspace. If you choose no profile, the command uses the profile whose endpoint matches, else the current profile, which 'meshstack login' sets.
 
-AI agents and scripts: add -o json to a list or show command to read JSON. meshstack api sends a request to any path of the meshStack API, and meshstack api-docs describes that path.
+AI agents and scripts: add --%s %s to a list or show command to get JSON. 'meshstack api' sends a request to any path of the meshStack API, and 'meshstack api-docs' describes that path.
 
-Colors follow NO_COLOR and FORCE_COLOR, and stay off in a pipe.`,
+The command honors NO_COLOR and FORCE_COLOR, and prints no colors into a pipe.`, internal.OutputFlagName, internal.OutputJson),
 		Example: `  meshstack login
   meshstack bb list -o json
   meshstack api-docs --describe bb.list

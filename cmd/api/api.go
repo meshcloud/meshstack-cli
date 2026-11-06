@@ -28,15 +28,15 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api <path or URL>",
 		Short: "Send an authorized request to the meshStack API",
-		Long: `Send an authorized request to a path of the meshStack API, and print the response (typically JSON). The path is relative to the endpoint. It can also be a full URL, as long as a stored profile with credentials matches its endpoint.
+		Long: fmt.Sprintf(`Send an authorized request to a path of the meshStack API, and print the response, which is typically JSON. Give the path relative to the endpoint, or give a full URL whose endpoint matches a stored profile with credentials.
 
-Use this command for everything that the other commands do not cover. It sets the API version headers of meshStack's public API for you, unless you set them yourself.
+Use this command for everything that the other commands do not cover. For a path of meshStack's public API, the command sets the Accept and Content-Type headers to the latest API version that the API docs list, unless you set them yourself.
 
---request-json sends a JSON file, or stdin for '-'. For a path that has no version in the API docs, the Content-Type and Accept headers default to application/json. Without the API docs, only the Content-Type header does.
+--%[1]s sends a JSON file as the request body, or stdin for '-'. If the API docs list no version for the path, the command sets the Accept and Content-Type headers to application/json. If the command cannot download the API docs, it sets only the Content-Type header to application/json.
 
 If the response status is not 2xx, the command still prints the response body, and then fails.
 
-To describe the request, run the same command line with 'api' replaced by 'api-docs'.`,
+To see what the API docs say about the request, run the same command line with 'api' replaced by 'api-docs'.`, requestJsonFlagName),
 		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace'
   meshstack api -X DELETE /api/meshobjects/meshbuildingblocks/<uuid>/purge
   meshstack api -X POST /api/meshobjects/meshworkspaces --request-json workspace.json
@@ -91,7 +91,7 @@ To describe the request, run the same command line with 'api' replaced by 'api-d
 				}
 				// The body is on stdout already, so the error says only what it adds.
 				if r.docsHelpWith(httpErr) {
-					return withHint(fmt.Sprintf("%s. Run %s to see what the API takes",
+					return withHint(fmt.Sprintf("%s. Run %s to see what the API expects",
 						httpErr.Summary(), docsCommand(cmd, args)), httpErr)
 				}
 				// What wraps the HTTP error, such as the auth scope of a 403, stays.

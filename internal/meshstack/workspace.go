@@ -23,7 +23,7 @@ func (w Workspace) String() string {
 var WorkspaceSetting = setting.Setting[Workspace]{
 	Env: "MESHSTACK_WORKSPACE",
 	Short: func(envKey string) string {
-		return fmt.Sprintf("The workspace to act in, identified as in meshPanel, such as my-workspace-ab12c. Also read from %s.", envKey)
+		return fmt.Sprintf("The workspace to work in, identified as in meshPanel, such as my-workspace-ab12c. Also read from %s.", envKey)
 	},
 	Parse: setting.ParseText[Workspace],
 }
@@ -36,7 +36,7 @@ type NoWorkspaceToWorkInError struct {
 
 func (e NoWorkspaceToWorkInError) Error() string {
 	if e.MayNotList {
-		return "this login has no workspace to work in, as it may not list workspaces; ask for access to one in meshPanel, or use --workspace to choose a workspace"
+		return "this login has no workspace to work in, because it is not allowed to list workspaces; ask for access to one in meshPanel, or use --workspace to choose a workspace"
 	}
 	return "this login has no workspace to work in; ask for access to one in meshPanel"
 }
