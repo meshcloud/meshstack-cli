@@ -107,7 +107,7 @@ live backend. It builds **no binary**: it runs the cobra commands in process, an
 through stdin, stdout, stderr and the environment, as a person or a script uses the binary.
 A whole meshStack only exists in the *meshcloud-internal* mono repo, so
 CI here does not run the suite. `.github/workflows/test-acceptance.yml` asks that repository for the
-run, and `meshstack-satellite.gradle` is everything the run reads from here. The other half of the
+run, and `.github/meshstack-satellite.gradle` is everything the run reads from here. The other half of the
 lane belongs to `../meshfed-release` and changes without us, so read it there, in
 `satellite-suites.md` of the `acceptance-testing` skill, rather than trusting a copy here.
 
