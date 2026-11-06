@@ -14,65 +14,38 @@ import (
 )
 
 func newWait() *cobra.Command {
-	var (
-		output      internal.OutputFlag
-		beforeInput internal.JsonInputFlag[client.MeshBuildingBlockV2]
-	)
+	var output internal.OutputFlag
 
 	cmd := &cobra.Command{
-		Use:   "wait <building-block-uuid> --before <file|->",
+		Use:   "wait <building-block-uuid>",
 		Short: "Wait until the run of a building block has ended",
-		Long: `Wait until meshStack has reacted to a write of a building block, and until the run that the write started has ended. Give the building block by its uuid.
+		Long: `Wait until the run of a building block has ended. Give the building block by its uuid.
 
-meshStack responds to a write before it starts the run. So right after the write, the building block still shows the action of the previous run. Pass that response with --` + beforeFlagName + `: the response of a create (POST), an update (PUT) or a trigger-run, or a read taken before the change. The command first waits up to a minute until meshStack has reacted, following the rules of https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run. Then it waits until the run has ended. Press Ctrl-C to stop waiting.
+After a write that asks for a run, such as a create (POST), an update (PUT) or a trigger-run, meshStack shows the action PENDING until it has started the run, and IN_PROGRESS while the run is going on. The command waits while the action is PENDING or IN_PROGRESS. Press Ctrl-C to stop waiting.
 
 The command prints the building block. It fails and names the action if the run failed, was aborted or could not start, or if the run is waiting for a person or a dependency.`,
-		Example: `  meshstack api -X PUT /api/meshobjects/meshbuildingblocks/0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --request-json block.json |
-    meshstack bb wait 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --before=-`,
+		Example: `  meshstack api -X PUT /api/meshobjects/meshbuildingblocks/0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --request-json block.json &&
+    meshstack bb wait 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
 		Args: internal.UuidArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			buildingBlockUuid := args[0]
-			before, err := readBefore(cmd, beforeInput, buildingBlockUuid)
-			if err != nil {
-				return err
-			}
 			meshStack, err := internal.ResolveClient(cmd.Context())
 			if err != nil {
 				return err
 			}
-			return awaitRunEnd(cmd.Context(), cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2, buildingBlockUuid, before)
+			return awaitRunEnd(cmd.Context(), cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2, args[0])
 		},
 	}
 
 	output.RegisterForItem(cmd.Flags())
-	beforeInput.Register(cmd.Flags(), beforeFlagName, "file with the building block from before the write, or - to read it from stdin")
-	_ = cmd.MarkFlagRequired(beforeFlagName)
 
 	return cmd
 }
 
-const beforeFlagName = "before"
-
-func readBefore(cmd *cobra.Command, input internal.JsonInputFlag[client.MeshBuildingBlockV2], buildingBlockUuid string) (client.MeshBuildingBlockV2Status, error) {
-	source := input.Source
-	before, err := input.Read(cmd)
-	if err != nil {
-		return client.MeshBuildingBlockV2Status{}, err
-	}
-	switch {
-	case before.Metadata.Uuid != nil && *before.Metadata.Uuid != buildingBlockUuid:
-		return client.MeshBuildingBlockV2Status{}, fmt.Errorf("--%s %s contains building block %s, but the command waits for %s", beforeFlagName, source, *before.Metadata.Uuid, buildingBlockUuid)
-	case before.Status == nil:
-		return client.MeshBuildingBlockV2Status{}, fmt.Errorf("--%s %s contains no status of the building block", beforeFlagName, source)
-	}
-	return *before.Status, nil
-}
-
 // awaitRunEnd writes the building block once its run has ended, and fails on an outcome someone has
 // to act on.
-func awaitRunEnd(ctx context.Context, out io.Writer, format internal.OutputFormat, blocks client.MeshBuildingBlockV2Client, buildingBlockUuid string, before client.MeshBuildingBlockV2Status) error {
+func awaitRunEnd(ctx context.Context, out io.Writer, format internal.OutputFormat, blocks client.MeshBuildingBlockV2Client, buildingBlockUuid string) error {
 	wait := buildingblock.NewRunWait(blocks, buildingBlockUuid)
-	block, err := wait.AwaitEnd(ctx, before)
+	block, err := wait.AwaitEnd(ctx)
 	if err != nil {
 		return err
 	}

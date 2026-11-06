@@ -1,5 +1,4 @@
-// Package buildingblock waits for the run of a building block, by the rules of
-// [client.MeshBuildingBlockV2Status.RunChangedSince] and [client.MeshBuildingBlockV2.RunEndedSince].
+// Package buildingblock waits for the run of a building block.
 package buildingblock
 
 import (
@@ -11,46 +10,32 @@ import (
 )
 
 const (
-	// runStartTimeout is runStartTimeout of terraform-provider-meshstack, which waits for the same:
-	// starting a run is a write of meshStack's own, so a meshStack that has not done it within a
-	// minute is not going to.
-	runStartTimeout      = time.Minute
-	runStartPollInterval = time.Second
-	runEndPollInterval   = 10 * time.Second
+	pendingPollInterval    = time.Second
+	inProgressPollInterval = 10 * time.Second
 )
 
 type RunWait struct {
 	blocks            client.MeshBuildingBlockV2Client
 	buildingBlockUuid string
-	startEvery        time.Duration
-	startWithin       time.Duration
-	endEvery          time.Duration
+	pendingEvery      time.Duration
+	inProgressEvery   time.Duration
 }
 
 func NewRunWait(blocks client.MeshBuildingBlockV2Client, buildingBlockUuid string) RunWait {
-	return RunWait{blocks, buildingBlockUuid, runStartPollInterval, runStartTimeout, runEndPollInterval}
+	return RunWait{blocks, buildingBlockUuid, pendingPollInterval, inProgressPollInterval}
 }
 
-// AwaitReaction returns the building block once meshStack has reacted to a write since before.
-func (w RunWait) AwaitReaction(ctx context.Context, before client.MeshBuildingBlockV2Status) (*client.MeshBuildingBlockV2, error) {
-	ctx, cancel := context.WithTimeoutCause(ctx, w.startWithin, fmt.Errorf(
-		"meshStack did not react to the write of building block %s within %s: it started no run and reported no failure to start one",
-		w.buildingBlockUuid, w.startWithin))
-	defer cancel()
-	block, err := w.poll(ctx, w.startEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
-		return block.Status != nil && block.Status.RunChangedSince(before), nil
+// AwaitStart returns the building block once meshStack has started the run, or decided that none starts.
+func (w RunWait) AwaitStart(ctx context.Context) (*client.MeshBuildingBlockV2, error) {
+	block, err := w.poll(ctx, func(status client.MeshBuildingBlockV2Status) bool {
+		return status.Action != client.BuildingBlockActionPending
 	})
 	return block, withMeshPanelLink(err, block)
 }
 
-// AwaitEnd returns the building block once meshStack has reacted to a write since before, and the run
-// is no longer running.
-func (w RunWait) AwaitEnd(ctx context.Context, before client.MeshBuildingBlockV2Status) (*client.MeshBuildingBlockV2, error) {
-	if _, err := w.AwaitReaction(ctx, before); err != nil {
-		return nil, err
-	}
-	block, err := w.poll(ctx, w.endEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
-		return block.RunEndedSince(client.MeshBuildingBlockV2Status{})
+func (w RunWait) AwaitEnd(ctx context.Context) (*client.MeshBuildingBlockV2, error) {
+	block, err := w.poll(ctx, func(status client.MeshBuildingBlockV2Status) bool {
+		return !status.IsRunning()
 	})
 	return block, withMeshPanelLink(err, block)
 }
@@ -87,9 +72,8 @@ func withMeshPanelLink(err error, block *client.MeshBuildingBlockV2) error {
 	return err
 }
 
-// poll reads the building block every interval until done says so, and returns the last read, also
-// when ctx ends the poll.
-func (w RunWait) poll(ctx context.Context, every time.Duration, done func(*client.MeshBuildingBlockV2) (bool, error)) (*client.MeshBuildingBlockV2, error) {
+// poll returns the last read also when ctx ends the poll.
+func (w RunWait) poll(ctx context.Context, done func(client.MeshBuildingBlockV2Status) bool) (*client.MeshBuildingBlockV2, error) {
 	var last *client.MeshBuildingBlockV2
 	for {
 		current, err := w.blocks.Read(ctx, w.buildingBlockUuid)
@@ -102,8 +86,14 @@ func (w RunWait) poll(ctx context.Context, every time.Duration, done func(*clien
 			return last, fmt.Errorf("building block %s not found", w.buildingBlockUuid)
 		}
 		last = current
-		if ended, err := done(last); ended || err != nil {
-			return last, err
+		every := w.inProgressEvery
+		if current.Status != nil {
+			if done(*current.Status) {
+				return last, nil
+			}
+			if current.Status.Action == client.BuildingBlockActionPending {
+				every = w.pendingEvery
+			}
 		}
 		select {
 		case <-ctx.Done():

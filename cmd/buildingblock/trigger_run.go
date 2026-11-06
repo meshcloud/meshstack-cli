@@ -26,7 +26,7 @@ func newTriggerRun() *cobra.Command {
 
 The command waits until meshStack has started the run, and then prints the building block. Its status.latestRunUuid is the run. If the definition requires an approval of the run, status.latestDryRunUuid is the preflight run, whose plan the approver sees. 'meshstack buildingblockrun logs <run-uuid>' shows how far a run got.
 
-With --` + waitFlagName + `, the command waits until the run has ended. This is the same as piping meshStack's response to the run request into 'meshstack buildingblock wait <uuid> --` + beforeFlagName + `=-'.
+With --` + waitFlagName + `, the command waits until the run has ended. This is the same as running 'meshstack buildingblock wait <uuid>' afterwards.
 
 'meshstack api-docs --describe buildingblock.trigger-run' shows the fields of the response.`,
 		Example: `  meshstack buildingblock trigger-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
@@ -58,20 +58,20 @@ With --` + waitFlagName + `, the command waits until the run has ended. This is 
 				accepted = *answer.Status
 			}
 			if wait {
-				return awaitRunEnd(ctx, cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2, buildingBlockUuid, accepted)
+				return awaitRunEnd(ctx, cmd.OutOrStdout(), output.Format, meshStack.BuildingBlockV2, buildingBlockUuid)
 			}
 			runWait := buildingblock.NewRunWait(meshStack.BuildingBlockV2, buildingBlockUuid)
-			reacted, err := runWait.AwaitReaction(ctx, accepted)
+			started, err := runWait.AwaitStart(ctx)
 			if err != nil {
 				return err
 			}
-			if err := output.Format.WriteItem(cmd.OutOrStdout(), client.WithKindAndApiVersion(meshStack.BuildingBlockV2, *reacted)); err != nil {
+			if err := output.Format.WriteItem(cmd.OutOrStdout(), client.WithKindAndApiVersion(meshStack.BuildingBlockV2, *started)); err != nil {
 				return err
 			}
-			if err := runWait.StartFailure(reacted); err != nil {
+			if err := runWait.StartFailure(started); err != nil {
 				return err
 			}
-			slog.InfoContext(ctx, startedRunMessage(buildingBlockUuid, accepted, *reacted.Status))
+			slog.InfoContext(ctx, startedRunMessage(buildingBlockUuid, accepted, *started.Status))
 			return nil
 		},
 	}
@@ -84,8 +84,8 @@ With --` + waitFlagName + `, the command waits until the run has ended. This is 
 
 const waitFlagName = "wait"
 
-func startedRunMessage(buildingBlockUuid string, accepted, reacted client.MeshBuildingBlockV2Status) string {
-	switch dryRun, run := reacted.GetLatestDryRunUuid(), reacted.GetLatestRunUuid(); {
+func startedRunMessage(buildingBlockUuid string, accepted, started client.MeshBuildingBlockV2Status) string {
+	switch dryRun, run := started.GetLatestDryRunUuid(), started.GetLatestRunUuid(); {
 	case dryRun != "" && dryRun != accepted.GetLatestDryRunUuid():
 		return fmt.Sprintf("meshStack started the preflight run %s of building block %s. The run that makes the changes then waits for approval. "+
 			"Follow the preflight run with 'meshstack buildingblockrun logs %s'", dryRun, buildingBlockUuid, dryRun)
@@ -93,6 +93,6 @@ func startedRunMessage(buildingBlockUuid string, accepted, reacted client.MeshBu
 		return fmt.Sprintf("meshStack started run %s of building block %s. Follow it with 'meshstack buildingblockrun logs %s'",
 			run, buildingBlockUuid, run)
 	default:
-		return fmt.Sprintf("Building block %s now has the action %s.", buildingBlockUuid, reacted.Action)
+		return fmt.Sprintf("Building block %s now has the action %s.", buildingBlockUuid, started.Action)
 	}
 }
