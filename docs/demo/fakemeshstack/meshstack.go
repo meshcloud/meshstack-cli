@@ -75,40 +75,40 @@ type buildingBlock struct {
 		DisplayName string `json:"displayName"`
 	} `json:"spec"`
 	Status struct {
-		Status string `json:"status"`
+		Action string `json:"action"`
 	} `json:"status"`
 }
 
 // buildingBlocks are more than a demo's --limit, so that the CLI says it listed only the first ones.
 func buildingBlocks() (objects []any) {
 	for _, block := range [][3]string{
-		{"PostgreSQL Database", "platform-team", "SUCCEEDED"},
-		{"Azure Storage Account", "data-analytics", "SUCCEEDED"},
-		{"GitHub Repository", "customer-portal", "SUCCEEDED"},
+		{"PostgreSQL Database", "platform-team", "NO_ACTION"},
+		{"Azure Storage Account", "data-analytics", "NO_ACTION"},
+		{"GitHub Repository", "customer-portal", "NO_ACTION"},
 		{"Kubernetes Namespace", "payments", "IN_PROGRESS"},
-		{"AWS S3 Bucket", "machine-learning", "SUCCEEDED"},
-		{"Key Vault", "security-ops", "FAILED"},
-		{"CI/CD Pipeline", "mobile-apps", "SUCCEEDED"},
-		{"Redis Cache", "billing", "SUCCEEDED"},
-		{"Budget Alert", "marketing-web", "SUCCEEDED"},
-		{"Container Registry", "devex", "SUCCEEDED"},
-		{"Log Analytics Workspace", "observability", "SUCCEEDED"},
-		{"Service Principal", "identity-access", "SUCCEEDED"},
-		{"PostgreSQL Database", "logistics", "SUCCEEDED"},
-		{"GitHub Repository", "internal-tools", "SUCCEEDED"},
-		{"Kubernetes Namespace", "search", "SUCCEEDED"},
-		{"DNS Zone", "customer-portal", "SUCCEEDED"},
-		{"AWS S3 Bucket", "hr-systems", "WAITING_FOR_OPERATOR_INPUT"},
-		{"Budget Alert", "payments", "SUCCEEDED"},
-		{"Key Vault", "platform-team", "SUCCEEDED"},
-		{"CI/CD Pipeline", "data-analytics", "SUCCEEDED"},
-		{"Redis Cache", "customer-portal", "SUCCEEDED"},
-		{"Container Registry", "platform-team", "SUCCEEDED"},
-		{"DNS Zone", "marketing-web", "SUCCEEDED"},
+		{"AWS S3 Bucket", "machine-learning", "NO_ACTION"},
+		{"Key Vault", "security-ops", "REVIEW_ERRORS"},
+		{"CI/CD Pipeline", "mobile-apps", "NO_ACTION"},
+		{"Redis Cache", "billing", "NO_ACTION"},
+		{"Budget Alert", "marketing-web", "NO_ACTION"},
+		{"Container Registry", "devex", "NO_ACTION"},
+		{"Log Analytics Workspace", "observability", "NO_ACTION"},
+		{"Service Principal", "identity-access", "NO_ACTION"},
+		{"PostgreSQL Database", "logistics", "NO_ACTION"},
+		{"GitHub Repository", "internal-tools", "NO_ACTION"},
+		{"Kubernetes Namespace", "search", "NO_ACTION"},
+		{"DNS Zone", "customer-portal", "NO_ACTION"},
+		{"AWS S3 Bucket", "hr-systems", "PROVIDE_INPUT"},
+		{"Budget Alert", "payments", "NO_ACTION"},
+		{"Key Vault", "platform-team", "NO_ACTION"},
+		{"CI/CD Pipeline", "data-analytics", "NO_ACTION"},
+		{"Redis Cache", "customer-portal", "NO_ACTION"},
+		{"Container Registry", "platform-team", "NO_ACTION"},
+		{"DNS Zone", "marketing-web", "NO_ACTION"},
 	} {
 		var object buildingBlock
 		object.Metadata.Uuid, object.Metadata.OwnedByWorkspace = stableUuid(block[0]+block[1]), block[1]
-		object.Spec.DisplayName, object.Status.Status = block[0], block[2]
+		object.Spec.DisplayName, object.Status.Action = block[0], block[2]
 		objects = append(objects, object)
 	}
 	return objects

@@ -1,6 +1,7 @@
 package variant
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -15,26 +16,17 @@ type Variant[X, Y any] struct {
 }
 
 var (
-	_ json.Unmarshaler = (*Variant[int, string])(nil)
-	_ json.Marshaler   = Variant[int, string]{}
+	_ json.UnmarshalerFrom = (*Variant[int, string])(nil)
+	_ json.MarshalerTo     = Variant[int, string]{}
 )
 
-// wireCompatibility repeats the options internal/json marshals every request with: a v1-style
-// MarshalJSON receives none of its caller's. A Y decoded from JSON is a map, so without
-// Deterministic it would leave this method in a random member order.
-var wireCompatibility = json.JoinOptions(
-	json.Deterministic(true),
-	json.FormatNilSliceAsNull(true),
-	json.FormatNilMapAsNull(true),
-)
-
-func (v Variant[X, Y]) MarshalJSON() ([]byte, error) {
+func (v Variant[X, Y]) MarshalJSONTo(enc *jsontext.Encoder) error {
 	if v.HasX() {
-		return json.Marshal(v.X, wireCompatibility)
+		return json.MarshalEncode(enc, v.X, enc.Options())
 	} else if v.HasY() {
-		return json.Marshal(v.Y, wireCompatibility)
+		return json.MarshalEncode(enc, v.Y, enc.Options())
 	}
-	return json.Marshal(nil)
+	return enc.WriteToken(jsontext.Null)
 }
 
 func has[T any](xy any) bool {
@@ -72,9 +64,13 @@ func (v Variant[X, Y]) WithY(action func(y *Y)) {
 	}
 }
 
-func (v *Variant[X, Y]) UnmarshalJSON(bytes []byte) error {
-	errX := json.Unmarshal(bytes, &v.X)
-	errY := json.Unmarshal(bytes, &v.Y)
+func (v *Variant[X, Y]) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	bytes, err := dec.ReadValue()
+	if err != nil {
+		return err
+	}
+	errX := json.Unmarshal(bytes, &v.X, dec.Options())
+	errY := json.Unmarshal(bytes, &v.Y, dec.Options())
 	switch {
 	case v.HasX() && v.HasY():
 		// Y is cleared because a Y of type any decodes from every JSON value.

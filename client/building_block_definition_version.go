@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -121,8 +122,8 @@ type MeshBuildingBlockDefinitionInput struct {
 	IsEnvironment  bool                                 `json:"isEnvironment" tfsdk:"is_environment"`
 	IsSensitive    bool                                 `json:"isSensitive" tfsdk:"-"`
 	// Argument and DefaultValue hold a [types.Secret] when IsSensitive is true and a [types.Any]
-	// otherwise. [types.Variant] decodes into X first, so UnmarshalJSON moves a non-sensitive value
-	// that also decodes as a Secret over to Y.
+	// otherwise. [types.Variant] decodes into X first, so UnmarshalJSONFrom moves a non-sensitive
+	// value that also decodes as a Secret over to Y.
 	Argument                    types.SecretOrAny `json:"argument" tfsdk:"argument"`
 	DefaultValue                types.SecretOrAny `json:"defaultValue" tfsdk:"default_value"`
 	UpdateableByConsumer        bool              `json:"updateableByConsumer" tfsdk:"updateable_by_consumer"`
@@ -141,10 +142,10 @@ type MeshBuildingBlockDefinitionInput struct {
 	DisplayOrder int64 `json:"displayOrder" tfsdk:"display_order"`
 }
 
-func (m *MeshBuildingBlockDefinitionInput) UnmarshalJSON(bytes []byte) error {
+func (m *MeshBuildingBlockDefinitionInput) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type wrapped MeshBuildingBlockDefinitionInput
 	var target wrapped
-	if err := json.Unmarshal(bytes, &target); err != nil {
+	if err := json.UnmarshalDecode(dec, &target, dec.Options()); err != nil {
 		return err
 	}
 	*m = MeshBuildingBlockDefinitionInput(target)
@@ -192,10 +193,9 @@ type MeshBuildingBlockDefinitionVersionSpec struct {
 	VersionNumber              *int64                                       `json:"versionNumber,omitzero" tfsdk:"version_number"`
 	State                      *MeshBuildingBlockDefinitionVersionState     `json:"state,omitzero" tfsdk:"state"`
 	RunnerRef                  *UuidRef                                     `json:"runnerRef" tfsdk:"runner_ref"`
-	// Replaces the deprecated bare-UUID dependencyDefinitionUuids; requires a backend serving it.
-	DependencyDefinitionRefs types.Set[UuidRef]                           `json:"dependencyDefinitionRefs,omitempty" tfsdk:"dependency_refs"`
-	Implementation           MeshBuildingBlockDefinitionImplementation    `json:"implementation" tfsdk:"implementation"`
-	Inputs                   map[string]*MeshBuildingBlockDefinitionInput `json:"inputs" tfsdk:"inputs"`
+	DependencyDefinitionRefs   types.Set[UuidRef]                           `json:"dependencyDefinitionRefs,omitempty" tfsdk:"dependency_refs"`
+	Implementation             MeshBuildingBlockDefinitionImplementation    `json:"implementation" tfsdk:"implementation"`
+	Inputs                     map[string]*MeshBuildingBlockDefinitionInput `json:"inputs" tfsdk:"inputs"`
 }
 
 type MeshBuildingBlockDefinitionVersionStatus struct {

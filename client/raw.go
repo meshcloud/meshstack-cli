@@ -26,9 +26,7 @@ type SortCriteria []string
 // to the Terraform provider.
 type RawClient struct {
 	httpClient internal.HttpClient
-	// apis is keyed by the Go type rather than the kind, because MeshBuildingBlock and
-	// MeshBuildingBlockV2 share a kind in different API versions.
-	apis map[reflect.Type]rawApi
+	apis       map[reflect.Type]rawApi
 }
 
 type rawApi struct {

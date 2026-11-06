@@ -10,7 +10,6 @@ import (
 
 func TestKind(t *testing.T) {
 	assert.Equal(t, internal.InferKind[MeshApiKey](), MeshObjectKind.ApiKey)
-	assert.Equal(t, internal.InferKind[MeshBuildingBlock](), MeshObjectKind.BuildingBlock)
 	assert.Equal(t, internal.InferKind[MeshBuildingBlockV2](), MeshObjectKind.BuildingBlock)
 	assert.Equal(t, internal.InferKind[MeshBuildingBlockDefinition](), MeshObjectKind.BuildingBlockDefinition)
 	assert.Equal(t, internal.InferKind[MeshBuildingBlockDefinitionVersion](), MeshObjectKind.BuildingBlockDefinitionVersion)
