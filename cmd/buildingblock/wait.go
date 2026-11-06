@@ -35,7 +35,8 @@ https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run, and then u
 ended. Ctrl-C ends the wait.
 
 The command writes the building block. It fails, and names the action, when the run failed, was
-aborted or could not start, or when it waits for a person or a dependency.`,
+aborted or could not start, when it waits for a person or a dependency, or when the building block
+is locked.`,
 		Example: `  meshstack api -X PUT /api/meshobjects/meshbuildingblocks/0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --request-json block.json |
     meshstack bb wait 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --before=-`,
 		Args: internal.UuidArg(&buildingBlockUuid),

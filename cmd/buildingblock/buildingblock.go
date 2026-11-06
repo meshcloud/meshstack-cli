@@ -36,6 +36,8 @@ func New() *cobra.Command {
 	cmd.AddCommand(newWait())
 	cmd.AddCommand(newApproveRun())
 	cmd.AddCommand(newAbortRun())
+	cmd.AddCommand(newLock())
+	cmd.AddCommand(newUnlock())
 	cmd.AddCommand(tfstate.New())
 
 	return cmd
