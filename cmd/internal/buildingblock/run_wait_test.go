@@ -19,40 +19,48 @@ import (
 
 func TestRunWait(t *testing.T) {
 	buildingBlockUuid := uuid.MustParse("b1d2c3e4-0000-4000-8000-000000000003")
-	before := client.MeshBuildingBlockV2Status{Action: client.BuildingBlockActionNoAction, LatestRunUuid: new("run-1")}
-	var status atomic.Pointer[string]
+	var statuses atomic.Pointer[[]string]
 	meshStack := fakemeshstack.Start(t, fakemeshstack.Options{})
 	meshStack.Route("GET /api/meshobjects/meshbuildingblocks/{uuid}", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
+		remaining := *statuses.Load()
+		if len(remaining) > 1 {
+			statuses.Store(new(remaining[1:]))
+		}
 		_, _ = fmt.Fprintf(w, `{"metadata": {"uuid": %q}, "spec": {}, "status": {%s}, "_links": {"meshPanel": {"href": "https://panel.example/block"}}}`,
-			buildingBlockUuid, *status.Load())
+			buildingBlockUuid, remaining[0])
 	})
 	raw := client.New(t.Context(), xurl.MustParsef("%s", meshStack.URL), http.NewClient(fakemeshstack.UserAgent), http.BearerToken(fakemeshstack.Token)).Raw
-	wait := RunWait{raw: raw, buildingBlockUuid: buildingBlockUuid, startEvery: time.Millisecond, startWithin: 50 * time.Millisecond}
+	wait := RunWait{raw: raw, buildingBlockUuid: buildingBlockUuid, pendingEvery: time.Millisecond, inProgressEvery: time.Millisecond}
+	const (
+		pending    = `"action": "PENDING", "latestRunUuid": "run-1"`
+		inProgress = `"action": "IN_PROGRESS", "latestRunUuid": "run-2"`
+	)
 
-	t.Run("a preflight run that a trigger with an approval policy starts is a reaction", func(t *testing.T) {
-		status.Store(new(`"action": "IN_PROGRESS", "latestRunUuid": "run-1", "latestDryRunUuid": "preflight-1"`))
+	t.Run("the start ends with the first action after PENDING", func(t *testing.T) {
+		statuses.Store(&[]string{pending, pending, inProgress, `"action": "NO_ACTION", "latestRunUuid": "run-2"`})
 
-		_, block, err := wait.AwaitReaction(t.Context(), before)
+		_, block, err := wait.AwaitStart(t.Context())
 
 		require.NoError(t, err)
-		assert.Equal(t, "preflight-1", block.Status.GetLatestDryRunUuid())
+		assert.Equal(t, client.BuildingBlockActionInProgress, block.Status.Action)
 	})
 
-	t.Run("fails when meshStack does not react within the start window", func(t *testing.T) {
-		status.Store(new(`"action": "NO_ACTION", "latestRunUuid": "run-1"`))
+	t.Run("the end waits out PENDING and IN_PROGRESS", func(t *testing.T) {
+		statuses.Store(&[]string{pending, inProgress, inProgress, `"action": "REVIEW_ERRORS", "latestRunUuid": "run-2"`})
 
-		_, _, err := wait.AwaitReaction(t.Context(), before)
+		_, block, err := wait.AwaitEnd(t.Context())
 
-		require.ErrorContains(t, err, "meshStack did not react to the write of building block "+buildingBlockUuid.String()+" within 50ms")
-		require.ErrorContains(t, err, "https://panel.example/block")
+		require.NoError(t, err)
+		require.ErrorContains(t, wait.Outcome(block), "ended with action REVIEW_ERRORS")
 	})
 
 	t.Run("fails with the reason meshStack could not start the run", func(t *testing.T) {
-		status.Store(new(`"action": "REVIEW_ERRORS", "latestRunUuid": "run-1", "runStartFailure": "no runner", "runStartFailedOn": "2026-10-29T10:00:00Z"`))
+		statuses.Store(&[]string{pending, `"action": "REVIEW_ERRORS", "latestRunUuid": "run-1", "runStartFailure": "no runner", "runStartFailedOn": "2026-10-29T10:00:00Z"`})
 
-		_, block, err := wait.AwaitReaction(t.Context(), before)
+		_, block, err := wait.AwaitStart(t.Context())
 		require.NoError(t, err)
 
 		require.ErrorContains(t, wait.StartFailure(block), "meshStack could not start the run of building block "+buildingBlockUuid.String()+": no runner")
+		require.ErrorContains(t, wait.StartFailure(block), "https://panel.example/block")
 	})
 }
