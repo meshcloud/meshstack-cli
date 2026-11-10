@@ -44,6 +44,8 @@ type MeshBuildingBlockRunnerMetadata struct {
 type MeshBuildingBlockRunnerStatus struct {
 	LastSeen         *string `json:"lastSeen,omitzero" tfsdk:"last_seen"`
 	LastKnownVersion *string `json:"lastKnownVersion,omitzero" tfsdk:"last_known_version"`
+	// IsDefault is nil on a meshStack older than the default runner API.
+	IsDefault *bool `json:"isDefault,omitzero" tfsdk:"is_default"`
 }
 
 type MeshBuildingBlockRunnerSpec struct {
@@ -79,6 +81,7 @@ type MeshBuildingBlockRunnerClient interface {
 
 type MeshBuildingBlockRunnerFilter struct {
 	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
+	IsDefault           *bool   `json:"isDefault"`
 }
 
 type meshBuildingBlockRunnerClient struct {
