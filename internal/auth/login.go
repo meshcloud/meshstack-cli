@@ -35,10 +35,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	if err != nil {
 		return Session{}, nil, nil, err
 	}
-	session, err := newSessionFor(ctx, currentProfile, opts)
-	if err != nil {
-		return Session{}, nil, nil, err
-	}
+	session := newSessionFor(ctx, currentProfile, opts)
 
 	var creds profile.Credentials
 	creds, err = session.CurrentProfile.Credentials(ctx)
@@ -128,7 +125,7 @@ func (s Session) resolveWorkspaceForLogin(ctx context.Context, opts ResolveSessi
 		if err != nil {
 			return r, err
 		}
-		r.Items, err = c.Workspace.List(ctx)
+		r.Items, err = meshstack.ListWorkspaces(ctx, c.Workspace)
 		if httpError, ok := errors.AsType[http.Error](err); ok && httpError.IsForbidden() {
 			slog.DebugContext(ctx, "meshStack refused the workspace list: "+httpError.Error())
 			err = meshstack.NoWorkspaceToWorkInError{MayNotList: true}

@@ -1,12 +1,13 @@
 package version
 
 import (
-	"encoding/json/v2"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 func TestParse(t *testing.T) {

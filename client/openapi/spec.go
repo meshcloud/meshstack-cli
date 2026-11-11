@@ -4,13 +4,14 @@ package openapi
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"maps"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // Spec is an OpenAPI document. After Select, it marshals to the selected operations and the
@@ -31,7 +32,7 @@ type Operation struct {
 	// Action names the operation within its kind, as a command of the CLI would: list, show,
 	// create, update, delete, or the path below the kind's object, such as trigger-run.
 	Action string
-	// MediaTypes are those of the request body and of every response, each once.
+	// An error response carries application/json whatever the operation serves.
 	MediaTypes []MediaType
 
 	raw jsontext.Value
@@ -107,8 +108,10 @@ func parseOperation(method, pathTemplate string, raw jsontext.Value) (Operation,
 		return Operation{}, err
 	}
 	names := slices.Collect(maps.Keys(parsed.RequestBody.Content))
-	for _, response := range parsed.Responses {
-		names = slices.AppendSeq(names, maps.Keys(response.Content))
+	for status, response := range parsed.Responses {
+		if strings.HasPrefix(status, "2") {
+			names = slices.AppendSeq(names, maps.Keys(response.Content))
+		}
 	}
 	slices.Sort(names)
 	operation := Operation{Method: method, PathTemplate: PathTemplate(pathTemplate), raw: raw}
@@ -138,8 +141,6 @@ func (o Operation) LatestApiVersion() ApiVersion {
 	return versions[len(versions)-1]
 }
 
-// LatestMediaType is the one of the latest version, or for an operation of no version the first,
-// such as application/json. It is the one to accept, and to send a body in.
 func (o Operation) LatestMediaType() (MediaType, bool) {
 	if mediaType, ok := o.MediaType(o.LatestApiVersion()); ok {
 		return mediaType, true
@@ -187,31 +188,12 @@ func (s Spec) Select(selector Selector) (Spec, error) {
 	if selector.IsZero() {
 		return s, nil
 	}
-	matched := slices.DeleteFunc(slices.Clone(s.Operations), func(operation Operation) bool {
-		return !selector.matches(operation)
-	})
-	// The templates of one method that match a path, or of one action of a kind, are versions of one
-	// operation, because meshStack names a path parameter differently in different versions:
-	// meshtenants/{tenantIdentifier} in v3 and meshtenants/{uuid} in v4.
-	operationKey := func(operation Operation) string {
-		switch {
-		case selector.Path != "":
-			return operation.Method
-		case operation.Kind != "":
-			return operation.Kind + " " + operation.Method + " " + operation.Action
-		default:
-			return operation.Method + " " + string(operation.PathTemplate)
-		}
-	}
-
 	selected := Spec{components: s.components}
-	for _, operations := range groupBy(matched, operationKey) {
-		operations = mostLiteral(operations)
-		var offered ApiVersions
-		for _, operation := range operations {
-			offered = append(offered, operation.ApiVersions()...)
+	for _, operation := range s.Operations {
+		if !selector.matches(operation) {
+			continue
 		}
-		offered = offered.SortedUnique()
+		offered := operation.ApiVersions()
 		version := selector.ApiVersion
 		if len(offered) > 0 {
 			if version.IsZero() {
@@ -221,43 +203,16 @@ func (s Spec) Select(selector Selector) (Spec, error) {
 				if selector.Path == "" {
 					continue
 				}
-				return Spec{}, fmt.Errorf("%s %s offers %s, not %s", operations[0].Method, selector.Path, offered, version)
+				return Spec{}, fmt.Errorf("%s %s offers %s, not %s", operation.Method, selector.Path, offered, version)
 			}
-			operations = slices.DeleteFunc(operations, func(operation Operation) bool {
-				return !slices.Contains(operation.ApiVersions(), version)
-			})
 		}
-		for _, operation := range operations {
-			narrowed, err := operation.withVersion(version)
-			if err != nil {
-				return Spec{}, err
-			}
-			selected.Operations = append(selected.Operations, narrowed)
+		narrowed, err := operation.withVersion(version)
+		if err != nil {
+			return Spec{}, err
 		}
+		selected.Operations = append(selected.Operations, narrowed)
 	}
 	return selected, nil
-}
-
-// mostLiteral keeps the templates that have a literal segment where the others have a parameter.
-func mostLiteral(operations []Operation) []Operation {
-	// The templates all match one path, so they agree on every literal segment, and a parameter
-	// written as "" sorts below it.
-	literals := func(operation Operation) []segment {
-		literal := operation.PathTemplate.segments()
-		for i, segment := range literal {
-			if segment.isParameter() {
-				literal[i] = ""
-			}
-		}
-		return literal
-	}
-	compare := func(a, b Operation) int {
-		return slices.Compare(literals(a), literals(b))
-	}
-	most := slices.MaxFunc(operations, compare)
-	return slices.DeleteFunc(operations, func(operation Operation) bool {
-		return compare(operation, most) < 0
-	})
 }
 
 func (o Operation) withVersion(version ApiVersion) (Operation, error) {
@@ -412,7 +367,7 @@ func (s Spec) inline(value jsontext.Value) (jsontext.Value, error) {
 		var ref struct {
 			Ref string `json:"$ref"`
 		}
-		if value.Kind() != '{' {
+		if value.Kind() != jsontext.KindBeginObject {
 			return value, nil
 		}
 		if err := json.Unmarshal(value, &ref); err != nil {

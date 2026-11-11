@@ -1,8 +1,6 @@
 package buildingblockdefinitionversion
 
 import (
-	"uuid"
-
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
@@ -14,7 +12,7 @@ const definitionFlagName = "definition"
 func newList() *cobra.Command {
 	var (
 		flags          internal.ListFlags
-		definitionUuid uuid.UUID
+		definitionUuid string
 	)
 
 	cmd := &cobra.Command{
@@ -27,7 +25,11 @@ Give the definition by its uuid; 'meshstack buildingblockdefinition list' shows 
   meshstack bbdv list --definition 3c9e1f7a-2b4d-4e6f-8a1c-5d7b9e2f4a6c --limit 1`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return flags.Run[client.MeshBuildingBlockDefinitionVersion](cmd, client.MeshBuildingBlockDefinitionVersionListFilter{
+			meshStack, err := internal.ResolveClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return flags.Run(cmd, meshStack.BuildingBlockDefinitionVersion, client.MeshBuildingBlockDefinitionVersionFilter{
 				BuildingBlockDefinitionUuid: definitionUuid,
 			})
 		},

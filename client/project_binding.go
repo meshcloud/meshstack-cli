@@ -1,15 +1,11 @@
 package client
 
 type MeshProjectBinding struct {
-	Metadata   MeshProjectBindingMetadata `json:"metadata" tfsdk:"metadata"`
-	RoleRef    MeshProjectRoleRef         `json:"roleRef" tfsdk:"role_ref"`
-	TargetRef  MeshProjectTargetRef       `json:"targetRef" tfsdk:"target_ref"`
-	Subject    MeshSubject                `json:"subject" tfsdk:"subject"`
-	ExpiryDate *string                    `json:"expiryDate,omitzero" tfsdk:"expiry_date"`
-}
-
-type MeshProjectBindingMetadata struct {
-	Name string `json:"name" tfsdk:"name"`
+	Metadata   MeshObjectByNameMetadata `json:"metadata" tfsdk:"metadata"`
+	RoleRef    MeshProjectRoleRef       `json:"roleRef" tfsdk:"role_ref"`
+	TargetRef  MeshProjectTargetRef     `json:"targetRef" tfsdk:"target_ref"`
+	Subject    MeshSubject              `json:"subject" tfsdk:"subject"`
+	ExpiryDate *string                  `json:"expiryDate,omitzero" tfsdk:"expiry_date"`
 }
 
 // MeshProjectRoleRef names a role by its name alone.
@@ -29,7 +25,11 @@ type MeshSubject struct {
 	Name string `json:"name" tfsdk:"name"`
 }
 
-type MeshProjectBindingListFilter struct {
+type MeshProjectBindingFilter struct {
 	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
 	ProjectIdentifier   *string `json:"projectIdentifier"`
+}
+
+func (binding MeshProjectBinding) meshObjectId() string {
+	return binding.Metadata.meshObjectId()
 }

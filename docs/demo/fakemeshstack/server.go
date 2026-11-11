@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -17,12 +16,13 @@ import (
 	"log"
 	"net"
 	gohttp "net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // lifetime ends a server that the tape failed to stop.
@@ -52,7 +52,6 @@ func serve(dir string) error {
 		mux.Handle(i.api+"/", meshStack)
 		mux.Handle(i.sso+"/", meshStack)
 	}
-	mux.Handle(docsHost+"/", fakemeshstack.New(fakemeshstack.Options{ApiDocs: apiDocs}))
 	failed := make(chan error, 2)
 	go func() {
 		server := &gohttp.Server{
@@ -82,7 +81,7 @@ func hostNames() (hosts []string) {
 	for _, i := range installations {
 		hosts = append(hosts, i.api, i.sso)
 	}
-	return append(hosts, docsHost)
+	return hosts
 }
 
 // tunnel is an HTTPS proxy for the installations' host names only. Refusing every other host,
@@ -184,8 +183,8 @@ func writeDemoConfig(dir string, certPEM []byte, proxyAddr string) error {
 		return err
 	}
 
-	env := fmt.Sprintf("export MESHSTACK_CONFIG_DIR=%q\nexport HTTPS_PROXY=%q\nexport SSL_CERT_FILE=%q\nexport MESHSTACK_API_DOCS_URL=%q\n",
-		configDir, "http://"+proxyAddr, caFile, "https://"+docsHost+fakemeshstack.ApiDocsPath)
+	env := fmt.Sprintf("export MESHSTACK_CONFIG_DIR=%q\nexport HTTPS_PROXY=%q\nexport SSL_CERT_FILE=%q\n",
+		configDir, (&url.URL{Scheme: "http", Host: proxyAddr}).String(), caFile)
 	if err := os.WriteFile(filepath.Join(dir, "env.tmp"), []byte(env), 0o600); err != nil {
 		return err
 	}

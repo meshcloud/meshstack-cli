@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -14,10 +13,7 @@ import (
 )
 
 func newForceUnlock() *cobra.Command {
-	var (
-		buildingBlockUuid uuid.UUID
-		force             bool
-	)
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "force-unlock <building-block-uuid>",
@@ -29,8 +25,9 @@ If the lock belongs to a run of the building block that is pending or in progres
 By default, the command uses the state stored in the building block's own workspace, metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.`,
 		Example: `  meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   echo yes | meshstack bb tfstate force-unlock 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --force`,
-		Args: internal.UuidArg(&buildingBlockUuid),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: internal.UuidArg,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			buildingBlockUuid := args[0]
 			ctx := cmd.Context()
 			meshStack, err := internal.ResolveClient(ctx)
 			if err != nil {
@@ -42,15 +39,15 @@ By default, the command uses the state stored in the building block's own worksp
 			}
 			lock, err := store.ReadLock(ctx)
 			if errors.Is(err, tfstate.ErrNoLock) {
-				slog.InfoContext(ctx, "The state of building block "+buildingBlockUuid.String()+" in workspace "+store.Workspace+" has no lock")
+				slog.InfoContext(ctx, "The state of building block "+buildingBlockUuid+" in workspace "+store.Workspace+" has no lock")
 				return nil
 			} else if err != nil {
 				return withRightsHint(err)
 			}
-			slog.InfoContext(ctx, "The state of building block "+buildingBlockUuid.String()+" is locked by "+lock.String())
+			slog.InfoContext(ctx, "The state of building block "+buildingBlockUuid+" is locked by "+lock.String())
 
 			if !force {
-				if running := lock.NoUnfinishedRun(ctx, meshStack.Raw); running != nil {
+				if running := lock.NoUnfinishedRun(ctx, meshStack.BuildingBlockRun); running != nil {
 					return fmt.Errorf("%w: wait for it to finish, or run again with --%s", running, forceFlagName)
 				}
 			}
@@ -69,7 +66,7 @@ By default, the command uses the state stored in the building block's own worksp
 			} else if err != nil {
 				return withRightsHint(err)
 			}
-			slog.InfoContext(ctx, "Released the lock "+lock.Info.ID+" on the state of building block "+buildingBlockUuid.String())
+			slog.InfoContext(ctx, "Released the lock "+lock.Info.ID+" on the state of building block "+buildingBlockUuid)
 			return nil
 		},
 	}

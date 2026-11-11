@@ -1,12 +1,12 @@
 package client
 
 import (
-	"context"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 )
+
+type MeshApiKeyMetadata = MeshObjectByUuidMetadata
 
 type MeshApiKey struct {
 	Metadata MeshApiKeyMetadata `json:"metadata" tfsdk:"metadata"`
@@ -14,9 +14,8 @@ type MeshApiKey struct {
 	Status   *MeshApiKeyStatus  `json:"status,omitzero" tfsdk:"status"`
 }
 
-type MeshApiKeyMetadata struct {
-	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
-	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
+func (k MeshApiKey) meshObjectId() string {
+	return k.Metadata.meshObjectId()
 }
 
 type MeshApiKeySpec struct {
@@ -33,33 +32,4 @@ type MeshApiKeyStatus struct {
 	ExpiresAt time.Time `json:"expiresAt,omitzero" tfsdk:"-"`
 }
 
-type MeshApiKeyClient interface {
-	Create(ctx context.Context, apiKey *MeshApiKey) (*MeshApiKey, error)
-	Read(ctx context.Context, uuid string) (*MeshApiKey, error)
-	Update(ctx context.Context, uuid string, apiKey *MeshApiKey) (*MeshApiKey, error)
-	Delete(ctx context.Context, uuid string) error
-}
-
-type meshApiKeyClient struct {
-	meshObject internal.MeshObjectClient[MeshApiKey]
-}
-
-func newApiKeyClient(ctx context.Context, httpClient internal.HttpClient) MeshApiKeyClient {
-	return meshApiKeyClient{internal.NewMeshObjectClient[MeshApiKey](ctx, httpClient, "v1-preview")}
-}
-
-func (c meshApiKeyClient) Create(ctx context.Context, apiKey *MeshApiKey) (*MeshApiKey, error) {
-	return c.meshObject.Post(ctx, apiKey)
-}
-
-func (c meshApiKeyClient) Read(ctx context.Context, uuid string) (*MeshApiKey, error) {
-	return c.meshObject.Get(ctx, uuid)
-}
-
-func (c meshApiKeyClient) Update(ctx context.Context, uuid string, apiKey *MeshApiKey) (*MeshApiKey, error) {
-	return c.meshObject.Put(ctx, uuid, apiKey)
-}
-
-func (c meshApiKeyClient) Delete(ctx context.Context, uuid string) error {
-	return c.meshObject.Delete(ctx, uuid)
-}
+type MeshApiKeyClient = MeshObjectClient[MeshApiKey, NoFilter]

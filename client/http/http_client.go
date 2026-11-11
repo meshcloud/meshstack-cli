@@ -1,141 +1,122 @@
 package http
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	gohttp "net/http"
 	"net/url"
-	"reflect"
 	"slices"
-	"time"
 
 	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
-var sharedClient = func() (client *gohttp.Client) {
-	client = &gohttp.Client{Transport: newTransport(1 * time.Minute)}
-	RetryOptions{
-		// Sized to ride out a full meshStack backend restart, which can leave the gateway
-		// returning 503 for two to three minutes. This backoff sequence sums to about four
-		// minutes: 1+2+4+8+16+30*7 seconds.
-		MaxRetries: 12,
-		Backoff:    ExponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
-	}.ApplyTo(client)
-	return
-}()
-
-func newTransport(silenceTimeout time.Duration) gohttp.RoundTripper {
-	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone() //nolint:forcetypeassert // net/http declares it a *Transport
-	transport.ResponseHeaderTimeout = silenceTimeout
-	return stallGuard{Next: transport, Timeout: silenceTimeout}
-}
-
 type Client struct {
-	*gohttp.Client
-
-	UserAgent UserAgent
+	userAgent UserAgent
 }
 
-// NewClient panics on a UserAgent that does not validate, as a request has to name its front end.
+var goClient = newGoClient()
+
+func newGoClient() *gohttp.Client {
+	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone() //nolint:forcetypeassert // net/http declares it a *Transport
+	transport.ResponseHeaderTimeout = stallTimeout
+	return &gohttp.Client{
+		Transport: retryRoundTripper{transport},
+		CheckRedirect: func(req *gohttp.Request, _ []*gohttp.Request) error {
+			if requestOptionsFrom(req).noRedirects {
+				return gohttp.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+}
+
 func NewClient(userAgent UserAgent) Client {
-	if err := userAgent.Validate(); err != nil {
+	if err := userAgent.validate(); err != nil {
 		panic(err)
 	}
-	return Client{sharedClient, userAgent}
+	return Client{userAgent}
 }
 
-// DoRequest sends one request and parses the answer as JSON, or returns it as it came, empty
-// included, for an R of []byte. A non-2xx status is an Error that carries the response body,
-// because an OIDC endpoint answers a refusal with an error document and that document is the only
-// thing saying which refusal it was.
-func (c Client) DoRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (result R, err error) {
-	var body []byte
-	body, err = c.doRequest(ctx, method, url, options)
+func (c Client) String() string {
+	return "unauthorized client " + c.userAgent.String()
+}
+
+// UnmarshalJsonBody closes the body.
+func UnmarshalJsonBody[T any](body io.ReadCloser, err error, unmarshalers ...*json.Unmarshalers) (result T, _ error) {
+	if _, ignored := any(result).(struct{}); ignored {
+		return result, IgnoreResponse(body, err)
+	}
 	if err != nil {
-		return
+		return result, err
 	}
-	if raw, ok := any(&result).(*[]byte); ok {
-		*raw = body
-		return
-	}
-	if len(body) == 0 {
-		// Only a call typed DoRequest[any], such as a delete, expects no content. Any other call
-		// fails here, because its caller would dereference a nil result or read it as "not found".
-		if t := reflect.TypeFor[R](); t.Kind() == reflect.Interface && t.NumMethod() == 0 {
-			return
-		}
-		err = fmt.Errorf("unexpected empty response body from %s %s", method, url)
-		return
-	}
-	if err = json.Unmarshal(body, &result); err != nil {
+	err = json.UnmarshalRead(body, &result, json.WithUnmarshalers(unmarshalers...))
+	if err != nil {
 		err = fmt.Errorf("parsing response body as JSON failed: %w", err)
 	}
-	return
+	return result, errors.Join(err, body.Close())
 }
 
-func (c Client) doRequest(ctx context.Context, method string, url *url.URL, options []RequestOption) ([]byte, error) {
-	res, err := c.send(ctx, method, url, options)
+func ReadAllBody(body io.ReadCloser, err error) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = res.Body.Close()
-	}()
-	return c.readBodyAndCheckSuccess(ctx, res)
+	data, err := io.ReadAll(body)
+	return data, errors.Join(err, body.Close())
 }
 
-func (c Client) send(ctx context.Context, method string, url *url.URL, options []RequestOption) (*gohttp.Response, error) {
-	options = slices.Insert(options, 0, withHeader("User-Agent", c.UserAgent.String()))
-	opts := requestOptions{}
-	for _, option := range options {
-		option(&opts)
-	}
-	req, err := c.buildRequest(ctx, method, url, opts)
+func IgnoreResponse(body io.ReadCloser, err error) error {
 	if err != nil {
+		return err
+	}
+	if _, err = io.CopyN(io.Discard, body, maxDrainBytes); errors.Is(err, io.EOF) {
+		err = nil
+	}
+	return errors.Join(err, body.Close())
+}
+
+// DoRequest leaves the body to the caller. A non-2xx status is an Error that carries the response body,
+// because an OIDC endpoint answers a refusal with an error document and that document is the only
+// thing saying which refusal it was.
+func (c Client) DoRequest(ctx context.Context, method string, url *url.URL, options ...RequestOption) (io.ReadCloser, error) {
+	opts := newRequestOptions(slices.Insert(options, 0, WithHeader("User-Agent", c.userAgent.String())))
+	ctx, cancel := context.WithCancelCause(ctx)
+	req, err := opts.newRequest(ctx, method, url)
+	if err != nil {
+		cancel(nil)
 		return nil, err
 	}
-	return c.Do(req)
-}
-
-func isSuccess(statusCode int) bool {
-	return statusCode >= 200 && statusCode <= 299
-}
-
-func (c Client) readBodyAndCheckSuccess(ctx context.Context, res *gohttp.Response) ([]byte, error) {
-	responseBody, err := io.ReadAll(res.Body)
+	res, err := goClient.Do(req) //nolint:bodyclose // the returned body closes it, or the error path below
+	if err != nil {
+		cancel(nil)
+		return nil, err
+	}
+	slog.DebugContext(ctx, "response", "status", res.StatusCode, "headers", loggedHeaders(res.Header))
+	if opts.responseHeader != nil {
+		*opts.responseHeader = res.Header
+	}
+	body := newLoggedBody(ctx, "response body", newStallGuardedBody(res.Body, cancel))
+	if isSuccess(res.StatusCode) {
+		return body, nil
+	}
+	responseBody, err := io.ReadAll(body)
+	_ = body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("cannot read response body, status code %d: %w", res.StatusCode, err)
 	}
-	slog.DebugContext(ctx, "response", "status", res.StatusCode, "body", loggedBody{bytes.NewBuffer(responseBody)})
-
-	if isSuccess(res.StatusCode) {
-		return responseBody, nil
-	}
-
-	return responseBody, Error{
+	return nil, Error{
+		Method:       res.Request.Method,
+		Url:          res.Request.URL.Redacted(),
 		StatusCode:   res.StatusCode,
 		ResponseBody: responseBody,
 	}
 }
 
-func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, opts requestOptions) (*gohttp.Request, error) {
-	var requestBody io.ReadWriter
-	if opts.requestPayload != nil {
-		requestBodyData, err := opts.requestPayload()
-		if err != nil {
-			return nil, fmt.Errorf("cannot build request body data: %w", err)
-		}
-		requestBody = bytes.NewBuffer(requestBodyData)
-	}
-
-	if opts.retryable {
-		ctx = context.WithValue(ctx, retryableKey{}, true)
-	}
-
-	req, err := gohttp.NewRequestWithContext(ctx, method, url.String(), requestBody)
+// newRequest opens the body after every modifier, so that a modifier's error leaves none open.
+func (opts requestOptions) newRequest(ctx context.Context, method string, url *url.URL) (*gohttp.Request, error) {
+	req, err := gohttp.NewRequestWithContext(opts.requestContext(ctx), method, url.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -144,6 +125,16 @@ func (c Client) buildRequest(ctx context.Context, method string, url *url.URL, o
 			return nil, err
 		}
 	}
-	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header), "body", loggedBody{requestBody})
+	if opts.setBody != nil {
+		if err := opts.setBody(req); err != nil {
+			return nil, fmt.Errorf("cannot build request body: %w", err)
+		}
+	}
+	req.Body = newLoggedBody(ctx, "request body", req.Body)
+	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header))
 	return req, nil
+}
+
+func isSuccess(statusCode int) bool {
+	return statusCode >= 200 && statusCode <= 299
 }

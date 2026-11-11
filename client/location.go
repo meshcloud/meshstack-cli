@@ -1,21 +1,15 @@
 package client
 
-import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
-)
-
 type MeshLocation struct {
 	Metadata MeshLocationMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshLocationSpec     `json:"spec" tfsdk:"spec"`
-	Status   MeshLocationStatus   `json:"status" tfsdk:"status"`
+	Status   MeshLocationStatus   `json:"status,omitzero" tfsdk:"status"`
 }
 
 type MeshLocationMetadata struct {
-	Name             string `json:"name" tfsdk:"name"`
-	OwnedByWorkspace string `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-	Uuid             string `json:"uuid" tfsdk:"uuid"`
+	Name             string  `json:"name" tfsdk:"name"`
+	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
+	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
 }
 
 type MeshLocationSpec struct {
@@ -27,43 +21,8 @@ type MeshLocationStatus struct {
 	IsPublic bool `json:"isPublic" tfsdk:"is_public"`
 }
 
-type MeshLocationCreate struct {
-	Metadata MeshLocationCreateMetadata `json:"metadata" tfsdk:"metadata"`
-	Spec     MeshLocationSpec           `json:"spec" tfsdk:"spec"`
-}
+type MeshLocationClient = MeshObjectClient[MeshLocation, NoFilter]
 
-type MeshLocationCreateMetadata struct {
-	Name             string `json:"name" tfsdk:"name"`
-	OwnedByWorkspace string `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-}
-
-type MeshLocationClient interface {
-	Read(ctx context.Context, name string) (*MeshLocation, error)
-	Create(ctx context.Context, location *MeshLocationCreate) (*MeshLocation, error)
-	Update(ctx context.Context, name string, location *MeshLocationCreate) (*MeshLocation, error)
-	Delete(ctx context.Context, name string) error
-}
-
-type meshLocationClient struct {
-	meshObject internal.MeshObjectClient[MeshLocation]
-}
-
-func newLocationClient(ctx context.Context, httpClient internal.HttpClient) MeshLocationClient {
-	return meshLocationClient{internal.NewMeshObjectClient[MeshLocation](ctx, httpClient, "v1")}
-}
-
-func (c meshLocationClient) Read(ctx context.Context, name string) (*MeshLocation, error) {
-	return c.meshObject.Get(ctx, name)
-}
-
-func (c meshLocationClient) Create(ctx context.Context, location *MeshLocationCreate) (*MeshLocation, error) {
-	return c.meshObject.Post(ctx, location)
-}
-
-func (c meshLocationClient) Update(ctx context.Context, name string, location *MeshLocationCreate) (*MeshLocation, error) {
-	return c.meshObject.Put(ctx, name, location)
-}
-
-func (c meshLocationClient) Delete(ctx context.Context, name string) error {
-	return c.meshObject.Delete(ctx, name)
+func (location MeshLocation) meshObjectId() string {
+	return location.Metadata.Name
 }

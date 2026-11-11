@@ -1,17 +1,13 @@
 package client
 
 import (
-	"context"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
-	"fmt"
-	"uuid"
 
-	"github.com/meshcloud/meshstack-cli/client/http"
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
+	"github.com/meshcloud/meshstack-cli/client/types/hal"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 type MeshBuildingBlockDefinitionVersionState string
@@ -179,9 +175,9 @@ type MeshBuildingBlockDefinitionOutput struct {
 }
 
 type MeshBuildingBlockDefinitionVersionMetadata struct {
-	Uuid             string `json:"uuid"`
-	OwnedByWorkspace string `json:"ownedByWorkspace"`
-	CreatedOn        string `json:"createdOn"`
+	Uuid             *string `json:"uuid,omitzero"`
+	OwnedByWorkspace string  `json:"ownedByWorkspace"`
+	CreatedOn        string  `json:"createdOn,omitzero"`
 }
 
 type MeshBuildingBlockDefinitionVersionSpec struct {
@@ -199,63 +195,27 @@ type MeshBuildingBlockDefinitionVersionSpec struct {
 }
 
 type MeshBuildingBlockDefinitionVersionStatus struct {
-	State      MeshBuildingBlockDefinitionVersionState `json:"state" tfsdk:"state"`
-	UsageCount *int64                                  `json:"usageCount,omitzero" tfsdk:"usage_count"`
+	State                     MeshBuildingBlockDefinitionVersionState `json:"state" tfsdk:"state"`
+	UsageCount                *int64                                  `json:"usageCount,omitzero" tfsdk:"usage_count"`
+	RedactedForNonOwnerAccess bool                                    `json:"redactedForNonOwnerAccess" tfsdk:"-"`
+	Lifecycle                 MeshLifecycle                           `json:"lifecycle" tfsdk:"-"`
 }
 
 type MeshBuildingBlockDefinitionVersion struct {
 	Metadata MeshBuildingBlockDefinitionVersionMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshBuildingBlockDefinitionVersionSpec     `json:"spec" tfsdk:"spec"`
 	Status   *MeshBuildingBlockDefinitionVersionStatus  `json:"status,omitzero" tfsdk:"status"`
+	Links    hal.Links                                  `json:"_links,omitzero" tfsdk:"-"`
 }
 
-// MeshBuildingBlockDefinitionVersionClient has no Get and no Delete: a caller always reads all
-// versions of a definition with List, and the versions are deleted together with their definition.
-type MeshBuildingBlockDefinitionVersionClient interface {
-	List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error)
-	Create(ctx context.Context, ownedByWorkspace string, versionSpec MeshBuildingBlockDefinitionVersionSpec) (*MeshBuildingBlockDefinitionVersion, error)
-	Update(ctx context.Context, uuid, ownedByWorkspace string, versionSpec MeshBuildingBlockDefinitionVersionSpec) (*MeshBuildingBlockDefinitionVersion, error)
+type MeshBuildingBlockDefinitionVersionClient = MeshObjectClient[MeshBuildingBlockDefinitionVersion, MeshBuildingBlockDefinitionVersionFilter]
+
+type MeshBuildingBlockDefinitionVersionFilter struct {
+	BuildingBlockDefinitionUuid string `json:"buildingBlockDefinitionUuid,omitzero"`
 }
 
-type meshBuildingBlockDefinitionVersionClient struct {
-	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinitionVersion]
+func (v MeshBuildingBlockDefinitionVersion) meshObjectId() string {
+	return *v.Metadata.Uuid
 }
 
-func newBuildingBlockDefinitionVersionClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockDefinitionVersionClient {
-	return meshBuildingBlockDefinitionVersionClient{
-		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinitionVersion](ctx, httpClient, "v1-preview"),
-	}
-}
-
-type MeshBuildingBlockDefinitionVersionListFilter struct {
-	BuildingBlockDefinitionUuid uuid.UUID `json:"buildingBlockDefinitionUuid,omitzero"`
-}
-
-func (c meshBuildingBlockDefinitionVersionClient) List(ctx context.Context, buildingBlockDefinitionUuid string) ([]MeshBuildingBlockDefinitionVersion, error) {
-	definitionUuid, err := uuid.Parse(buildingBlockDefinitionUuid)
-	if err != nil {
-		return nil, fmt.Errorf("building block definition %q: %w", buildingBlockDefinitionUuid, err)
-	}
-	return c.meshObject.List(ctx, http.WithUrlQuery(MeshBuildingBlockDefinitionVersionListFilter{
-		BuildingBlockDefinitionUuid: definitionUuid,
-	}))
-}
-
-func (c meshBuildingBlockDefinitionVersionClient) Create(ctx context.Context, ownedByWorkspace string, versionSpec MeshBuildingBlockDefinitionVersionSpec) (*MeshBuildingBlockDefinitionVersion, error) {
-	return c.meshObject.Post(ctx, MeshBuildingBlockDefinitionVersion{
-		Metadata: MeshBuildingBlockDefinitionVersionMetadata{
-			OwnedByWorkspace: ownedByWorkspace,
-		},
-		Spec: versionSpec,
-	})
-}
-
-func (c meshBuildingBlockDefinitionVersionClient) Update(ctx context.Context, uuid, ownedByWorkspace string, versionSpec MeshBuildingBlockDefinitionVersionSpec) (*MeshBuildingBlockDefinitionVersion, error) {
-	return c.meshObject.Put(ctx, uuid, MeshBuildingBlockDefinitionVersion{
-		Metadata: MeshBuildingBlockDefinitionVersionMetadata{
-			Uuid:             uuid,
-			OwnedByWorkspace: ownedByWorkspace,
-		},
-		Spec: versionSpec,
-	})
-}
+func (MeshBuildingBlockDefinitionVersion) meshObjectNoSortQuery() {}

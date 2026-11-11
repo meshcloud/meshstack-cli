@@ -3,7 +3,6 @@ package auth
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"testing"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )

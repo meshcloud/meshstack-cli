@@ -52,9 +52,9 @@ func warnIfNewerReleasePresent(ctx context.Context, configDir config.Directory, 
 	ctxRequest, cancel := context.WithTimeout(ctx, releaseCheckTimeout)
 	defer cancel()
 	apiUrl := xurl.MustParsef("https://api.github.com/repos/%s/releases/latest", opts.GitHubRepo)
-	latestRelease, err := client.DoRequest[struct {
+	latestRelease, err := http.UnmarshalJsonBody[struct {
 		TagName string `json:"tag_name"`
-	}](ctxRequest, http.MethodGet, apiUrl.URL, http.Retryable())
+	}](client.DoRequest(ctxRequest, http.MethodGet, apiUrl.URL, http.Retryable(http.RetryOnTransient)))
 	if httpError, ok := errors.AsType[http.Error](err); ok && httpError.IsNotFound() {
 		return fmt.Errorf("no latest release found at %s: %w", apiUrl, err)
 	} else if err != nil {

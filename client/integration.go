@@ -1,20 +1,15 @@
 package client
 
-import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
-)
+type MeshIntegrationMetadata = MeshObjectByUuidMetadata
 
 type MeshIntegration struct {
 	Metadata MeshIntegrationMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshIntegrationSpec     `json:"spec" tfsdk:"spec"`
-	Status   *MeshIntegrationStatus  `json:"status" tfsdk:"status"`
+	Status   *MeshIntegrationStatus  `json:"status,omitzero" tfsdk:"status"`
 }
 
-type MeshIntegrationMetadata struct {
-	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
-	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
+func (i MeshIntegration) meshObjectId() string {
+	return i.Metadata.meshObjectId()
 }
 
 type MeshIntegrationSpec struct {
@@ -44,38 +39,4 @@ type MeshAwsWifProvider struct {
 	Thumbprint string `json:"thumbprint" tfsdk:"thumbprint"`
 }
 
-type MeshIntegrationClient interface {
-	Create(ctx context.Context, integration MeshIntegration) (*MeshIntegration, error)
-	Read(ctx context.Context, uuid string) (*MeshIntegration, error)
-	Update(ctx context.Context, integration MeshIntegration) (*MeshIntegration, error)
-	Delete(ctx context.Context, uuid string) error
-	List(ctx context.Context) ([]MeshIntegration, error)
-}
-
-type meshIntegrationClientImpl struct {
-	meshObject internal.MeshObjectClient[MeshIntegration]
-}
-
-func newIntegrationClient(ctx context.Context, httpClient internal.HttpClient) MeshIntegrationClient {
-	return meshIntegrationClientImpl{internal.NewMeshObjectClient[MeshIntegration](ctx, httpClient, "v1")}
-}
-
-func (c meshIntegrationClientImpl) Create(ctx context.Context, integration MeshIntegration) (*MeshIntegration, error) {
-	return c.meshObject.Post(ctx, integration)
-}
-
-func (c meshIntegrationClientImpl) Read(ctx context.Context, uuid string) (*MeshIntegration, error) {
-	return c.meshObject.Get(ctx, uuid)
-}
-
-func (c meshIntegrationClientImpl) Update(ctx context.Context, integration MeshIntegration) (*MeshIntegration, error) {
-	return c.meshObject.Put(ctx, *integration.Metadata.Uuid, integration)
-}
-
-func (c meshIntegrationClientImpl) Delete(ctx context.Context, uuid string) error {
-	return c.meshObject.Delete(ctx, uuid)
-}
-
-func (c meshIntegrationClientImpl) List(ctx context.Context) ([]MeshIntegration, error) {
-	return c.meshObject.List(ctx)
-}
+type MeshIntegrationClient = MeshObjectClient[MeshIntegration, NoFilter]

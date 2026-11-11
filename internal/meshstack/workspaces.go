@@ -86,3 +86,13 @@ func (w MeshWorkspace) String() string {
 func (w MeshWorkspace) Label() string {
 	return w.String()
 }
+
+func ListWorkspaces(ctx context.Context, workspaces client.MeshWorkspaceClient) (listed []client.MeshWorkspace, err error) {
+	for workspace, err := range workspaces.List(ctx, client.NoFilter{}) {
+		if err != nil {
+			return listed, err
+		}
+		listed = append(listed, workspace)
+	}
+	return listed, nil
+}

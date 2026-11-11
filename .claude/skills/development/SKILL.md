@@ -123,12 +123,14 @@ there, later, and not in this repository's CI.
 `develop` but not released. The source is the controllers and meshObjects of `../meshfed-release`
 (*meshcloud-internal*).
 
-**The provider implements the client's interfaces.** Its tests plug the mocks of its
-`internal/clientmock` into `client.Client`, so a method added to a `Mesh…Client` interface stops
-the provider compiling at its next bump. Put a method only the CLI calls on a new `client.Client`
-field instead: an interface of its own, or a concrete type such as `*client.RawClient` when nothing
-mocks it. `client.New` sets the field for every caller, while the provider's mock client fills the
-struct by field name and leaves a new field unset.
+**The provider implements the client's interfaces.** Every kind's client is the generic
+`client.MeshObjectClient[M, Filter]`, with Read, List, Create, Update and Delete, under a type
+alias named after the kind. The tests of the provider plug the mocks of its `internal/clientmock`
+into `client.Client`, so a method added to a `Mesh…Client` interface stops the provider compiling
+at its next bump. An action of a kind follows a link of the object's `_links` through
+`hal.Links`, such as `run.Links.Post[struct{}](ctx, "abort", nil)`. Put anything else only the CLI
+calls on a new `client.Client` field, which the provider's mock client leaves unset, or in a
+function of `client`, such as `client.WithKindAndApiVersion`.
 
 Reading the pre-import history takes both paths, since the import merge re-roots the files under
 `client/`:
@@ -138,16 +140,17 @@ git log -- client/client.go client.go   # a path-limited log from client/ alone 
 git blame client/client.go              # traverses the merge on its own
 ```
 
-**`client/` does not log in.** `client.Authorization` produces a bearer token and replaces one that
+**`client/` does not log in.** `http.Authorization` produces a bearer token and replaces one that
 came back 401; resolving a credential, minting a token, caching it and refreshing it is `pkg/auth`.
 Both front ends build their client through `auth.ResolveClient`, so the endpoint and the
 authorization always agree with what was resolved. Do **not** add a login exchange anywhere else: a
 second one gets a static token and starts returning 401 once it expires, and for a browser login it
 would end the user's session.
 
-**`client/` does not own HTTP.** The client, the request options and the retry policy are
-`internal/http`, because `internal/oidc` and `pkg/auth` need them and Go's internal rule closes
-`client/internal` to both. Its names carry no `Http` prefix: `http.Client`, `http.Error`.
+**HTTP is `client/http`.** The client, the request options and the retry policy are there, because
+`internal/oidc` and `pkg/auth` need them as well, and another module calls `client.New` with them.
+No exported name of `client/` may use an `internal/` type, because another module cannot name it.
+Its names carry no `Http` prefix: `http.Client`, `http.Error`.
 
 **Every request names the front end and version that sent it.** `http.NewClient` takes an
 `http.UserAgent`, which `auth.ResolveSessionOptions` embeds: the front end sets its `GitHubRepo` and

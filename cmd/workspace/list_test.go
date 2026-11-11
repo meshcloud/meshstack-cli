@@ -29,7 +29,7 @@ func TestAListCutShortByTheLimitSaysHowManyThereAre(t *testing.T) {
 
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
 
-	assert.JSONEq(t, `[{"metadata":{"name":"workspace-0"}}]`, stdout.String())
+	assert.JSONEq(t, `[{"apiVersion":"v2","kind":"meshWorkspace","metadata":{"name":"workspace-0","tags":{}},"spec":{"displayName":""}}]`, stdout.String())
 	assert.Contains(t, captured.String(), "listed the first 1 of 6")
 	assert.Len(t, server.TakeRequests(), 1)
 }

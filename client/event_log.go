@@ -1,21 +1,21 @@
 package client
 
 import (
-	"context"
 	"encoding/json/jsontext"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/hal"
 )
 
 type MeshEventLog struct {
 	Metadata MeshEventLogMetadata `json:"metadata"`
 	Spec     MeshEventLogSpec     `json:"spec"`
 	Status   MeshEventLogStatus   `json:"status"`
+	Links    hal.Links            `json:"_links,omitzero"`
 }
 
 type MeshEventLogMetadata struct {
-	Uuid string `json:"uuid"`
+	Uuid *string `json:"uuid"`
 }
 
 type MeshEventLogSpec struct {
@@ -42,22 +42,11 @@ type MeshEventLogStatus struct {
 }
 
 type MeshEventLogCreated struct {
-	Timestamp time.Time           `json:"timestamp"`
-	Author    *MeshEventLogAuthor `json:"author"`
+	Timestamp time.Time         `json:"timestamp"`
+	Author    *MeshObjectAuthor `json:"author"`
 }
 
-type MeshEventLogAuthor struct {
-	// Type is one of ApiKey, ApiUser, System and User, and decides what Identifier is: the uuid of
-	// the meshApiKey, the name of the API user, "system", or the uuid of the meshUser.
-	Type        string  `json:"type"`
-	Identifier  string  `json:"identifier"`
-	DisplayName *string `json:"displayName"`
-	Username    *string `json:"username"`
-	Email       *string `json:"email"`
-	Euid        *string `json:"euid"`
-}
-
-type MeshEventLogListFilter struct {
+type MeshEventLogFilter struct {
 	From  time.Time `json:"from,omitzero"`
 	Until time.Time `json:"until,omitzero"`
 	Title string    `json:"title"`
@@ -69,11 +58,12 @@ type MeshEventLogListFilter struct {
 	AuthorIdentifier string   `json:"authorIdentifier"`
 	// WorkspaceIdentifier and WorkspaceName, which matches part of the display name, exclude
 	// each other.
-	WorkspaceIdentifier string       `json:"workspaceIdentifier"`
-	WorkspaceName       string       `json:"workspaceName"`
-	Sort                SortCriteria `json:"sort"`
+	WorkspaceIdentifier string `json:"workspaceIdentifier"`
+	WorkspaceName       string `json:"workspaceName"`
 }
 
-func newEventLogMeshObject(ctx context.Context, httpClient internal.HttpClient) internal.MeshObjectClient[MeshEventLog] {
-	return internal.NewMeshObjectClient[MeshEventLog](ctx, httpClient, "v1")
+type MeshEventLogClient = MeshObjectClient[MeshEventLog, MeshEventLogFilter]
+
+func (log MeshEventLog) meshObjectId() string {
+	return *log.Metadata.Uuid
 }

@@ -4,12 +4,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json/v2"
 	gohttp "net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 const cliClientId = "meshstack-cli"

@@ -1,9 +1,11 @@
 package oidc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"time"
@@ -32,8 +34,8 @@ type ClientConfig struct {
 }
 
 func NewClient(ctx context.Context, httpClient http.Client, issuer xurl.URL, clientId string) (Client, error) {
-	clientConfig, err := httpClient.DoRequest[ClientConfig](ctx, http.MethodGet,
-		issuer.JoinPath(".well-known", "openid-configuration"))
+	clientConfig, err := http.UnmarshalJsonBody[ClientConfig](httpClient.DoRequest(ctx, http.MethodGet,
+		issuer.JoinPath(".well-known", "openid-configuration")))
 	if err != nil {
 		return Client{}, err
 	}
@@ -92,12 +94,11 @@ func (c Client) RevokeRefreshToken(ctx context.Context, refreshToken string) err
 	if c.RevocationEndpoint == nil {
 		return fmt.Errorf("%s advertises no revocation_endpoint", c.Issuer)
 	}
-	_, err := c.doPost[any](ctx, c.RevocationEndpoint.URL, map[string]any{
+	return http.IgnoreResponse(c.post(ctx, c.RevocationEndpoint.URL, map[string]any{
 		"client_id":       c.Id,
 		"token":           refreshToken,
 		"token_type_hint": "refresh_token",
-	})
-	return err
+	}))
 }
 
 func (c Client) requestToken(ctx context.Context, payload map[string]any) (Token, error) {
@@ -109,16 +110,20 @@ func (c Client) requestToken(ctx context.Context, payload map[string]any) (Token
 	return token, err
 }
 
-func (c Client) doPost[R any](ctx context.Context, endpoint *url.URL, payload map[string]any) (result R, err error) {
-	result, err = c.DoRequest[R](ctx, http.MethodPost, endpoint, http.WithFormPayload(payload))
+func (c Client) doPost[R any](ctx context.Context, endpoint *url.URL, payload map[string]any) (R, error) {
+	return http.UnmarshalJsonBody[R](c.post(ctx, endpoint, payload))
+}
+
+func (c Client) post(ctx context.Context, endpoint *url.URL, payload map[string]any) (io.ReadCloser, error) {
+	body, err := c.DoRequest(ctx, http.MethodPost, endpoint, http.WithFormRequest(payload))
 	if httpErr, ok := errors.AsType[http.Error](err); ok {
 		var protocolErr protocolError
-		if unmarshalErr := json.Unmarshal(httpErr.ResponseBody, &protocolErr); unmarshalErr != nil {
-			return result, errors.Join(httpErr, unmarshalErr)
+		if unmarshalErr := json.UnmarshalRead(bytes.NewReader(httpErr.ResponseBody), &protocolErr); unmarshalErr != nil {
+			return body, errors.Join(httpErr, unmarshalErr)
 		}
-		return result, errors.Join(httpErr, protocolErr)
+		return body, errors.Join(httpErr, protocolErr)
 	}
-	return
+	return body, err
 }
 
 type protocolError struct {

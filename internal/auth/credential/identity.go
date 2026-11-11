@@ -3,9 +3,10 @@ package credential
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/v2"
 	"fmt"
 	"reflect"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 type Identity struct {

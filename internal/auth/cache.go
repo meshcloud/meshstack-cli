@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"errors"
@@ -142,7 +143,7 @@ func (c Credential) read(ctx context.Context) (matched bool, err error) {
 	default:
 		matched = true
 		credential.WithCacheOf(c.Credential, func(cache reflect.Value) {
-			err = json.Unmarshal(file.Cache, cache.Addr().Interface())
+			err = json.UnmarshalRead(bytes.NewReader(file.Cache), cache.Addr().Interface())
 		})
 	}
 	return

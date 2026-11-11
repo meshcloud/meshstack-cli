@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/meshcloud/meshstack-cli/client/types/variant"
+	"github.com/meshcloud/meshstack-cli/client/types/polymorph"
 )
 
 type (
@@ -17,7 +17,7 @@ type (
 		Hash *string `json:"hash,omitzero" tfsdk:"-"`
 	}
 
-	SecretOrAny = variant.Variant[Secret, any]
+	SecretOrAny = polymorph.Variant[Secret, any]
 
 	Any any
 )

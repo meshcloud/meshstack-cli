@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	gohttp "net/http"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -17,10 +16,7 @@ import (
 )
 
 func newApproveRun() *cobra.Command {
-	var (
-		output            internal.OutputFlag
-		buildingBlockUuid uuid.UUID
-	)
+	var output internal.OutputFlag
 
 	cmd := &cobra.Command{
 		Use:   "approve-run <building-block-uuid>",
@@ -32,8 +28,9 @@ The command shows the plan and asks you to approve it, so it needs a terminal. I
 A building block whose status.action is APPROVE_RUN in 'meshstack buildingblock list' has a run that is waiting for approval. After the approval, the command prints the building block.`,
 		Example: `  meshstack buildingblock approve-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb approve-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
-		Args: internal.UuidArg(&buildingBlockUuid),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: internal.UuidArg,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			buildingBlockUuid := args[0]
 			ctx := cmd.Context()
 			action, err := newRunAction(cmd, buildingBlockUuid, output.Format)
 			if err != nil {
@@ -49,32 +46,32 @@ A building block whose status.action is APPROVE_RUN in 'meshstack buildingblock 
 }
 
 func (a runAction) approve(ctx context.Context) error {
-	_, block, err := a.readBuildingBlock(ctx)
+	block, err := a.readBuildingBlock(ctx)
 	if err != nil {
 		return err
 	}
-	if block.Links.LatestRun == nil {
+	if block.Status.GetLatestRunUuid() == "" {
 		return fmt.Errorf("building block %s has no run to approve", a.buildingBlockUuid)
 	}
-	run, err := a.meshStack.BuildingBlockRunAction.ReadRun(ctx, *block.Links.LatestRun)
+	run, err := a.readRun(ctx, block.Status.GetLatestRunUuid())
 	if err != nil {
 		return err
 	}
-	if run.Links.Approve == nil {
+	if _, found := run.Links["approve"]; !found {
 		return fmt.Errorf("the latest run %s of building block %s (action %s) is not waiting for approval, or you are not allowed to approve it",
 			run.Metadata.Uuid, a.buildingBlockUuid, block.Status.Action)
 	}
-	if run.Links.Predecessor == nil {
+	if _, found := run.Links["predecessor"]; !found {
 		return fmt.Errorf("run %s is waiting for approval, but meshStack does not say which run created its plan", run.Metadata.Uuid)
 	}
-	plan, err := a.meshStack.BuildingBlockRunAction.ReadRun(ctx, *run.Links.Predecessor)
+	plan, err := run.Links.Get[client.MeshBuildingBlockRun](ctx, "predecessor")
 	if err != nil {
 		return err
 	}
-	if plan.Links.DownloadLogs == nil {
+	if _, found := plan.Links["downloadLogs"]; !found {
 		return fmt.Errorf("cannot read the logs of run %s, which created the plan for run %s", plan.Metadata.Uuid, run.Metadata.Uuid)
 	}
-	logs, err := a.meshStack.BuildingBlockRunAction.ReadLogs(ctx, *plan.Links.DownloadLogs)
+	logs, err := plan.Links.Get[client.MeshBuildingBlockRunLogs](ctx, "downloadLogs")
 	if err != nil {
 		return err
 	}
@@ -94,7 +91,7 @@ func (a runAction) approve(ctx context.Context) error {
 		slog.InfoContext(ctx, fmt.Sprintf("Did not approve run %s.", run.Metadata.Uuid))
 		return nil
 	}
-	err = a.meshStack.BuildingBlockRunAction.ApproveRun(ctx, *run.Links.Approve, plan.Metadata.Uuid)
+	_, err = run.Links.Post[struct{}](ctx, "approve", client.MeshBuildingBlockRunApproval{PredecessorRunUuid: plan.Metadata.Uuid})
 	if httpErr, ok := errors.AsType[client.HttpError](err); ok {
 		switch httpErr.StatusCode {
 		case gohttp.StatusConflict:

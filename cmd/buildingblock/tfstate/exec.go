@@ -12,7 +12,6 @@ import (
 	"slices"
 	"syscall"
 	"time"
-	"uuid"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
@@ -21,7 +20,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/tfstate"
 )
 
-// runLockTimeout must match stateLockTimeout in ../building-block-runner/tf-block-runner/tfrun/tfcmd.go.
+// runLockTimeout must match stateLockTimeout in ../building-block-runner/internal/executor/tf/tfcmd.go.
 const runLockTimeout = 5 * time.Minute
 
 type mode string
@@ -59,7 +58,7 @@ func (m *mode) Type() string {
 
 func newExec() *cobra.Command {
 	var (
-		buildingBlockUuid uuid.UUID
+		buildingBlockUuid string
 		command           []string
 		access            = modeRead
 		force             bool
@@ -94,8 +93,8 @@ With --%[8]s, exec copies the stored state into that directory before it replace
 				return fmt.Errorf("%s needs the building block uuid, then --, then the command to run, such as '%s <building-block-uuid> -- tofu plan'",
 					cmd.CommandPath(), cmd.CommandPath())
 			}
-			command = args[1:]
-			return internal.UuidArg(&buildingBlockUuid)(cmd, args[:1])
+			command, buildingBlockUuid = args[1:], args[0]
+			return internal.UuidArg(cmd, args[:1])
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -111,10 +110,7 @@ With --%[8]s, exec copies the stored state into that directory before it replace
 			if err != nil {
 				return err
 			}
-			api, err := internal.ResolveClientOptions().HttpClient()
-			if err != nil {
-				return err
-			}
+			api := internal.ResolveClientOptions().HttpClient()
 			var problems []error
 			proxy := &tfstate.Proxy{
 				Store:    store,
@@ -139,7 +135,7 @@ With --%[8]s, exec copies the stored state into that directory before it replace
 				proxy.LockWarning = runLockTimeout
 				if !force {
 					proxy.BeforeWrite = func(ctx context.Context) error {
-						if running := tfstate.NoRunOf(ctx, meshStack.Raw, buildingBlockUuid); running != nil {
+						if running := tfstate.NoRunOf(ctx, meshStack.BuildingBlockV2, buildingBlockUuid); running != nil {
 							return fmt.Errorf("%w: wait for it to finish, or run again with --%s", running, forceFlagName)
 						}
 						return nil

@@ -6,24 +6,24 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 )
 
-// wireCompatibility holds the output to the shape encoding/json v1 produced: a nil slice and a
-// nil map go out as null rather than as [] and {}, and object members are sorted. json/v2 would
-// write [] and {} and leave map order to chance, and neither change is ours to make — the
-// meshObject API may read null and an empty collection differently on a PUT, and the Terraform
-// provider hashes this JSON to decide whether a resource changed.
-var wireCompatibility = json.JoinOptions(
-	json.Deterministic(true),
-	json.FormatNilSliceAsNull(true),
-	json.FormatNilMapAsNull(true),
-)
+type MarshalerTo = json.MarshalerTo
 
-func Marshal(payload any) ([]byte, error) {
-	return json.Marshal(payload, wireCompatibility)
+func Marshal(in any, opts ...Options) ([]byte, error) {
+	return json.Marshal(in, opts...)
+}
+
+func MarshalWrite(out io.Writer, in any, opts ...Options) error {
+	return json.MarshalWrite(out, in, opts...)
+}
+
+func MarshalEncode(out *jsontext.Encoder, in any, opts ...Options) error {
+	return json.MarshalEncode(out, in, opts...)
 }
 
 type MarshalOption func(opts *marshalOptions)
@@ -67,6 +67,5 @@ func MarshalTo(ctx context.Context, file string, payload any, options ...Marshal
 			slog.DebugContext(ctx, "Marshaled json to "+file)
 		}
 	}()
-	encoder := jsontext.NewEncoder(out, jsontext.WithIndent("  "))
-	return json.MarshalEncode(encoder, payload, wireCompatibility)
+	return json.MarshalWrite(out, payload, json.Deterministic(true), jsontext.WithIndent("  "))
 }

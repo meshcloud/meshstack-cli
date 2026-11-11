@@ -1,13 +1,9 @@
 package client
 
 import (
-	"encoding/json/jsontext"
-	"encoding/json/v2"
-	"fmt"
-
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
-	"github.com/meshcloud/meshstack-cli/client/types/variant"
+	"github.com/meshcloud/meshstack-cli/client/types/polymorph"
 )
 
 type MeshBuildingBlockImplementationType string
@@ -67,52 +63,11 @@ type MeshBuildingBlockDefinitionAzureDevOpsPipelineImplementation struct {
 }
 
 type MeshBuildingBlockDefinitionImplementation struct {
-	Type                enum.Entry[MeshBuildingBlockImplementationType]               `json:"type" tfsdk:"-"`
-	Manual              *MeshBuildingBlockDefinitionManualImplementation              `json:"manual,omitzero" tfsdk:"manual"`
-	GithubWorkflows     *MeshBuildingBlockDefinitionGitHubWorkflowsImplementation     `json:"githubWorkflows,omitzero" tfsdk:"github_workflows"`
-	AzureDevOpsPipeline *MeshBuildingBlockDefinitionAzureDevOpsPipelineImplementation `json:"azureDevOpsPipeline,omitzero" tfsdk:"azure_devops_pipeline"`
-	GitlabPipeline      *MeshBuildingBlockDefinitionGitLabPipelineImplementation      `json:"gitlabPipeline,omitzero" tfsdk:"gitlab_pipeline"`
-	Terraform           *MeshBuildingBlockDefinitionTerraformImplementation           `json:"terraform,omitzero" tfsdk:"terraform"`
-}
+	polymorph.Polymorph[MeshBuildingBlockDefinitionImplementation, MeshBuildingBlockImplementationType]
 
-// InferType accepts a version without any variant: meshStack answers that way to a workspace that
-// may only consume the definition.
-func (m MeshBuildingBlockDefinitionImplementation) InferType() (enum.Entry[MeshBuildingBlockImplementationType], error) {
-	result, err := variant.InferType(
-		variant.NewCandidate(MeshBuildingBlockImplementationTypeManual, m.Manual != nil),
-		variant.NewCandidate(MeshBuildingBlockImplementationTypeTerraform, m.Terraform != nil),
-		variant.NewCandidate(MeshBuildingBlockImplementationTypeGithubWorkflows, m.GithubWorkflows != nil),
-		variant.NewCandidate(MeshBuildingBlockImplementationTypeGitlabPipeline, m.GitlabPipeline != nil),
-		variant.NewCandidate(MeshBuildingBlockImplementationTypeAzureDevOpsPipeline, m.AzureDevOpsPipeline != nil),
-	)
-	if err != nil {
-		return "", fmt.Errorf("cannot infer implementation type: %w", err)
-	}
-	return result, nil
-}
-
-func (m MeshBuildingBlockDefinitionImplementation) MarshalJSONTo(enc *jsontext.Encoder) error {
-	type wrapped MeshBuildingBlockDefinitionImplementation
-	w := wrapped(m)
-	if len(w.Type) == 0 {
-		inferred, err := m.InferType()
-		if err != nil {
-			return err
-		}
-		w.Type = inferred
-	}
-	return json.MarshalEncode(enc, w, enc.Options())
-}
-
-func (m *MeshBuildingBlockDefinitionImplementation) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	type wrapped MeshBuildingBlockDefinitionImplementation
-	var target wrapped
-	if err := json.UnmarshalDecode(dec, &target, dec.Options()); err != nil {
-		return err
-	}
-	*m = MeshBuildingBlockDefinitionImplementation(target)
-	if m.Type == MeshBuildingBlockImplementationTypeManual {
-		m.Manual = &MeshBuildingBlockDefinitionManualImplementation{}
-	}
-	return nil
+	Manual              *MeshBuildingBlockDefinitionManualImplementation              `json:"manual,omitzero" polymorph:"manual" tfsdk:"manual"`
+	GithubWorkflows     *MeshBuildingBlockDefinitionGitHubWorkflowsImplementation     `json:"githubWorkflows,omitzero" polymorph:"githubWorkflows" tfsdk:"github_workflows"`
+	AzureDevOpsPipeline *MeshBuildingBlockDefinitionAzureDevOpsPipelineImplementation `json:"azureDevOpsPipeline,omitzero" polymorph:"azureDevOpsPipeline" tfsdk:"azure_devops_pipeline"`
+	GitlabPipeline      *MeshBuildingBlockDefinitionGitLabPipelineImplementation      `json:"gitlabPipeline,omitzero" polymorph:"gitlabPipeline" tfsdk:"gitlab_pipeline"`
+	Terraform           *MeshBuildingBlockDefinitionTerraformImplementation           `json:"terraform,omitzero" polymorph:"terraform" tfsdk:"terraform"`
 }

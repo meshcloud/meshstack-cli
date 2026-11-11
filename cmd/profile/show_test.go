@@ -1,7 +1,6 @@
 package profile
 
 import (
-	"encoding/json/v2"
 	"log/slog"
 	"maps"
 	"slices"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )

@@ -4,42 +4,31 @@ import (
 	"context"
 	"fmt"
 	"io"
-	gohttp "net/http"
 	"time"
 )
 
-// stallGuard ends a request whose response body has sent nothing for Timeout. It bounds the
-// silence rather than the whole body, so a long answer that is still arriving is read to the end.
-type stallGuard struct {
-	Next    gohttp.RoundTripper
-	Timeout time.Duration
-}
+var stallTimeout = 1 * time.Minute
 
-func (g stallGuard) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
-	ctx, cancel := context.WithCancelCause(req.Context())
-	resp, err := g.Next.RoundTrip(req.WithContext(ctx))
-	if err != nil {
-		cancel(nil)
-		return resp, err
-	}
-	stalled := fmt.Errorf("response body stalled: nothing received for %s", g.Timeout)
-	body := &stallGuardedBody{ReadCloser: resp.Body, timeout: g.Timeout, cancel: cancel}
-	body.timer = time.AfterFunc(g.Timeout, func() { cancel(stalled) })
-	resp.Body = body
-	return resp, nil
-}
-
+// stallGuardedBody bounds the silence of a body, so a long answer that is still arriving is read to the end.
 type stallGuardedBody struct {
 	io.ReadCloser
 
-	timeout time.Duration
-	timer   *time.Timer
-	cancel  context.CancelCauseFunc
+	timer  *time.Timer
+	cancel context.CancelCauseFunc
+}
+
+func newStallGuardedBody(body io.ReadCloser, cancel context.CancelCauseFunc) io.ReadCloser {
+	stalled := fmt.Errorf("response body stalled: nothing received for %s", stallTimeout)
+	return &stallGuardedBody{
+		ReadCloser: body,
+		timer:      time.AfterFunc(stallTimeout, func() { cancel(stalled) }),
+		cancel:     cancel,
+	}
 }
 
 func (b *stallGuardedBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
-	b.timer.Reset(b.timeout)
+	b.timer.Reset(stallTimeout)
 	return n, err
 }
 

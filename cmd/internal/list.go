@@ -2,16 +2,17 @@ package internal
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"fmt"
 	"iter"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/types"
 )
 
 type ListFlags struct {
@@ -38,32 +39,41 @@ func ListWorkspace(ctx context.Context) (*string, error) {
 	return &workspace, nil
 }
 
-// Run lists the objects of M that filter narrows.
-func (f *ListFlags) Run[M any](cmd *cobra.Command, filter any) error {
-	return f.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error] {
-		return meshStack.Raw.List[M](ctx, filter, options)
+func (f *ListFlags) Run[M, Filter any](cmd *cobra.Command, kind client.MeshObjectClient[M, Filter], filter Filter) error {
+	var page types.Page
+	return f.run(cmd, &page, func(ctx context.Context, options ...client.ListOption) iter.Seq2[any, error] {
+		return WithKindAndApiVersion(kind, kind.List(ctx, filter, append(options, client.WithCapturedPage(&page))...))
 	})
 }
 
-// RunSeq is Run for a listing that is not one kind's, such as the runs of every building block.
-func (f *ListFlags) RunSeq(cmd *cobra.Command, list func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error]) error {
-	ctx := cmd.Context()
-	meshStack, err := ResolveClient(ctx)
-	if err != nil {
-		return err
-	}
-	result := ListResult{Limit: int(f.limit), Defaulted: !cmd.Flags().Changed(limitFlagName)}
-	listOptions := client.ListOptions{
-		PageSize: result.Limit,
-		OnPage: func(page client.Page) {
-			if result.Total == nil {
-				result.Total = &page.TotalElements
+func WithKindAndApiVersion[M, Filter any](kind client.MeshObjectClient[M, Filter], objects iter.Seq2[M, error]) iter.Seq2[any, error] {
+	return func(yield func(any, error) bool) {
+		for object, err := range objects {
+			if err != nil {
+				yield(nil, err)
+				return
 			}
-		},
+			if !yield(client.WithKindAndApiVersion(kind, object), nil) {
+				return
+			}
+		}
 	}
-	items := counted(First(list(ctx, meshStack, listOptions), result.Limit), &result.Listed)
+}
+
+// RunSeq is Run for a listing that is not one kind's, such as the runs of every building block.
+func (f *ListFlags) RunSeq(cmd *cobra.Command, list func(ctx context.Context, options ...client.ListOption) iter.Seq2[any, error]) error {
+	return f.run(cmd, nil, list)
+}
+
+func (f *ListFlags) run(cmd *cobra.Command, page *types.Page, list func(ctx context.Context, options ...client.ListOption) iter.Seq2[any, error]) error {
+	ctx := cmd.Context()
+	result := ListResult{Limit: int(f.limit), Defaulted: !cmd.Flags().Changed(limitFlagName)}
+	items := counted(First(list(ctx, client.WithNewestFirst(time.Now()), client.WithPageSize(result.Limit)), result.Limit), &result.Listed)
 	if err := f.output.Format.WriteList(cmd.OutOrStdout(), items); err != nil {
 		return err
+	}
+	if page != nil {
+		result.Total = &page.TotalElements
 	}
 	if note := result.CutShortNote(); note != "" {
 		slog.InfoContext(ctx, note)

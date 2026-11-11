@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	gohttp "net/http"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -16,10 +15,7 @@ import (
 )
 
 func newAbortRun() *cobra.Command {
-	var (
-		output            internal.OutputFlag
-		buildingBlockUuid uuid.UUID
-	)
+	var output internal.OutputFlag
 
 	cmd := &cobra.Command{
 		Use:   "abort-run <building-block-uuid>",
@@ -29,8 +25,9 @@ func newAbortRun() *cobra.Command {
 The command shows the run and asks you to confirm, so it needs a terminal. After the abort, it prints the building block.`,
 		Example: `  meshstack buildingblock abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
-		Args: internal.UuidArg(&buildingBlockUuid),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: internal.UuidArg,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			buildingBlockUuid := args[0]
 			ctx := cmd.Context()
 			action, err := newRunAction(cmd, buildingBlockUuid, output.Format)
 			if err != nil {
@@ -46,19 +43,19 @@ The command shows the run and asks you to confirm, so it needs a terminal. After
 }
 
 func (a runAction) abort(ctx context.Context) error {
-	_, block, err := a.readBuildingBlock(ctx)
+	block, err := a.readBuildingBlock(ctx)
 	if err != nil {
 		return err
 	}
-	latest := cmp.Or(block.Links.LatestDryRun, block.Links.LatestRun)
-	if latest == nil {
+	latest := cmp.Or(block.Status.GetLatestDryRunUuid(), block.Status.GetLatestRunUuid())
+	if latest == "" {
 		return fmt.Errorf("building block %s has no run to abort", a.buildingBlockUuid)
 	}
-	run, err := a.meshStack.BuildingBlockRunAction.ReadRun(ctx, *latest)
+	run, err := a.readRun(ctx, latest)
 	if err != nil {
 		return err
 	}
-	if run.Links.Abort == nil {
+	if _, found := run.Links["abort"]; !found {
 		return fmt.Errorf("run %s of building block %s (action %s) has the status %s and cannot be aborted, or you are not allowed to abort it",
 			run.Metadata.Uuid, a.buildingBlockUuid, block.Status.Action, run.Status)
 	}
@@ -74,7 +71,7 @@ func (a runAction) abort(ctx context.Context) error {
 		slog.InfoContext(ctx, fmt.Sprintf("Did not abort run %s.", run.Metadata.Uuid))
 		return nil
 	}
-	err = a.meshStack.BuildingBlockRunAction.AbortRun(ctx, *run.Links.Abort)
+	_, err = run.Links.Post[struct{}](ctx, "abort", nil)
 	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.StatusCode == gohttp.StatusConflict {
 		return fmt.Errorf("run %s can no longer be aborted", run.Metadata.Uuid)
 	}

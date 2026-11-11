@@ -5,8 +5,9 @@ import (
 	"encoding"
 	"encoding/base64"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 var (
@@ -33,7 +34,7 @@ func (jwt JWT) MarshalText() (text []byte, err error) {
 
 //goland:noinspection GoMixedReceiverTypes
 func (jwt *JWT) UnmarshalText(text []byte) error {
-	jwt.encoded = text
+	jwt.encoded = bytes.Clone(text)
 	parts := bytes.Split(jwt.encoded, []byte("."))
 	if len(parts) != 3 {
 		return fmt.Errorf("the access token is not a JWT: it has %d dot-separated parts rather than 3", len(parts))

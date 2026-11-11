@@ -45,10 +45,7 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	if err != nil {
 		return Session{}, err
 	}
-	session, err := newSessionFor(ctx, currentProfile, opts)
-	if err != nil {
-		return Session{}, err
-	}
+	session := newSessionFor(ctx, currentProfile, opts)
 	session.profiles = profiles
 	resolved, err := session.resolveCredentials(ctx, opts)
 	if err != nil {
@@ -67,12 +64,10 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	return session.withCredential(ctx, resolved, opts)
 }
 
-// Scope names the profile, and the workspace where the settings choose it: only a browser login
-// works in that workspace, while an API key works in the one that owns it.
-func (s Session) Scope() string {
-	scope := "profile " + string(s.CurrentProfile.Name)
+func (s Session) String() string {
+	scope := string(s.Credential.Name()) + " profile " + string(s.CurrentProfile.Name)
 	if s.CurrentProfile.Name == "" {
-		scope = "endpoint " + s.CurrentProfile.Endpoint.String()
+		scope = string(s.Credential.Name()) + " for " + s.CurrentProfile.Endpoint.String()
 	}
 	if _, browserLogin := s.Credential.Credential.(*credential.OidcLogin); browserLogin {
 		if workspace, err := s.getWorkspace(); err == nil && workspace != meshstack.NoWorkspace {
@@ -83,10 +78,7 @@ func (s Session) Scope() string {
 }
 
 func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionOptions) (Session, error) {
-	session, err := newSessionFor(ctx, p, opts)
-	if err != nil {
-		return Session{}, err
-	}
+	session := newSessionFor(ctx, p, opts)
 	stored, err := session.storedCredential(ctx, nil)
 	if err != nil {
 		return Session{}, err
@@ -99,18 +91,12 @@ func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionO
 
 // HttpClient is for a request that the meshStack client does not make, such as the download of the
 // API docs. It carries the user agent of the front end, as the session's client does.
-func (opts ResolveSessionOptions) HttpClient() (http.Client, error) {
-	if err := opts.Validate(); err != nil {
-		return http.Client{}, err
-	}
-	return http.NewClient(opts.UserAgent), nil
+func (opts ResolveSessionOptions) HttpClient() http.Client {
+	return http.NewClient(opts.UserAgent)
 }
 
-func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (Session, error) {
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return Session{}, err
-	}
+func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) Session {
+	httpClient := opts.HttpClient()
 	return Session{
 		CurrentProfile: currentProfile,
 		httpClient:     httpClient,
@@ -121,7 +107,7 @@ func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts Re
 		getWorkspace: func() (meshstack.Workspace, error) {
 			return meshstack.NoWorkspace, nil
 		},
-	}, nil
+	}
 }
 
 func (s Session) withCredential(ctx context.Context, cred Credential, opts ResolveSessionOptions) (Session, error) {
@@ -157,8 +143,8 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 		return client.Client{}, workspaceErr
 	}
 	endpoint := s.CurrentProfile.Endpoint
-	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %s, workspace %s",
-		endpoint, s.httpClient.UserAgent, s.Credential.Name(), workspace))
+	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s from %s, authenticated by %s, workspace %s",
+		endpoint, s.httpClient, s.Credential.Name(), workspace))
 	c := client.New(ctx, endpoint, s.httpClient, s)
 	if skipVersionCheck, err := opts.ResolveSetting(ctx, meshstack.SkipVersionCheckSetting); err != nil {
 		return client.Client{}, err

@@ -335,5 +335,5 @@ func listWorkspaces(ctx context.Context, p *profile.Profile) ([]client.MeshWorks
 	if err != nil {
 		return nil, err
 	}
-	return c.Workspace.List(ctx)
+	return meshstack.ListWorkspaces(ctx, c.Workspace)
 }

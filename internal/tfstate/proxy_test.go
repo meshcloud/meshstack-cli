@@ -15,12 +15,12 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/http"
+	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
@@ -32,16 +32,7 @@ const (
 	nextState    = `{"version":4,"serial":2,"lineage":"lineage-1"}`
 )
 
-var buildingBlockUuid = uuid.MustParse("b1d2c3e4-0000-4000-8000-000000000001")
-
-type requester struct {
-	endpoint *url.URL
-}
-
-func (r requester) DoRequest(ctx context.Context, method, path string, opts ...http.RequestOption) ([]byte, error) {
-	return http.NewClient(fakemeshstack.UserAgent).WithAuthorization(http.BearerToken(fakemeshstack.Token)).
-		DoRequest[[]byte](ctx, method, r.endpoint.JoinPath(path), opts...)
-}
+var buildingBlockUuid = "b1d2c3e4-0000-4000-8000-000000000001"
 
 type proxyUnderTest struct {
 	*Proxy
@@ -50,7 +41,7 @@ type proxyUnderTest struct {
 	problems  []error
 }
 
-var storedState = fakemeshstack.TfState{Workspace: "my-workspace", BuildingBlockUuid: buildingBlockUuid.String()}
+var storedState = fakemeshstack.TfState{Workspace: "my-workspace", BuildingBlockUuid: buildingBlockUuid}
 
 func newProxy(t *testing.T, stored string, writable bool) *proxyUnderTest {
 	t.Helper()
@@ -63,7 +54,7 @@ func newProxy(t *testing.T, stored string, writable bool) *proxyUnderTest {
 	require.NoError(t, err)
 	p := &proxyUnderTest{meshStack: meshStack}
 	p.Proxy = &Proxy{
-		Store:     NewStore(requester{endpoint}, "my-workspace", buildingBlockUuid),
+		Store:     NewStore(http.NewClient(fakemeshstack.UserAgent).WithAuthorization(http.BearerToken(fakemeshstack.Token)), xurl.URL{URL: endpoint}, "my-workspace", buildingBlockUuid),
 		Writable:  writable,
 		Backups:   Backups(filepath.Join(t.TempDir(), "not", "yet", "there")),
 		OnProblem: func(_ context.Context, err error) { p.problems = append(p.problems, err) },
@@ -118,7 +109,7 @@ func (p *proxyUnderTest) backups(t *testing.T) []string {
 	require.NoError(t, err)
 	var contents []string
 	for _, file := range files {
-		assert.True(t, strings.HasPrefix(file, buildingBlockUuid.String()+"-"), file)
+		assert.True(t, strings.HasPrefix(file, buildingBlockUuid+"-"), file)
 		info, err := fs.Stat(backups, file)
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
@@ -286,7 +277,7 @@ func TestAReadOnlyProxy(t *testing.T) {
 
 		assert.Equal(t, gohttp.StatusOK, w.Code)
 		assert.JSONEq(t, firstState, w.Body.String())
-		assert.Equal(t, []string{"GET /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()}, p.requests())
+		assert.Equal(t, []string{"GET /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid}, p.requests())
 	})
 
 	t.Run("answers tofu's lock calls itself, so that a plan never makes a run wait", func(t *testing.T) {
@@ -347,9 +338,8 @@ func TestServeCountsTheRequestsUntilTheCommandEnds(t *testing.T) {
 		var apiToken jwt.JWT
 		require.NoError(t, apiToken.UnmarshalText([]byte(vars["MESHSTACK_API_TOKEN"])), "the provider since v0.26.0 takes only a JWT")
 		assert.False(t, apiToken.GetClaim(jwt.ExpiryClaim).Expired(time.Hour))
-		authorization := gohttp.Header{}
-		authorization.Set("Authorization", "Basic "+basicAuth(vars["TF_HTTP_USERNAME"], vars["TF_HTTP_PASSWORD"]))
-		served, err = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](t.Context(), http.MethodGet, address, http.WithHeaders(authorization))
+		authorization := http.WithHeader("Authorization", "Basic "+basicAuth(vars["TF_HTTP_USERNAME"], vars["TF_HTTP_PASSWORD"]))
+		served, err = http.ReadAllBody(http.NewClient(fakemeshstack.UserAgent).DoRequest(t.Context(), http.MethodGet, address, authorization))
 		require.NoError(t, err)
 	})
 
@@ -417,7 +407,7 @@ func (l *lockOf) serve(w gohttp.ResponseWriter, r *gohttp.Request) {
 func TestAWritableProxyPassesTheLockOn(t *testing.T) {
 	p := newProxy(t, firstState, true)
 	lock := &lockOf{}
-	p.meshStack.Route("/api/terraform/state/workspace/my-workspace/buildingBlock/"+buildingBlockUuid.String()+"/lock", lock.serve)
+	p.meshStack.Route("/api/terraform/state/workspace/my-workspace/buildingBlock/"+buildingBlockUuid+"/lock", lock.serve)
 	var log lockedLog
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })
@@ -452,7 +442,7 @@ func TestAWritableProxyPassesTheLockOn(t *testing.T) {
 	})
 
 	t.Run("passes a write that meshStack refuses for another's lock back as 423, and logs the holder rather than a problem", func(t *testing.T) {
-		writeInMeshStack := "POST /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String()
+		writeInMeshStack := "POST /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid
 		p.meshStack.Route(writeInMeshStack, func(w gohttp.ResponseWriter, _ *gohttp.Request) {
 			w.WriteHeader(gohttp.StatusLocked)
 			_, _ = w.Write([]byte(lockInfo("theirs")))
@@ -478,7 +468,7 @@ func TestAWritableProxyPassesTheLockOn(t *testing.T) {
 	})
 
 	t.Run("passes a 5xx of meshStack on for tofu to retry, and logs it rather than a problem", func(t *testing.T) {
-		lockInMeshStack := "POST /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid.String() + "/lock"
+		lockInMeshStack := "POST /api/terraform/state/workspace/my-workspace/buildingBlock/" + buildingBlockUuid + "/lock"
 		p.meshStack.Route(lockInMeshStack, func(w gohttp.ResponseWriter, _ *gohttp.Request) {
 			w.WriteHeader(gohttp.StatusInternalServerError)
 		})
@@ -486,7 +476,7 @@ func TestAWritableProxyPassesTheLockOn(t *testing.T) {
 
 		assert.Equal(t, gohttp.StatusInternalServerError, p.sendTo(gohttp.MethodPost, lockPath, lockInfo("mine")).Code)
 		assert.Empty(t, p.problems, "tofu fails the command itself where its retries fail as well")
-		assert.Contains(t, log.String(), "cannot lock the state of building block "+buildingBlockUuid.String())
+		assert.Contains(t, log.String(), "cannot lock the state of building block "+buildingBlockUuid)
 	})
 
 	t.Run("releases the lock in meshStack", func(t *testing.T) {
