@@ -99,6 +99,14 @@ func (e Error) IsLocked() bool {
 	return e.StatusCode == gohttp.StatusLocked
 }
 
+func (e Error) IsTemporary() bool {
+	switch e.StatusCode {
+	case gohttp.StatusRequestTimeout, gohttp.StatusLocked, gohttp.StatusTooManyRequests:
+		return true
+	}
+	return e.StatusCode >= gohttp.StatusInternalServerError
+}
+
 func (e Error) body() (body errorBody, ok bool) {
 	if err := json.Unmarshal(e.ResponseBody, &body); err != nil {
 		return errorBody{}, false
