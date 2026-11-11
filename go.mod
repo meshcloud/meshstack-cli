@@ -1,6 +1,6 @@
 module github.com/meshcloud/meshstack-cli
 
-// 1.27 is the floor because internal/http declares generic methods, which no earlier release
+// 1.27 is the floor because client/http declares generic methods, which no earlier release
 // compiles. Keep the pins in flake.nix (go_1_27 and GOROOT) and in the
 // Dockerfile in lock-step. Raising it also breaks the nixpkgs package
 // (buildGo127Module in pkgs/by-name/me/meshstack-cli/package.nix of NixOS/nixpkgs):

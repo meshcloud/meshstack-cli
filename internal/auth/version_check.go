@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
+	"github.com/meshcloud/meshstack-cli/client/types/version"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/json"
-	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	releaseCheckTimeout = 10 * time.Second
 )
 
-// warnIfNewerReleasePresent lives here rather than in internal/version, which the depguard rule
+// warnIfNewerReleasePresent lives here rather than in client/types/version, which the depguard rule
 // in .golangci.yml keeps closed to everything but the standard library.
 func warnIfNewerReleasePresent(ctx context.Context, configDir config.Directory, client http.Client, opts ResolveSessionOptions) (err error) {
 	currentVersion, err := version.Parse(opts.Version)

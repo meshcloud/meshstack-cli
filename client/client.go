@@ -3,16 +3,14 @@ package client
 import (
 	"context"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/types/version"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 var MinMeshStackVersion = version.MustParse("2026.36.0")
 
-// Version is re-exported because MinMeshStackVersion is one and internal/version is closed to
-// another module.
 type Version = version.Version
 
 type HttpError = http.Error

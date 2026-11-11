@@ -13,8 +13,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type HttpClient struct {
