@@ -17,6 +17,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
+	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 //go:embed docs.md.tmpl
@@ -67,17 +69,11 @@ The command downloads the API docs from your meshStack, so they list only what y
 				return fmt.Errorf("--%s cannot be combined with a path; see --help", describeFlagName)
 			}
 			var endpoint xurl.URL
-			if r.target.IsAbs() {
-				if endpoint, _, err = profileFor(cmd.Context(), r.target); err != nil {
-					return err
-				}
-				if endpoint.URL == nil {
-					return fmt.Errorf("no stored profile matches %s; give the path relative to the endpoint", r.target.Redacted())
-				}
-				if err = r.cutTo(endpoint); err != nil {
-					return err
-				}
-			} else if endpoint, err = docsEndpoint(cmd.Context()); err != nil {
+			resolved, _, err := profile.ResolveProfile(cmd.Context(), append(internal.SettingSources(), r.originAsEndpoint()...))
+			switch {
+			case err == nil:
+				endpoint = resolved.Endpoint
+			case !errors.Is(err, setting.ErrNoSourceProvidedValue):
 				return err
 			}
 			selector, err := flags.selector(r)

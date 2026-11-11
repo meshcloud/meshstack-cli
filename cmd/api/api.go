@@ -19,7 +19,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 func New() *cobra.Command {
@@ -28,7 +27,7 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api <path or URL>",
 		Short: "Send an authorized request to the meshStack API",
-		Long: fmt.Sprintf(`Send an authorized request to a path of the meshStack API, and print the response, which is typically JSON. Give the path relative to the endpoint, or give a full URL whose endpoint matches a stored profile with credentials.
+		Long: fmt.Sprintf(`Send an authorized request to a path of the meshStack API, and print the response, which is typically JSON. Give the path relative to the endpoint, or give a full URL, whose scheme and host the command then uses as the endpoint.
 
 Use this command for everything that the other commands do not cover. For a path of meshStack's public API, the command sets the Accept and Content-Type headers to the latest API version that the API docs list, unless you set them yourself.
 
@@ -52,24 +51,14 @@ To see what the API docs say about the request, run the same command line with '
 				return err
 			}
 			ctx := cmd.Context()
-			var profileSources setting.Sources
-			if r.target.IsAbs() {
-				if _, profileSources, err = profileFor(ctx, r.target); err != nil {
-					return err
-				}
-			}
 			// Resolved before the API docs, whose first download takes a while, so that a missing
 			// login fails at once.
-			meshStack, err := internal.ResolveClient(ctx, internal.WithSettingSources(profileSources))
+			meshStack, err := internal.ResolveClient(ctx, internal.WithSettingSources(r.originAsEndpoint()))
 			if err != nil {
 				return err
 			}
-			if r.target.IsAbs() {
-				if err = r.cutTo(meshStack.Endpoint); err != nil {
-					return err
-				}
-				selector.Path = r.target.Path
-				args = []string{r.target.String()}
+			if r.target.IsAbs() && !strings.EqualFold(r.origin(), meshStack.Endpoint.String()) {
+				return fmt.Errorf("%s is not at the endpoint %s of this command; leave out --%s", r.target.Redacted(), meshStack.Endpoint, internal.EndpointFlag.Name)
 			}
 			spec, wait, err := flags.loadApiDocs(cmd, meshStack.Endpoint)
 			defer wait()

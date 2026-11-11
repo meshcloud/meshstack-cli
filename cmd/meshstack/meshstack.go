@@ -51,7 +51,7 @@ Start with 'meshstack login'. It logs you in and stores the login in a profile.
 
 AI agents: read https://docs.meshcloud.io/agent-context/index.md before you act, starting with its guardrails. The skill for this CLI is https://github.com/meshcloud/meshstack-cli/blob/main/skills/meshstack-cli/SKILL.md.
 
-A command reads the endpoint, the profile and the workspace from its flag, else from the environment variable that the flag's help lists, else from the profile. A profile stores an endpoint and a default workspace. If you choose no profile, the command uses the profile whose endpoint matches, else the current profile, which 'meshstack login' sets.
+A command reads the endpoint, the profile and the workspace from its flag, else from the environment variable that the flag's help lists, else from the profile. A profile stores an endpoint and a default workspace. If you choose no profile, the command uses the current profile, which 'meshstack login' sets. If you give another endpoint than the current profile has, the command uses the only profile with that endpoint.
 
 AI agents and scripts: add --%s %s to a list or show command to get JSON. 'meshstack api' sends a request to any path of the meshStack API, and 'meshstack api-docs' describes that path.
 

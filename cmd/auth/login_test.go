@@ -101,9 +101,7 @@ func TestProfileSelection(t *testing.T) {
 			var asked bytes.Buffer
 
 			source := newProfileSelectionSource(prompt.New(strings.NewReader(tt.answers), &asked), tt.stdin)
-			ctx := profile.SetSelectionInContext(t.Context(), func() (profile.Selection, error) {
-				return tt.selection, nil
-			})
+			ctx := profile.SetSelectionInContext(t.Context(), tt.selection)
 
 			selected, err := source.Lookup(ctx, setting.Profile.EnvKey())
 

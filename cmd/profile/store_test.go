@@ -13,6 +13,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 var (
@@ -44,6 +45,7 @@ func storeCredentials(t *testing.T, p *profile.Profile) {
 	credentials, err := p.Credentials(t.Context())
 	require.NoError(t, err)
 	credentials.Manual = &credential.Manual{Endpoint: p.Endpoint}
+	require.NoError(t, credentials.Manual.Token.UnmarshalText([]byte(fakemeshstack.Token)))
 	require.NoError(t, credentials.Store(t.Context()))
 }
 

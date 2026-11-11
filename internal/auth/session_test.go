@@ -54,7 +54,7 @@ func TestSessionResolutionSaysWhyItFails(t *testing.T) {
 
 	t.Run("without any credential", func(t *testing.T) {
 		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-		require.ErrorContains(t, err, "selects no credential")
+		require.ErrorContains(t, err, "no credential for the endpoint "+server.URL+"; run 'meshstack login --endpoint "+server.URL+"'")
 		require.ErrorContains(t, err, auth.ApiTokenSetting.EnvKey())
 		require.ErrorContains(t, err, auth.ApiKeyClientIdSetting.EnvKey())
 		require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
@@ -118,7 +118,7 @@ func TestSessionOfAStoredApiKey(t *testing.T) {
 		storeLogin(t, credential.ApiKeyName)
 
 		t.Setenv(profile.NameSetting.EnvKey(), "")
-		current, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		current, _, err := profile.ResolveProfile(t.Context(), nil)
 		require.NoError(t, err)
 		assert.Equal(t, profile.Name("dev"), current.Name)
 	})
@@ -299,16 +299,19 @@ func TestSessionWarnsWhenTheEnvironmentOverridesTheStoredLogin(t *testing.T) {
 
 	t.Run("another profile named in the environment overrides the current one", func(t *testing.T) {
 		t.Setenv(profile.NameSetting.EnvKey(), "dev")
+		setApiKeyEnv(t, testApiKey1)
+		storeLogin(t, credential.ApiKeyName)
+		t.Setenv(profile.NameSetting.EnvKey(), "default")
 		captured := logs.Capture(t)
-		_, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		_, _, err := profile.ResolveProfile(t.Context(), nil)
 		require.NoError(t, err)
 		lines := captured.Lines(slog.LevelWarn)
 		require.Len(t, lines, 1)
-		assert.Contains(t, lines[0], "'dev', which overrides 'default' from the current profile")
+		assert.Contains(t, lines[0], "'default', which overrides 'dev' from the current profile")
 	})
 
 	t.Run("a workspace in the environment overrides the default workspace", func(t *testing.T) {
-		current, profiles, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		current, profiles, err := profile.ResolveProfile(t.Context(), nil)
 		require.NoError(t, err)
 		current.DefaultWorkspace = "stored-workspace"
 		require.NoError(t, profiles.Store(t.Context()))
@@ -319,6 +322,6 @@ func TestSessionWarnsWhenTheEnvironmentOverridesTheStoredLogin(t *testing.T) {
 		require.NoError(t, err)
 		lines := captured.Lines(slog.LevelWarn)
 		require.Len(t, lines, 1)
-		assert.Contains(t, lines[0], "'env-workspace', which overrides 'stored-workspace' from the default workspace in profile default")
+		assert.Contains(t, lines[0], "'env-workspace', which overrides 'stored-workspace' from the default workspace in profile dev")
 	})
 }

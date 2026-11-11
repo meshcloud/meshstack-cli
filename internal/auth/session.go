@@ -23,6 +23,7 @@ type Session struct {
 	Client     func() (client.Client, error)
 	MeshInfo   func() (client.MeshInfo, error)
 
+	profiles     profile.Profiles
 	getWorkspace func() (meshstack.Workspace, error)
 	httpClient   http.Client
 }
@@ -40,10 +41,15 @@ type (
 )
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {
-	session, _, err := newSession(ctx, opts, false)
+	currentProfile, profiles, err := profile.ResolveProfile(ctx, opts.SettingSources)
 	if err != nil {
 		return Session{}, err
 	}
+	session, err := newSessionFor(ctx, currentProfile, opts)
+	if err != nil {
+		return Session{}, err
+	}
+	session.profiles = profiles
 	resolved, err := session.resolveCredentials(ctx, opts)
 	if err != nil {
 		return Session{}, err
@@ -65,6 +71,9 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 // works in that workspace, while an API key works in the one that owns it.
 func (s Session) Scope() string {
 	scope := "profile " + string(s.CurrentProfile.Name)
+	if s.CurrentProfile.Name == "" {
+		scope = "endpoint " + s.CurrentProfile.Endpoint.String()
+	}
 	if _, browserLogin := s.Credential.Credential.(*credential.OidcLogin); browserLogin {
 		if workspace, err := s.getWorkspace(); err == nil && workspace != meshstack.NoWorkspace {
 			scope += " working in workspace " + string(workspace)
@@ -86,35 +95,6 @@ func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionO
 		return p.DefaultWorkspace, nil
 	}
 	return session.withCredential(ctx, stored, opts)
-}
-
-// newSession leaves the profiles locked with exclusiveLock only where it succeeds.
-func newSession(ctx context.Context, opts ResolveSessionOptions, exclusiveLock bool) (_ Session, _ profile.Profiles, err error) {
-	currentProfile, profiles, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{
-		SettingSources: opts.SettingSources,
-		ExclusiveLock:  exclusiveLock,
-	})
-	if err != nil {
-		return Session{}, profile.Profiles{}, err
-	}
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, profiles.Unlock())
-		}
-	}()
-
-	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting, currentProfile.EndpointSource())
-	if err != nil {
-		return Session{}, profile.Profiles{}, err
-	} else if !endpoint.Equal(currentProfile.Endpoint) {
-		// this prevents accidentally sending credentials to the wrong endpoint
-		return Session{}, profile.Profiles{}, fmt.Errorf("profile '%s' has the endpoint '%s', which does not match the endpoint '%s' of this command; "+
-			"use --profile to choose a profile for that endpoint, or create one with 'meshstack login --endpoint %s --profile <new-profile-name>'",
-			currentProfile, currentProfile.Endpoint, endpoint, endpoint)
-	}
-
-	session, err := newSessionFor(ctx, currentProfile, opts)
-	return session, profiles, err
 }
 
 // HttpClient is for a request that the meshStack client does not make, such as the download of the
@@ -199,15 +179,13 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 // ResolveWorkspace resolves the workspace that a session of opts works in, as ResolveSession does,
 // and is NoWorkspace where no setting names one and the profile has no default workspace.
 func ResolveWorkspace(ctx context.Context, opts ResolveSessionOptions) (meshstack.Workspace, error) {
-	stored, _, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{SettingSources: opts.SettingSources, StoredOnly: true})
-	var defaultWorkspace setting.Source
-	switch {
-	case err == nil:
-		if !opts.IgnoreDefaultWorkspace {
-			defaultWorkspace = stored.WorkspaceSource()
-		}
-	case !errors.Is(err, profile.ErrNoStoredProfile):
+	currentProfile, _, err := profile.ResolveProfile(ctx, opts.SettingSources)
+	if err != nil {
 		return meshstack.NoWorkspace, err
+	}
+	var defaultWorkspace setting.Source
+	if !opts.IgnoreDefaultWorkspace {
+		defaultWorkspace = currentProfile.WorkspaceSource()
 	}
 	workspace, err := opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, defaultWorkspace)
 	if errors.Is(err, setting.ErrNoSourceProvidedValue) {

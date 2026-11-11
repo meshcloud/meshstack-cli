@@ -313,9 +313,8 @@ linters:
             - github.com/meshcloud/meshstack-cli/internal/http
             # the API docs choose the version of a request
             - github.com/meshcloud/meshstack-cli/internal/apidocs
-            # a full URL picks the stored profile whose endpoint holds it, and has to fit an endpoint
-            # or profile named by flag or environment, so api reads the stored profiles and the
-            # source of both settings, which pkg/ leaves out
+            # api-docs takes the endpoint of the profile without a login, and a full URL gives its
+            # origin as the endpoint setting, both of which pkg/ leaves out
             - github.com/meshcloud/meshstack-cli/internal/profile
             - github.com/meshcloud/meshstack-cli/internal/meshstack
             - github.com/meshcloud/meshstack-cli/internal/setting

@@ -3,7 +3,6 @@ package profile
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"log/slog"
 
 	"github.com/spf13/cobra"
@@ -11,7 +10,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
-	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
 
@@ -24,7 +22,7 @@ var showTemplate = markdown.Parse("show", showTemplateText)
 type entry struct {
 	*profile.Profile `json:",inline"`
 
-	Name    profile.Name `json:"name"`
+	Name    profile.Name `json:"name,omitzero"`
 	Current bool         `json:"current"`
 }
 
@@ -35,7 +33,6 @@ func entryOf(profiles profile.Profiles, p *profile.Profile) entry {
 type shown struct {
 	entry `json:",inline"`
 
-	// New is the profile a first login would create, which is not stored yet.
 	New bool `json:"new,omitzero"`
 
 	Status *auth.CredentialStatus `json:"status,omitzero"`
@@ -65,26 +62,16 @@ func newShow() *cobra.Command {
 		Short: "Show a profile and the status of its stored credential",
 		Long: `Show the profile that other commands would use, and the status of its stored credential. Flags and environment variables can override that credential.
 
-If the profile does not exist yet, the command shows what the first login would create, without saving anything.`,
+If the command uses no stored profile for the endpoint, it shows the endpoint alone.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			opts := profile.ResolveProfileOptions{SettingSources: internal.SettingSources(), EndpointOptional: true}
-			stored, err := profile.LoadProfiles(ctx, profile.LoadProfilesOptions{SettingSources: opts.SettingSources})
+			shownProfile, stored, err := profile.ResolveProfile(ctx, internal.SettingSources())
 			if err != nil {
 				return err
-			}
-			shownProfile, _, err := profile.ResolveProfile(ctx, opts)
-			if err != nil {
-				return err
-			}
-			if endpoint, source, err := opts.ResolveSettingWithSource(ctx, meshstack.EndpointSetting); err == nil && !endpoint.Equal(shownProfile.Endpoint) {
-				slog.WarnContext(ctx, fmt.Sprintf("Profile '%s' has the endpoint '%s', which does not match the endpoint '%s' from %s, so commands fail with this profile",
-					shownProfile.Name, shownProfile.Endpoint, endpoint, source.Describe(meshstack.EndpointSetting.EnvKey())))
 			}
 			s := showOf(ctx, stored, shownProfile)
-			_, isStored := stored.Profiles[shownProfile.Name]
-			s.New = !isStored
+			s.New = shownProfile.Name == ""
 			return output.Show(cmd.OutOrStdout(), showTemplate, s)
 		},
 	}

@@ -64,15 +64,6 @@ func TestTheExclusiveLockOfTheProfiles(t *testing.T) {
 		assert.False(t, lockIsFree(t, dir), "the other command still holds the lock")
 	})
 
-	t.Run("is released where ResolveProfile fails", func(t *testing.T) {
-		t.Setenv(NameSetting.EnvKey(), "missing")
-
-		_, _, err := ResolveProfile(t.Context(), ResolveProfileOptions{StoredOnly: true, ExclusiveLock: true})
-
-		require.ErrorIs(t, err, ErrNoStoredProfile)
-		assert.True(t, lockIsFree(t, dir))
-	})
-
 	t.Run("is released where the profiles are invalid", func(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "profiles.json"), []byte(`{"version":0}`), 0o600))
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/apidocs"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 const (
@@ -81,13 +84,19 @@ func (f *requestFlags) parse(cmd *cobra.Command, args []string) (request, error)
 	return r, nil
 }
 
-func (r *request) cutTo(endpoint xurl.URL) error {
-	path, held := endpoint.PathTo(r.target)
-	if !held {
-		return fmt.Errorf("%s is not under endpoint %s", r.target.Redacted(), endpoint)
+func (r *request) origin() string {
+	return r.target.Scheme + "://" + r.target.Host
+}
+
+func (r *request) originAsEndpoint() setting.Sources {
+	if !r.target.IsAbs() {
+		return nil
 	}
-	r.target = &url.URL{Path: path, RawQuery: r.target.RawQuery}
-	return nil
+	return setting.Sources{setting.LookupSource{
+		MatchingKey: meshstack.EndpointSetting.EnvKey(),
+		Description: "the URL " + r.target.Redacted(),
+		Func:        func(context.Context) (string, error) { return r.origin(), nil },
+	}}
 }
 
 func (f *requestFlags) selector(r request) (openapi.Selector, error) {

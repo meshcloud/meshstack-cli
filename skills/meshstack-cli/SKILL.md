@@ -59,8 +59,8 @@ A login stores a credential in a profile. A profile also holds an endpoint and a
 
 `MESHSTACK_PROFILE`, `MESHSTACK_WORKSPACE` and a credential in the environment (`MESHSTACK_API_KEY`
 with `MESHSTACK_API_SECRET`, or `MESHSTACK_API_TOKEN`) win over what a login stores, and a
-command warns when they do. Unset them to use the stored profile. To ignore the stored profiles
-instead, as a script or CI job should, point `MESHSTACK_CONFIG_DIR` at a directory of its own.
+command warns when they do. Unset them to use the stored profile. A script or CI job needs no
+profile: it sets `MESHSTACK_ENDPOINT` and a credential.
 
 ```sh
 meshstack auth status -p <profile>       # who, which workspace, until when — check this first

@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/pkg/auth"
 )
 
 type ListFlags struct {
@@ -32,7 +31,7 @@ func (f *ListFlags) Register(flags *pflag.FlagSet) {
 // ListWorkspace is the workspace the session works in, which a listing keeps to as every other
 // command does, and nil where the session works in none.
 func ListWorkspace(ctx context.Context) (*string, error) {
-	workspace, err := auth.ResolveWorkspace(ctx, ResolveClientOptions())
+	workspace, err := ResolveWorkspace(ctx)
 	if err != nil || workspace == "" {
 		return nil, err
 	}

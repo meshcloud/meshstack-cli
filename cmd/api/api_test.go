@@ -70,7 +70,7 @@ func TestApi(t *testing.T) {
 
 		_, err := meshStack.run(t, api.New(), "", "/api/meshobjects/meshbuildingblocks")
 
-		require.ErrorContains(t, err, "selects no credential")
+		require.ErrorContains(t, err, "no credential for the endpoint")
 		assert.Empty(t, docs.TakeRequests())
 		assert.Empty(t, meshStack.requests)
 	})
@@ -128,13 +128,13 @@ func TestApi(t *testing.T) {
 
 	t.Run("writes the body of a failed answer, and fails with a hint to api-docs on a client error", func(t *testing.T) {
 		for status, wantError := range map[int]string{
-			gohttp.StatusConflict:   "meshStack answered HTTP 409: still in use. Run meshstack api-docs /api/x -H 'Accept: application/json' -X DELETE to see what the API expects",
+			gohttp.StatusConflict:   "meshStack answered HTTP 409: still in use. Run meshstack api-docs /api/x -H 'Accept: application/json' -X POST to see what the API expects",
 			gohttp.StatusBadGateway: "meshStack answered HTTP 502: still in use",
-			gohttp.StatusForbidden:  "auth scope profile default: meshStack answered HTTP 403: still in use",
+			gohttp.StatusForbidden:  "auth scope endpoint " + meshStack.URL + ": meshStack answered HTTP 403: still in use",
 		} {
 			meshStack.answer(status, `{"message":"still in use"}`)
 
-			stdout, err := meshStack.run(t, api.New(), "", "-X", "DELETE", "/api/x", "-H", "Accept: application/json")
+			stdout, err := meshStack.run(t, api.New(), "", "-X", "POST", "/api/x", "-H", "Accept: application/json")
 
 			require.EqualError(t, err, wantError)
 			assert.JSONEq(t, "{\n  \"message\": \"still in use\"\n}\n", stdout)

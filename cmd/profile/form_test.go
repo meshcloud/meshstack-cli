@@ -57,7 +57,7 @@ func TestTheWorkspacesThatTheProfilesAtTheEndpointReachAreSuggested(t *testing.T
 	require.NoError(t, credentials.Store(t.Context()))
 
 	// The logged-out profile is asked as well, and fails without a call.
-	assert.Equal(t, []string{"app-team", "platform-team"}, knownWorkspaces(t.Context(), profiles.MatchingEndpoint(endpoint)))
-	assert.Empty(t, profiles.MatchingEndpoint(xurl.MustParsef("https://unknown.example.io")))
+	assert.Equal(t, []string{"app-team", "platform-team"}, knownWorkspaces(t.Context(), profiles.ForEndpoint(endpoint)))
+	assert.Empty(t, profiles.ForEndpoint(xurl.MustParsef("https://unknown.example.io")))
 	assert.Equal(t, int64(1), server.Counts().Logins)
 }
