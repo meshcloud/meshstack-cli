@@ -1,25 +1,18 @@
 package client
 
+import "github.com/meshcloud/meshstack-cli/client/types/enum"
+
 type MeshBuildingBlockRunnerImplementationType string
 
-// TODO Turn this into enum!
-const (
-	MeshBuildingBlockRunnerImplementationTypeTerraform           MeshBuildingBlockRunnerImplementationType = "TERRAFORM"
-	MeshBuildingBlockRunnerImplementationTypeGithubWorkflow      MeshBuildingBlockRunnerImplementationType = "GITHUB_WORKFLOW"
-	MeshBuildingBlockRunnerImplementationTypeGitlabPipeline      MeshBuildingBlockRunnerImplementationType = "GITLAB_PIPELINE"
-	MeshBuildingBlockRunnerImplementationTypeAzureDevopsPipeline MeshBuildingBlockRunnerImplementationType = "AZURE_DEVOPS_PIPELINE"
-	MeshBuildingBlockRunnerImplementationTypeManual              MeshBuildingBlockRunnerImplementationType = "MANUAL"
-	MeshBuildingBlockRunnerImplementationTypeAll                 MeshBuildingBlockRunnerImplementationType = "ALL"
+var (
+	MeshBuildingBlockRunnerImplementationTypes                   = enum.Enum[MeshBuildingBlockRunnerImplementationType]{}
+	MeshBuildingBlockRunnerImplementationTypeTerraform           = MeshBuildingBlockRunnerImplementationTypes.Entry("TERRAFORM")
+	MeshBuildingBlockRunnerImplementationTypeGithubWorkflow      = MeshBuildingBlockRunnerImplementationTypes.Entry("GITHUB_WORKFLOW")
+	MeshBuildingBlockRunnerImplementationTypeGitlabPipeline      = MeshBuildingBlockRunnerImplementationTypes.Entry("GITLAB_PIPELINE")
+	MeshBuildingBlockRunnerImplementationTypeAzureDevopsPipeline = MeshBuildingBlockRunnerImplementationTypes.Entry("AZURE_DEVOPS_PIPELINE")
+	MeshBuildingBlockRunnerImplementationTypeManual              = MeshBuildingBlockRunnerImplementationTypes.Entry("MANUAL")
+	MeshBuildingBlockRunnerImplementationTypeAll                 = MeshBuildingBlockRunnerImplementationTypes.Entry("ALL")
 )
-
-var MeshBuildingBlockRunnerImplementationTypes = []string{
-	string(MeshBuildingBlockRunnerImplementationTypeTerraform),
-	string(MeshBuildingBlockRunnerImplementationTypeGithubWorkflow),
-	string(MeshBuildingBlockRunnerImplementationTypeGitlabPipeline),
-	string(MeshBuildingBlockRunnerImplementationTypeAzureDevopsPipeline),
-	string(MeshBuildingBlockRunnerImplementationTypeManual),
-	string(MeshBuildingBlockRunnerImplementationTypeAll),
-}
 
 type MeshBuildingBlockRunner struct {
 	Metadata MeshBuildingBlockRunnerMetadata `json:"metadata" tfsdk:"metadata"`
@@ -39,12 +32,12 @@ type MeshBuildingBlockRunnerStatus struct {
 }
 
 type MeshBuildingBlockRunnerSpec struct {
-	DisplayName                string                         `json:"displayName" tfsdk:"display_name"`
-	PublicKey                  string                         `json:"publicKey" tfsdk:"public_key"`
-	ImplementationType         string                         `json:"implementationType" tfsdk:"implementation_type"`
-	Restriction                *string                        `json:"restriction,omitzero" tfsdk:"restriction"`
-	IsSelfHosted               *bool                          `json:"isSelfHosted,omitzero" tfsdk:"is_self_hosted"`
-	WorkloadIdentityFederation *MeshRunnerWorkloadIdentityFed `json:"workloadIdentityFederation,omitzero" tfsdk:"workload_identity_federation"`
+	DisplayName                string                                                `json:"displayName" tfsdk:"display_name"`
+	PublicKey                  string                                                `json:"publicKey" tfsdk:"public_key"`
+	ImplementationType         enum.Entry[MeshBuildingBlockRunnerImplementationType] `json:"implementationType" tfsdk:"implementation_type"`
+	Restriction                *string                                               `json:"restriction,omitzero" tfsdk:"restriction"`
+	IsSelfHosted               *bool                                                 `json:"isSelfHosted,omitzero" tfsdk:"is_self_hosted"`
+	WorkloadIdentityFederation *MeshRunnerWorkloadIdentityFed                        `json:"workloadIdentityFederation,omitzero" tfsdk:"workload_identity_federation"`
 }
 
 type MeshRunnerWorkloadIdentityFed struct {
