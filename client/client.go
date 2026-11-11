@@ -50,7 +50,7 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth http.A
 	return Client{
 		ApiKey:                         newMeshObjectClient[MeshApiKey, NoFilter](ctx, c, endpoint, "v1-preview"),
 		BuildingBlockV2:                newMeshObjectClient[MeshBuildingBlockV2, MeshBuildingBlockV2Filter](ctx, c, endpoint, buildingBlockV2ApiVersion),
-		BuildingBlockRun:               newMeshObjectClient[MeshBuildingBlockRun, MeshBuildingBlockRunFilter](ctx, c, endpoint, "v1"),
+		BuildingBlockRun:               meshBuildingBlockRunClient{newMeshObjectClient[MeshBuildingBlockRun, MeshBuildingBlockRunFilter](ctx, c, endpoint, buildingBlockRunApiVersion)},
 		BuildingBlockDefinition:        newMeshObjectClient[MeshBuildingBlockDefinition, MeshBuildingBlockDefinitionFilter](ctx, c, endpoint, "v1-preview"),
 		BuildingBlockDefinitionVersion: newMeshObjectClient[MeshBuildingBlockDefinitionVersion, MeshBuildingBlockDefinitionVersionFilter](ctx, c, endpoint, "v1-preview"),
 		BuildingBlockRunner:            newMeshObjectClient[MeshBuildingBlockRunner, MeshBuildingBlockRunnerFilter](ctx, c, endpoint, "v1-preview"),
