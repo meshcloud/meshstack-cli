@@ -92,8 +92,7 @@ func parseEndpoint(value string) (endpoint xurl.URL, err error) {
 	if value == "" {
 		return endpoint, errors.New("a profile needs an endpoint")
 	}
-	err = endpoint.UnmarshalText([]byte(value))
-	return
+	return meshstack.EndpointSetting.Parse(value)
 }
 
 // localEndpoint is meshfed-api of the local stack in ../meshfed-release, on Spring's default port.
@@ -288,7 +287,7 @@ func (f *form) lookUpWorkspaces(ctx context.Context, profiles profile.Profiles) 
 	endpoint := f.endpoint
 	var asked []profile.Profile
 	if parsed, err := parseEndpoint(endpoint); err == nil {
-		asked = profiles.MatchingEndpoint(parsed)
+		asked = profiles.ForEndpoint(parsed)
 	}
 	return func() tea.Msg {
 		return workspacesLookedUp{form: f, endpoint: endpoint, names: knownWorkspaces(ctx, asked)}

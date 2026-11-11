@@ -22,7 +22,7 @@ type StoreFunc func(context.Context) error
 // fails, it holds nothing. An unlock before the credential is stored also takes back the tokens
 // that the login cached.
 func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOptions) (_ Session, _ StoreFunc, unlock func() error, err error) {
-	session, profiles, err := newSession(ctx, opts, true)
+	profiles, err := profile.LoadProfiles(ctx, profile.LoadProfilesOptions{SettingSources: opts.SettingSources, ExclusiveLock: true})
 	if err != nil {
 		return Session{}, nil, nil, err
 	}
@@ -31,6 +31,14 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 			err = errors.Join(err, profiles.Unlock())
 		}
 	}()
+	currentProfile, err := profiles.Resolve(ctx, opts.SettingSources, true)
+	if err != nil {
+		return Session{}, nil, nil, err
+	}
+	session, err := newSessionFor(ctx, currentProfile, opts)
+	if err != nil {
+		return Session{}, nil, nil, err
+	}
 
 	var creds profile.Credentials
 	creds, err = session.CurrentProfile.Credentials(ctx)
@@ -57,7 +65,7 @@ func Login(ctx context.Context, withAuth credential.Name, opts ResolveSessionOpt
 	slog.DebugContext(ctx, fmt.Sprintf("Setting credential %s in profile", withAuth))
 	session.CurrentProfile.Credential = withAuth
 
-	resolved.Sources, resolved.Stored = []string{"file " + creds.FilePath}, true
+	resolved.Sources = []string{"file " + creds.FilePath}
 	session.Credential = resolved
 	restoreCache, err := session.Credential.WriteOver(ctx)
 	if err != nil {

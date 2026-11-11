@@ -22,7 +22,8 @@ import (
 // CredentialStatus never carries a secret. A part that cannot be read is logged as a warning and
 // left at its zero value.
 type CredentialStatus struct {
-	Profile   profile.Name        `json:"profile"`
+	Profile   profile.Name        `json:"profile,omitzero"`
+	LoginHint string              `json:"-"`
 	Endpoint  xurl.URL            `json:"endpoint"`
 	Kind      credential.Name     `json:"credential"`
 	Sources   []string            `json:"sources"`
@@ -98,10 +99,11 @@ type ApiKeyStatus struct {
 // renews a browser login, which would rotate its refresh token.
 func (s Session) Status(ctx context.Context) CredentialStatus {
 	status := CredentialStatus{
-		Profile:  s.CurrentProfile.Name,
-		Endpoint: s.CurrentProfile.Endpoint,
-		Kind:     s.Credential.Name(),
-		Sources:  s.Credential.Sources,
+		Profile:   s.CurrentProfile.Name,
+		LoginHint: s.CurrentProfile.LoginHint(),
+		Endpoint:  s.CurrentProfile.Endpoint,
+		Kind:      s.Credential.Name(),
+		Sources:   s.Credential.Sources,
 	}
 	workspace, err := s.getWorkspace()
 	if err != nil && !errors.Is(err, setting.ErrNoSourceProvidedValue) {
@@ -139,7 +141,7 @@ func (s Session) unusedCredentials(ctx context.Context, workspace meshstack.Work
 	}
 	for _, name := range credential.Names {
 		cred := stored.ByName(name)
-		if cred == nil || name == s.Credential.Name() && s.Credential.Stored {
+		if cred == nil || cred.Identity() == s.Credential.Identity() {
 			continue
 		}
 		if err := CacheFor(s.CurrentProfile, cred).Load(ctx); err != nil {

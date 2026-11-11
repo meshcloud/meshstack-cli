@@ -26,7 +26,7 @@ In a terminal, this command opens an interactive list where you can add, edit an
 				return cmd.Help()
 			}
 			return withLockedProfiles(ctx, func(profiles profile.Profiles) error {
-				selection, err := profiles.SelectionFor(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+				selection, err := profiles.SelectionFor(ctx, internal.SettingSources())
 				if err != nil {
 					return err
 				}

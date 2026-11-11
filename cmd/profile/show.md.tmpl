@@ -2,15 +2,15 @@
 {{- with .Status -}}
 {{template "credential" .}}
 {{- else -}}
-| Profile | {{cell .Name}} |
+| Profile | {{with .Name}}{{cell .}}{{else}}none{{end}} |
 | --- | --- |
 | Endpoint | {{with .Endpoint.URL}}{{cell .}}{{else}}none{{end}} |
 | Default workspace | {{or .DefaultWorkspace "none"}} |
-| Credential | none, run `meshstack login --profile {{.Name}}` |
+| Credential | none, run `{{.LoginHint}}` |
 {{- end}}
 {{- if .New}}
 
-This profile is not saved yet. It is saved on the first login.
+No stored profile is used. A login saves one.
 {{- else if .Current}}
 
 This is the current profile.

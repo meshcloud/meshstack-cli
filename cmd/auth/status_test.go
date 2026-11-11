@@ -57,7 +57,7 @@ func TestStatusOfAnApiTokenFromTheEnvironment(t *testing.T) {
 	t.Run("is Markdown where the output is no terminal", func(t *testing.T) {
 		output := executeStatus(t)
 
-		assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n")
+		assert.Contains(t, output, "| Profile | none |\n| --- | --- |\n")
 		assert.Contains(t, output, "| Credential | API token, from env MESHSTACK_API_TOKEN |\n")
 		assert.Contains(t, output, "|  | User runner |\n")
 		assert.Contains(t, output, "| meshStack | 2026.40.0 |\n")

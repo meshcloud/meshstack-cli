@@ -11,7 +11,6 @@ import (
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/tfstate"
-	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
 
 var rights = `meshStack gives the state only to a login that has the rights of one of these rows, in the workspace that the login works in:
@@ -55,7 +54,7 @@ func New() *cobra.Command {
 // building block's own workspace, which the runner stores the state under, for every user who has a
 // default.
 func openStore(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID) (tfstate.Store, error) {
-	workspace, err := setting.ResolveWorkspace(ctx, internal.SettingSources())
+	workspace, err := internal.ResolveWorkspace(ctx, internal.IgnoreDefaultWorkspace)
 	if err != nil {
 		return tfstate.Store{}, err
 	}

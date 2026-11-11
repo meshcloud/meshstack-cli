@@ -103,9 +103,8 @@ func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int
 		// With an API key as well, the provider since v0.26.0 refuses to pick one of the two.
 		auth.ApiKeyClientIdSetting.EnvKey() + "=",
 		auth.ApiKeyClientSecretSetting.EnvKey() + "=",
-		// The provider since v0.26.0 refuses a stored profile whose endpoint is not the proxy's, and
-		// creates a profile it does not find without storing it.
-		profile.NameSetting.EnvKey() + "=" + execProfile,
+		// A profile named in the environment has another endpoint than the proxy.
+		profile.NameSetting.EnvKey() + "=",
 	})
 
 	err = server.Shutdown(context.WithoutCancel(ctx))
@@ -144,8 +143,6 @@ func (p *Proxy) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) {
 		p.refuse(w, r, gohttp.StatusMethodNotAllowed, fmt.Errorf("a request asked to %s %s, which meshStack does not offer", r.Method, r.URL.Path))
 	}
 }
-
-const execProfile = "meshstack-tfstate-exec"
 
 // newApiToken wraps password in the shape of a JWT that expires in a year, because the provider
 // since v0.26.0 refuses a token that is no JWT, or that has expired. Nobody checks its signature.
