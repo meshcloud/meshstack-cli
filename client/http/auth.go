@@ -61,6 +61,10 @@ func (c AuthorizedClient) String() string {
 	return "authorized client " + c.client.userAgent.String()
 }
 
+func (c AuthorizedClient) UserAgentVersion() string {
+	return c.client.userAgent.Version
+}
+
 func (c AuthorizedClient) ProxyTransport() gohttp.RoundTripper {
 	return proxyTransport{c}
 }
