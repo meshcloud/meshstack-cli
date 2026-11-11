@@ -381,7 +381,10 @@ current login. For a meshObject endpoint it picks the latest API version, sets t
 command keeps working when a preview version becomes GA. An answer outside 2xx still prints its
 body, but the command fails.
 
-Do not read the OpenAPI document yourself — it is several MB. Ask `api-docs`:
+Do not read the OpenAPI document yourself — it is about 1 MB. Ask `api-docs`, which reads the
+document the endpoint serves at `/api/openapi`, so it describes the API of that meshStack. It needs
+no login. A meshStack that serves none gets the published docs, with a warning that they may not
+match it:
 
 ```sh
 meshstack api-docs --describe bb               # every operation of a kind, latest version

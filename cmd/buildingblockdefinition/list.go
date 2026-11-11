@@ -22,7 +22,11 @@ func newList() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return flags.Run[client.MeshBuildingBlockDefinition](cmd, client.MeshBuildingBlockDefinitionListFilter{
+			meshStack, err := internal.ResolveClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return flags.Run(cmd, meshStack.BuildingBlockDefinition, client.MeshBuildingBlockDefinitionFilter{
 				OwnedByWorkspace:    workspace,
 				IncludeAllPublished: true,
 			})

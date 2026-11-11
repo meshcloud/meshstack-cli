@@ -1,13 +1,15 @@
 package http
 
 import (
-	"encoding/json/v2"
 	"fmt"
 	gohttp "net/http"
 	"strings"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 type Error struct {
+	Method, Url  string
 	StatusCode   int
 	ResponseBody []byte
 }
@@ -15,14 +17,18 @@ type Error struct {
 // Error describes the response from its fields, with the clientVersionHint on a line of its own. A
 // response of another format is shown as it came.
 func (e Error) Error() string {
+	message := e.Summary()
 	body, ok := e.body()
-	if !ok {
-		return fmt.Sprintf("%s, but the response is not in the expected error format: '%s'", e.Summary(), string(e.ResponseBody))
+	switch {
+	case !ok:
+		message = fmt.Sprintf("%s, but the response is not in the expected error format: '%s'", message, string(e.ResponseBody))
+	case body.ClientVersionHint != "":
+		message += "\n" + body.ClientVersionHint
 	}
-	if body.ClientVersionHint != "" {
-		return e.Summary() + "\n" + body.ClientVersionHint
+	if e.Method == "" {
+		return message
 	}
-	return e.Summary()
+	return e.Method + " " + e.Url + ": " + message
 }
 
 // Summary is Error without the clientVersionHint and without a body of an unexpected format.

@@ -14,7 +14,7 @@ import (
 func TestRejectRunRejectsOnlyAfterConfirmation(t *testing.T) {
 	const waitingRun = "a0000000-0000-4000-8000-000000000003"
 	server := fakemeshstack.Start(t, fakemeshstack.Options{
-		BuildingBlocks: []any{meshObject(t, `{"metadata": {"uuid": "`+buildingBlockUuid+`"}, "status": {"action": "APPROVE_RUN"}, `+
+		BuildingBlocks: []any{meshObject(t, `{"metadata": {"uuid": "`+buildingBlockUuid+`"}, "status": {"action": "APPROVE_RUN", "latestRunUuid": "`+waitingRun+`"}, `+
 			`"_links": {"latestRun": {"href": "`+runsPath+waitingRun+`"}}}`)},
 		BuildingBlockRuns: []any{meshObject(t, `{"metadata": {"uuid": "`+waitingRun+`"}, "status": "IN_PROGRESS", `+
 			`"spec": {"runNumber": 2, "behavior": "APPLY", "buildingBlock": {"uuid": "`+buildingBlockUuid+`", "spec": {"displayName": "my-block"}}}, `+

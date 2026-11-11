@@ -2,13 +2,14 @@ package internal
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // JsonInputFlag names a JSON file to read into a T, or - for stdin.

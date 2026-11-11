@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"uuid"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -33,7 +32,7 @@ func NewLoginTo(name profile.Name) *cobra.Command {
 func newLogin(profileSources setting.Sources) *cobra.Command {
 	var (
 		openStdinFlag = newStdinFlag()
-		apiKeyFlag    = internal.NewFlagForSetting[uuid.UUID](apiKeyFlagName, setting.ApiKeyClientId)
+		apiKeyFlag    = internal.NewFlagForSetting[string](apiKeyFlagName, setting.ApiKeyClientId)
 		apiTokenFlag  = internal.NewFlagForSetting[bool]("apitoken", setting.ApiToken)
 		output        internal.ShowFlag
 	)
@@ -66,8 +65,8 @@ Afterwards, the command prints the same output as 'meshstack auth status' for th
 			case cmd.Flags().Changed(apiKeyFlag.Name.String()):
 				authWith = credential.ApiKeyName
 				opts.SettingSources = append(opts.SettingSources,
-					apiKeyFlag.AsSourceUnless(func(id uuid.UUID) bool {
-						return id == uuid.Nil()
+					apiKeyFlag.AsSourceUnless(func(id string) bool {
+						return id == ""
 					}),
 					newPromptingSource(setting.ApiKeyClientSecret.EnvKey(), &openStdinFlag, promptedFrom, "API Client Secret"),
 				)

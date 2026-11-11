@@ -28,6 +28,7 @@ func (i installation) meshStack() *fakemeshstack.Server {
 		Issuer:         "https://" + i.sso + "/realms/meshfed",
 		Workspaces:     workspaces(),
 		BuildingBlocks: buildingBlocks(),
+		ApiDocs:        apiDocs,
 	})
 }
 
@@ -36,8 +37,6 @@ func (i installation) meshStack() *fakemeshstack.Server {
 //
 //go:embed api-docs.json
 var apiDocs []byte
-
-const docsHost = "docs.meshstack.example.com"
 
 func workspaces() (objects []any) {
 	for _, workspace := range [][2]string{

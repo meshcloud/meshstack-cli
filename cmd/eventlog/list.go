@@ -43,7 +43,7 @@ The command lists the event logs of the workspace. With an admin credential and 
 			if err != nil {
 				return err
 			}
-			filter := client.MeshEventLogListFilter{
+			filter := client.MeshEventLogFilter{
 				From:         from.instant,
 				Until:        until.instant,
 				Title:        title,
@@ -52,7 +52,11 @@ The command lists the event logs of the workspace. With an admin credential and 
 			if workspace != nil {
 				filter.WorkspaceIdentifier = *workspace
 			}
-			return flags.Run[client.MeshEventLog](cmd, filter)
+			meshStack, err := internal.ResolveClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return flags.Run(cmd, meshStack.EventLog, filter)
 		},
 	}
 

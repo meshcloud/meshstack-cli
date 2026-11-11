@@ -9,7 +9,6 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
-	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client"
 )
 
-var runUuid = uuid.MustParse("7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c")
+var runUuid = "7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c"
 
 func step(displayName, status string, userMessage, systemMessage *string) client.MeshBuildingBlockRunStepLog {
 	return client.MeshBuildingBlockRunStepLog{DisplayName: displayName, Status: status, UserMessage: userMessage, SystemMessage: systemMessage}

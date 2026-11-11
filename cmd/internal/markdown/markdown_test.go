@@ -6,7 +6,6 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
-	"uuid"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
@@ -48,7 +47,7 @@ func TestABrowserLoginShowsItsUserAccessAndSessionEnd(t *testing.T) {
 
 func TestAnApiKeyShowsItsClientIdAndNoCachedTokenYet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		clientId := uuid.MustParse("11111111-45bf-42ba-a965-2097b9d0d181")
+		clientId := "11111111-45bf-42ba-a965-2097b9d0d181"
 		status := auth.CredentialStatus{
 			Profile: "ci", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
 			Kind: credential.ApiKeyName, Sources: []string{"env MESHSTACK_API_KEY", "env MESHSTACK_API_SECRET"},

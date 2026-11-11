@@ -4,7 +4,6 @@ import (
 	"cmp"
 	_ "embed"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	gohttp "net/http"
@@ -17,6 +16,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
@@ -46,9 +46,7 @@ Give the request as you would give it to 'meshstack api': a path or a URL, with 
 
 --%[6]s %[7]s prints the matching part of the OpenAPI document as JSON.
 
-The command downloads the API docs from your meshStack, so they list only what your meshStack offers. If no endpoint is set, or if your meshStack is too old to serve its API docs, the command uses the API docs of the latest release on docs.meshcloud.io.
-
---%[8]s uses the API docs of meshStack's development version instead.`,
+The command downloads the API docs from the endpoint, which needs no login for them, and keeps them in the config directory until the endpoint has newer ones. If no endpoint is set, the command uses the API docs of the latest release on docs.meshcloud.io. It also uses them, with a warning, if the endpoint has no API docs, or if it cannot be reached and no API docs of it are kept. --%[8]s uses the API docs of meshStack's development version instead.`,
 			methodFlagName, headerFlagName, requestJsonFlagName, apiVersionFlagName, describeFlagName,
 			internal.OutputFlagName, internal.OutputJson, devFlagName),
 		Example: `  meshstack api-docs
@@ -80,8 +78,7 @@ The command downloads the API docs from your meshStack, so they list only what y
 			if err != nil {
 				return err
 			}
-			spec, wait, err := flags.loadApiDocs(cmd, endpoint)
-			defer wait()
+			spec, err := flags.loadApiDocs(cmd, endpoint)
 			if err != nil {
 				return err
 			}

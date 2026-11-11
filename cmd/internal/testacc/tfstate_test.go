@@ -3,7 +3,6 @@ package testacc
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json/v2"
 	"fmt"
 	"maps"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/tfstate"
 )
 
@@ -191,9 +191,10 @@ func bootstrapBuildingBlock(t *testing.T, c *cli, workspaceManager string) boots
 	t.Helper()
 	runId := "cli-" + strings.ToLower(rand.Text()[:8])
 	dir := copyTestdata(t, "bootstrap")
+	repositoryUrl, ref := localRepository(t)
 	vars := []string{
 		"-var", "profile=" + defaultProfile, "-var", "run_id=" + runId, "-var", "workspace_manager=" + workspaceManager,
-		"-var", "repository_url=" + repositoryUrl, "-var", "git_ref=" + runnerRef(t),
+		"-var", "repository_url=" + repositoryUrl, "-var", "git_ref=" + ref,
 	}
 
 	c.tofu(t, dir, append([]string{"init", "-input=false"}, vars...)...)
@@ -225,27 +226,10 @@ func bootstrapBuildingBlock(t *testing.T, c *cli, workspaceManager string) boots
 	return bootstrappedBlock{}
 }
 
-const repositoryUrl = "https://github.com/meshcloud/meshstack-cli.git"
-
-// runnerRef names the commit whose testdata/buildingblock the tf-block-runner runs, so that a branch
-// tests its own module. The runner clones only the branches and tags of GitHub, so for the merge
-// commit of a pull request, which meshfed-release's satellite lane tests, it takes the pull request's head.
-func runnerRef(t *testing.T) string {
+// localRepository lets the tf-block-runner clone the committed HEAD, so that a branch tests its own module.
+func localRepository(t *testing.T) (url, ref string) {
 	t.Helper()
-	head := git(t, "rev-parse", "HEAD")
-	remote := map[string]string{}
-	for line := range strings.Lines(git(t, "ls-remote", repositoryUrl)) {
-		sha, ref, _ := strings.Cut(strings.TrimSpace(line), "\t")
-		remote[ref] = sha
-	}
-	for ref, sha := range remote {
-		if pull, isMerge := strings.CutSuffix(ref, "/merge"); isMerge && strings.HasPrefix(ref, "refs/pull/") && sha == head {
-			return remote[pull+"/head"]
-		}
-	}
-	output, err := exec.CommandContext(t.Context(), "git", "fetch", "--dry-run", "--depth=1", repositoryUrl, head).CombinedOutput()
-	require.NoErrorf(t, err, "push HEAD %s first, as the tf-block-runner checks it out from %s:\n%s", head, repositoryUrl, output)
-	return head
+	return "file://" + git(t, "rev-parse", "--show-toplevel"), git(t, "rev-parse", "HEAD")
 }
 
 func git(t *testing.T, args ...string) string {

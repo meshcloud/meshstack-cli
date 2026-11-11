@@ -2,7 +2,6 @@ package profile
 
 import (
 	"testing"
-	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,7 +52,7 @@ func TestTheWorkspacesThatTheProfilesAtTheEndpointReachAreSuggested(t *testing.T
 	)
 	credentials, err := profiles.Profiles["ci"].Credentials(t.Context())
 	require.NoError(t, err)
-	credentials.Set(&credential.ApiKey{Endpoint: endpoint, ClientId: uuid.MustParse(apiKey.ClientId), ClientSecret: apiKey.ClientSecret})
+	credentials.Set(&credential.ApiKey{Endpoint: endpoint, ClientId: apiKey.ClientId, ClientSecret: apiKey.ClientSecret})
 	require.NoError(t, credentials.Store(t.Context()))
 
 	// The logged-out profile is asked as well, and fails without a call.

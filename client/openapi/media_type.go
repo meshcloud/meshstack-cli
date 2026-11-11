@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // Only a hal+json type carries a meshObject: application/vnd.meshcloud.api.meshobjects.v1+json is
@@ -50,7 +51,7 @@ func ParseMediaType(name string) MediaType {
 // WithKindAndApiVersion adds the kind and apiVersion a meshObject body lacks, in front, as the
 // meshObject API writes them.
 func (m MediaType) WithKindAndApiVersion(body jsontext.Value) (jsontext.Value, error) {
-	if m.Kind == "" || body.Kind() != '{' {
+	if m.Kind == "" || body.Kind() != jsontext.KindBeginObject {
 		return body, nil
 	}
 	var members object

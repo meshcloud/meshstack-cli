@@ -18,11 +18,11 @@ type member struct {
 func (o *object) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	if token, err := dec.ReadToken(); err != nil {
 		return err
-	} else if token.Kind() != '{' {
+	} else if token.Kind() != jsontext.KindBeginObject {
 		return fmt.Errorf("expected an object, got %s", token.Kind())
 	}
 	*o = (*o)[:0]
-	for dec.PeekKind() != '}' {
+	for dec.PeekKind() != jsontext.KindEndObject {
 		token, err := dec.ReadToken()
 		if err != nil {
 			return err

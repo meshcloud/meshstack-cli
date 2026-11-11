@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	gohttp "net/http"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -15,10 +13,7 @@ import (
 )
 
 func newRejectRun() *cobra.Command {
-	var (
-		output            internal.OutputFlag
-		buildingBlockUuid uuid.UUID
-	)
+	var output internal.OutputFlag
 
 	cmd := &cobra.Command{
 		Use:   "reject-run <building-block-uuid>",
@@ -30,8 +25,9 @@ The run ends at once without applying its plan, and meshStack does not plan the 
 A building block whose status.action is APPROVE_RUN in 'meshstack buildingblock list' has a run that is waiting for approval. After the rejection, the command prints the building block.`,
 		Example: `  meshstack buildingblock reject-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb reject-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
-		Args: internal.UuidArg(&buildingBlockUuid),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: internal.UuidArg,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			buildingBlockUuid := args[0]
 			ctx := cmd.Context()
 			action, err := newRunAction(cmd, buildingBlockUuid, output.Format)
 			if err != nil {
@@ -47,18 +43,18 @@ A building block whose status.action is APPROVE_RUN in 'meshstack buildingblock 
 }
 
 func (a runAction) reject(ctx context.Context) error {
-	_, block, err := a.readBuildingBlock(ctx)
+	block, err := a.readBuildingBlock(ctx)
 	if err != nil {
 		return err
 	}
-	if block.Links.LatestRun == nil {
+	if block.Status.GetLatestRunUuid() == "" {
 		return fmt.Errorf("building block %s has no run to reject", a.buildingBlockUuid)
 	}
-	run, err := a.meshStack.BuildingBlockRunAction.ReadRun(ctx, *block.Links.LatestRun)
+	run, err := a.readRun(ctx, block.Status.GetLatestRunUuid())
 	if err != nil {
 		return err
 	}
-	if run.Links.Reject == nil {
+	if _, found := run.Links["reject"]; !found {
 		return fmt.Errorf("the latest run %s of building block %s (action %s) is not waiting for approval, or you are not allowed to reject it",
 			run.Metadata.Uuid, a.buildingBlockUuid, block.Status.Action)
 	}
@@ -74,8 +70,8 @@ func (a runAction) reject(ctx context.Context) error {
 		slog.InfoContext(ctx, fmt.Sprintf("Did not reject run %s.", run.Metadata.Uuid))
 		return nil
 	}
-	err = a.meshStack.BuildingBlockRunAction.RejectRun(ctx, *run.Links.Reject)
-	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.StatusCode == gohttp.StatusConflict {
+	_, err = run.Links.Post[struct{}](ctx, "reject", nil)
+	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.IsConflict() {
 		return fmt.Errorf("run %s is no longer waiting for approval", run.Metadata.Uuid)
 	}
 	if err != nil {

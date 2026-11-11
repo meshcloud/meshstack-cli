@@ -1,7 +1,6 @@
 package testacc
 
 import (
-	"encoding/json/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -9,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // ndjsonObjects skips the lines of the log, which share the output with stdout.

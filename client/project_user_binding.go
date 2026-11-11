@@ -1,12 +1,6 @@
 package client
 
-import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/http"
-	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/client/types/enum"
-)
+import "github.com/meshcloud/meshstack-cli/client/types/enum"
 
 type MeshProjectUserBinding struct {
 	MeshProjectBinding
@@ -19,33 +13,8 @@ type MeshUserBindingStatus struct {
 	Approval     enum.Entry[MeshBindingApproval] `json:"approval,omitempty" tfsdk:"approval"`
 }
 
-type MeshProjectUserBindingClient interface {
-	Read(ctx context.Context, name string) (*MeshProjectUserBinding, error)
-	List(ctx context.Context, filter MeshProjectBindingListFilter) ([]MeshProjectUserBinding, error)
-	Create(ctx context.Context, binding *MeshProjectUserBinding) (*MeshProjectUserBinding, error)
-	Delete(ctx context.Context, name string) error
-}
+type MeshProjectUserBindingClient = MeshObjectClient[MeshProjectUserBinding, MeshProjectBindingFilter]
 
-type meshProjectUserBindingClient struct {
-	meshObject internal.MeshObjectClient[MeshProjectUserBinding]
-}
-
-func newProjectUserBindingClient(ctx context.Context, httpClient internal.HttpClient) MeshProjectUserBindingClient {
-	return meshProjectUserBindingClient{internal.NewMeshObjectClient[MeshProjectUserBinding](ctx, httpClient, "v3", "meshprojectbindings", "userbindings")}
-}
-
-func (c meshProjectUserBindingClient) Read(ctx context.Context, name string) (*MeshProjectUserBinding, error) {
-	return c.meshObject.Get(ctx, name)
-}
-
-func (c meshProjectUserBindingClient) List(ctx context.Context, filter MeshProjectBindingListFilter) ([]MeshProjectUserBinding, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
-}
-
-func (c meshProjectUserBindingClient) Create(ctx context.Context, binding *MeshProjectUserBinding) (*MeshProjectUserBinding, error) {
-	return c.meshObject.Post(ctx, binding)
-}
-
-func (c meshProjectUserBindingClient) Delete(ctx context.Context, name string) error {
-	return c.meshObject.Delete(ctx, name)
+func (MeshProjectUserBinding) meshObjectPath() string {
+	return "meshprojectbindings/userbindings"
 }

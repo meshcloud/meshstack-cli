@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -53,12 +52,12 @@ func New() *cobra.Command {
 // openStore ignores the profile's default workspace. Otherwise that workspace would replace the
 // building block's own workspace, which the runner stores the state under, for every user who has a
 // default.
-func openStore(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID) (tfstate.Store, error) {
+func openStore(ctx context.Context, meshStack client.Client, buildingBlockUuid string) (tfstate.Store, error) {
 	workspace, err := internal.ResolveWorkspace(ctx, internal.IgnoreDefaultWorkspace)
 	if err != nil {
 		return tfstate.Store{}, err
 	}
-	return tfstate.OpenStore(ctx, meshStack.Raw, workspace, buildingBlockUuid)
+	return tfstate.OpenStore(ctx, meshStack, workspace, buildingBlockUuid)
 }
 
 func withRightsHint(err error) error {

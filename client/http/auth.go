@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	gohttp "net/http"
 	"net/url"
+	"strings"
 )
 
 // Authorization produces the bearer token for each request. An implementation renews the token
@@ -19,62 +21,65 @@ type Authorization interface {
 	// rejected token unchanged tells the caller that there is nothing new to try.
 	RefreshBearerToken(ctx context.Context, rejected BearerToken) (BearerToken, error)
 
-	// Scope names what meshStack grants access by, so that a 403 says it. Empty names nothing.
-	Scope() string
+	fmt.Stringer
+}
+
+type AuthorizedClient struct {
+	client Client
+	auth   Authorization
 }
 
 func (c Client) WithAuthorization(auth Authorization) AuthorizedClient {
 	return AuthorizedClient{c, auth}
 }
 
-type AuthorizedClient struct {
-	Client
-
-	Authorization Authorization
-}
-
-func (c AuthorizedClient) DoRequest[R any](ctx context.Context, method string, url *url.URL, options ...RequestOption) (R, error) {
-	result, err := withBearerToken(ctx, c.Authorization, method, url, func(token RequestOption) (R, error) {
-		return c.Client.DoRequest[R](ctx, method, url, append(options, token)...)
-	})
-	if httpErr, ok := errors.AsType[Error](err); ok && httpErr.IsForbidden() && c.Authorization.Scope() != "" {
-		err = fmt.Errorf("auth scope %s: %w", c.Authorization.Scope(), err)
-	}
-	return result, err
-}
-
-// Authorize is for a request that this client does not send itself, such as one a reverse proxy
-// passes on. Such a request gets no second try after a 401.
-func (c AuthorizedClient) Authorize(r *gohttp.Request) error {
-	token, err := c.Authorization.GetBearerToken(r.Context())
+func (c AuthorizedClient) DoRequest(ctx context.Context, method string, url *url.URL, options ...RequestOption) (io.ReadCloser, error) {
+	token, err := c.auth.GetBearerToken(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	r.Header.Set("Authorization", "Bearer "+string(token))
-	return nil
-}
-
-func withBearerToken[R any](ctx context.Context, auth Authorization, method string, url *url.URL, send func(token RequestOption) (R, error)) (result R, err error) {
-	token, tokenErr := auth.GetBearerToken(ctx)
-	if tokenErr != nil {
-		return result, tokenErr
-	}
-	result, err = send(token.asRequestOption())
-
+	body, err := c.client.DoRequest(ctx, method, url, append(options, token.asRequestOption())...)
 	if httpErr, ok := errors.AsType[Error](err); ok && httpErr.IsUnauthorized() {
 		// Clock skew between this machine and the server can make a token look valid here and
 		// expired there, so one 401 earns one retry with a freshly minted token.
-		refreshedToken, refreshErr := auth.RefreshBearerToken(ctx, token)
+		refreshedToken, refreshErr := c.auth.RefreshBearerToken(ctx, token)
 		switch {
 		case refreshErr != nil:
-			return result, errors.Join(err, fmt.Errorf("cannot renew the rejected token: %w", refreshErr))
-		case refreshedToken == token:
-			return result, err
+			err = errors.Join(err, fmt.Errorf("cannot renew the rejected token: %w", refreshErr))
+		case refreshedToken != token:
+			slog.DebugContext(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
+			body, err = c.client.DoRequest(ctx, method, url, append(options, refreshedToken.asRequestOption())...)
 		}
-		slog.DebugContext(ctx, "retrying after 401 with a freshly minted token", "url", url.String(), "method", method)
-		return send(refreshedToken.asRequestOption())
 	}
-	return result, err
+	if httpErr, ok := errors.AsType[Error](err); ok && httpErr.IsForbidden() {
+		err = fmt.Errorf("auth %s: %w", c.auth, err)
+	}
+	return body, err
+}
+
+func (c AuthorizedClient) String() string {
+	return "authorized client " + c.client.userAgent.String()
+}
+
+func (c AuthorizedClient) ProxyTransport() gohttp.RoundTripper {
+	return proxyTransport{c}
+}
+
+type proxyTransport struct {
+	AuthorizedClient
+}
+
+func (t proxyTransport) RoundTrip(in *gohttp.Request) (*gohttp.Response, error) {
+	out := in.Clone(in.Context())
+	out.Header.Set("User-Agent", strings.TrimSpace(in.Header.Get("User-Agent")+" "+t.client.userAgent.String()))
+	if in.Header.Get("Authorization") != "" {
+		token, err := t.auth.GetBearerToken(in.Context())
+		if err != nil {
+			return nil, err
+		}
+		out.Header.Set("Authorization", "Bearer "+string(token))
+	}
+	return goClient.Transport.RoundTrip(out)
 }
 
 // BearerToken is both the token Authorization produces and an Authorization of its own, for a
@@ -89,10 +94,14 @@ func (token BearerToken) RefreshBearerToken(_ context.Context, _ BearerToken) (B
 	return "", fmt.Errorf("cannot renew %T", token)
 }
 
-func (token BearerToken) Scope() string {
-	return ""
+// String shows only the start of a long token, so that formatting one never leaks it.
+func (token BearerToken) String() string {
+	if len(token) < 32 {
+		return "BearerToken [REDACTED]"
+	}
+	return "BearerToken " + string(token[:6]) + "...[REDACTED]"
 }
 
 func (token BearerToken) asRequestOption() RequestOption {
-	return withHeader("Authorization", fmt.Sprintf("Bearer %s", token))
+	return WithHeader("Authorization", "Bearer "+string(token))
 }

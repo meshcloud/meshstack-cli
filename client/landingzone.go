@@ -1,16 +1,9 @@
 package client
 
-import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/http"
-	"github.com/meshcloud/meshstack-cli/client/internal"
-)
-
 type MeshLandingZone struct {
 	Metadata MeshLandingZoneMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshLandingZoneSpec     `json:"spec" tfsdk:"spec"`
-	Status   MeshLandingZoneStatus   `json:"status" tfsdk:"status"`
+	Status   MeshLandingZoneStatus   `json:"status,omitzero" tfsdk:"status"`
 }
 
 type MeshLandingZoneMetadata struct {
@@ -58,12 +51,7 @@ type MeshLandingZoneQuota struct {
 	Value int64  `json:"value" tfsdk:"value"`
 }
 
-type MeshLandingZoneCreate struct {
-	Metadata MeshLandingZoneMetadata `json:"metadata" tfsdk:"metadata"`
-	Spec     MeshLandingZoneSpec     `json:"spec" tfsdk:"spec"`
-}
-
-type MeshLandingZoneListQuery struct {
+type MeshLandingZoneFilter struct {
 	PlatformUuid     *string `json:"platformUuid"`
 	Identifier       *string `json:"identifier"`
 	DisplayName      *string `json:"displayName"`
@@ -71,38 +59,8 @@ type MeshLandingZoneListQuery struct {
 	OwnedByWorkspace *string `json:"ownedByWorkspace"`
 }
 
-type MeshLandingZoneClient interface {
-	Read(ctx context.Context, name string) (*MeshLandingZone, error)
-	List(ctx context.Context, query MeshLandingZoneListQuery) ([]MeshLandingZone, error)
-	Create(ctx context.Context, landingZone *MeshLandingZoneCreate) (*MeshLandingZone, error)
-	Update(ctx context.Context, name string, landingZone *MeshLandingZoneCreate) (*MeshLandingZone, error)
-	Delete(ctx context.Context, name string) error
-}
+type MeshLandingZoneClient = MeshObjectClient[MeshLandingZone, MeshLandingZoneFilter]
 
-type meshLandingZoneClient struct {
-	meshObject internal.MeshObjectClient[MeshLandingZone]
-}
-
-func newLandingZoneClient(ctx context.Context, httpClient internal.HttpClient) MeshLandingZoneClient {
-	return meshLandingZoneClient{internal.NewMeshObjectClient[MeshLandingZone](ctx, httpClient, "v1")}
-}
-
-func (c meshLandingZoneClient) Read(ctx context.Context, name string) (*MeshLandingZone, error) {
-	return c.meshObject.Get(ctx, name)
-}
-
-func (c meshLandingZoneClient) List(ctx context.Context, query MeshLandingZoneListQuery) ([]MeshLandingZone, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(query))
-}
-
-func (c meshLandingZoneClient) Create(ctx context.Context, landingZone *MeshLandingZoneCreate) (*MeshLandingZone, error) {
-	return c.meshObject.Post(ctx, landingZone)
-}
-
-func (c meshLandingZoneClient) Update(ctx context.Context, name string, landingZone *MeshLandingZoneCreate) (*MeshLandingZone, error) {
-	return c.meshObject.Put(ctx, name, landingZone)
-}
-
-func (c meshLandingZoneClient) Delete(ctx context.Context, name string) error {
-	return c.meshObject.Delete(ctx, name)
+func (lz MeshLandingZone) meshObjectId() string {
+	return lz.Metadata.Name
 }

@@ -101,10 +101,6 @@ linters:
         linters:
           - forbidigo
         text: stdout is a command's output
-      - path: internal/tfstate/apiproxy/
-        linters:
-          - forbidigo
-        text: one HTTP client
       # The fake clock is a test's; production code waits on the real one.
       - path-except: _test\.go
         linters:
@@ -187,7 +183,7 @@ linters:
       checks:
         - all
         - -ST1000
-        # SA4023 crashes on a type with a generic method, as client.RawClient has: go1.27.0 loses
+        # SA4023 crashes on a type with a generic method, as hal.Link has: go1.27.0 loses
         # the order of methods in the export data (golang/go#81188). Enable it again with go1.27.2.
         - -SA4023
       # Replaces the default list, so that ClientId, BaseUrl and Uuid stand as the meshObject
@@ -243,7 +239,15 @@ linters:
             - $all
           deny:
             - pkg: encoding/json$
-              desc: Use encoding/json/v2 and internal/json instead
+              desc: Use internal/json instead
+
+        json-v2:
+          files:
+            - $all
+            - "!**/internal/json/*.go"
+          deny:
+            - pkg: encoding/json/v2
+              desc: Use internal/json instead
 
         # cobra is used in cmd/ and nowhere else.
         cmd:
@@ -267,8 +271,8 @@ linters:
             - log/slog
             # a listing yields raw items, and reads a field out of one
             - encoding/json/jsontext
-            - encoding/json/v2
-            # no direct access to internal/
+            - github.com/meshcloud/meshstack-cli/internal/json
+            # no direct access to internal/, apart from the JSON codec above
             - github.com/meshcloud/meshstack-cli/pkg
             # a parent command calls its children's New, the same way cmd/meshstack calls its own
             - github.com/meshcloud/meshstack-cli/cmd
@@ -305,7 +309,7 @@ linters:
             - log/slog
             # a request body is checked as JSON, and api-docs writes a part of the OpenAPI document
             - encoding/json/jsontext
-            - encoding/json/v2
+            - github.com/meshcloud/meshstack-cli/internal/json
             - github.com/meshcloud/meshstack-cli/cmd/internal
             - github.com/meshcloud/meshstack-cli/client
             # the API docs choose the version of a request
@@ -407,7 +411,7 @@ linters:
             - log/slog
             # a listing writes raw items, and a command that shows one object marshals it
             - encoding/json/jsontext
-            - encoding/json/v2
+            - github.com/meshcloud/meshstack-cli/internal/json
             - github.com/meshcloud/meshstack-cli/cmd/internal/markdown
             - github.com/meshcloud/meshstack-cli/cmd/internal/color
             - github.com/meshcloud/meshstack-cli/pkg
@@ -441,7 +445,6 @@ linters:
               desc: Use log/slog instead
           allow:
             - $gostd
-            - encoding/json/v2
             - encoding/json/jsontext
             - log/slog
             - github.com/meshcloud/meshstack-cli/client
@@ -492,13 +495,13 @@ linters:
             - "!**/cmd/**/*.go"     # ...except cmd, whose internal packages the cmd rules cover
             - "!$test"
             - "!**/internal/testutil/**/*.go"
+            - "!**/internal/json/*.go" # client-http covers it
           list-mode: strict
           deny:
             - pkg: log
               desc: Use log/slog instead
           allow:
             - $gostd
-            - encoding/json/v2
             - encoding/json/jsontext
             - log/slog
             - github.com/meshcloud/meshstack-cli/internal
@@ -513,7 +516,6 @@ linters:
           list-mode: strict
           allow:
             - $gostd
-            - encoding/json/v2
             - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli
             - github.com/stretchr/testify
@@ -538,6 +540,7 @@ linters:
           list-mode: strict
           allow:
             - $gostd
+            - github.com/meshcloud/meshstack-cli/internal/json
             - github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack
 
         # A test may use every direct dependency in go.mod: the rules above already confine where
@@ -545,10 +548,11 @@ linters:
         tests:
           files:
             - "$test"
+            - "!**/client/http/*_test.go"
+            - "!**/cmd/internal/testacc/*_test.go"
           list-mode: strict
           allow:
             - $gostd
-            - encoding/json/v2
             - encoding/json/jsontext
             - github.com/meshcloud/meshstack-cli
             - charm.land/bubbles/v2
@@ -563,3 +567,32 @@ linters:
             - github.com/spf13/cobra
             - github.com/spf13/pflag
             - github.com/stretchr/testify
+
+        # The API docs scenario breaks the connection to meshStack, as the tests of client/http do.
+        tests-testacc:
+          files:
+            - "**/cmd/internal/testacc/*_test.go"
+          list-mode: strict
+          allow:
+            - $gostd
+            - encoding/json/jsontext
+            - github.com/meshcloud/meshstack-cli
+            - github.com/spf13/cobra
+            - github.com/stretchr/testify
+            - github.com/Shopify/toxiproxy/v2
+            # toxiproxy.NewServer takes a zerolog.Logger, and zerolog.Nop() is the only use
+            - github.com/rs/zerolog
+
+        # client/http breaks connections on purpose, which toxiproxy does in process.
+        tests-client-http:
+          files:
+            - "**/client/http/*_test.go"
+          list-mode: strict
+          allow:
+            - $gostd
+            - encoding/json/jsontext
+            - github.com/meshcloud/meshstack-cli
+            - github.com/stretchr/testify
+            - github.com/Shopify/toxiproxy/v2
+            # toxiproxy.NewServer takes a zerolog.Logger, and zerolog.Nop() is the only use
+            - github.com/rs/zerolog

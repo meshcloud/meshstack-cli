@@ -5,13 +5,13 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	gohttp "net/http"
+	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"sync"
@@ -19,9 +19,9 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
-	"github.com/meshcloud/meshstack-cli/internal/tfstate/apiproxy"
 )
 
 const (
@@ -168,8 +168,12 @@ func (p *Proxy) forward(w gohttp.ResponseWriter, r *gohttp.Request) {
 		p.refuse(w, r, gohttp.StatusForbidden, fmt.Errorf("%w, so the command cannot %s %s", ErrReadOnlyApi, r.Method, r.URL.Path))
 		return
 	}
-	apiproxy.New(p.Api, p.Endpoint, func(w gohttp.ResponseWriter, r *gohttp.Request, err error) {
-		p.fail(w, r, fmt.Errorf("cannot pass %s %s on to meshStack: %w", r.Method, r.URL.Path, err))
+	(&httputil.ReverseProxy{
+		Rewrite:   func(out *httputil.ProxyRequest) { out.SetURL(p.Endpoint) },
+		Transport: p.Api.ProxyTransport(),
+		ErrorHandler: func(w gohttp.ResponseWriter, r *gohttp.Request, err error) {
+			p.fail(w, r, fmt.Errorf("cannot pass %s %s on to meshStack: %w", r.Method, r.URL.Path, err))
+		},
 	}).ServeHTTP(w, r)
 }
 
@@ -280,7 +284,7 @@ func (p *Proxy) write(w gohttp.ResponseWriter, r *gohttp.Request) {
 			p.refuse(w, r, gohttp.StatusInternalServerError, fmt.Errorf("cannot back up the stored state, so it stays as it is: %w", err))
 			return
 		}
-		slog.InfoContext(ctx, "Saved the stored state of building block "+p.Store.BuildingBlock.String()+" to "+path)
+		slog.InfoContext(ctx, "Saved the stored state of building block "+p.Store.BuildingBlock+" to "+path)
 	}
 
 	lockId := r.URL.Query().Get("ID")

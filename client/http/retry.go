@@ -8,69 +8,62 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	gohttp "net/http"
 	"strconv"
 	"syscall"
 	"time"
 )
 
-type RetryOptions struct {
-	MaxRetries int
-	Backoff    RetryBackoff
+type RetryOn uint8
+
+const (
+	RetryOnBusy RetryOn = 1 << iota
+	// RetryOnGatewayError covers 502 and 504, after which the server may have acted on the request.
+	RetryOnGatewayError
+	RetryOnBrokenConnection
+	RetryOnLocked
+
+	RetryOnTransient = RetryOnBusy | RetryOnGatewayError | RetryOnBrokenConnection | RetryOnLocked
+)
+
+type retryOptions struct {
+	policy     func(method string) RetryOn
+	maxRetries int
+	backoff    retryBackoff
 }
 
-// ApplyTo makes the given client retry a GET on its own, and any other method only where the
-// caller marked the request with [Retryable].
-func (options RetryOptions) ApplyTo(c *gohttp.Client) {
-	next := gohttp.DefaultTransport
-	if c.Transport != nil {
-		next = c.Transport
+func (on RetryOn) backoff(resp *gohttp.Response, err error, backoff retryBackoff) retryBackoff {
+	isBrokenConnection := func(err error) bool {
+		return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
+			errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed)
 	}
-	c.Transport = &retryRoundTripper{
-		Next:       next,
-		MaxRetries: options.MaxRetries,
-		ShouldRetryRequest: func(req *gohttp.Request) bool {
-			if options.Backoff == nil {
-				return false
-			}
-			return req.Method == MethodGet || isRetryable(req.Context())
-		},
-		ShouldRetryResponse: func(resp *gohttp.Response, err error) RetryBackoff {
-			if err != nil {
-				// Only a connection that broke once it was up clears on a retry, as one an ingress drops
-				// during a rolling deploy does. An unknown host, a refused connection or a TLS error
-				// repeats on every attempt, and a timeout would multiply by the retries.
-				if isBrokenConnection(err) {
-					return options.Backoff
-				}
-				return nil
-			}
-			switch resp.StatusCode {
-			case gohttp.StatusTooManyRequests, gohttp.StatusServiceUnavailable:
-				return retryAfterBackoff{Response: resp, Fallback: options.Backoff}
-			case gohttp.StatusBadGateway, gohttp.StatusGatewayTimeout:
-				return options.Backoff
-			default:
-				return nil
-			}
-		},
+	switch {
+	case err != nil:
+		if on&RetryOnBrokenConnection != 0 && isBrokenConnection(err) {
+			return backoff
+		}
+		return nil
+	case on&RetryOnGatewayError != 0 && (resp.StatusCode == gohttp.StatusBadGateway || resp.StatusCode == gohttp.StatusGatewayTimeout):
+		return backoff
+	case on&RetryOnBusy != 0 && (resp.StatusCode == gohttp.StatusTooManyRequests || resp.StatusCode == gohttp.StatusServiceUnavailable):
+		return retryAfterBackoff{Response: resp, Fallback: backoff}
+	case on&RetryOnLocked != 0 && resp.StatusCode == gohttp.StatusLocked:
+		return backoff
+	default:
+		return nil
 	}
 }
 
-func isBrokenConnection(err error) bool {
-	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
-		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
-}
-
-type RetryBackoff interface {
+type retryBackoff interface {
 	Calculate(attempt int) time.Duration
 }
 
-type ExponentialBackoff struct {
+type exponentialBackoff struct {
 	MinWait, MaxWait time.Duration
 }
 
-func (b ExponentialBackoff) Calculate(attempt int) time.Duration {
+func (b exponentialBackoff) Calculate(attempt int) time.Duration {
 	nextWait := time.Duration(math.Pow(2, float64(attempt-1))) * b.MinWait
 	if b.MaxWait > 0 && nextWait > b.MaxWait {
 		return b.MaxWait
@@ -82,7 +75,7 @@ var timeNow = time.Now
 
 type retryAfterBackoff struct {
 	Response *gohttp.Response
-	Fallback RetryBackoff
+	Fallback retryBackoff
 }
 
 func (b retryAfterBackoff) Calculate(attempt int) (waitTime time.Duration) {
@@ -112,27 +105,27 @@ func (b retryAfterBackoff) Calculate(attempt int) (waitTime time.Duration) {
 }
 
 type retryRoundTripper struct {
-	Next                gohttp.RoundTripper
-	MaxRetries          int
-	ShouldRetryRequest  func(req *gohttp.Request) bool
-	ShouldRetryResponse func(resp *gohttp.Response, err error) RetryBackoff
+	next gohttp.RoundTripper
 }
 
-func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
-	if !r.ShouldRetryRequest(req) {
-		return r.Next.RoundTrip(req)
+func (r retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
+	retryOpts := requestOptionsFrom(req).retry
+	on := retryOpts.policy(req.Method)
+	if on == 0 {
+		return r.next.RoundTrip(req)
 	}
 	req = makeRequestBodyRetryable(req)
 	for attempt := 1; ; attempt++ {
-		resp, err := r.Next.RoundTrip(req)
+		resp, err := r.next.RoundTrip(req)
 		// A request the context ended is not retried. The context is checked rather than the error,
 		// since the transport returns the context's cause, which for Ctrl-C is a signal error that
 		// wraps no context.Canceled.
 		if errors.Is(err, errRetryableBodyClose) || err != nil && req.Context().Err() != nil {
 			return resp, err
 		}
-		backoff := r.ShouldRetryResponse(resp, err)
-		if backoff == nil || attempt > r.MaxRetries {
+
+		backoff := on.backoff(resp, err, retryOpts.backoff)
+		if backoff == nil || attempt > retryOpts.maxRetries {
 			return resp, err
 		}
 		drainAndCloseResponseBody(req.Context(), resp)
@@ -153,7 +146,7 @@ func (r *retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, er
 			}(),
 			"method", req.Method,
 			"path", req.URL.Path,
-			"attempt", fmt.Sprintf("%d/%d", attempt, r.MaxRetries),
+			"attempt", fmt.Sprintf("%d/%d", attempt, retryOpts.maxRetries),
 			"waitTime", waitTime,
 		)...)
 		timer := time.NewTimer(waitTime)
@@ -170,11 +163,10 @@ func makeRequestBodyRetryable(req *gohttp.Request) *gohttp.Request {
 	if req.Body == nil {
 		return req
 	}
-	// gohttp.NewRequestWithContext sets GetBody for a *bytes.Buffer, *bytes.Reader or
-	// *strings.Reader body.
 	if req.GetBody != nil {
 		return req
 	}
+
 	body := retryableBody{Closer: req.Body}
 	body.Reader = io.TeeReader(req.Body, &body.Buffer)
 	result := req.Clone(req.Context())
@@ -215,13 +207,11 @@ func (w *appendWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// drainAndCloseResponseBody drains the body so that gohttp.Transport can reuse the connection.
-// It reads at most maxBytes, so that a large or slow body cannot block the retry; the connection
-// of such a body is then not reused.
+const maxDrainBytes = 16 * 1024
+
 func drainAndCloseResponseBody(ctx context.Context, resp *gohttp.Response) {
-	const maxBytes = 16 * 1024
 	if resp != nil && resp.Body != nil {
-		drainedBytes, err := io.CopyN(io.Discard, resp.Body, maxBytes)
+		drainedBytes, err := io.CopyN(io.Discard, resp.Body, maxDrainBytes)
 		if err != nil && !errors.Is(err, io.EOF) {
 			slog.DebugContext(ctx, "failed to drain response body: "+err.Error())
 		}

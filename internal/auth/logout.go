@@ -36,11 +36,7 @@ func endSession(ctx context.Context, p *profile.Profile, oidcLogin *credential.O
 	if oidcLogin.Cache == nil || oidcLogin.Cache.RefreshToken == "" {
 		return errors.New("its refresh token is not cached")
 	}
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return err
-	}
-	oidcClient, err := oidc.NewClient(ctx, httpClient, oidcLogin.Issuer, oidcLogin.ClientId)
+	oidcClient, err := oidc.NewClient(ctx, opts.HttpClient(), oidcLogin.Issuer, oidcLogin.ClientId)
 	if err != nil {
 		return err
 	}

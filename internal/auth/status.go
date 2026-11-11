@@ -9,7 +9,6 @@ import (
 	"maps"
 	"slices"
 	"time"
-	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
@@ -92,7 +91,7 @@ func BrowserLoginEnded(ctx context.Context, p *profile.Profile) bool {
 }
 
 type ApiKeyStatus struct {
-	ClientId uuid.UUID `json:"clientId"`
+	ClientId string `json:"clientId"`
 }
 
 // Status reads only the stored credential and its cached token, and calls no meshStack. It never
@@ -150,7 +149,7 @@ func (s Session) unusedCredentials(ctx context.Context, workspace meshstack.Work
 		entry := UnusedCredential{Kind: name, Selected: name == s.CurrentProfile.Credential}
 		switch cred := cred.(type) {
 		case *credential.ApiKey:
-			entry.ClientId = cred.ClientId.String()
+			entry.ClientId = cred.ClientId
 		case *credential.OidcLogin:
 			if token, found := oidcTokenFor(cred, workspace); found {
 				entry.Token = tokenStatusOf(token)

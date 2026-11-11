@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"fmt"
-	"uuid"
 
 	"github.com/spf13/pflag"
 
@@ -38,7 +37,7 @@ func (n FlagName) String() string {
 	return string(n)
 }
 
-type Flag[T string | bool | uuid.UUID] struct {
+type Flag[T string | bool] struct {
 	Name          FlagName
 	Shorthand     string
 	Help          string
@@ -46,7 +45,7 @@ type Flag[T string | bool | uuid.UUID] struct {
 	SettingEnvKey string
 }
 
-func NewFlagForSetting[T string | bool | uuid.UUID](name FlagName, s setting.Setting) Flag[T] {
+func NewFlagForSetting[T string | bool](name FlagName, s setting.Setting) Flag[T] {
 	return Flag[T]{Name: name, Help: s.Help(), SettingEnvKey: s.EnvKey()}
 }
 
@@ -61,8 +60,6 @@ func (flag *Flag[T]) Register(flags *pflag.FlagSet) (flagName string) {
 		flags.StringVarP(v, flag.Name.String(), flag.Shorthand, *v, flag.Help)
 	case *bool:
 		flags.BoolVarP(v, flag.Name.String(), flag.Shorthand, *v, flag.Help)
-	case *uuid.UUID:
-		flags.VarP((*UuidFlag)(v), flag.Name.String(), flag.Shorthand, flag.Help)
 	default:
 		panic(fmt.Sprintf("cannot register flag with value type %T", flag.Value))
 	}
