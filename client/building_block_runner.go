@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockRunnerImplementationType string

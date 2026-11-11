@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"

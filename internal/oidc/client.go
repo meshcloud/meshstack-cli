@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"

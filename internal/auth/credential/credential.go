@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 )

@@ -3,10 +3,10 @@ package client
 import (
 	"context"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshBuildingBlockType string

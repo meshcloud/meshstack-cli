@@ -16,9 +16,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 func New() *cobra.Command {

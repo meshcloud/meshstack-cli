@@ -10,7 +10,7 @@ import (
 	gohttp "net/http"
 	"uuid"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
 )
 
 // ErrNoState is meshStack's 404, which tofu's http backend takes for a state not written yet.
