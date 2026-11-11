@@ -38,7 +38,7 @@
         # directory's tests. docs/demo holds the demo's fake meshStack, which is no part of the CLI.
         excludedPackages = [ "docs/demo" ];
 
-        vendorHash = "sha256-BWGrfEfxYXvXbwiKBWGuvOkuNn+dSxvPGKKAQtw89JM=";
+        vendorHash = "sha256-sqs9jmsXQJYsYKTEgs9tBQoaxn0e1Z1iWEj/wbH6Exs=";
 
         # .goreleaser.yml and the Dockerfile set the same ldflag, and all three have to
         # agree. The linker ignores an -X whose path does not resolve and warns about
