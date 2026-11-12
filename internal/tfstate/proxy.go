@@ -306,8 +306,7 @@ func (p *Proxy) failOrPassLock(w gohttp.ResponseWriter, r *gohttp.Request, err e
 		p.fail(w, r, err)
 		return
 	}
-	var holder LockInfo
-	_ = json.Unmarshal(httpErr.ResponseBody, &holder)
+	holder, _ := httpErr.BodyAsJson[LockInfo]()
 	slog.WarnContext(r.Context(), fmt.Sprintf("meshStack refused to %s the state of building block %s, because %q holds the lock %s",
 		action, p.Store.BuildingBlock, holder.Who, holder.ID))
 	passLock(w, httpErr)

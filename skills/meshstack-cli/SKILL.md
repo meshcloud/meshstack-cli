@@ -378,8 +378,8 @@ read the outcome. Poll its runs instead: `meshstack bbrun list --building-block 
 current login. For a meshObject endpoint it picks the latest API version, sets the `Accept` and
 `Content-Type` headers and fills in a missing `apiVersion` and `kind` of the body itself;
 `--api-version` picks another version. Leave the version out unless you need an older one, so the
-command keeps working when a preview version becomes GA. An answer outside 2xx still prints its
-body, but the command fails.
+command keeps working when a preview version becomes GA. For an answer outside 2xx the command
+prints nothing on stdout and fails with an error that shows what meshStack answered.
 
 Do not read the OpenAPI document yourself — it is about 1 MB. Ask `api-docs`, which reads the
 document the endpoint serves at `/api/openapi`, so it describes the API of that meshStack. It needs
