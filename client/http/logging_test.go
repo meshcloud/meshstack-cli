@@ -2,6 +2,8 @@ package http
 
 import (
 	"bytes"
+	_ "embed"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -16,17 +18,65 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 )
 
-func TestLoggedBody(t *testing.T) {
-	render := func(body string) string {
-		head := []byte(body)
-		return loggedBody{head: head[:min(len(head), loggedBodyLimit+1)]}.String()
-	}
+var (
+	//go:embed testdata/logged_body_redacted.json
+	loggedBodyRedacted string
+	//go:embed testdata/logged_body_redacted_at_any_depth.json
+	loggedBodyRedactedAtAnyDepth string
+)
 
-	assert.Equal(t, "Bad Gateway", render("Bad Gateway"))
-	assert.Equal(t, "<binary>", render(strings.Repeat("\x00\xff", 1500)))
-	assert.Equal(t, "<empty>", render(""))
-	assert.True(t, strings.HasSuffix(render(strings.Repeat("ä", loggedBodyLimit)), "[TRUNCATED]"),
-		"a rune the cap cut in half does not make the text binary")
+func TestLoggedBody(t *testing.T) {
+	render := func(body string, redacted ...jsontext.Pointer) string {
+		head := []byte(body)
+		return loggedBody{head: head[:min(len(head), loggedBodyLimit+1)], redacted: redacted}.String()
+	}
+	const secret = "s3cr3t"
+
+	t.Run("JSON is indented, and a pointer redacts the whole value", func(t *testing.T) {
+		assert.Equal(t, strings.TrimSuffix(loggedBodyRedacted, "\n"),
+			render(`{"items":[{"secret":"`+secret+`","name":"a"},{"secret":{"nested":"`+secret+`"}}],"config":{"key":"`+secret+`"},"at":1234567890123456789,"empty":{}}`,
+				"/items/*/secret", "/config"))
+	})
+
+	t.Run("a ** token matches at any depth", func(t *testing.T) {
+		assert.Equal(t, strings.TrimSuffix(loggedBodyRedactedAtAnyDepth, "\n"),
+			render(`{"plaintext":"`+secret+`","inputs":[{"value":{"plaintext":"`+secret+`","hash":"h"}}]}`, "/**/plaintext"))
+	})
+
+	t.Run("a url-encoded form redacts the field a one-token pointer names", func(t *testing.T) {
+		assert.Equal(t, `grant_type=refresh_token&refresh_token="[REDACTED]"&client_id=an-id`,
+			render(`grant_type=refresh_token&refresh_token=`+secret+`&client_id=an-id`, "/refresh_token"))
+	})
+
+	t.Run("plain text is shown as it came", func(t *testing.T) {
+		assert.Equal(t, "Bad Gateway", render("Bad Gateway"))
+	})
+
+	t.Run("binary content shows only its length", func(t *testing.T) {
+		assert.Equal(t, "<binary>", render(strings.Repeat("\x00\xff", 1500)))
+	})
+
+	t.Run("an empty body says so", func(t *testing.T) {
+		assert.Equal(t, "<empty>", render(""))
+	})
+
+	t.Run("broken JSON shows what decoded before the error", func(t *testing.T) {
+		assert.Equal(t, //nolint:testifylint // the rendering itself is tested
+			"{\n  \"name\": \"a\"\n<invalid JSON: jsontext: unexpected EOF after offset 12>", render(`{"name":"a",`))
+	})
+
+	t.Run("a body beyond the cap ends with the marker", func(t *testing.T) {
+		rendered := render(`{"token":"`+strings.Repeat(secret, loggedBodyLimit)+`"}`, "/token")
+		assert.Equal(t, //nolint:testifylint // the rendering itself is tested
+			"{\n  \"token\": \"[REDACTED]\" [TRUNCATED]", rendered,
+			"a value the cap cut is redacted all the same")
+
+		assert.True(t, strings.HasSuffix(render(strings.Repeat("ä", loggedBodyLimit)), "[TRUNCATED]"),
+			"a rune the cap cut in half does not make the text binary")
+	})
+}
+
+func TestLoggedBodyIncomplete(t *testing.T) {
 	assert.Equal(t, "partial\n<incomplete: connection lost>",
 		loggedBody{head: []byte("partial"), err: errors.New("connection lost")}.String())
 }
@@ -44,19 +94,20 @@ func TestLoggedRequest(t *testing.T) {
 	const secret = "supersecret"
 	client := NewClient(testUserAgent).WithAuthorization(BearerToken(secret))
 
-	t.Run("both bodies are logged, and the bearer token is not", func(t *testing.T) {
+	t.Run("both bodies are logged redacted", func(t *testing.T) {
 		captured := logs.Capture(t)
-		answer.status, answer.body = gohttp.StatusOK, `{"name":"answered"}`
+		answer.status, answer.body = gohttp.StatusOK, `{"token":"`+secret+`","name":"answered"}`
 
 		_, err := UnmarshalJsonBody[map[string]string](client.DoRequest(t.Context(), MethodPost, server.Url,
-			WithJsonRequest(map[string]string{"name": "asked"}, "")))
+			WithJsonRequest(map[string]string{"secret": secret}, ""),
+			WithRedactedJsonPointers("/secret", "/token")))
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{
 			fmt.Sprintf(`level=DEBUG msg=request url=%s method=POST headers="Accept=application/json\nAuthorization=[REDACTED]\nContent-Type=application/json\nUser-Agent=meshstack-cli/test"`, server.Url),
-			`level=DEBUG msg="request body" body="{\"name\":\"asked\"}"`,
-			`level=DEBUG msg=response status=200 headers="Content-Length=19\nContent-Type=text/plain; charset=utf-8"`,
-			`level=DEBUG msg="response body" body="{\"name\":\"answered\"}"`,
+			`level=DEBUG msg="request body" body="{\n  \"secret\": \"[REDACTED]\"\n}"`,
+			`level=DEBUG msg=response status=200 headers="Content-Length=41\nContent-Type=text/plain; charset=utf-8"`,
+			`level=DEBUG msg="response body" body="{\n  \"token\": \"[REDACTED]\",\n  \"name\": \"answered\"\n}"`,
 		}, captured.Lines(slog.LevelDebug))
 	})
 
@@ -66,7 +117,7 @@ func TestLoggedRequest(t *testing.T) {
 
 		_ = IgnoreResponse(client.DoRequest(t.Context(), MethodGet, server.Url))
 
-		assert.Contains(t, captured.String(), answer.body[:loggedBodyLimit]+" [TRUNCATED]")
+		assert.Contains(t, captured.String(), answer.body[:loggedBodyLimit]+" "+truncatedMarker)
 	})
 
 	// The Terraform provider's sink encodes attributes as JSON.
@@ -84,7 +135,7 @@ func TestLoggedRequest(t *testing.T) {
 		logged := written.String()
 		assert.NotContains(t, logged, secret)
 		assert.Contains(t, logged, "Authorization=[REDACTED]")
-		assert.Contains(t, logged, `\"asked\":\"for\"`, "the request body")
-		assert.Contains(t, logged, `\"answer\":\"served\"`, "the response body")
+		assert.Contains(t, logged, `\"asked\": \"for\"`, "the request body")
+		assert.Contains(t, logged, `\"answer\": \"served\"`, "the response body")
 	})
 }

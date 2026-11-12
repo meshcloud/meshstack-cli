@@ -50,6 +50,7 @@ func (apiKey *ApiKey) RefreshCachedToken(ctx context.Context, client http.Client
 	}](client.DoRequest(ctx, http.MethodPost, loginEndpoint,
 		http.Retryable(http.RetryOnTransient),
 		http.WithJsonRequest(payload, "application/json"),
+		http.WithRedactedJsonPointers("/access_token"),
 	))
 
 	if httpError, ok := errors.AsType[http.Error](err); ok && httpError.IsUnauthorized() {
