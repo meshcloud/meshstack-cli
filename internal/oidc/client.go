@@ -115,7 +115,8 @@ func (c Client) doPost[R any](ctx context.Context, endpoint *url.URL, payload ma
 }
 
 func (c Client) post(ctx context.Context, endpoint *url.URL, payload map[string]any) (io.ReadCloser, error) {
-	body, err := c.DoRequest(ctx, http.MethodPost, endpoint, http.WithFormRequest(payload))
+	body, err := c.DoRequest(ctx, http.MethodPost, endpoint, http.WithFormRequest(payload),
+		http.WithRedactedJsonPointers("/code", "/code_verifier", "/refresh_token", "/access_token", "/id_token", "/id_token_hint"))
 	if httpErr, ok := errors.AsType[http.Error](err); ok {
 		var protocolErr protocolError
 		if unmarshalErr := json.UnmarshalRead(bytes.NewReader(httpErr.ResponseBody), &protocolErr); unmarshalErr != nil {

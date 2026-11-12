@@ -97,7 +97,7 @@ func (c Client) DoRequest(ctx context.Context, method string, url *url.URL, opti
 	if opts.responseHeader != nil {
 		*opts.responseHeader = res.Header
 	}
-	body := newLoggedBody(ctx, "response body", newStallGuardedBody(res.Body, cancel))
+	body := newLoggedBody(ctx, "response body", newStallGuardedBody(res.Body, cancel), opts.redactedJsonPointers)
 	if isSuccess(res.StatusCode) {
 		return body, nil
 	}
@@ -130,7 +130,7 @@ func (opts requestOptions) newRequest(ctx context.Context, method string, url *u
 			return nil, fmt.Errorf("cannot build request body: %w", err)
 		}
 	}
-	req.Body = newLoggedBody(ctx, "request body", req.Body)
+	req.Body = newLoggedBody(ctx, "request body", req.Body, opts.redactedJsonPointers)
 	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header))
 	return req, nil
 }

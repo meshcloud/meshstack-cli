@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "secret": "[REDACTED]",
+      "name": "a"
+    },
+    {
+      "secret": "[REDACTED]"
+    }
+  ],
+  "config": "[REDACTED]",
+  "at": 1234567890123456789,
+  "empty": {}
+}

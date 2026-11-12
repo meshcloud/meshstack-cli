@@ -138,7 +138,8 @@ func (c meshBuildingBlockRunClient) Claim(ctx context.Context, runnerUuid string
 	run, err := c.unmarshalJsonBody[MeshBuildingBlockRun](c.do(ctx, http.MethodPost, c.collection.JoinPath("create"),
 		http.WithUrlQuery(map[string]string{"forRunnerUuid": runnerUuid}),
 		http.WithContentType(c.mediaType),
-		http.WithHeader("X-Meshcloud-Runner-Version", c.client.UserAgentVersion())))
+		http.WithHeader("X-Meshcloud-Runner-Version", c.client.UserAgentVersion()),
+		http.WithRedactedJsonPointers("/spec/runToken")))
 	switch {
 	case isNotFound(err):
 		return run, ErrNoRunToClaim
