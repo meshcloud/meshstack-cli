@@ -375,9 +375,11 @@ read the outcome. Poll its runs instead: `meshstack bbrun list --building-block 
 ## Everything else: `meshstack api`
 
 `meshstack api` sends an authenticated, `curl`-like request to any path of the API, with the
-current login. For a meshObject endpoint it picks the latest API version and sets the `Accept` and
-`Content-Type` headers itself; `--api-version` picks another one. An answer outside 2xx still
-prints its body, but the command fails.
+current login. For a meshObject endpoint it picks the latest API version, sets the `Accept` and
+`Content-Type` headers and fills in a missing `apiVersion` and `kind` of the body itself;
+`--api-version` picks another version. Leave the version out unless you need an older one, so the
+command keeps working when a preview version becomes GA. An answer outside 2xx still prints its
+body, but the command fails.
 
 Do not read the OpenAPI document yourself — it is several MB. Ask `api-docs`:
 
@@ -387,15 +389,14 @@ meshstack api-docs --describe bb.list          # one operation, with its paramet
 meshstack api-docs -X POST /api/meshobjects/meshbuildingblocks   # the same line as the api call
 ```
 
-Read one object in another version, for example the full lifecycle of a building block:
+Read the full lifecycle of a building block:
 
 ```sh
-meshstack api --api-version v2-preview /api/meshobjects/meshbuildingblocks/<uuid> |
-  jq '.status.lifecycle'
+meshstack api /api/meshobjects/meshbuildingblocks/<uuid> | jq '.status.lifecycle'
 ```
 
-Check with `api-docs` which version a kind offers first: some versions cover only part of a kind,
-for example only tenant-level building blocks.
+Before you pick an older version with `--api-version`, check with `api-docs` which versions a kind
+offers: some versions cover only part of a kind, for example only tenant-level building blocks.
 
 ## Ordering a building block
 
@@ -405,14 +406,13 @@ then post the order through `meshstack api`. A workspace-level block targets
 `{kind: "meshTenant", uuid: <tenant-uuid>}`:
 
 ```sh
-jq -n '{apiVersion: "v2-preview", kind: "meshBuildingBlock", spec: {
+jq -n '{kind: "meshBuildingBlock", spec: {
     displayName: "my-project",
     buildingBlockDefinitionVersionRef: {kind: "meshBuildingBlockDefinitionVersion", uuid: "<version-uuid>"},
     targetRef: {kind: "meshWorkspace", name: "<workspace>"},
     inputs: {name: {value: "my-project", valueType: "STRING"}},
     parentBuildingBlockRefs: []}}' |
-  meshstack api -X POST /api/meshobjects/meshbuildingblocks --workspace <workspace> \
-    --api-version v2-preview --request-json - |
+  meshstack api -X POST /api/meshobjects/meshbuildingblocks --workspace <workspace> --request-json - |
   jq -c '{uuid: .metadata.uuid, action: .status.action}'
 ```
 
