@@ -40,7 +40,8 @@ func (on RetryOn) backoff(resp *gohttp.Response, err error, backoff retryBackoff
 	}
 	switch {
 	case err != nil:
-		if on&RetryOnBrokenConnection != 0 && isBrokenConnection(err) {
+		// A refused connection is retried under every policy, because the server received nothing.
+		if errors.Is(err, syscall.ECONNREFUSED) || on&RetryOnBrokenConnection != 0 && isBrokenConnection(err) {
 			return backoff
 		}
 		return nil
@@ -111,9 +112,6 @@ type retryRoundTripper struct {
 func (r retryRoundTripper) RoundTrip(req *gohttp.Request) (*gohttp.Response, error) {
 	retryOpts := requestOptionsFrom(req).retry
 	on := retryOpts.policy(req.Method)
-	if on == 0 {
-		return r.next.RoundTrip(req)
-	}
 	req = makeRequestBodyRetryable(req)
 	for attempt := 1; ; attempt++ {
 		resp, err := r.next.RoundTrip(req)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -165,15 +165,28 @@ func TestRetry(t *testing.T) {
 		assert.Equal(t, int32(1), backoff.calls.Load())
 	})
 
-	t.Run("a refused connection is not retried", func(t *testing.T) {
+	t.Run("a refused connection is retried for any method", func(t *testing.T) {
 		backoff := reset(gohttp.StatusOK)
-		server.proxy.Stop()
-		t.Cleanup(func() { require.NoError(t, server.proxy.Start()) })
+		listener, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		address := listener.Addr().String()
+		require.NoError(t, listener.Close())
+		backoff.onRetry = func() {
+			started := httptest.NewUnstartedServer(gohttp.NotFoundHandler())
+			require.NoError(t, started.Listener.Close())
+			started.Listener, err = new(net.ListenConfig).Listen(t.Context(), "tcp", address)
+			require.NoError(t, err)
+			started.Start()
+			t.Cleanup(started.Close)
+		}
 
-		err := IgnoreResponse(client.DoRequest(t.Context(), MethodGet, server.Url, backoff.option()))
+		err = IgnoreResponse(client.DoRequest(t.Context(), MethodPost, &url.URL{Scheme: "http", Host: address},
+			WithJsonRequest(map[string]string{"key": "value"}, ""), backoff.option()))
 
-		require.ErrorIs(t, err, syscall.ECONNREFUSED)
-		assert.Zero(t, backoff.calls.Load())
+		httpErr, ok := errors.AsType[Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, gohttp.StatusNotFound, httpErr.StatusCode)
+		assert.Equal(t, int32(1), backoff.calls.Load())
 	})
 
 	t.Run("a server that does not answer is given up after stallTimeout, and not retried", func(t *testing.T) {
