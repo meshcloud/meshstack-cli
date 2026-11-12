@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	meshstackclient "github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
@@ -45,13 +46,14 @@ func (apiKey *ApiKey) RefreshCachedToken(ctx context.Context, client http.Client
 		ClientSecret string `json:"clientSecret"`
 	}{apiKey.ClientId, apiKey.ClientSecret}
 
-	answer, err := http.UnmarshalJsonBody[struct {
-		AccessToken jwt.JWT `json:"access_token"`
-	}](client.DoRequest(ctx, http.MethodPost, loginEndpoint,
+	body, err := client.DoRequest(ctx, http.MethodPost, loginEndpoint,
 		http.Retryable(http.RetryOnTransient),
 		http.WithJsonRequest(payload, "application/json"),
 		http.WithRedactedJsonPointers("/access_token"),
-	))
+	)
+	answer, err := http.UnmarshalJsonBody[struct {
+		AccessToken jwt.JWT `json:"access_token"`
+	}](body, meshstackclient.MeshObjectErrorOf(err))
 
 	if httpError, ok := errors.AsType[http.Error](err); ok && httpError.IsUnauthorized() {
 		return fmt.Errorf("api key %s at %s refused: %w; check the secret, or issue a new key in meshPanel", apiKey.ClientId, loginEndpoint, err)

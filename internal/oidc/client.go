@@ -1,7 +1,6 @@
 package oidc
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 )
@@ -118,20 +116,25 @@ func (c Client) post(ctx context.Context, endpoint *url.URL, payload map[string]
 	body, err := c.DoRequest(ctx, http.MethodPost, endpoint, http.WithFormRequest(payload),
 		http.WithRedactedJsonPointers("/code", "/code_verifier", "/refresh_token", "/access_token", "/id_token", "/id_token_hint"))
 	if httpErr, ok := errors.AsType[http.Error](err); ok {
-		var protocolErr protocolError
-		if unmarshalErr := json.UnmarshalRead(bytes.NewReader(httpErr.ResponseBody), &protocolErr); unmarshalErr != nil {
-			return body, errors.Join(httpErr, unmarshalErr)
+		if protocolErr, parseErr := httpErr.BodyAsJson[protocolError](); parseErr == nil && protocolErr.Code != "" {
+			protocolErr.http = httpErr
+			return body, protocolErr
 		}
-		return body, errors.Join(httpErr, protocolErr)
 	}
 	return body, err
 }
 
+// protocolError is an OAuth 2.0 error response (RFC 6749, section 5.2).
 type protocolError struct {
+	http        http.Error
 	Code        string `json:"error"`
 	Description string `json:"error_description"`
 }
 
 func (e protocolError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code, e.Description)
+	return fmt.Sprintf("%s %s: HTTP %d: %s: %s", e.http.Method, e.http.Url, e.http.StatusCode, e.Code, e.Description)
+}
+
+func (e protocolError) Unwrap() error {
+	return e.http
 }

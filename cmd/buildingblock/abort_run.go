@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	gohttp "net/http"
 
 	"github.com/spf13/cobra"
 
@@ -72,7 +71,7 @@ func (a runAction) abort(ctx context.Context) error {
 		return nil
 	}
 	_, err = run.Links.Post[struct{}](ctx, "abort", nil)
-	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.StatusCode == gohttp.StatusConflict {
+	if httpErr, ok := errors.AsType[client.HttpError](err); ok && httpErr.IsConflict() {
 		return fmt.Errorf("run %s can no longer be aborted", run.Metadata.Uuid)
 	}
 	if err != nil {

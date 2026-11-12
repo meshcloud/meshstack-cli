@@ -126,18 +126,18 @@ func TestApi(t *testing.T) {
 		}
 	})
 
-	t.Run("writes the body of a failed answer, and fails with a hint to api-docs on a client error", func(t *testing.T) {
+	t.Run("fails with the error of meshStack, and with a hint to api-docs on a client error", func(t *testing.T) {
 		for status, wantError := range map[int]string{
-			gohttp.StatusConflict:   "meshStack answered HTTP 409: still in use. Run meshstack api-docs /api/x -H 'Accept: application/json' -X POST to see what the API expects",
-			gohttp.StatusBadGateway: "meshStack answered HTTP 502: still in use",
-			gohttp.StatusForbidden:  "auth manual for " + meshStack.URL + ": meshStack answered HTTP 403: still in use",
+			gohttp.StatusConflict:   "POST " + meshStack.URL + "/api/x: meshStack answered HTTP 409: still in use\nRun meshstack api-docs /api/x -H 'Accept: application/json' -X POST to see what the API expects",
+			gohttp.StatusBadGateway: "POST " + meshStack.URL + "/api/x: meshStack answered HTTP 502: still in use",
+			gohttp.StatusForbidden:  "auth manual for " + meshStack.URL + ": POST " + meshStack.URL + "/api/x: meshStack answered HTTP 403: still in use",
 		} {
 			meshStack.answer(status, `{"message":"still in use"}`)
 
 			stdout, err := meshStack.run(t, api.New(), "", "-X", "POST", "/api/x", "-H", "Accept: application/json")
 
 			require.EqualError(t, err, wantError)
-			assert.JSONEq(t, "{\n  \"message\": \"still in use\"\n}\n", stdout)
+			assert.Empty(t, stdout)
 		}
 	})
 
@@ -146,16 +146,15 @@ func TestApi(t *testing.T) {
 
 		_, err := meshStack.run(t, api.New(), "", "/api/x", "-H", "Accept: application/json")
 
-		require.EqualError(t, err, "meshStack answered HTTP 404: gone (errorCode NotFound). Run meshstack api-docs /api/x -X GET -H 'Accept: application/json' to see what the API expects")
+		require.EqualError(t, err, "GET "+meshStack.URL+"/api/x: meshStack answered HTTP 404: gone (errorCode NotFound)\nRun meshstack api-docs /api/x -X GET -H 'Accept: application/json' to see what the API expects")
 	})
 
 	t.Run("adds the clientVersionHint of a failed answer to the error", func(t *testing.T) {
 		meshStack.answer(gohttp.StatusNotFound, `{"errorCode":"NoHandlerFound","message":"no handler","errorId":"abc","clientVersionHint":"Upgrade the meshStack CLI to v0.9.0."}`)
 
-		stdout, err := meshStack.run(t, api.New(), "", "/api/x", "-H", "Accept: application/json")
+		_, err := meshStack.run(t, api.New(), "", "/api/x", "-H", "Accept: application/json")
 
-		require.EqualError(t, err, "meshStack answered HTTP 404: no handler (errorCode NoHandlerFound, errorId abc)\nUpgrade the meshStack CLI to v0.9.0.")
-		assert.Contains(t, stdout, "clientVersionHint")
+		require.EqualError(t, err, "GET "+meshStack.URL+"/api/x: meshStack answered HTTP 404: no handler (errorCode NoHandlerFound, errorId abc)\nUpgrade the meshStack CLI to v0.9.0.")
 	})
 
 	t.Run("asks for the media type the API docs list for a path of no version", func(t *testing.T) {

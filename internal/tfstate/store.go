@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/json"
@@ -92,7 +93,8 @@ func (s Store) do(ctx context.Context, method string, target *url.URL, opts ...h
 		// A 423 goes back to tofu at once, which names the holder of the lock and waits itself.
 		opts = append(opts, http.Retryable(http.RetryOnBusy))
 	}
-	return http.ReadAllBody(s.client.DoRequest(ctx, method, target, opts...))
+	body, err := s.client.DoRequest(ctx, method, target, opts...)
+	return http.ReadAllBody(body, client.MeshObjectErrorOf(err))
 }
 
 func (s Store) wrap(action string, err error) error {

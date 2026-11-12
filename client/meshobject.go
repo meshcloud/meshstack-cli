@@ -118,7 +118,8 @@ func pluralizeKind(kind string) string {
 }
 
 func (c meshObjectClient[M, Filter]) do(ctx context.Context, method string, target *url.URL, options ...http.RequestOption) (io.ReadCloser, error) {
-	return c.client.DoRequest(ctx, method, target, slices.Insert(options, 0, http.WithHeader("Accept", c.mediaType))...)
+	body, err := c.client.DoRequest(ctx, method, target, slices.Insert(options, 0, http.WithHeader("Accept", c.mediaType))...)
+	return body, MeshObjectErrorOf(err)
 }
 
 // followLink sends the bearer token only to the origin of the endpoint.
