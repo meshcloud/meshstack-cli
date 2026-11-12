@@ -20,11 +20,12 @@ type (
 	RequestOption func(opts *requestOptions)
 
 	requestOptions struct {
-		requestModifiers []requestModifier
-		retry            retryOptions
-		noRedirects      bool
-		setBody          requestModifier
-		responseHeader   *gohttp.Header
+		requestModifiers     []requestModifier
+		retry                retryOptions
+		noRedirects          bool
+		setBody              requestModifier
+		redactedJsonPointers redactedJsonPointers
+		responseHeader       *gohttp.Header
 	}
 	requestModifier func(req *gohttp.Request) error
 )
@@ -44,6 +45,7 @@ func newRequestOptions(options []RequestOption) requestOptions {
 			maxRetries: 16,
 			backoff:    exponentialBackoff{MinWait: 1 * time.Second, MaxWait: 30 * time.Second},
 		},
+		redactedJsonPointers: redactedJsonPointers{"/**/plaintext", "/**/clientSecret"},
 	}
 	for _, option := range options {
 		option(&opts)
@@ -81,6 +83,14 @@ func Retryable(retryOn RetryOn) RequestOption {
 func WithoutRedirects() RequestOption {
 	return func(opts *requestOptions) {
 		opts.noRedirects = true
+	}
+}
+
+// WithRedactedJsonPointers hides the values at these pointers in the debug log of the request and
+// its response, on top of the defaults.
+func WithRedactedJsonPointers(pointers ...jsontext.Pointer) RequestOption {
+	return func(opts *requestOptions) {
+		opts.redactedJsonPointers = append(opts.redactedJsonPointers, pointers...)
 	}
 }
 
