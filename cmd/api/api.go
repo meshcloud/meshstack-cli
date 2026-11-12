@@ -33,7 +33,7 @@ Use this command for everything that the other commands do not cover. For a path
 
 --%[1]s sends a JSON file as the request body, or stdin for '-'. If the API docs list no version for the path, the command sets the Accept and Content-Type headers to application/json. If the command cannot download the API docs, it sets only the Content-Type header to application/json.
 
-If the response status is not 2xx, the command still prints the response body, and then fails.
+If the response status is not 2xx, the command prints nothing and fails with an error that shows what meshStack answered.
 
 To see what the API docs say about the request, run the same command line with 'api' replaced by 'api-docs'.`, requestJsonFlagName),
 		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace'
@@ -78,16 +78,9 @@ To see what the API docs say about the request, run the same command line with '
 				options = append(options, http.WithHeader(key, values...))
 			}
 			answer, err := http.ReadAllBody(meshStack.HttpClient.DoRequest(ctx, r.method, meshStack.Endpoint.JoinPath(r.target.Path), options...))
-			if httpErr, ok := errors.AsType[client.HttpError](err); ok {
-				if writeErr := writeAnswer(cmd.OutOrStdout(), httpErr.ResponseBody); writeErr != nil {
-					return writeErr
-				}
-				// The body is on stdout already, so the error says only what it adds.
-				if r.docsHelpWith(httpErr) {
-					return withHint(fmt.Sprintf("%s. Run %s to see what the API expects",
-						httpErr.Summary(), docsCommand(cmd, args)), httpErr)
-				}
-				return withHint(strings.Replace(err.Error(), httpErr.Error(), httpErr.Summary(), 1), httpErr)
+			err = client.MeshObjectErrorOf(err)
+			if meshErr, ok := errors.AsType[client.MeshObjectError](err); ok && r.docsHelpWith(meshErr) {
+				return fmt.Errorf("%w\nRun %s to see what the API expects", err, docsCommand(cmd, args))
 			}
 			if err != nil {
 				return err
@@ -103,24 +96,15 @@ To see what the API docs say about the request, run the same command line with '
 
 // docsHelpWith is false for a 404 of a path meshStack serves nothing at, and of an object missing at a
 // documented path: the API docs say nothing about either.
-func (r *request) docsHelpWith(httpErr client.HttpError) bool {
+func (r *request) docsHelpWith(meshErr client.MeshObjectError) bool {
 	switch {
-	case !httpErr.IsClientError(), httpErr.IsUnauthorized(), httpErr.IsForbidden():
+	case !meshErr.Http.IsClientError(), meshErr.Http.IsUnauthorized(), meshErr.Http.IsForbidden():
 		return false
-	case httpErr.IsNotFound():
-		return !r.documented && httpErr.ErrorCode() != noHandlerFound
+	case meshErr.Http.IsNotFound():
+		return !r.documented && meshErr.ErrorCode != noHandlerFound
 	default:
 		return true
 	}
-}
-
-// withHint adds the hint on a line of its own. Stdout carries the raw body, which the error does not
-// repeat.
-func withHint(message string, httpErr client.HttpError) error {
-	if hint := httpErr.ClientVersionHint(); hint != "" {
-		message += "\n" + hint
-	}
-	return errors.New(message)
 }
 
 // noHandlerFound is the errorCode of meshStack's answer to a path it serves nothing at.

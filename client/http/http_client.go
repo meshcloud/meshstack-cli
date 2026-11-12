@@ -40,11 +40,45 @@ func NewClient(userAgent UserAgent) Client {
 	return Client{userAgent}
 }
 
+// DoRequest leaves the body to the caller.
+func (c Client) DoRequest(ctx context.Context, method string, url *url.URL, options ...RequestOption) (io.ReadCloser, error) {
+	opts := newRequestOptions(slices.Insert(options, 0, WithHeader("User-Agent", c.userAgent.String())))
+	ctx, cancel := context.WithCancelCause(ctx)
+	req, err := opts.newRequest(ctx, method, url)
+	if err != nil {
+		cancel(nil)
+		return nil, err
+	}
+	res, err := goClient.Do(req) //nolint:bodyclose // the returned body closes it, or the error path below
+	if err != nil {
+		cancel(nil)
+		return nil, err
+	}
+	slog.DebugContext(ctx, "response", "status", res.StatusCode, "headers", loggedHeaders(res.Header))
+	if opts.responseHeader != nil {
+		*opts.responseHeader = res.Header
+	}
+	body := newLoggedBody(ctx, "response body", newStallGuardedBody(res.Body, cancel), opts.redactedJsonPointers)
+	if statusCode := res.StatusCode; statusCode >= 200 && statusCode <= 299 {
+		return body, nil
+	}
+	responseBody, err := ReadAllBody(body, nil)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read response body, status code %d: %w", res.StatusCode, err)
+	}
+	return nil, Error{
+		Method:       res.Request.Method,
+		Url:          res.Request.URL.Redacted(),
+		StatusCode:   res.StatusCode,
+		ResponseBody: responseBody,
+	}
+}
+
 func (c Client) String() string {
 	return "unauthorized client " + c.userAgent.String()
 }
 
-// UnmarshalJsonBody closes the body.
+// UnmarshalJsonBody closes the body, and ignores it for a T of struct{}.
 func UnmarshalJsonBody[T any](body io.ReadCloser, err error, unmarshalers ...*json.Unmarshalers) (result T, _ error) {
 	if _, ignored := any(result).(struct{}); ignored {
 		return result, IgnoreResponse(body, err)
@@ -67,6 +101,7 @@ func ReadAllBody(body io.ReadCloser, err error) ([]byte, error) {
 	return data, errors.Join(err, body.Close())
 }
 
+// IgnoreResponse drains the body, so that the connection can be reused.
 func IgnoreResponse(body io.ReadCloser, err error) error {
 	if err != nil {
 		return err
@@ -75,43 +110,6 @@ func IgnoreResponse(body io.ReadCloser, err error) error {
 		err = nil
 	}
 	return errors.Join(err, body.Close())
-}
-
-// DoRequest leaves the body to the caller. A non-2xx status is an Error that carries the response body,
-// because an OIDC endpoint answers a refusal with an error document and that document is the only
-// thing saying which refusal it was.
-func (c Client) DoRequest(ctx context.Context, method string, url *url.URL, options ...RequestOption) (io.ReadCloser, error) {
-	opts := newRequestOptions(slices.Insert(options, 0, WithHeader("User-Agent", c.userAgent.String())))
-	ctx, cancel := context.WithCancelCause(ctx)
-	req, err := opts.newRequest(ctx, method, url)
-	if err != nil {
-		cancel(nil)
-		return nil, err
-	}
-	res, err := goClient.Do(req) //nolint:bodyclose // the returned body closes it, or the error path below
-	if err != nil {
-		cancel(nil)
-		return nil, err
-	}
-	slog.DebugContext(ctx, "response", "status", res.StatusCode, "headers", loggedHeaders(res.Header))
-	if opts.responseHeader != nil {
-		*opts.responseHeader = res.Header
-	}
-	body := newLoggedBody(ctx, "response body", newStallGuardedBody(res.Body, cancel), opts.redactedJsonPointers)
-	if isSuccess(res.StatusCode) {
-		return body, nil
-	}
-	responseBody, err := io.ReadAll(body)
-	_ = body.Close()
-	if err != nil {
-		return nil, fmt.Errorf("cannot read response body, status code %d: %w", res.StatusCode, err)
-	}
-	return nil, Error{
-		Method:       res.Request.Method,
-		Url:          res.Request.URL.Redacted(),
-		StatusCode:   res.StatusCode,
-		ResponseBody: responseBody,
-	}
 }
 
 // newRequest opens the body after every modifier, so that a modifier's error leaves none open.
@@ -133,8 +131,4 @@ func (opts requestOptions) newRequest(ctx context.Context, method string, url *u
 	req.Body = newLoggedBody(ctx, "request body", req.Body, opts.redactedJsonPointers)
 	slog.DebugContext(ctx, "request", "url", req.URL.String(), "method", req.Method, "headers", loggedHeaders(req.Header))
 	return req, nil
-}
-
-func isSuccess(statusCode int) bool {
-	return statusCode >= 200 && statusCode <= 299
 }

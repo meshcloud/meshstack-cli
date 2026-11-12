@@ -61,7 +61,7 @@ func (s store) load(ctx context.Context, client http.Client, endpoint xurl.URL) 
 		slog.DebugContext(ctx, fmt.Sprintf("The API docs of %s are up to date", endpoint))
 		return parse(url, storedDocument)
 	// A meshStack from before /api/openapi answers 401.
-	case isHttpErr && (httpErr.StatusCode == gohttp.StatusUnauthorized || httpErr.StatusCode == gohttp.StatusNotFound):
+	case isHttpErr && (httpErr.IsUnauthorized() || httpErr.IsNotFound()):
 		return openapi.Spec{}, fallbackError{fmt.Errorf("%s serves no API docs", endpoint)}
 	case err != nil && storedDocument != nil:
 		slog.WarnContext(ctx, fmt.Sprintf("Cannot load the API docs from %s, so this command reads the ones stored before: %s", url, err))
