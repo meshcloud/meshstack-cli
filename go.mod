@@ -7,6 +7,8 @@ module github.com/meshcloud/meshstack-cli
 // its automatic update PRs cannot change the Go version, so a maintainer has to.
 go 1.27.0
 
+toolchain go1.27.4
+
 // gotestsum is not a convenience: meshfed-release's go-satellite build plugin runs
 // `go tool gotestsum` in this directory to drive the acceptance suite.
 tool (
