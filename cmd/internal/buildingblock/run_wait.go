@@ -7,6 +7,9 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"regexp"
+	"slices"
+	"strings"
 	"time"
 	"uuid"
 
@@ -68,14 +71,14 @@ func (w RunWait) StartFailure(block *client.MeshBuildingBlockV2) error {
 }
 
 // Outcome is an error for a run that ended in a state someone has to act on.
-func (w RunWait) Outcome(block *client.MeshBuildingBlockV2) error {
+func (w RunWait) Outcome(ctx context.Context, block *client.MeshBuildingBlockV2) error {
 	status := block.Status
 	var err error
 	switch {
 	case status.RunStartFailure != "":
 		return w.StartFailure(block)
 	case status.RunFailed():
-		err = fmt.Errorf("the run of building block %s ended with action %s", w.buildingBlockUuid, status.Action)
+		err = fmt.Errorf("the run of building block %s ended with action %s%s", w.buildingBlockUuid, status.Action, w.waitingBlocks(ctx, status.GetLatestRunUuid()))
 	case status.Action == client.BuildingBlockActionApproveRun:
 		err = fmt.Errorf("run %s of building block %s is waiting for approval of the plan from the detect run %s. Review the plan with 'meshstack buildingblockrun plan %s'",
 			status.GetLatestRunUuid(), w.buildingBlockUuid, status.GetLatestDryRunUuid(), status.GetLatestRunUuid())
@@ -83,6 +86,48 @@ func (w RunWait) Outcome(block *client.MeshBuildingBlockV2) error {
 		err = fmt.Errorf("the run of building block %s is paused at action %s and continues only after someone acts on it", w.buildingBlockUuid, status.Action)
 	}
 	return withMeshPanelLink(err, block)
+}
+
+// maxMentionedBlocks bounds the reads of waitingBlocks, which reads every uuid in the logs.
+const maxMentionedBlocks = 20
+
+var uuidPattern = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
+// waitingBlocks names the building blocks that the logs of a failed run mention and that wait for
+// someone. A run that writes building blocks, such as a starterkit, fails when one of them waits for
+// an approval, and only the run's messages name that building block.
+func (w RunWait) waitingBlocks(ctx context.Context, runUuid string) string {
+	run, err := uuid.Parse(runUuid)
+	if err != nil {
+		return ""
+	}
+	logs, err := w.raw.Get[client.MeshBuildingBlockRun](ctx, run, "logs")
+	if err != nil {
+		return ""
+	}
+	var mentioned, waiting []string
+	for _, found := range uuidPattern.FindAllString(string(logs), -1) {
+		if found == w.buildingBlockUuid.String() || slices.Contains(mentioned, found) || len(mentioned) == maxMentionedBlocks {
+			continue
+		}
+		mentioned = append(mentioned, found)
+		read, err := w.raw.Get[client.MeshBuildingBlockV2](ctx, uuid.MustParse(found))
+		var block client.MeshBuildingBlockV2
+		if err != nil || json.Unmarshal(read, &block) != nil || !block.IsWaitingForInput() {
+			continue
+		}
+		if block.Status.Action == client.BuildingBlockActionApproveRun {
+			waiting = append(waiting, fmt.Sprintf("building block %s waits for approval: review its plan with 'meshstack buildingblockrun plan %s'",
+				found, block.Status.GetLatestRunUuid()))
+		} else {
+			waiting = append(waiting, fmt.Sprintf("building block %s waits with action %s", found, block.Status.Action))
+		}
+	}
+	if len(waiting) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(". The logs of the run name building blocks that wait for someone: %s. Act on them, and then run building block %s again",
+		strings.Join(waiting, "; "), w.buildingBlockUuid)
 }
 
 func withMeshPanelLink(err error, block *client.MeshBuildingBlockV2) error {

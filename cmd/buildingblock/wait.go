@@ -86,7 +86,7 @@ func awaitRunEnd(ctx context.Context, out io.Writer, format internal.OutputForma
 	if err = format.WriteItem(out, ended); err != nil {
 		return err
 	}
-	if err = wait.Outcome(block); err != nil {
+	if err = wait.Outcome(ctx, block); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("The run of building block %s ended with action %s.", buildingBlockUuid, block.Status.Action))

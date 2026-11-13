@@ -389,7 +389,9 @@ meshstack bb wait <uuid>
 
 All of them fail, and name the action, when the run failed or waits for a person or a dependency. When the
 run waits for approval, they name the waiting run and the detect run that planned it: see
-[Approval gates and preflight runs](#approval-gates-and-preflight-runs).
+[Approval gates and preflight runs](#approval-gates-and-preflight-runs). A run that creates building
+blocks, such as a starterkit, fails when one of them waits for approval. Then the error names that
+building block: approve its run, and run the parent again.
 
 A block that deletes itself at the end of its run, like a starterkit, is gone before `bb wait` can
 read the outcome. Poll its runs instead: `meshstack bbrun list --building-block <uuid> --workspace
