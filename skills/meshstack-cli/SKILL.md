@@ -27,8 +27,10 @@ skill and the help disagree, trust the help.
 |---|---|---|
 | `meshstack workspace list` | | workspaces this login can see |
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
+| `meshstack buildingblock create -f <file\|->` | `bb` | orders a block from a JSON file |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
 | `meshstack buildingblock wait <uuid> [--before <file\|->]` | `bb` | waits until the run of one block has ended |
+| `meshstack buildingblock upgrade <uuid> [--input <name>=<value>]` | `bb` | upgrades one block to the latest released version of its definition |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
@@ -426,7 +428,7 @@ offers: some versions cover only part of a kind, for example only tenant-level b
 ## Ordering a building block
 
 Look up the definition version uuid and the `USER_INPUT` inputs with the `bbdv list` recipe above,
-then post the order through `meshstack api`. A workspace-level block targets
+then post the order with `bb create`. A workspace-level block targets
 `{kind: "meshWorkspace", name: <workspace>}`; a tenant-level one targets
 `{kind: "meshTenant", uuid: <tenant-uuid>}`:
 
@@ -437,9 +439,25 @@ jq -n '{kind: "meshBuildingBlock", spec: {
     targetRef: {kind: "meshWorkspace", name: "<workspace>"},
     inputs: {name: {value: "my-project", valueType: "STRING"}},
     parentBuildingBlockRefs: []}}' |
-  meshstack api -X POST /api/meshobjects/meshbuildingblocks --workspace <workspace> --request-json - |
+  meshstack bb create -f - --workspace <workspace> --wait -o ndjson |
   jq -c '{uuid: .metadata.uuid, action: .status.action}'
 ```
 
+Without `--wait`, the command prints the block as meshStack created it, before its first run.
+
 The order's author is the logged-in user, so a starterkit grants them its roles. A draft definition
 version can only be ordered in the workspace that owns it.
+
+## Upgrading a building block
+
+`bb upgrade` moves a block to the latest released version of its definition and keeps its input
+values. Give a value for each input that the new version adds, such as a payment method:
+
+```sh
+meshstack bb upgrade <uuid> --wait \
+  --input 'payment_method={"kind": "meshPaymentMethod", "name": "<payment-method>"}'
+```
+
+A value that is valid JSON goes out as that JSON, any other value as a string. Changing the version
+needs admin rights or the right of the workspace that owns the definition to manage its building
+blocks.
