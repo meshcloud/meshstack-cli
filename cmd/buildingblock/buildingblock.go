@@ -13,6 +13,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock/tfstate"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
 )
@@ -49,11 +50,13 @@ type runAction struct {
 	format            internal.OutputFormat
 }
 
-func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format internal.OutputFormat) (runAction, error) {
+// newRunAction needs a terminal to ask for a confirmation, unless the caller names the plan to approve
+// or the run to abort. A name binds the command to that plan or run, but does not show that anyone
+// has reviewed it.
+func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format internal.OutputFormat, confirmed bool) (runAction, error) {
 	p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
-	// A script cannot approve or abort: the decision belongs to a person who saw the run.
-	if !p.UsesTerminal() {
-		return runAction{}, fmt.Errorf("%s needs a terminal, because it asks you to confirm", cmd.Name())
+	if !confirmed && !p.UsesTerminal() {
+		return runAction{}, fmt.Errorf("%s needs a terminal, because it asks you to confirm. '%s --help' shows how to run it without a terminal", cmd.Name(), cmd.CommandPath())
 	}
 	meshStack, err := internal.ResolveClient(cmd.Context())
 	if err != nil {
@@ -74,6 +77,20 @@ func (a runAction) readBuildingBlock(ctx context.Context) (jsontext.Value, linke
 		return nil, block, err
 	}
 	return raw, block, json.Unmarshal(raw, &block)
+}
+
+const runFlagName = "run"
+
+// readNamedRun reads the run that the caller names with --run, which has to belong to the building block.
+func (a runAction) readNamedRun(ctx context.Context, runUuid uuid.UUID) (client.MeshBuildingBlockRun, error) {
+	run, err := buildingblockrun.ReadRun(ctx, a.meshStack, runUuid)
+	if err != nil {
+		return run, err
+	}
+	if run.Spec.BuildingBlock.Uuid != a.buildingBlockUuid.String() {
+		return run, fmt.Errorf("run %s belongs to building block %s, not to %s", runUuid, run.Spec.BuildingBlock.Uuid, a.buildingBlockUuid)
+	}
+	return run, nil
 }
 
 // report reads the building block again and writes it, because a run hides the actions

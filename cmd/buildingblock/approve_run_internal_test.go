@@ -12,8 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
@@ -45,8 +47,12 @@ func newTestRunAction(t *testing.T, server *fakemeshstack.Server, answers string
 
 func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 	const (
-		waitingRun = "a0000000-0000-4000-8000-000000000002"
-		planRun    = "a0000000-0000-4000-8000-000000000001"
+		waitingRun         = "a0000000-0000-4000-8000-000000000002"
+		planRun            = "a0000000-0000-4000-8000-000000000001"
+		otherPlan          = "a0000000-0000-4000-8000-000000000009"
+		approvedRun        = "a0000000-0000-4000-8000-000000000007"
+		runOfOtherBlock    = "a0000000-0000-4000-8000-000000000008"
+		otherBuildingBlock = "b1d2c3e4-0000-4000-8000-000000000009"
 	)
 	run := meshObject(t, `{"metadata": {"uuid": "`+waitingRun+`"}, "status": "IN_PROGRESS", `+
 		`"spec": {"runNumber": 2, "behavior": "APPLY", "buildingBlock": {"uuid": "`+buildingBlockUuid+`", "spec": {"displayName": "my-block"}}}, `+
@@ -54,8 +60,14 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 	server := fakemeshstack.Start(t, fakemeshstack.Options{
 		BuildingBlocks: []any{meshObject(t, `{"metadata": {"uuid": "`+buildingBlockUuid+`"}, "status": {"action": "APPROVE_RUN"}, `+
 			`"_links": {"latestRun": {"href": "`+runsPath+waitingRun+`"}}}`)},
-		BuildingBlockRuns: []any{run, meshObject(t, `{"metadata": {"uuid": "`+planRun+`"}, "status": "SUCCEEDED", `+
-			`"_links": {"downloadLogs": {"href": "`+runsPath+planRun+`/logs"}}}`)},
+		BuildingBlockRuns: []any{
+			run, meshObject(t, `{"metadata": {"uuid": "`+planRun+`"}, "status": "SUCCEEDED", `+
+				`"_links": {"downloadLogs": {"href": "`+runsPath+planRun+`/logs"}}}`),
+			meshObject(t, `{"metadata": {"uuid": "`+approvedRun+`"}, "status": "IN_PROGRESS", `+
+				`"spec": {"buildingBlock": {"uuid": "`+buildingBlockUuid+`"}}, "_links": {}}`),
+			meshObject(t, `{"metadata": {"uuid": "`+runOfOtherBlock+`"}, "status": "IN_PROGRESS", `+
+				`"spec": {"buildingBlock": {"uuid": "`+otherBuildingBlock+`"}}, "_links": {"approve": {"href": "`+runsPath+runOfOtherBlock+`/approve"}}}`),
+		},
 	})
 	server.Route("GET "+runsPath+planRun+"/logs", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
 		_, _ = io.WriteString(w, `{"steps": [{"displayName": "Plan", "status": "SUCCEEDED", "userMessage": "+ resource \"x\" will be created"}]}`)
@@ -75,8 +87,22 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 		cmd.SetErr(io.Discard)
 		cmd.SetArgs([]string{"approve-run", buildingBlockUuid})
 
-		require.EqualError(t, cmd.ExecuteContext(t.Context()), "approve-run needs a terminal, because it asks you to confirm")
+		require.EqualError(t, cmd.ExecuteContext(t.Context()), "approve-run needs a terminal, because it asks you to confirm. 'buildingblock approve-run --help' shows how to run it without a terminal")
 		assert.Empty(t, server.TakeRequests())
+	})
+
+	t.Run("bbrun plan prints the plan of the waiting run and names the detect run", func(t *testing.T) {
+		testlogin.LoggedInTo(t, server.URL)
+		captured := logs.Capture(t)
+		cmd := buildingblockrun.New()
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetArgs([]string{"plan", waitingRun})
+
+		require.NoError(t, cmd.ExecuteContext(t.Context()))
+		assert.Equal(t, "Plan: SUCCEEDED\nPlan | + resource \"x\" will be created\n", stdout.String())
+		assert.Contains(t, captured.String(), "from the detect run "+planRun)
+		assert.Contains(t, captured.String(), "approve-run "+buildingBlockUuid+" --run "+waitingRun+" --detect-run "+planRun+"'")
 	})
 
 	t.Run("a plan that is not approved stays waiting", func(t *testing.T) {
@@ -94,6 +120,49 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 		require.NoError(t, action.approve(t.Context()))
 		require.Len(t, approvals, 1)
 		assert.JSONEq(t, `{"predecessorRunUuid": "`+planRun+`"}`, approvals[0])
+	})
+
+	approveWithoutATerminal := func(t *testing.T, args ...string) error {
+		t.Helper()
+		testlogin.LoggedInTo(t, server.URL)
+		cmd := New()
+		cmd.SetIn(strings.NewReader(""))
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs(append([]string{"approve-run", buildingBlockUuid}, args...))
+		return cmd.ExecuteContext(t.Context())
+	}
+
+	t.Run("without a terminal, --run and --detect-run approve the plan of that run without asking", func(t *testing.T) {
+		require.NoError(t, approveWithoutATerminal(t, "--run", waitingRun, "--detect-run", planRun))
+		require.Len(t, approvals, 2)
+		assert.JSONEq(t, `{"predecessorRunUuid": "`+planRun+`"}`, approvals[1])
+	})
+
+	t.Run("--run and --detect-run belong together", func(t *testing.T) {
+		require.ErrorContains(t, approveWithoutATerminal(t, "--run", waitingRun), "must all be set")
+		require.ErrorContains(t, approveWithoutATerminal(t, "--detect-run", planRun), "must all be set")
+		assert.Len(t, approvals, 2)
+	})
+
+	t.Run("--run of a run that does not wait for approval is refused", func(t *testing.T) {
+		require.ErrorContains(t, approveWithoutATerminal(t, "--run", approvedRun, "--detect-run", planRun), "is not waiting for approval")
+		assert.Len(t, approvals, 2)
+	})
+
+	t.Run("--run of a run of another building block is refused", func(t *testing.T) {
+		require.ErrorContains(t, approveWithoutATerminal(t, "--run", runOfOtherBlock, "--detect-run", planRun), "belongs to building block "+otherBuildingBlock)
+		assert.Len(t, approvals, 2)
+	})
+
+	t.Run("--detect-run of another plan is refused, and the user has to see the plan", func(t *testing.T) {
+		approveAnswer = gohttp.StatusConflict
+
+		err := approveWithoutATerminal(t, "--run", waitingRun, "--detect-run", otherPlan)
+		require.ErrorContains(t, err, "run "+waitingRun+" waits for another plan than the one of detect run "+otherPlan)
+		require.ErrorContains(t, err, "Show the user the plan from 'meshstack buildingblockrun plan "+waitingRun+"'")
+		require.Len(t, approvals, 3)
+		assert.JSONEq(t, `{"predecessorRunUuid": "`+otherPlan+`"}`, approvals[2])
 	})
 
 	t.Run("a plan that changed after it was shown has to be reviewed again", func(t *testing.T) {
