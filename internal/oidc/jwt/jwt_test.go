@@ -2,13 +2,13 @@ package jwt
 
 import (
 	_ "embed"
-	"encoding/json/v2"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/jsontest"

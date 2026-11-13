@@ -12,7 +12,8 @@ package fakemeshstack
 import (
 	"bytes"
 	"cmp"
-	"encoding/json/v2"
+	"crypto/sha256"
+	"fmt"
 	"io"
 	gohttp "net/http"
 	"net/http/httptest"
@@ -24,7 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // DefaultVersion is at least client.MinMeshStackVersion, or the CLI refuses the backend.
@@ -38,9 +40,8 @@ const Token = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9." //nolint:gosec // 
 var UserAgent = http.UserAgent{GitHubRepo: "meshcloud/fakemeshstack", Version: "test"}
 
 const (
-	ApiDocsPath          = "/api/meshstack-openapi-docs.json"
-	MeshStackApiDocsPath = "/api/openapi"
-	defaultPageSize      = 50
+	ApiDocsPath     = "/api/openapi"
+	defaultPageSize = 50
 )
 
 type Options struct {
@@ -63,9 +64,7 @@ type Options struct {
 	PageSize int
 
 	TfStates map[TfState][]byte
-	// ApiDocs is served at ApiDocsPath and MeshStackApiDocsPath as last modified when New was called,
-	// so a conditional GET gets a 304.
-	ApiDocs []byte
+	ApiDocs  []byte
 }
 
 type ApiKey struct {
@@ -144,18 +143,21 @@ func New(options Options) *Server {
 	}
 	s.routes.HandleFunc("/api/terraform/state/workspace/{workspace}/buildingBlock/{uuid}", s.authorized(s.tfState))
 	if options.ApiDocs != nil {
-		modified := time.Now()
-		for _, path := range []string{ApiDocsPath, MeshStackApiDocsPath} {
-			s.routes.HandleFunc("GET "+path, func(w gohttp.ResponseWriter, r *gohttp.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				gohttp.ServeContent(w, r, "", modified, bytes.NewReader(options.ApiDocs))
-			})
-		}
+		s.routes.HandleFunc("GET "+ApiDocsPath, ServeApiDocs(options.ApiDocs))
 	}
 	if options.Issuer != "" {
 		s.registerKeycloak()
 	}
 	return s
+}
+
+func ServeApiDocs(document []byte) gohttp.HandlerFunc {
+	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(document))
+	return func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("ETag", etag)
+		gohttp.ServeContent(w, r, "", time.Time{}, bytes.NewReader(document))
+	}
 }
 
 func Start(t *testing.T, options Options) *Server {

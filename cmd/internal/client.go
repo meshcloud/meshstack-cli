@@ -36,6 +36,14 @@ func ResolveClient(ctx context.Context, modifiers ...ResolveClientOptionsModifie
 	return auth.ResolveClient(ctx, ResolveClientOptions(modifiers...))
 }
 
+func IgnoreDefaultWorkspace(opts *auth.ResolveClientOptions) {
+	opts.IgnoreDefaultWorkspace = true
+}
+
+func ResolveWorkspace(ctx context.Context, modifiers ...ResolveClientOptionsModifier) (string, error) {
+	return auth.ResolveWorkspace(ctx, ResolveClientOptions(modifiers...))
+}
+
 func ResolveSession(ctx context.Context, modifiers ...ResolveClientOptionsModifier) (auth.Session, error) {
 	return auth.ResolveSession(ctx, ResolveClientOptions(modifiers...))
 }

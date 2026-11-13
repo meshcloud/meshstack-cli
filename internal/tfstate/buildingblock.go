@@ -2,41 +2,37 @@ package tfstate
 
 import (
 	"context"
-	"encoding/json/v2"
 	"fmt"
-	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client"
 )
 
-type buildingBlock struct {
-	Metadata client.MeshBuildingBlockV2Metadata `json:"metadata"`
-	Status   *client.MeshBuildingBlockV2Status  `json:"status"`
-}
-
-func readBuildingBlock(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID) (block buildingBlock, err error) {
-	read, err := raw.Get[client.MeshBuildingBlockV2](ctx, buildingBlockUuid)
-	if err != nil {
-		return block, err
+func readBuildingBlock(ctx context.Context, blocks client.MeshBuildingBlockV2Client, buildingBlockUuid string) (client.MeshBuildingBlockV2, error) {
+	block, err := blocks.Read(ctx, buildingBlockUuid)
+	switch {
+	case err != nil:
+		return client.MeshBuildingBlockV2{}, err
+	case block == nil:
+		return client.MeshBuildingBlockV2{}, fmt.Errorf("building block %s not found", buildingBlockUuid)
 	}
-	return block, json.Unmarshal(read, &block)
+	return *block, nil
 }
 
 // OpenStore opens the state under the building block's own workspace where workspace is empty,
 // because that is where the runner stores it.
-func OpenStore(ctx context.Context, raw *client.RawClient, workspace string, buildingBlockUuid uuid.UUID) (Store, error) {
+func OpenStore(ctx context.Context, meshStack client.Client, workspace string, buildingBlockUuid string) (Store, error) {
 	if workspace == "" {
-		block, err := readBuildingBlock(ctx, raw, buildingBlockUuid)
+		block, err := readBuildingBlock(ctx, meshStack.BuildingBlockV2, buildingBlockUuid)
 		if err != nil {
 			return Store{}, err
 		}
 		workspace = block.Metadata.OwnedByWorkspace
 	}
-	return NewStore(raw, workspace, buildingBlockUuid), nil
+	return NewStore(meshStack.HttpClient, meshStack.Endpoint, workspace, buildingBlockUuid), nil
 }
 
-func NoRunOf(ctx context.Context, raw *client.RawClient, buildingBlockUuid uuid.UUID) error {
-	block, err := readBuildingBlock(ctx, raw, buildingBlockUuid)
+func NoRunOf(ctx context.Context, blocks client.MeshBuildingBlockV2Client, buildingBlockUuid string) error {
+	block, err := readBuildingBlock(ctx, blocks, buildingBlockUuid)
 	if err != nil {
 		return err
 	}

@@ -8,8 +8,8 @@ import (
 	gohttp "net/http"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"

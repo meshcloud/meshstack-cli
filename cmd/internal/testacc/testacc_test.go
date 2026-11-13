@@ -2,7 +2,6 @@ package testacc
 
 import (
 	"context"
-	"encoding/json/v2"
 	goio "io"
 	"log/slog"
 	gohttp "net/http"
@@ -25,6 +24,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/eventlog"
 	"github.com/meshcloud/meshstack-cli/cmd/profile"
 	"github.com/meshcloud/meshstack-cli/cmd/workspace"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/pkg/io"
 	"github.com/meshcloud/meshstack-cli/pkg/setting"
 )
@@ -146,7 +146,7 @@ func (c *cli) environ() []string {
 // no test can import, and adds only persistent flags, which this suite sets through the environment.
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{Use: "meshstack", SilenceUsage: true}
-	root.AddCommand(api.New(), auth.New(), auth.NewLoginShortcut(),
+	root.AddCommand(api.New(), api.NewDocs(), auth.New(), auth.NewLoginShortcut(),
 		buildingblock.New(), buildingblockdefinition.New(), buildingblockdefinitionversion.New(),
 		buildingblockrun.New(), eventlog.New(), profile.New(), workspace.New())
 	return root

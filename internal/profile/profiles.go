@@ -5,14 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"slices"
-	"strings"
 
 	"github.com/meshcloud/meshstack-cli/internal/config"
 	"github.com/meshcloud/meshstack-cli/internal/json"
-	"github.com/meshcloud/meshstack-cli/internal/meshstack"
-	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 const (
@@ -37,8 +33,6 @@ type LoadProfilesOptions struct {
 	ExclusiveLock bool
 }
 
-// LoadProfiles only reads, and resolves nothing but the configuration directory: ResolveProfile
-// creates the first profile, as it creates any other.
 func LoadProfiles(ctx context.Context, opts LoadProfilesOptions) (profiles Profiles, err error) {
 	profiles.configDir, err = opts.ResolveSetting(ctx, config.DirectorySetting)
 	if err != nil {
@@ -171,31 +165,6 @@ func (ps *Profiles) add(p Profile) *Profile {
 	}
 	ps.Profiles[p.Name] = &p
 	return &p
-}
-
-func (ps *Profiles) addCurrent(ctx context.Context, opts ResolveProfileOptions, name Name) (*Profile, error) {
-	stored := ps.Selection().Profiles
-	added := ps.add(Profile{Name: name})
-	ps.CurrentProfile = name
-
-	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting)
-	noEndpoint := errors.Is(err, setting.ErrNoSourceProvidedValue)
-	switch {
-	case opts.EndpointOptional && noEndpoint:
-		return added, nil
-	case noEndpoint && len(stored) > 0:
-		storedNames := make([]string, len(stored))
-		for i, p := range stored {
-			storedNames[i] = string(p.Name)
-		}
-		return nil, fmt.Errorf("there is no profile '%s' among %s, and creating it needs an endpoint: %w", name, strings.Join(storedNames, ", "), err)
-	case err != nil:
-		return nil, err
-	}
-	added.Endpoint = endpoint
-
-	slog.DebugContext(ctx, fmt.Sprintf("Profile %s resolved to %+v", name, *added))
-	return added, nil
 }
 
 func (ps *Profiles) validate() (err error) {

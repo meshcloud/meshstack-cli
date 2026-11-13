@@ -4,11 +4,8 @@ package buildingblock
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"time"
-	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client"
 )
@@ -23,39 +20,39 @@ const (
 )
 
 type RunWait struct {
-	raw               *client.RawClient
-	buildingBlockUuid uuid.UUID
+	blocks            client.MeshBuildingBlockV2Client
+	buildingBlockUuid string
 	startEvery        time.Duration
 	startWithin       time.Duration
 	endEvery          time.Duration
 }
 
-func NewRunWait(raw *client.RawClient, buildingBlockUuid uuid.UUID) RunWait {
-	return RunWait{raw, buildingBlockUuid, runStartPollInterval, runStartTimeout, runEndPollInterval}
+func NewRunWait(blocks client.MeshBuildingBlockV2Client, buildingBlockUuid string) RunWait {
+	return RunWait{blocks, buildingBlockUuid, runStartPollInterval, runStartTimeout, runEndPollInterval}
 }
 
 // AwaitReaction returns the building block once meshStack has reacted to a write since before.
-func (w RunWait) AwaitReaction(ctx context.Context, before client.MeshBuildingBlockV2Status) (jsontext.Value, *client.MeshBuildingBlockV2, error) {
+func (w RunWait) AwaitReaction(ctx context.Context, before client.MeshBuildingBlockV2Status) (*client.MeshBuildingBlockV2, error) {
 	ctx, cancel := context.WithTimeoutCause(ctx, w.startWithin, fmt.Errorf(
 		"meshStack did not react to the write of building block %s within %s: it started no run and reported no failure to start one",
 		w.buildingBlockUuid, w.startWithin))
 	defer cancel()
-	reacted, block, err := w.poll(ctx, w.startEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
+	block, err := w.poll(ctx, w.startEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
 		return block.Status != nil && block.Status.RunChangedSince(before), nil
 	})
-	return reacted, block, withMeshPanelLink(err, block)
+	return block, withMeshPanelLink(err, block)
 }
 
 // AwaitEnd returns the building block once meshStack has reacted to a write since before, and the run
 // is no longer running.
-func (w RunWait) AwaitEnd(ctx context.Context, before client.MeshBuildingBlockV2Status) (jsontext.Value, *client.MeshBuildingBlockV2, error) {
-	if _, _, err := w.AwaitReaction(ctx, before); err != nil {
-		return nil, nil, err
+func (w RunWait) AwaitEnd(ctx context.Context, before client.MeshBuildingBlockV2Status) (*client.MeshBuildingBlockV2, error) {
+	if _, err := w.AwaitReaction(ctx, before); err != nil {
+		return nil, err
 	}
-	ended, block, err := w.poll(ctx, w.endEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
+	block, err := w.poll(ctx, w.endEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
 		return block.RunEndedSince(client.MeshBuildingBlockV2Status{})
 	})
-	return ended, block, withMeshPanelLink(err, block)
+	return block, withMeshPanelLink(err, block)
 }
 
 func (w RunWait) StartFailure(block *client.MeshBuildingBlockV2) error {
@@ -81,34 +78,36 @@ func (w RunWait) Outcome(block *client.MeshBuildingBlockV2) error {
 }
 
 func withMeshPanelLink(err error, block *client.MeshBuildingBlockV2) error {
-	if link := block.MeshPanelLink(); err != nil && link != "" {
-		return fmt.Errorf("%w. Open it in meshPanel: %s", err, link)
+	if err == nil || block == nil {
+		return err
+	}
+	if meshPanel, found := block.Links["meshPanel"]; found {
+		return fmt.Errorf("%w. Open it in meshPanel: %s", err, meshPanel.Href)
 	}
 	return err
 }
 
 // poll reads the building block every interval until done says so, and returns the last read, also
 // when ctx ends the poll.
-func (w RunWait) poll(ctx context.Context, every time.Duration, done func(*client.MeshBuildingBlockV2) (bool, error)) (jsontext.Value, *client.MeshBuildingBlockV2, error) {
+func (w RunWait) poll(ctx context.Context, every time.Duration, done func(*client.MeshBuildingBlockV2) (bool, error)) (*client.MeshBuildingBlockV2, error) {
 	var last *client.MeshBuildingBlockV2
 	for {
-		current, err := w.raw.Get[client.MeshBuildingBlockV2](ctx, w.buildingBlockUuid)
-		if err != nil && ctx.Err() != nil {
-			return nil, last, context.Cause(ctx)
-		} else if err != nil {
-			return nil, last, err
+		current, err := w.blocks.Read(ctx, w.buildingBlockUuid)
+		switch {
+		case err != nil && ctx.Err() != nil:
+			return last, context.Cause(ctx)
+		case err != nil:
+			return last, err
+		case current == nil:
+			return last, fmt.Errorf("building block %s not found", w.buildingBlockUuid)
 		}
-		var block client.MeshBuildingBlockV2
-		if err := json.Unmarshal(current, &block); err != nil {
-			return nil, last, err
-		}
-		last = &block
+		last = current
 		if ended, err := done(last); ended || err != nil {
-			return current, last, err
+			return last, err
 		}
 		select {
 		case <-ctx.Done():
-			return nil, last, context.Cause(ctx)
+			return last, context.Cause(ctx)
 		case <-time.After(every):
 		}
 	}

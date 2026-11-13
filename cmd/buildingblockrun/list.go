@@ -2,14 +2,10 @@ package buildingblockrun
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"iter"
 	"slices"
-	"time"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -22,7 +18,7 @@ const buildingBlockFlagName = "building-block"
 func newList() *cobra.Command {
 	var (
 		flags             internal.ListFlags
-		buildingBlockUuid uuid.UUID
+		buildingBlockUuid string
 	)
 
 	cmd := &cobra.Command{
@@ -35,18 +31,26 @@ With --` + buildingBlockFlagName + `, the command lists only the runs of that bu
   meshstack bbrun list --workspace my-workspace --limit 20`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if buildingBlockUuid != uuid.Nil() {
-				return flags.Run[client.MeshBuildingBlockRun](cmd, client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid})
+			if buildingBlockUuid != "" {
+				meshStack, err := internal.ResolveClient(cmd.Context())
+				if err != nil {
+					return err
+				}
+				return flags.Run(cmd, meshStack.BuildingBlockRun, client.MeshBuildingBlockRunFilter{BuildingBlockUuid: buildingBlockUuid})
 			}
 			var (
-				blockFilter client.MeshBuildingBlockV2ListFilter
+				blockFilter client.MeshBuildingBlockV2Filter
 				err         error
 			)
 			if blockFilter.WorkspaceIdentifier, err = internal.ListWorkspace(cmd.Context()); err != nil {
 				return err
 			}
-			return flags.RunSeq(cmd, func(ctx context.Context, meshStack client.Client, options client.ListOptions) iter.Seq2[jsontext.Value, error] {
-				return allRuns(ctx, meshStack, blockFilter, options.PageSize)
+			meshStack, err := internal.ResolveClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return flags.RunSeq(cmd, func(ctx context.Context, options ...client.ListOption) iter.Seq2[any, error] {
+				return internal.WithKindAndApiVersion(meshStack.BuildingBlockRun, allRuns(ctx, meshStack, blockFilter, options))
 			})
 		},
 	}
@@ -57,50 +61,34 @@ With --` + buildingBlockFlagName + `, the command lists only the runs of that bu
 	return cmd
 }
 
-// runsPageSizeOfEachBlock caps the page size a limited listing asks for, which is its limit, for the
-// runs of each building block: a listing of every building block reads the first page of each one
-// before it lists a single run. An unlimited listing reads every page anyway, and takes meshStack's
-// default page size.
+// runsPageSizeOfEachBlock is small, because a listing reads the first page of every block's runs.
 const runsPageSizeOfEachBlock = 10
 
 // allRuns merges the runs of every building block, because the run list endpoint takes one building
 // block at a time and has no list of every run.
-func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.MeshBuildingBlockV2ListFilter, pageSize int) iter.Seq2[jsontext.Value, error] {
-	if pageSize > 0 {
-		pageSize = min(pageSize, runsPageSizeOfEachBlock)
-	}
-	return func(yield func(jsontext.Value, error) bool) {
-		var runsOfEachBlock []iter.Seq2[jsontext.Value, error]
-		// The blocks are read raw because only their uuid is needed, and a block the client cannot
-		// fully decode still has runs to list.
-		for rawBlock, err := range meshStack.Raw.List[client.MeshBuildingBlockV2](ctx, blockFilter, client.ListOptions{}) {
+func allRuns(ctx context.Context, meshStack client.Client, blockFilter client.MeshBuildingBlockV2Filter, options []client.ListOption) iter.Seq2[client.MeshBuildingBlockRun, error] {
+	options = append(options, client.WithPageSize(runsPageSizeOfEachBlock))
+	return func(yield func(client.MeshBuildingBlockRun, error) bool) {
+		var runsOfEachBlock []iter.Seq2[client.MeshBuildingBlockRun, error]
+		for block, err := range meshStack.BuildingBlockV2.List(ctx, blockFilter) {
 			if err != nil {
-				yield(nil, err)
+				yield(client.MeshBuildingBlockRun{}, err)
 				return
 			}
-			var buildingBlock struct {
-				Metadata struct {
-					Uuid uuid.UUID `json:"uuid"`
-				} `json:"metadata"`
-			}
-			if err := json.Unmarshal(rawBlock, &buildingBlock); err != nil {
-				yield(nil, err)
+			if block.Metadata.Uuid == nil {
+				yield(client.MeshBuildingBlockRun{}, errors.New("building block has no metadata.uuid: this must be a bug in the meshStack CLI or meshStack"))
 				return
 			}
-			if buildingBlock.Metadata.Uuid == uuid.Nil() {
-				yield(nil, errors.New("building block has no metadata.uuid: this must be a bug in the meshStack CLI or meshStack"))
-				return
-			}
-			runsOfEachBlock = append(runsOfEachBlock, runsOf(ctx, meshStack, buildingBlock.Metadata.Uuid, pageSize))
+			runsOfEachBlock = append(runsOfEachBlock, runsOf(ctx, meshStack, *block.Metadata.Uuid, options))
 		}
 		mergeNewestFirst(runsOfEachBlock)(yield)
 	}
 }
 
-func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid.UUID, pageSize int) iter.Seq2[jsontext.Value, error] {
-	return func(yield func(jsontext.Value, error) bool) {
-		filter := client.MeshBuildingBlockRunListFilter{BuildingBlockUuid: buildingBlockUuid}
-		for run, err := range meshStack.Raw.List[client.MeshBuildingBlockRun](ctx, filter, client.ListOptions{PageSize: pageSize}) {
+func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid string, options []client.ListOption) iter.Seq2[client.MeshBuildingBlockRun, error] {
+	return func(yield func(client.MeshBuildingBlockRun, error) bool) {
+		filter := client.MeshBuildingBlockRunFilter{BuildingBlockUuid: buildingBlockUuid}
+		for run, err := range meshStack.BuildingBlockRun.List(ctx, filter, options...) {
 			if err != nil {
 				err = fmt.Errorf("listing the runs of building block %s: %w", buildingBlockUuid, err)
 			}
@@ -114,8 +102,8 @@ func runsOf(ctx context.Context, meshStack client.Client, buildingBlockUuid uuid
 // mergeNewestFirst merges runs that each come newest first. It reads the first run of every one
 // before it yields any, and after that reads on only in the runs it yielded the head of. Runs created
 // at the same time keep the order of the sequences they come from.
-func mergeNewestFirst(runs []iter.Seq2[jsontext.Value, error]) iter.Seq2[jsontext.Value, error] {
-	return func(yield func(jsontext.Value, error) bool) {
+func mergeNewestFirst(runs []iter.Seq2[client.MeshBuildingBlockRun, error]) iter.Seq2[client.MeshBuildingBlockRun, error] {
+	return func(yield func(client.MeshBuildingBlockRun, error) bool) {
 		heads := make([]*runHead, 0, len(runs))
 		stops := make([]func(), 0, len(runs))
 		defer func() {
@@ -128,7 +116,7 @@ func mergeNewestFirst(runs []iter.Seq2[jsontext.Value, error]) iter.Seq2[jsontex
 			stops = append(stops, stop)
 			head := &runHead{next: next}
 			if ok, err := head.advance(); err != nil {
-				yield(nil, err)
+				yield(client.MeshBuildingBlockRun{}, err)
 				return
 			} else if ok {
 				heads = append(heads, head)
@@ -137,7 +125,7 @@ func mergeNewestFirst(runs []iter.Seq2[jsontext.Value, error]) iter.Seq2[jsontex
 		for len(heads) > 0 {
 			newest := 0
 			for i, head := range heads {
-				if head.createdAt.After(heads[newest].createdAt) {
+				if head.run.Metadata.CreatedAt.After(heads[newest].run.Metadata.CreatedAt) {
 					newest = i
 				}
 			}
@@ -145,7 +133,7 @@ func mergeNewestFirst(runs []iter.Seq2[jsontext.Value, error]) iter.Seq2[jsontex
 				return
 			}
 			if ok, err := heads[newest].advance(); err != nil {
-				yield(nil, err)
+				yield(client.MeshBuildingBlockRun{}, err)
 				return
 			} else if !ok {
 				heads = slices.Delete(heads, newest, newest+1)
@@ -155,9 +143,8 @@ func mergeNewestFirst(runs []iter.Seq2[jsontext.Value, error]) iter.Seq2[jsontex
 }
 
 type runHead struct {
-	next      func() (jsontext.Value, error, bool)
-	run       jsontext.Value
-	createdAt time.Time
+	next func() (client.MeshBuildingBlockRun, error, bool)
+	run  client.MeshBuildingBlockRun
 }
 
 func (h *runHead) advance() (bool, error) {
@@ -165,12 +152,6 @@ func (h *runHead) advance() (bool, error) {
 	if !ok || err != nil {
 		return false, err
 	}
-	var created struct {
-		Metadata client.MeshBuildingBlockRunMetadata `json:"metadata"`
-	}
-	if err := json.Unmarshal(run, &created); err != nil {
-		return false, fmt.Errorf("reading the metadata.createdAt of a building block run: %w", err)
-	}
-	h.run, h.createdAt = run, created.Metadata.CreatedAt
+	h.run = run
 	return true, nil
 }

@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,7 +31,7 @@ func TestCache(t *testing.T) {
 	}
 	token := jsontest.MustUnmarshal[jwt.JWT](t, jwtJson)
 	apiKey := func(clientId string) *credential.ApiKey {
-		return &credential.ApiKey{Endpoint: p.Endpoint, ClientId: uuid.MustParse(clientId), ClientSecret: "super-test-secret"}
+		return &credential.ApiKey{Endpoint: p.Endpoint, ClientId: clientId, ClientSecret: "super-test-secret"}
 	}
 	const stored, fromEnvironment = "11111111-45bf-42ba-a965-2097b9d0d181", "22222222-45bf-42ba-a965-2097b9d0d181"
 	reloadedToken := func(t *testing.T) jwt.JWT {
@@ -76,7 +75,7 @@ func TestCache(t *testing.T) {
 		require.NoError(t, auth.CacheFor(p, loggedIn).Load(t.Context()))
 		assert.Nil(t, loggedIn.Cache)
 		assert.Contains(t, captured.String(), "level=WARN")
-		assert.Contains(t, captured.String(), "run 'meshstack login --profile cache-test' to update it")
+		assert.Contains(t, captured.String(), "a login updates it")
 
 		loggedIn.Cache = withToken(token)
 		require.NoError(t, auth.CacheFor(p, loggedIn).Write(t.Context()))

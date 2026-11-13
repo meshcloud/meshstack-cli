@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -23,15 +22,14 @@ Without --` + internal.ProfileFlag.Name.String() + `, the command asks which of 
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			currentProfile, _, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{
-				SettingSources: append(internal.SettingSources(), newProfileSelectionSource(prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr()), false)),
-				StoredOnly:     true,
-			})
-			if errors.Is(err, profile.ErrNoStoredProfile) {
-				slog.WarnContext(ctx, "Nothing to log out of: "+err.Error())
-				return nil
-			} else if err != nil {
+			currentProfile, _, err := profile.ResolveProfile(ctx,
+				append(internal.SettingSources(), newProfileSelectionSource(prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr()), false)))
+			if err != nil {
 				return err
+			}
+			if currentProfile.Name == "" {
+				slog.WarnContext(ctx, "Nothing to log out of: no stored profile is used")
+				return nil
 			}
 			if err := auth.Logout(ctx, currentProfile, internal.ResolveClientOptions()); err != nil {
 				return err

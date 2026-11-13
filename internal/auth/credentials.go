@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
@@ -53,9 +54,21 @@ func (s Session) resolveCredentials(ctx context.Context, opts ResolveSessionOpti
 
 func (s Session) storedCredential(ctx context.Context, noSourceErrs []error) (Credential, error) {
 	currentProfile := s.CurrentProfile
+	if currentProfile.Name == "" {
+		var names []string
+		for _, p := range s.profiles.ForEndpoint(currentProfile.Endpoint) {
+			names = append(names, "'"+string(p.Name)+"'")
+		}
+		noCredential := fmt.Errorf("no credential for the endpoint %s; run '%s'", currentProfile.Endpoint, currentProfile.LoginHint())
+		if len(names) > 0 {
+			noCredential = fmt.Errorf("no credential for the endpoint %s, and none of its profiles %s is the current one; use --profile or %s to choose one",
+				currentProfile.Endpoint, strings.Join(names, ", "), profile.NameSetting.EnvKey())
+		}
+		return Credential{}, errors.Join(append([]error{noCredential}, noSourceErrs...)...)
+	}
 	if currentProfile.Credential == "" {
 		return Credential{}, errors.Join(append([]error{
-			fmt.Errorf("profile '%s' selects no credential; run 'meshstack login --profile %s'", currentProfile, currentProfile),
+			fmt.Errorf("profile '%s' selects no credential; run '%s'", currentProfile, currentProfile.LoginHint()),
 		}, noSourceErrs...)...)
 	}
 	creds, err := currentProfile.Credentials(ctx)
@@ -64,11 +77,11 @@ func (s Session) storedCredential(ctx context.Context, noSourceErrs []error) (Cr
 	}
 	current := creds.ByName(currentProfile.Credential)
 	if current == nil {
-		return Credential{}, fmt.Errorf("profile '%s' selects credential '%s', but %s contains none; run 'meshstack login --profile %s'",
-			currentProfile, currentProfile.Credential, creds.FilePath, currentProfile)
+		return Credential{}, fmt.Errorf("profile '%s' selects credential '%s', but %s contains none; run '%s'",
+			currentProfile, currentProfile.Credential, creds.FilePath, currentProfile.LoginHint())
 	}
 	slog.DebugContext(ctx, fmt.Sprintf("Using credential %s of profile %s", currentProfile.Credential, currentProfile))
 	stored := CacheFor(currentProfile, current)
-	stored.Sources, stored.Stored = []string{"file " + creds.FilePath}, true
+	stored.Sources = []string{"file " + creds.FilePath}
 	return stored, nil
 }

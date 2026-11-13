@@ -1,45 +1,13 @@
 package client
 
-import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
-)
-
 type MeshWorkspaceUserBinding struct {
 	MeshWorkspaceBinding
 
 	Status *MeshUserBindingStatus `json:"status,omitempty" tfsdk:"status"`
 }
 
-type MeshWorkspaceUserBindingClient interface {
-	Read(ctx context.Context, name string) (*MeshWorkspaceUserBinding, error)
-	List(ctx context.Context, filter MeshWorkspaceBindingListFilter) ([]MeshWorkspaceUserBinding, error)
-	Create(ctx context.Context, binding *MeshWorkspaceUserBinding) (*MeshWorkspaceUserBinding, error)
-	Delete(ctx context.Context, name string) error
-}
+type MeshWorkspaceUserBindingClient = MeshObjectClient[MeshWorkspaceUserBinding, MeshWorkspaceBindingFilter]
 
-type meshWorkspaceUserBindingClient struct {
-	meshObject internal.MeshObjectClient[MeshWorkspaceUserBinding]
-}
-
-func newWorkspaceUserBindingClient(ctx context.Context, httpClient internal.HttpClient) MeshWorkspaceUserBindingClient {
-	return meshWorkspaceUserBindingClient{internal.NewMeshObjectClient[MeshWorkspaceUserBinding](ctx, httpClient, "v2", "meshworkspacebindings", "userbindings")}
-}
-
-func (c meshWorkspaceUserBindingClient) Read(ctx context.Context, name string) (*MeshWorkspaceUserBinding, error) {
-	return c.meshObject.Get(ctx, name)
-}
-
-func (c meshWorkspaceUserBindingClient) List(ctx context.Context, filter MeshWorkspaceBindingListFilter) ([]MeshWorkspaceUserBinding, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
-}
-
-func (c meshWorkspaceUserBindingClient) Create(ctx context.Context, binding *MeshWorkspaceUserBinding) (*MeshWorkspaceUserBinding, error) {
-	return c.meshObject.Post(ctx, binding)
-}
-
-func (c meshWorkspaceUserBindingClient) Delete(ctx context.Context, name string) error {
-	return c.meshObject.Delete(ctx, name)
+func (MeshWorkspaceUserBinding) meshObjectPath() string {
+	return "meshworkspacebindings/userbindings"
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
@@ -22,15 +21,11 @@ func withEmptyConfigDir(t *testing.T) config.Directory {
 	return configDir
 }
 
-func TestLogoutOfAProfileThatDoesNotExistOnlyWarns(t *testing.T) {
+func TestLogoutOfAProfileThatDoesNotExistFails(t *testing.T) {
 	configDir := withEmptyConfigDir(t)
-
-	captured := logs.Capture(t)
 
 	_, err := execute(t, "auth", "logout", "-p", "missing")
 
-	require.NoError(t, err)
-	assert.Contains(t, captured.String(), "level=WARN")
-	assert.Contains(t, captured.String(), "no stored profile is named 'missing'")
+	require.ErrorContains(t, err, "there is no profile 'missing'")
 	assert.NoFileExists(t, configDir.ProfilesJson(), "the logout created no profile")
 }

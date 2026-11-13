@@ -1,91 +1,230 @@
 {
   "openapi": "3.0.1",
+  "info": {"title": "meshStack API documentation", "version": "1.0.0"},
+  "x-meshstack-retired-endpoints": [
+    {"method": "GET", "path": "/api/meshobjects/meshcustomers", "mediaType": "application/vnd.meshcloud.api.meshcustomer.v1.hal+json", "meshObject": "meshCustomer.v1", "state": "Retired", "retiredAfter": "2025-03-01", "notice": "Use `meshWorkspace`."}
+  ],
+  "x-meshstack-retired-meshobjects": [
+    {"meshObject": "meshCustomer.v1", "state": "Retired", "retiredAfter": "2025-03-01", "notice": "Use `meshWorkspace`."}
+  ],
   "paths": {
+    "/api/meshobjects/meshbuildingblockruns/create": {
+      "post": {
+        "tags": ["Building Block Runs"],
+        "summary": "Fetch a pending building block run",
+        "operationId": "meshBuildingBlockRunCreate",
+        "parameters": [{"name": "forRunnerUuid", "in": "query", "required": true, "schema": {"$ref": "#/components/schemas/string_uuid"}}],
+        "responses": {
+          "201": {
+            "description": "The pending building block run, now assigned to the runner",
+            "content": {"application/vnd.meshcloud.api.meshbuildingblockrun.v1.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshBuildingBlockRun.v1", "state": "GA"}}}
+          }
+        },
+        "x-position": 25
+      }
+    },
+    "/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}": {
+      "get": {
+        "tags": ["Building Block Runs"],
+        "summary": "Get building block run",
+        "operationId": "meshBuildingBlockRunGet",
+        "parameters": [{"$ref": "#/components/parameters/buildingBlockRun_0"}],
+        "responses": {
+          "200": {
+            "description": "The building block run",
+            "content": {"application/vnd.meshcloud.api.meshbuildingblockrun.v1.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshBuildingBlockRun.v1", "state": "GA"}}}
+          }
+        },
+        "x-position": 24
+      }
+    },
+    "/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/abort": {
+      "post": {
+        "tags": ["Building Block Runs"],
+        "summary": "Abort building block run",
+        "operationId": "meshBuildingBlockRunAbort",
+        "parameters": [{"$ref": "#/components/parameters/buildingBlockRun_0"}],
+        "responses": {
+          "202": {
+            "description": "Abort accepted",
+            "content": {"application/vnd.meshcloud.api.meshbuildingblockrun.v1.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshBuildingBlockRun.v1", "state": "GA"}}}
+          }
+        },
+        "x-position": 26
+      }
+    },
+    "/api/meshobjects/meshbuildingblockruns/{buildingBlockRun}/plan-artifact": {
+      "parameters": [{"$ref": "#/components/parameters/buildingBlockRun_0"}],
+      "get": {
+        "tags": ["Building Block Runs"],
+        "summary": "Download plan artifact of building block run (deprecated)",
+        "operationId": "meshBuildingBlockRunDownloadPlanArtifact",
+        "responses": {
+          "200": {
+            "description": "The predecessor artifact of the building block run",
+            "content": {"application/octet-stream": {"schema": {"$ref": "#/components/schemas/string_binary"}, "x-meshstack-lifecycle": {"state": "Deprecated", "retiredAfter": "2027-01-01"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"}
+        },
+        "deprecated": true,
+        "x-position": 31
+      },
+      "put": {
+        "tags": ["Building Block Runs"],
+        "summary": "Upload plan artifact of building block run (deprecated)",
+        "operationId": "meshBuildingBlockRunUploadPlanArtifact",
+        "requestBody": {"content": {"application/octet-stream": {"schema": {"$ref": "#/components/schemas/string_binary"}}}, "required": true},
+        "responses": {"204": {"description": "No Content"}},
+        "deprecated": true,
+        "x-position": 32
+      }
+    },
     "/api/meshobjects/meshbuildingblocks": {
       "post": {
-        "summary": "Create a building block",
-        "description": "Creates a building block.",
+        "tags": ["Building Blocks"],
+        "summary": "Create building block",
+        "description": "Create a new meshBuildingBlock with inputs and parent building block relationships",
         "operationId": "meshBuildingBlockPost",
-        "parameters": [{"name": "Accept", "in": "header", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
           "content": {
-            "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"schema": {"$ref": "#/components/schemas/blockV1"}},
-            "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {"schema": {"$ref": "#/components/schemas/blockV2"}}
-          }
+            "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {
+              "schema": {"$ref": "#/components/schemas/MeshBuildingBlockV2Request"},
+              "examples": {"meshWorkspace": {"$ref": "#/components/examples/MeshBuildingBlockV2Request-meshWorkspace"}},
+              "x-meshstack-lifecycle": {"meshObject": "meshBuildingBlock.v2-preview", "state": "Preview"}
+            },
+            "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {
+              "schema": {"$ref": "#/components/schemas/MeshBuildingBlockV1Request"},
+              "x-meshstack-lifecycle": {"meshObject": "meshBuildingBlock.v1", "state": "GA", "notice": "v2 also supports building blocks on workspace level."}
+            }
+          },
+          "required": true
         },
         "responses": {
           "201": {
-            "description": "201",
+            "description": "Building block created",
             "content": {
-              "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"schema": {"$ref": "#/components/schemas/blockV1"}},
-              "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {"schema": {"$ref": "#/components/schemas/blockV2"}}
+              "application/vnd.meshcloud.api.meshbuildingblock.v2-preview.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshBuildingBlock.v2-preview", "state": "Preview"}},
+              "application/vnd.meshcloud.api.meshbuildingblock.v1.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshBuildingBlock.v1", "state": "GA"}}
             }
           },
-          "400": {"description": "400", "content": {"application/json": {"schema": {"type": "object"}}}}
-        }
+          "400": {"$ref": "#/components/responses/BadRequest"}
+        },
+        "x-position": 8
       }
     },
-    "/api/meshobjects/meshbuildingblockruns/create": {
-      "post": {
-        "operationId": "meshBuildingBlockRunCreate",
-        "responses": {"201": {"description": "201", "content": {"application/vnd.meshcloud.api.meshbuildingblockrun.v1.hal+json": {}}}}
-      }
-    },
-    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}": {
+    "/api/meshobjects/meshtenants/{tenant}": {
       "get": {
-        "operationId": "meshBuildingBlockRun",
-        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshbuildingblockrun.v1.hal+json": {}}}}
-      }
-    },
-    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/status": {
-      "post": {
-        "operationId": "meshBuildingBlockRunStatus",
-        "responses": {"200": {"description": "200", "content": {"application/json": {}}}}
-      }
-    },
-    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/plan-artifact": {
-      "get": {
-        "operationId": "meshBuildingBlockRunPlanArtifact",
-        "responses": {"200": {"description": "200", "content": {"application/octet-stream": {}}}}
-      }
-    },
-    "/api/meshobjects/meshbuildingblockruns/{blockRunUuid}/{part}": {
-      "post": {
-        "operationId": "meshBuildingBlockRunPart",
-        "responses": {"200": {"description": "200"}}
-      }
-    },
-    "/api/meshobjects/meshtenants/{tenantIdentifier}": {
-      "get": {
-        "operationId": "meshTenantV3",
-        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshtenant.v3.hal+json": {}}}}
-      }
-    },
-    "/api/meshobjects/meshtenants/{uuid}": {
-      "delete": {
-        "operationId": "meshTenantDeleteV4",
-        "responses": {"202": {"description": "202"}}
+        "tags": ["Tenants"],
+        "summary": "Get tenant",
+        "operationId": "meshTenantGet",
+        "parameters": [{"name": "tenant", "in": "path", "required": true, "schema": {"type": "string"}, "x-meshstack-path-key": "metadata.uuid", "x-meshstack-path-key-by-version": {"v3": "metadata.tenantIdentifier"}}],
+        "responses": {
+          "200": {
+            "description": "The tenant",
+            "content": {
+              "application/vnd.meshcloud.api.meshtenant.v4.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshTenant.v4", "state": "GA"}},
+              "application/vnd.meshcloud.api.meshtenant.v3.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshTenant.v3", "state": "Outdated", "latest": "meshTenant.v4"}}
+            }
+          }
+        },
+        "x-position": 110
       },
-      "get": {
-        "operationId": "meshTenantV4",
-        "responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshtenant.v4.hal+json": {}}}}
+      "delete": {
+        "tags": ["Tenants"],
+        "summary": "Delete tenant",
+        "operationId": "meshTenantDelete",
+        "parameters": [
+          {"name": "tenant", "in": "path", "description": "DELETE takes the UUID or the full tenant identifier.", "required": true, "schema": {"type": "string"}, "x-meshstack-path-key": "metadata.uuid"},
+          {"name": "purge", "in": "query", "description": "Removes the meshTenant from meshStack at once.", "required": false, "schema": {"type": "boolean"}}
+        ],
+        "responses": {
+          "202": {"description": "Deletion of tenant started"},
+          "400": {"$ref": "#/components/responses/BadRequest"}
+        },
+        "x-position": 112
       }
     }
   },
   "components": {
     "schemas": {
-      "blockV1": {"type": "object", "properties": {"spec": {"$ref": "#/components/schemas/specV1"}}},
-      "specV1": {
+      "CustomErrorMessage": {
+        "required": ["errorCode", "message"],
         "type": "object",
-        "required": ["name"],
+        "properties": {"errorCode": {"type": "string"}, "message": {"type": "string", "description": "A message that describes the error."}},
+        "description": "The body of every error response."
+      },
+      "MeshBuildingBlockIOV1": {
+        "required": ["key"],
+        "type": "object",
         "properties": {
-          "name": {"type": "string", "description": "The name."},
-          "tags": {"type": "array", "items": {"$ref": "#/components/schemas/tagV1"}},
-          "parent": {"$ref": "#/components/schemas/specV1"}
+          "key": {"type": "string", "description": "The key of the input as set on the related Building Block Definition."},
+          "value": {"description": "The value, which is set on this input.", "nullable": true, "oneOf": [{"type": "string"}, {"$ref": "#/components/schemas/integer_int64"}, {"type": "boolean"}, {"$ref": "#/components/schemas/array_string_0"}]}
         }
       },
-      "tagV1": {"type": "object", "properties": {"key": {"type": "string", "format": "uuid"}}},
-      "blockV2": {"type": "object"}
+      "MeshBuildingBlockSpecV1": {
+        "required": ["displayName", "parentBuildingBlocks"],
+        "type": "object",
+        "properties": {
+          "displayName": {"type": "string", "description": "The display name of the Building Block."},
+          "parentBuildingBlocks": {"description": "The parent building blocks.", "allOf": [{"$ref": "#/components/schemas/array_MeshParentBuildingBlock"}]},
+          "inputs": {"description": "List of inputs, which are set on the Building Block.", "allOf": [{"$ref": "#/components/schemas/array_MeshBuildingBlockIOV1"}]}
+        }
+      },
+      "MeshBuildingBlockV1Request": {
+        "required": ["kind", "spec"],
+        "type": "object",
+        "properties": {
+          "kind": {"type": "string", "enum": ["meshBuildingBlock"]},
+          "apiVersion": {"type": "string", "enum": ["v1"]},
+          "spec": {"description": "All fields in this section describe the Building Block.", "allOf": [{"$ref": "#/components/schemas/MeshBuildingBlockSpecV1"}]}
+        }
+      },
+      "MeshBuildingBlockV2Request": {
+        "required": ["kind", "spec"],
+        "type": "object",
+        "properties": {
+          "kind": {"type": "string", "enum": ["meshBuildingBlock"]},
+          "apiVersion": {"type": "string", "enum": ["v2-preview"]},
+          "spec": {"description": "All fields in this section describe the Building Block.", "allOf": [{"$ref": "#/components/schemas/MeshBuildingBlockSpecV2"}]}
+        }
+      },
+      "MeshBuildingBlockSpecV2": {
+        "required": ["inputs"],
+        "type": "object",
+        "properties": {"inputs": {"description": "Map of input keys to their input data.", "allOf": [{"$ref": "#/components/schemas/MapOfMeshBuildingBlockInput"}]}}
+      },
+      "MapOfMeshBuildingBlockInput": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/MeshBuildingBlockInput"}},
+      "MeshBuildingBlockInput": {
+        "required": ["isOptional"],
+        "type": "object",
+        "properties": {
+          "value": {"description": "The value of this input.", "nullable": true, "oneOf": [{"type": "string"}, {"$ref": "#/components/schemas/integer_int64"}, {"type": "boolean"}, {"$ref": "#/components/schemas/array_string_0"}]},
+          "isOptional": {"type": "boolean", "description": "Whether the Building Block Definition allows this input to be left unset.", "readOnly": true}
+        }
+      },
+      "MeshParentBuildingBlock": {
+        "required": ["buildingBlockUuid"],
+        "type": "object",
+        "properties": {"buildingBlockUuid": {"description": "The UUID of the parent Building Block.", "allOf": [{"$ref": "#/components/schemas/string_uuid"}]}}
+      },
+      "array_MeshBuildingBlockIOV1": {"type": "array", "items": {"$ref": "#/components/schemas/MeshBuildingBlockIOV1"}},
+      "array_MeshParentBuildingBlock": {"type": "array", "items": {"$ref": "#/components/schemas/MeshParentBuildingBlock"}},
+      "array_string_0": {"type": "array", "items": {"type": "string"}},
+      "integer_int64": {"type": "integer", "format": "int64"},
+      "string_binary": {"type": "string", "format": "binary"},
+      "string_uuid": {"type": "string", "format": "uuid"}
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request is invalid. The message names the invalid part.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomErrorMessage"}}}
+      }
+    },
+    "parameters": {
+      "buildingBlockRun_0": {"name": "buildingBlockRun", "in": "path", "description": "The UUID of the meshBuildingBlockRun.", "required": true, "schema": {"type": "string", "format": "uuid"}, "x-meshstack-path-key": "metadata.uuid"}
+    },
+    "examples": {
+      "MeshBuildingBlockV2Request-meshWorkspace": {"summary": "`spec.targetRef.kind` is `meshWorkspace`.", "value": {"kind": "meshBuildingBlock", "apiVersion": "v2-preview"}}
     }
   }
 }

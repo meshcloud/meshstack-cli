@@ -20,11 +20,11 @@ var NameSetting = setting.Setting[Name]{
 			"A profile is a named bundle of endpoint and credential, written by "+
 			"`meshstack login` into the meshStack CLI's configuration directory. Flags and environment "+
 			"variables take precedence over the values in a profile.\n\n"+
-			"With no name given, the profile is the one whose endpoint matches the endpoint in use, else the one "+
-			"the last `meshstack login` selected, else `default`.", envKey)
+			"With no name given, the profile is the one the last `meshstack login` selected, if it has the "+
+			"endpoint in use, else the only profile with that endpoint. Without such a profile, the endpoint and "+
+			"the credential come from the other settings alone.", envKey)
 	},
-	Default: setting.StaticDefault("default"),
-	Parse:   setting.ParseTextUnmarshaler[Name],
+	Parse: setting.ParseTextUnmarshaler[Name],
 }
 
 var nameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)

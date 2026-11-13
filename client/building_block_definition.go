@@ -1,12 +1,9 @@
 package client
 
 import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/types/hal"
 )
 
 type MeshBuildingBlockType string
@@ -129,58 +126,24 @@ type MeshBuildingBlockDefinitionStatus struct {
 	LatestReleasedVersion     *int64                                     `json:"latestReleasedVersion"`
 	LatestReleasedVersionUuid *string                                    `json:"latestReleasedVersionUuid"`
 	RedactedForNonOwnerAccess bool                                       `json:"redactedForNonOwnerAccess"`
+	Lifecycle                 MeshLifecycle                              `json:"lifecycle"`
 }
 
 type MeshBuildingBlockDefinition struct {
 	Metadata MeshBuildingBlockDefinitionMetadata `json:"metadata"`
 	Spec     MeshBuildingBlockDefinitionSpec     `json:"spec"`
 	Status   *MeshBuildingBlockDefinitionStatus  `json:"status,omitzero"`
+	Links    hal.Links                           `json:"_links,omitzero"`
 }
 
-type MeshBuildingBlockDefinitionClient interface {
-	List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error)
-	Read(ctx context.Context, uuid string) (*MeshBuildingBlockDefinition, error)
-	Create(ctx context.Context, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error)
-	Update(ctx context.Context, uuid string, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error)
-	Delete(ctx context.Context, uuid string) error
-}
+type MeshBuildingBlockDefinitionClient = MeshObjectClient[MeshBuildingBlockDefinition, MeshBuildingBlockDefinitionFilter]
 
-type meshBuildingBlockDefinitionClient struct {
-	meshObject internal.MeshObjectClient[MeshBuildingBlockDefinition]
-}
-
-func newBuildingBlockDefinitionClient(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockDefinitionClient {
-	return meshBuildingBlockDefinitionClient{
-		meshObject: internal.NewMeshObjectClient[MeshBuildingBlockDefinition](ctx, httpClient, "v1-preview"),
-	}
-}
-
-type MeshBuildingBlockDefinitionListFilter struct {
+type MeshBuildingBlockDefinitionFilter struct {
 	OwnedByWorkspace *string `json:"ownedByWorkspace"`
 	// IncludeAllPublished adds the definitions published to the whole platform to the workspace's own.
-	IncludeAllPublished bool         `json:"includeAllPublished"`
-	Sort                SortCriteria `json:"sort"`
+	IncludeAllPublished bool `json:"includeAllPublished"`
 }
 
-func (c meshBuildingBlockDefinitionClient) List(ctx context.Context, workspaceIdentifier *string) ([]MeshBuildingBlockDefinition, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(MeshBuildingBlockDefinitionListFilter{
-		OwnedByWorkspace:    workspaceIdentifier,
-		IncludeAllPublished: true,
-	}))
-}
-
-func (c meshBuildingBlockDefinitionClient) Read(ctx context.Context, uuid string) (*MeshBuildingBlockDefinition, error) {
-	return c.meshObject.Get(ctx, uuid)
-}
-
-func (c meshBuildingBlockDefinitionClient) Create(ctx context.Context, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error) {
-	return c.meshObject.Post(ctx, definition)
-}
-
-func (c meshBuildingBlockDefinitionClient) Update(ctx context.Context, uuid string, definition MeshBuildingBlockDefinition) (*MeshBuildingBlockDefinition, error) {
-	return c.meshObject.Put(ctx, uuid, definition)
-}
-
-func (c meshBuildingBlockDefinitionClient) Delete(ctx context.Context, uuid string) error {
-	return c.meshObject.Delete(ctx, uuid)
+func (d MeshBuildingBlockDefinition) meshObjectId() string {
+	return *d.Metadata.Uuid
 }

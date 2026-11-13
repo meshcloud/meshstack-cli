@@ -13,8 +13,8 @@ import (
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
-func items(values ...string) iter.Seq2[jsontext.Value, error] {
-	return func(yield func(jsontext.Value, error) bool) {
+func items(values ...string) iter.Seq2[any, error] {
+	return func(yield func(any, error) bool) {
 		for _, value := range values {
 			if !yield(jsontext.Value(value), nil) {
 				return
@@ -118,7 +118,7 @@ func TestAnEmptyListing(t *testing.T) {
 
 func TestAFailingPageStopsTheListing(t *testing.T) {
 	pageErr := errors.New("page 1 failed")
-	failing := func(yield func(jsontext.Value, error) bool) {
+	failing := func(yield func(any, error) bool) {
 		if yield(jsontext.Value(`{"kind":"meshWorkspace"}`), nil) {
 			yield(nil, pageErr)
 		}

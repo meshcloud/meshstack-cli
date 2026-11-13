@@ -16,10 +16,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/openapi"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 func New() *cobra.Command {
@@ -28,13 +27,13 @@ func New() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api <path or URL>",
 		Short: "Send an authorized request to the meshStack API",
-		Long: fmt.Sprintf(`Send an authorized request to a path of the meshStack API, and print the response, which is typically JSON. Give the path relative to the endpoint, or give a full URL whose endpoint matches a stored profile with credentials.
+		Long: fmt.Sprintf(`Send an authorized request to a path of the meshStack API, and print the response, which is typically JSON. Give the path relative to the endpoint, or give a full URL, whose scheme and host the command then uses as the endpoint.
 
 Use this command for everything that the other commands do not cover. For a path of meshStack's public API, the command sets the Accept and Content-Type headers to the latest API version that the API docs list, unless you set them yourself.
 
 --%[1]s sends a JSON file as the request body, or stdin for '-'. If the API docs list no version for the path, the command sets the Accept and Content-Type headers to application/json. If the command cannot download the API docs, it sets only the Content-Type header to application/json.
 
-If the response status is not 2xx, the command still prints the response body, and then fails.
+If the response status is not 2xx, the command prints nothing and fails with an error that shows what meshStack answered.
 
 To see what the API docs say about the request, run the same command line with 'api' replaced by 'api-docs'.`, requestJsonFlagName),
 		Example: `  meshstack api '/api/meshobjects/meshtenants?workspaceIdentifier=my-workspace'
@@ -52,27 +51,15 @@ To see what the API docs say about the request, run the same command line with '
 				return err
 			}
 			ctx := cmd.Context()
-			var profileSources setting.Sources
-			if r.target.IsAbs() {
-				if _, profileSources, err = profileFor(ctx, r.target); err != nil {
-					return err
-				}
-			}
-			// Resolved before the API docs, whose first download takes a while, so that a missing
-			// login fails at once.
-			meshStack, err := internal.ResolveClient(ctx, internal.WithSettingSources(profileSources))
+			// Resolved first, so that a missing login fails before the API docs download.
+			meshStack, err := internal.ResolveClient(ctx, internal.WithSettingSources(r.originAsEndpoint()))
 			if err != nil {
 				return err
 			}
-			if r.target.IsAbs() {
-				if err = r.cutTo(meshStack.Endpoint); err != nil {
-					return err
-				}
-				selector.Path = r.target.Path
-				args = []string{r.target.String()}
+			if r.target.IsAbs() && !strings.EqualFold(r.origin(), meshStack.Endpoint.String()) {
+				return fmt.Errorf("%s is not at the endpoint %s of this command; leave out --%s", r.target.Redacted(), meshStack.Endpoint, internal.EndpointFlag.Name)
 			}
-			spec, wait, err := flags.loadApiDocs(cmd, meshStack.Endpoint)
-			defer wait()
+			spec, err := flags.loadApiDocs(cmd, meshStack.Endpoint)
 			if err != nil {
 				slog.WarnContext(ctx, fmt.Sprintf("Sending the request unchanged, because the API docs are not available: %s. "+
 					"Run %s to see why.", err, docsCommand(cmd, args)))
@@ -83,19 +70,17 @@ To see what the API docs say about the request, run the same command line with '
 				r.header.Set("Content-Type", "application/json")
 			}
 
-			answer, err := meshStack.Raw.DoRequest(ctx, r.method, r.target.Path,
-				http.WithUrlQuery(r.target.Query()), http.WithHeaders(r.header), http.WithBody(r.body))
-			if httpErr, ok := errors.AsType[client.HttpError](err); ok {
-				if writeErr := writeAnswer(cmd.OutOrStdout(), httpErr.ResponseBody); writeErr != nil {
-					return writeErr
-				}
-				// The body is on stdout already, so the error says only what it adds.
-				if r.docsHelpWith(httpErr) {
-					return withHint(fmt.Sprintf("%s. Run %s to see what the API expects",
-						httpErr.Summary(), docsCommand(cmd, args)), httpErr)
-				}
-				// What wraps the HTTP error, such as the auth scope of a 403, stays.
-				return withHint(strings.Replace(err.Error(), httpErr.Error(), httpErr.Summary(), 1), httpErr)
+			options := []http.RequestOption{http.WithUrlQuery(r.target.Query())}
+			if r.body != nil {
+				options = append(options, http.WithJsonRequest(r.body, r.header.Get("Content-Type")), http.WithHeader("Accept", r.header.Values("Accept")...))
+			}
+			for key, values := range r.header {
+				options = append(options, http.WithHeader(key, values...))
+			}
+			answer, err := http.ReadAllBody(meshStack.HttpClient.DoRequest(ctx, r.method, meshStack.Endpoint.JoinPath(r.target.Path), options...))
+			err = client.MeshObjectErrorOf(err)
+			if meshErr, ok := errors.AsType[client.MeshObjectError](err); ok && r.docsHelpWith(meshErr) {
+				return fmt.Errorf("%w\nRun %s to see what the API expects", err, docsCommand(cmd, args))
 			}
 			if err != nil {
 				return err
@@ -111,24 +96,15 @@ To see what the API docs say about the request, run the same command line with '
 
 // docsHelpWith is false for a 404 of a path meshStack serves nothing at, and of an object missing at a
 // documented path: the API docs say nothing about either.
-func (r *request) docsHelpWith(httpErr client.HttpError) bool {
+func (r *request) docsHelpWith(meshErr client.MeshObjectError) bool {
 	switch {
-	case !httpErr.IsClientError(), httpErr.IsUnauthorized(), httpErr.IsForbidden():
+	case !meshErr.Http.IsClientError(), meshErr.Http.IsUnauthorized(), meshErr.Http.IsForbidden():
 		return false
-	case httpErr.IsNotFound():
-		return !r.documented && httpErr.ErrorCode() != noHandlerFound
+	case meshErr.Http.IsNotFound():
+		return !r.documented && meshErr.ErrorCode != noHandlerFound
 	default:
 		return true
 	}
-}
-
-// withHint adds the hint on a line of its own. Stdout carries the raw body, which the error does not
-// repeat.
-func withHint(message string, httpErr client.HttpError) error {
-	if hint := httpErr.ClientVersionHint(); hint != "" {
-		message += "\n" + hint
-	}
-	return errors.New(message)
 }
 
 // noHandlerFound is the errorCode of meshStack's answer to a path it serves nothing at.

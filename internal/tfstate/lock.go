@@ -2,14 +2,13 @@ package tfstate
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
-	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/http"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 type Lock struct {
@@ -41,23 +40,18 @@ func (l Lock) String() string {
 }
 
 // NoUnfinishedRun passes a lock that a person holds.
-func (l Lock) NoUnfinishedRun(ctx context.Context, raw *client.RawClient) error {
+func (l Lock) NoUnfinishedRun(ctx context.Context, runs client.MeshBuildingBlockRunClient) error {
 	if l.Holder.RunUuid == "" {
 		return nil
 	}
-	runUuid, err := uuid.Parse(l.Holder.RunUuid)
-	if err != nil {
-		return fmt.Errorf("the lock belongs to run %q, which is not a valid uuid: %w", l.Holder.RunUuid, err)
-	}
-	read, err := raw.Get[client.MeshBuildingBlockRun](ctx, runUuid)
-	if err != nil {
+	runUuid := l.Holder.RunUuid
+	run, err := runs.Read(ctx, runUuid)
+	switch {
+	case err != nil:
 		return err
-	}
-	var run client.MeshBuildingBlockRun
-	if err = json.Unmarshal(read, &run); err != nil {
-		return err
-	}
-	if run.IsRunning() {
+	case run == nil:
+		return fmt.Errorf("building block run %s holds the lock, but meshStack does not know it", runUuid)
+	case run.IsRunning():
 		return fmt.Errorf("building block run %s holds the lock, is %s and is still writing the state", runUuid, run.Status)
 	}
 	return nil

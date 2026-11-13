@@ -8,16 +8,15 @@ import (
 	"net/url"
 	"testing"
 	"time"
-	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
@@ -54,7 +53,7 @@ func TestSessionResolutionSaysWhyItFails(t *testing.T) {
 
 	t.Run("without any credential", func(t *testing.T) {
 		_, err := auth.ResolveSession(t.Context(), testSessionOpts)
-		require.ErrorContains(t, err, "selects no credential")
+		require.ErrorContains(t, err, "no credential for the endpoint "+server.URL+"; run 'meshstack login --endpoint "+server.URL+"'")
 		require.ErrorContains(t, err, auth.ApiTokenSetting.EnvKey())
 		require.ErrorContains(t, err, auth.ApiKeyClientIdSetting.EnvKey())
 		require.ErrorContains(t, err, auth.ApiKeyClientSecretSetting.EnvKey())
@@ -118,7 +117,7 @@ func TestSessionOfAStoredApiKey(t *testing.T) {
 		storeLogin(t, credential.ApiKeyName)
 
 		t.Setenv(profile.NameSetting.EnvKey(), "")
-		current, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		current, _, err := profile.ResolveProfile(t.Context(), nil)
 		require.NoError(t, err)
 		assert.Equal(t, profile.Name("dev"), current.Name)
 	})
@@ -202,9 +201,8 @@ func setApiKeyEnv(t *testing.T, key fakemeshstack.ApiKey) {
 // ask brings its own http.Client, because the session keeps its own to itself. What these tests
 // drive is the authorization, which the session supplies either way.
 func ask(ctx context.Context, server *fakemeshstack.Server, session auth.Session) error {
-	_, err := http.NewClient(fakemeshstack.UserAgent).WithAuthorization(session).
-		DoRequest[[]byte](ctx, gohttp.MethodGet, must(url.Parse(server.URL+"/api/meshobjects/meshworkspaces")))
-	return err
+	return http.IgnoreResponse(http.NewClient(fakemeshstack.UserAgent).WithAuthorization(session).
+		DoRequest(ctx, gohttp.MethodGet, must(url.Parse(server.URL+"/api/meshobjects/meshworkspaces"))))
 }
 
 func requireAnswer(t *testing.T, server *fakemeshstack.Server, session auth.Session) {
@@ -224,7 +222,7 @@ func TestARefreshFinishesAndIsCachedThoughItsContextIsCancelledMidway(t *testing
 		Name: "slow", Endpoint: xurl.MustParsef("%s", server.URL), Credential: credential.ApiKeyName,
 		ConfigDir: config.Directory(t.TempDir()),
 	}
-	apiKey := &credential.ApiKey{Endpoint: p.Endpoint, ClientId: uuid.MustParse(testApiKey1.ClientId), ClientSecret: testApiKey1.ClientSecret}
+	apiKey := &credential.ApiKey{Endpoint: p.Endpoint, ClientId: testApiKey1.ClientId, ClientSecret: testApiKey1.ClientSecret}
 	creds, err := p.Credentials(t.Context())
 	require.NoError(t, err)
 	creds.Set(apiKey)
@@ -239,7 +237,7 @@ func TestARefreshFinishesAndIsCachedThoughItsContextIsCancelledMidway(t *testing
 	require.NoError(t, err)
 	listed := make(chan error, 1)
 	go func() {
-		_, err := c.Workspace.List(ctx)
+		_, err := meshstack.ListWorkspaces(ctx, c.Workspace)
 		listed <- err
 	}()
 	<-requested
@@ -299,16 +297,19 @@ func TestSessionWarnsWhenTheEnvironmentOverridesTheStoredLogin(t *testing.T) {
 
 	t.Run("another profile named in the environment overrides the current one", func(t *testing.T) {
 		t.Setenv(profile.NameSetting.EnvKey(), "dev")
+		setApiKeyEnv(t, testApiKey1)
+		storeLogin(t, credential.ApiKeyName)
+		t.Setenv(profile.NameSetting.EnvKey(), "default")
 		captured := logs.Capture(t)
-		_, _, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		_, _, err := profile.ResolveProfile(t.Context(), nil)
 		require.NoError(t, err)
 		lines := captured.Lines(slog.LevelWarn)
 		require.Len(t, lines, 1)
-		assert.Contains(t, lines[0], "'dev', which overrides 'default' from the current profile")
+		assert.Contains(t, lines[0], "'default', which overrides 'dev' from the current profile")
 	})
 
 	t.Run("a workspace in the environment overrides the default workspace", func(t *testing.T) {
-		current, profiles, err := profile.ResolveProfile(t.Context(), profile.ResolveProfileOptions{})
+		current, profiles, err := profile.ResolveProfile(t.Context(), nil)
 		require.NoError(t, err)
 		current.DefaultWorkspace = "stored-workspace"
 		require.NoError(t, profiles.Store(t.Context()))
@@ -319,6 +320,6 @@ func TestSessionWarnsWhenTheEnvironmentOverridesTheStoredLogin(t *testing.T) {
 		require.NoError(t, err)
 		lines := captured.Lines(slog.LevelWarn)
 		require.Len(t, lines, 1)
-		assert.Contains(t, lines[0], "'env-workspace', which overrides 'stored-workspace' from the default workspace in profile default")
+		assert.Contains(t, lines[0], "'env-workspace', which overrides 'stored-workspace' from the default workspace in profile dev")
 	})
 }

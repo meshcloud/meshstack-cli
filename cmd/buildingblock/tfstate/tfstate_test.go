@@ -3,6 +3,7 @@ package tfstate_test
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,9 +18,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock/tfstate"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
@@ -75,7 +76,7 @@ func runChild(steps string) int {
 		address, _ := url.Parse(os.Getenv("TF_HTTP_ADDRESS"))
 		r := httptest.NewRequestWithContext(context.Background(), step, "/", nil)
 		r.SetBasicAuth(os.Getenv("TF_HTTP_USERNAME"), os.Getenv("TF_HTTP_PASSWORD"))
-		_, _ = http.NewClient(fakemeshstack.UserAgent).DoRequest[[]byte](context.Background(), step, address, http.WithHeaders(r.Header), http.WithBody([]byte(state)))
+		_ = http.IgnoreResponse(http.NewClient(fakemeshstack.UserAgent).DoRequest(context.Background(), step, address, http.WithHeader("Authorization", r.Header.Get("Authorization")), http.WithJsonRequest(jsontext.Value(state), "")))
 	}
 	return 0
 }
@@ -86,7 +87,7 @@ func readAsTheProvider() error {
 	if err != nil {
 		return err
 	}
-	block, err := meshStack.Raw.DoRequest(ctx, http.MethodGet, "/api/meshobjects/meshbuildingblocks/"+buildingBlockUuid)
+	block, err := http.ReadAllBody(meshStack.HttpClient.DoRequest(ctx, http.MethodGet, meshStack.Endpoint.JoinPath("/api/meshobjects/meshbuildingblocks/"+buildingBlockUuid)))
 	fmt.Print(string(block))
 	return err
 }
@@ -254,7 +255,7 @@ func TestTfstate(t *testing.T) {
 
 		require.NoError(t, ran.err)
 		assert.Contains(t, ran.log, "level=WARN")
-		assert.Contains(t, ran.log, "meshStack answered HTTP 500")
+		assert.Contains(t, ran.log, "answered HTTP 500")
 	})
 
 	t.Run("a refusal of meshStack says which rights the state takes", func(t *testing.T) {
@@ -265,7 +266,7 @@ func TestTfstate(t *testing.T) {
 		err := execChild(t, "GET").err
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "meshStack answered HTTP 403")
+		assert.Contains(t, err.Error(), "answered HTTP 403")
 		assert.Contains(t, err.Error(), "MANAGED_TFSTATE_LIST")
 		assert.Contains(t, err.Error(), "meshstack login --apikey")
 	})

@@ -1,11 +1,7 @@
 package client
 
 import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshPlatform struct {
@@ -77,7 +73,7 @@ type TagMapper struct {
 	ValuePattern string `json:"valuePattern" tfsdk:"value_pattern"`
 }
 
-type MeshPlatformListQuery struct {
+type MeshPlatformFilter struct {
 	OwnedByWorkspace      *string `json:"ownedByWorkspace"`
 	Identifier            *string `json:"identifier"`
 	LocationIdentifier    *string `json:"locationIdentifier"`
@@ -90,38 +86,8 @@ type MeshPlatformListQuery struct {
 	PlatformTypeIdentifier *string `json:"platformTypeIdentifier"`
 }
 
-type MeshPlatformClient interface {
-	Read(ctx context.Context, uuid string) (*MeshPlatform, error)
-	List(ctx context.Context, query MeshPlatformListQuery) ([]MeshPlatform, error)
-	Create(ctx context.Context, platform MeshPlatform) (*MeshPlatform, error)
-	Update(ctx context.Context, uuid string, platform MeshPlatform) (*MeshPlatform, error)
-	Delete(ctx context.Context, uuid string) error
-}
+type MeshPlatformClient = MeshObjectClient[MeshPlatform, MeshPlatformFilter]
 
-type meshPlatformClient struct {
-	meshObject internal.MeshObjectClient[MeshPlatform]
-}
-
-func newPlatformClient(ctx context.Context, httpClient internal.HttpClient) MeshPlatformClient {
-	return meshPlatformClient{internal.NewMeshObjectClient[MeshPlatform](ctx, httpClient, "v2")}
-}
-
-func (c meshPlatformClient) Read(ctx context.Context, uuid string) (*MeshPlatform, error) {
-	return c.meshObject.Get(ctx, uuid)
-}
-
-func (c meshPlatformClient) List(ctx context.Context, query MeshPlatformListQuery) ([]MeshPlatform, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(query))
-}
-
-func (c meshPlatformClient) Create(ctx context.Context, platform MeshPlatform) (*MeshPlatform, error) {
-	return c.meshObject.Post(ctx, platform)
-}
-
-func (c meshPlatformClient) Update(ctx context.Context, uuid string, platform MeshPlatform) (*MeshPlatform, error) {
-	return c.meshObject.Put(ctx, uuid, platform)
-}
-
-func (c meshPlatformClient) Delete(ctx context.Context, uuid string) error {
-	return c.meshObject.Delete(ctx, uuid)
+func (platform MeshPlatform) meshObjectId() string {
+	return *platform.Metadata.Uuid
 }

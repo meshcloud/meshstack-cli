@@ -44,8 +44,8 @@ the `help-text` rule of the `development` skill.
 
 ## Leaf
 
-- `list` lists the kind with `flags.Run[M](cmd, filter)` of `internal.ListFlags`, which pages through
-  `client.Raw.List[M]`.
+- `list` lists the kind with `flags.Run(cmd, meshStack.<Kind>, filter)` of `internal.ListFlags`,
+  which pages through the kind's `List`.
 - `show` shows one object.
 - A sub-resource or an action is named after its path element in the API: `buildingblockrun logs`
   for `…/logs`, `buildingblock trigger-run` for `…/trigger-run`.
@@ -65,11 +65,10 @@ and a `cmd/internal/markdown` template next to the command.
 - A command gets its client from `internal.ResolveClient`, or for the session itself from
   `auth.ResolveSession(ctx, internal.ResolveClientOptions(...))` and `Session.Client`. A
   `ResolveClientOptionsModifier` such as `internal.SkipVersionCheck` adapts the resolution.
-- What the CLI writes as meshStack sent it goes through `client.Raw`: `List[M]` with the kind's
-  list filter struct, `Get[M]` for one object or a sub-resource below it, and `DoRequest` for any
-  other path. `M` is the Go type of the kind's typed client, which `client.New` registers with
-  `Raw`; register a kind there before a command reads it.
-- A list filter struct holds every query parameter the API docs give its endpoint, a repeated one
+- The CLI writes an object as meshStack sent it through `client.WithKindAndApiVersion`. A
+  sub-resource or an action follows a link of the typed object through its `Links`, and any other
+  path goes through `client.Client.HttpClient`, joined onto `client.Client.Endpoint`.
+- A filter struct holds every query parameter the API docs give its endpoint, a repeated one
   as a slice. A parameter the command always sends, such as `includeAllPublished`, is a field the
   command sets. Any other client method only the CLI calls goes on a new `client.Client` field, so
   the Terraform provider's mocks keep compiling.

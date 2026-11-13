@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
+	"github.com/meshcloud/meshstack-cli/client/types/version"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/config"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/json"
-	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	releaseCheckTimeout = 10 * time.Second
 )
 
-// warnIfNewerReleasePresent lives here rather than in internal/version, which the depguard rule
+// warnIfNewerReleasePresent lives here rather than in client/types/version, which the depguard rule
 // in .golangci.yml keeps closed to everything but the standard library.
 func warnIfNewerReleasePresent(ctx context.Context, configDir config.Directory, client http.Client, opts ResolveSessionOptions) (err error) {
 	currentVersion, err := version.Parse(opts.Version)
@@ -52,9 +52,9 @@ func warnIfNewerReleasePresent(ctx context.Context, configDir config.Directory, 
 	ctxRequest, cancel := context.WithTimeout(ctx, releaseCheckTimeout)
 	defer cancel()
 	apiUrl := xurl.MustParsef("https://api.github.com/repos/%s/releases/latest", opts.GitHubRepo)
-	latestRelease, err := client.DoRequest[struct {
+	latestRelease, err := http.UnmarshalJsonBody[struct {
 		TagName string `json:"tag_name"`
-	}](ctxRequest, http.MethodGet, apiUrl.URL, http.Retryable())
+	}](client.DoRequest(ctxRequest, http.MethodGet, apiUrl.URL, http.Retryable(http.RetryOnTransient)))
 	if httpError, ok := errors.AsType[http.Error](err); ok && httpError.IsNotFound() {
 		return fmt.Errorf("no latest release found at %s: %w", apiUrl, err)
 	} else if err != nil {

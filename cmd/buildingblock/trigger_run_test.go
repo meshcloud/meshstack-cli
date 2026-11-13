@@ -25,8 +25,9 @@ func TestTriggerRunPrintsTheBuildingBlockAndFailsWithTheReasonMeshStackCouldNotS
 	)
 	failure := func(failedOn string) string {
 		return fmt.Sprintf(`{"metadata": {"uuid": %q, "ownedByWorkspace": "my-workspace"}, "spec": {}, `+
-			`"status": {"action": "PENDING", "latestRunUuid": "a0000000-0000-4000-8000-000000000001", "runStartFailure": %q, "runStartFailedOn": %q}}`,
-			buildingBlockUuid, reason, failedOn)
+			`"status": {"action": "PENDING", "latestRunUuid": "a0000000-0000-4000-8000-000000000001", "runStartFailure": %q, "runStartFailedOn": %q}, `+
+			`"_links": {"triggerRun": {"href": "/api/meshobjects/meshbuildingblocks/%s/trigger-run"}}}`,
+			buildingBlockUuid, reason, failedOn, buildingBlockUuid)
 	}
 	meshStack := fakemeshstack.Start(t, fakemeshstack.Options{BuildingBlocks: []any{jsontext.Value(failure("2026-10-01T10:05:00Z"))}})
 	meshStack.Route("POST /api/meshobjects/meshbuildingblocks/{uuid}/trigger-run", func(w gohttp.ResponseWriter, _ *gohttp.Request) {

@@ -2,12 +2,9 @@ package buildingblock
 
 import (
 	"context"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -44,12 +41,12 @@ func New() *cobra.Command {
 type runAction struct {
 	meshStack         client.Client
 	prompt            prompt.Prompt
-	buildingBlockUuid uuid.UUID
+	buildingBlockUuid string
 	out               io.Writer
 	format            internal.OutputFormat
 }
 
-func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format internal.OutputFormat) (runAction, error) {
+func newRunAction(cmd *cobra.Command, buildingBlockUuid string, format internal.OutputFormat) (runAction, error) {
 	p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
 	// A script cannot approve or abort: the decision belongs to a person who saw the run.
 	if !p.UsesTerminal() {
@@ -62,28 +59,36 @@ func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format intern
 	return runAction{meshStack: meshStack, prompt: p, buildingBlockUuid: buildingBlockUuid, out: cmd.OutOrStdout(), format: format}, nil
 }
 
-type linkedBuildingBlock struct {
-	Status client.MeshBuildingBlockV2Status `json:"status"`
-	Links  client.MeshBuildingBlockV2Links  `json:"_links"`
+func (a runAction) readBuildingBlock(ctx context.Context) (client.MeshBuildingBlockV2, error) {
+	block, err := a.meshStack.BuildingBlockV2.Read(ctx, a.buildingBlockUuid)
+	switch {
+	case err != nil:
+		return client.MeshBuildingBlockV2{}, err
+	case block == nil:
+		return client.MeshBuildingBlockV2{}, fmt.Errorf("building block %s not found", a.buildingBlockUuid)
+	}
+	return *block, nil
 }
 
-func (a runAction) readBuildingBlock(ctx context.Context) (jsontext.Value, linkedBuildingBlock, error) {
-	var block linkedBuildingBlock
-	raw, err := a.meshStack.Raw.Get[client.MeshBuildingBlockV2](ctx, a.buildingBlockUuid)
-	if err != nil {
-		return nil, block, err
+func (a runAction) readRun(ctx context.Context, runUuid string) (client.MeshBuildingBlockRun, error) {
+	run, err := a.meshStack.BuildingBlockRun.Read(ctx, runUuid)
+	switch {
+	case err != nil:
+		return client.MeshBuildingBlockRun{}, err
+	case run == nil:
+		return client.MeshBuildingBlockRun{}, fmt.Errorf("run %s of building block %s not found", runUuid, a.buildingBlockUuid)
 	}
-	return raw, block, json.Unmarshal(raw, &block)
+	return *run, nil
 }
 
 // report reads the building block again and writes it, because a run hides the actions
 // APPROVE_RUN and REVIEW_ABORTED_RUN that only the building block shows.
 func (a runAction) report(ctx context.Context, done string) error {
-	raw, block, err := a.readBuildingBlock(ctx)
+	block, err := a.readBuildingBlock(ctx)
 	if err != nil {
 		return err
 	}
-	if err := a.format.WriteItem(a.out, raw); err != nil {
+	if err := a.format.WriteItem(a.out, client.WithKindAndApiVersion(a.meshStack.BuildingBlockV2, block)); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("%s Building block %s now has the action %s.", done, a.buildingBlockUuid, block.Status.Action))

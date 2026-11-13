@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"github.com/meshcloud/meshstack-cli/client"
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
@@ -23,6 +23,7 @@ type Session struct {
 	Client     func() (client.Client, error)
 	MeshInfo   func() (client.MeshInfo, error)
 
+	profiles     profile.Profiles
 	getWorkspace func() (meshstack.Workspace, error)
 	httpClient   http.Client
 }
@@ -40,10 +41,12 @@ type (
 )
 
 func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, error) {
-	session, _, err := newSession(ctx, opts, false)
+	currentProfile, profiles, err := profile.ResolveProfile(ctx, opts.SettingSources)
 	if err != nil {
 		return Session{}, err
 	}
+	session := newSessionFor(ctx, currentProfile, opts)
+	session.profiles = profiles
 	resolved, err := session.resolveCredentials(ctx, opts)
 	if err != nil {
 		return Session{}, err
@@ -61,10 +64,11 @@ func ResolveSession(ctx context.Context, opts ResolveSessionOptions) (Session, e
 	return session.withCredential(ctx, resolved, opts)
 }
 
-// Scope names the profile, and the workspace where the settings choose it: only a browser login
-// works in that workspace, while an API key works in the one that owns it.
-func (s Session) Scope() string {
-	scope := "profile " + string(s.CurrentProfile.Name)
+func (s Session) String() string {
+	scope := string(s.Credential.Name()) + " profile " + string(s.CurrentProfile.Name)
+	if s.CurrentProfile.Name == "" {
+		scope = string(s.Credential.Name()) + " for " + s.CurrentProfile.Endpoint.String()
+	}
 	if _, browserLogin := s.Credential.Credential.(*credential.OidcLogin); browserLogin {
 		if workspace, err := s.getWorkspace(); err == nil && workspace != meshstack.NoWorkspace {
 			scope += " working in workspace " + string(workspace)
@@ -74,10 +78,7 @@ func (s Session) Scope() string {
 }
 
 func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionOptions) (Session, error) {
-	session, err := newSessionFor(ctx, p, opts)
-	if err != nil {
-		return Session{}, err
-	}
+	session := newSessionFor(ctx, p, opts)
 	stored, err := session.storedCredential(ctx, nil)
 	if err != nil {
 		return Session{}, err
@@ -88,49 +89,14 @@ func StoredSession(ctx context.Context, p *profile.Profile, opts ResolveSessionO
 	return session.withCredential(ctx, stored, opts)
 }
 
-// newSession leaves the profiles locked with exclusiveLock only where it succeeds.
-func newSession(ctx context.Context, opts ResolveSessionOptions, exclusiveLock bool) (_ Session, _ profile.Profiles, err error) {
-	currentProfile, profiles, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{
-		SettingSources: opts.SettingSources,
-		ExclusiveLock:  exclusiveLock,
-	})
-	if err != nil {
-		return Session{}, profile.Profiles{}, err
-	}
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, profiles.Unlock())
-		}
-	}()
-
-	endpoint, err := opts.ResolveSetting(ctx, meshstack.EndpointSetting, currentProfile.EndpointSource())
-	if err != nil {
-		return Session{}, profile.Profiles{}, err
-	} else if !endpoint.Equal(currentProfile.Endpoint) {
-		// this prevents accidentally sending credentials to the wrong endpoint
-		return Session{}, profile.Profiles{}, fmt.Errorf("profile '%s' has the endpoint '%s', which does not match the endpoint '%s' of this command; "+
-			"use --profile to choose a profile for that endpoint, or create one with 'meshstack login --endpoint %s --profile <new-profile-name>'",
-			currentProfile, currentProfile.Endpoint, endpoint, endpoint)
-	}
-
-	session, err := newSessionFor(ctx, currentProfile, opts)
-	return session, profiles, err
-}
-
 // HttpClient is for a request that the meshStack client does not make, such as the download of the
 // API docs. It carries the user agent of the front end, as the session's client does.
-func (opts ResolveSessionOptions) HttpClient() (http.Client, error) {
-	if err := opts.Validate(); err != nil {
-		return http.Client{}, err
-	}
-	return http.NewClient(opts.UserAgent), nil
+func (opts ResolveSessionOptions) HttpClient() http.Client {
+	return http.NewClient(opts.UserAgent)
 }
 
-func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) (Session, error) {
-	httpClient, err := opts.HttpClient()
-	if err != nil {
-		return Session{}, err
-	}
+func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts ResolveSessionOptions) Session {
+	httpClient := opts.HttpClient()
 	return Session{
 		CurrentProfile: currentProfile,
 		httpClient:     httpClient,
@@ -141,7 +107,7 @@ func newSessionFor(ctx context.Context, currentProfile *profile.Profile, opts Re
 		getWorkspace: func() (meshstack.Workspace, error) {
 			return meshstack.NoWorkspace, nil
 		},
-	}, nil
+	}
 }
 
 func (s Session) withCredential(ctx context.Context, cred Credential, opts ResolveSessionOptions) (Session, error) {
@@ -177,8 +143,8 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 		return client.Client{}, workspaceErr
 	}
 	endpoint := s.CurrentProfile.Endpoint
-	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s with user agent %s authenticated by %s, workspace %s",
-		endpoint, s.httpClient.UserAgent, s.Credential.Name(), workspace))
+	slog.DebugContext(ctx, fmt.Sprintf("Building client for endpoint %s from %s, authenticated by %s, workspace %s",
+		endpoint, s.httpClient, s.Credential.Name(), workspace))
 	c := client.New(ctx, endpoint, s.httpClient, s)
 	if skipVersionCheck, err := opts.ResolveSetting(ctx, meshstack.SkipVersionCheckSetting); err != nil {
 		return client.Client{}, err
@@ -199,15 +165,13 @@ func (s Session) buildClient(ctx context.Context, opts ResolveSessionOptions) (c
 // ResolveWorkspace resolves the workspace that a session of opts works in, as ResolveSession does,
 // and is NoWorkspace where no setting names one and the profile has no default workspace.
 func ResolveWorkspace(ctx context.Context, opts ResolveSessionOptions) (meshstack.Workspace, error) {
-	stored, _, err := profile.ResolveProfile(ctx, profile.ResolveProfileOptions{SettingSources: opts.SettingSources, StoredOnly: true})
-	var defaultWorkspace setting.Source
-	switch {
-	case err == nil:
-		if !opts.IgnoreDefaultWorkspace {
-			defaultWorkspace = stored.WorkspaceSource()
-		}
-	case !errors.Is(err, profile.ErrNoStoredProfile):
+	currentProfile, _, err := profile.ResolveProfile(ctx, opts.SettingSources)
+	if err != nil {
 		return meshstack.NoWorkspace, err
+	}
+	var defaultWorkspace setting.Source
+	if !opts.IgnoreDefaultWorkspace {
+		defaultWorkspace = currentProfile.WorkspaceSource()
 	}
 	workspace, err := opts.ResolveSetting(ctx, meshstack.WorkspaceSetting, defaultWorkspace)
 	if errors.Is(err, setting.ErrNoSourceProvidedValue) {

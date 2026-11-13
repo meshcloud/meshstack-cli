@@ -2,7 +2,6 @@ package internal
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"iter"
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal/markdown"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 const OutputFlagName = "output"
@@ -60,7 +60,7 @@ func (f *OutputFlag) Type() string {
 // WriteList leaves a listing that fails part way through unterminated, so that json output which
 // stopped early does not parse as a complete array. ndjson has no end to leave out, so there only
 // the exit status tells a cut listing from a complete one.
-func (format OutputFormat) WriteList(w io.Writer, items iter.Seq2[jsontext.Value, error]) error {
+func (format OutputFormat) WriteList(w io.Writer, items iter.Seq2[any, error]) error {
 	list, err := format.listing()
 	if err != nil {
 		return err
@@ -70,14 +70,19 @@ func (format OutputFormat) WriteList(w io.Writer, items iter.Seq2[jsontext.Value
 		if itemErr != nil {
 			return itemErr
 		}
+		encoded, marshalErr := json.Marshal(item)
+		if marshalErr != nil {
+			return marshalErr
+		}
 		separator := list.between
 		if written == 0 {
 			separator = list.begin
 		}
-		if err = list.format(&item); err != nil {
+		value := jsontext.Value(encoded)
+		if err = list.format(&value); err != nil {
 			return err
 		}
-		if _, err = fmt.Fprintf(w, "%s%s%s", separator, item, list.after); err != nil {
+		if _, err = fmt.Fprintf(w, "%s%s%s", separator, value, list.after); err != nil {
 			return err
 		}
 		written++
@@ -90,8 +95,12 @@ func (format OutputFormat) WriteList(w io.Writer, items iter.Seq2[jsontext.Value
 	return err
 }
 
-func (format OutputFormat) WriteItem(w io.Writer, item jsontext.Value) error {
-	var err error
+func (format OutputFormat) WriteItem(w io.Writer, object any) error {
+	encoded, err := json.Marshal(object)
+	if err != nil {
+		return err
+	}
+	item := jsontext.Value(encoded)
 	switch format {
 	case OutputNdjson:
 		err = item.Compact()

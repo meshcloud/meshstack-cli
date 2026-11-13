@@ -20,7 +20,11 @@ If you work in the admin workspace and have a role that can list all workspaces,
   meshstack ws list --workspace admin-workspace --limit unlimited -o ndjson`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return flags.Run[client.MeshWorkspace](cmd, client.MeshWorkspaceListFilter{})
+			meshStack, err := internal.ResolveClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return flags.Run(cmd, meshStack.Workspace, client.NoFilter{})
 		},
 	}
 

@@ -1,11 +1,7 @@
 package client
 
 import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type MeshServiceInstance struct {
@@ -28,13 +24,10 @@ type MeshServiceInstanceSpec struct {
 	Parameters  map[string]types.Any `json:"parameters" tfsdk:"parameters"`
 }
 
-type MeshServiceInstanceClient interface {
-	Read(ctx context.Context, instanceId string) (*MeshServiceInstance, error)
-	List(ctx context.Context, filter MeshServiceInstanceFilter) ([]MeshServiceInstance, error)
-}
+type MeshServiceInstanceClient = MeshObjectClient[MeshServiceInstance, MeshServiceInstanceFilter]
 
-type meshServiceInstanceClient struct {
-	meshObject internal.MeshObjectClient[MeshServiceInstance]
+func (instance MeshServiceInstance) meshObjectId() string {
+	return instance.Metadata.InstanceId
 }
 
 type MeshServiceInstanceFilter struct {
@@ -43,16 +36,4 @@ type MeshServiceInstanceFilter struct {
 	MarketplaceIdentifier *string `json:"marketplaceIdentifier"`
 	ServiceIdentifier     *string `json:"serviceIdentifier"`
 	PlanIdentifier        *string `json:"planIdentifier"`
-}
-
-func newServiceInstanceClient(ctx context.Context, httpClient internal.HttpClient) MeshServiceInstanceClient {
-	return meshServiceInstanceClient{internal.NewMeshObjectClient[MeshServiceInstance](ctx, httpClient, "v2")}
-}
-
-func (c meshServiceInstanceClient) Read(ctx context.Context, instanceId string) (*MeshServiceInstance, error) {
-	return c.meshObject.Get(ctx, instanceId)
-}
-
-func (c meshServiceInstanceClient) List(ctx context.Context, filter MeshServiceInstanceFilter) ([]MeshServiceInstance, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
 }

@@ -1,13 +1,9 @@
 package client
 
 import (
-	"encoding/json/jsontext"
-	"encoding/json/v2"
-	"fmt"
-
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
-	"github.com/meshcloud/meshstack-cli/client/types/variant"
+	"github.com/meshcloud/meshstack-cli/client/types/polymorph"
 )
 
 type MeshIntegrationConfigType string
@@ -51,47 +47,10 @@ type MeshIntegrationEntraIdConfig struct {
 }
 
 type MeshIntegrationConfig struct {
-	Type        enum.Entry[MeshIntegrationConfigType] `json:"type" tfsdk:"-"`
-	Github      *MeshIntegrationGithubConfig          `json:"github,omitzero" tfsdk:"github"`
-	Gitlab      *MeshIntegrationGitlabConfig          `json:"gitlab,omitzero" tfsdk:"gitlab"`
-	AzureDevops *MeshIntegrationAzureDevopsConfig     `json:"azuredevops,omitzero" tfsdk:"azuredevops"`
-	EntraId     *MeshIntegrationEntraIdConfig         `json:"entraid,omitzero" tfsdk:"entraid"`
-}
+	polymorph.Polymorph[MeshIntegrationConfig, MeshIntegrationConfigType]
 
-func (m MeshIntegrationConfig) InferType() (enum.Entry[MeshIntegrationConfigType], error) {
-	result, err := variant.InferType(
-		variant.NewCandidate(MeshIntegrationConfigTypeGithub, m.Github != nil),
-		variant.NewCandidate(MeshIntegrationConfigTypeGitlab, m.Gitlab != nil),
-		variant.NewCandidate(MeshIntegrationConfigTypeAzureDevops, m.AzureDevops != nil),
-		variant.NewCandidate(MeshIntegrationConfigTypeEntraId, m.EntraId != nil),
-	)
-	if err != nil {
-		return "", fmt.Errorf("cannot infer integration config type: %w", err)
-	}
-	return result, nil
-}
-
-func (m MeshIntegrationConfig) MarshalJSONTo(enc *jsontext.Encoder) error {
-	type wrapped MeshIntegrationConfig
-	w := wrapped(m)
-	// Built-in integrations (replicator, metering) come with a type but no variant, so the type is only
-	// inferred when it is missing.
-	if len(w.Type) == 0 {
-		inferred, err := m.InferType()
-		if err != nil {
-			return err
-		}
-		w.Type = inferred
-	}
-	return json.MarshalEncode(enc, w, enc.Options())
-}
-
-func (m *MeshIntegrationConfig) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
-	type wrapped MeshIntegrationConfig
-	var target wrapped
-	if err := json.UnmarshalDecode(dec, &target, dec.Options()); err != nil {
-		return err
-	}
-	*m = MeshIntegrationConfig(target)
-	return nil
+	Github      *MeshIntegrationGithubConfig      `json:"github,omitzero" polymorph:"github" tfsdk:"github"`
+	Gitlab      *MeshIntegrationGitlabConfig      `json:"gitlab,omitzero" polymorph:"gitlab" tfsdk:"gitlab"`
+	AzureDevops *MeshIntegrationAzureDevopsConfig `json:"azuredevops,omitzero" polymorph:"azuredevops" tfsdk:"azuredevops"`
+	EntraId     *MeshIntegrationEntraIdConfig     `json:"entraid,omitzero" polymorph:"entraid" tfsdk:"entraid"`
 }

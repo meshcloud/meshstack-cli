@@ -16,7 +16,13 @@ var EndpointSetting = setting.Setting[xurl.URL]{
 		return fmt.Sprintf("The URL of the meshStack API, such as `https://api.example.meshcloud.io`, "+
 			"also read from `%s`, else taken from the current profile.", envKey)
 	},
-	Parse: setting.ParseTextUnmarshaler[xurl.URL],
+	Parse: func(s string) (xurl.URL, error) {
+		endpoint, err := setting.ParseTextUnmarshaler[xurl.URL](s)
+		if err == nil && (endpoint.Path != "" || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.User != nil) {
+			err = fmt.Errorf("an endpoint is a scheme and a host, such as https://api.example.meshcloud.io, and '%s' has more than that", endpoint.Redacted())
+		}
+		return endpoint, err
+	},
 }
 
 // SkipVersionCheckSetting skips both the minimum backend version check and the check for a newer

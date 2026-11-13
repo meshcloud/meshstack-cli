@@ -2,11 +2,9 @@ package auth_test
 
 import (
 	"encoding/base64"
-	"encoding/json/v2"
 	"log/slog"
 	"testing"
 	"time"
-	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +13,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/auth"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/config"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
@@ -62,13 +61,13 @@ func TestStatusOfABrowserLogin(t *testing.T) {
 		session, err := auth.StoredSession(t.Context(), p, testSessionOpts)
 		require.NoError(t, err)
 
-		assert.Equal(t, "profile dev working in workspace ops", session.Scope())
+		assert.Equal(t, "oidcLogin profile dev working in workspace ops", session.String())
 	})
 
 	t.Run("lists the stored credentials besides the one in use", func(t *testing.T) {
 		creds, err := p.Credentials(t.Context())
 		require.NoError(t, err)
-		creds.Set(&credential.ApiKey{Endpoint: p.Endpoint, ClientId: uuid.MustParse(testApiKey2.ClientId), ClientSecret: testApiKey2.ClientSecret})
+		creds.Set(&credential.ApiKey{Endpoint: p.Endpoint, ClientId: testApiKey2.ClientId, ClientSecret: testApiKey2.ClientSecret})
 		require.NoError(t, creds.Store(t.Context()))
 
 		assert.Equal(t, []auth.UnusedCredential{{Kind: credential.ApiKeyName, ClientId: testApiKey2.ClientId}}, status(t).Unused)
@@ -86,7 +85,7 @@ func TestStatusOfAnApiKeyIsReadFromFilesAndTheEnvironment(t *testing.T) {
 
 	assert.Equal(t, []string{"env MESHSTACK_API_KEY", "env MESHSTACK_API_SECRET"}, status.Sources)
 	require.NotNil(t, status.ApiKey)
-	assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId.String())
+	assert.Equal(t, testApiKey1.ClientId, status.ApiKey.ClientId)
 	assert.Nil(t, status.Token, "no token is cached before the key is first used")
 	assert.Empty(t, captured.Records(slog.LevelWarn))
 }
