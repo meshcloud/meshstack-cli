@@ -334,7 +334,14 @@ meshstack bbrun plan <waiting-run-uuid> |
   grep -E "will be (created|destroyed|updated|replaced)|must be replaced|Plan:"
 ```
 
-Report the `Plan:` line and anything unexpected, and hand the user a deep link (below). A
+Report the `Plan:` line and anything unexpected, and hand the user a deep link (below). If the user
+asks you to approve it, pass the detect run that `bbrun plan` names. The approval fails if meshStack
+has planned the run again since:
+
+```sh
+meshstack bb approve-run <uuid> --detect-run <detect-run-uuid>
+```
+ A
 Terraform apply that updates such a block ends with the provider warning `Building block run is
 waiting for input or approval` — that is the gate, not an error.
 

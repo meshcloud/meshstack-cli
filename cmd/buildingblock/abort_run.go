@@ -32,7 +32,7 @@ The command shows the run and asks you to confirm, so it needs a terminal. After
 		Args: internal.UuidArg(&buildingBlockUuid),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			action, err := newRunAction(cmd, buildingBlockUuid, output.Format)
+			action, err := newRunAction(cmd, buildingBlockUuid, output.Format, false)
 			if err != nil {
 				return err
 			}

@@ -77,7 +77,7 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 		cmd.SetErr(io.Discard)
 		cmd.SetArgs([]string{"approve-run", buildingBlockUuid})
 
-		require.EqualError(t, cmd.ExecuteContext(t.Context()), "approve-run needs a terminal, because it asks you to confirm")
+		require.EqualError(t, cmd.ExecuteContext(t.Context()), "approve-run needs a terminal, because it asks you to confirm. 'buildingblock approve-run --help' shows how to run it without a terminal")
 		assert.Empty(t, server.TakeRequests())
 	})
 
@@ -97,7 +97,7 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 	t.Run("a plan that is not approved stays waiting", func(t *testing.T) {
 		action, asked := newTestRunAction(t, server, "n\n")
 
-		require.NoError(t, action.approve(t.Context()))
+		require.NoError(t, action.approve(t.Context(), uuid.Nil()))
 		assert.Contains(t, asked.String(), `Plan | + resource "x" will be created`)
 		assert.True(t, strings.HasSuffix(asked.String(), "Approve this plan? [y/N]: "), asked.String())
 		assert.Empty(t, approvals)
@@ -106,15 +106,27 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 	t.Run("an approval names the run whose plan was shown", func(t *testing.T) {
 		action, _ := newTestRunAction(t, server, "y\n")
 
-		require.NoError(t, action.approve(t.Context()))
+		require.NoError(t, action.approve(t.Context(), uuid.Nil()))
 		require.Len(t, approvals, 1)
 		assert.JSONEq(t, `{"predecessorRunUuid": "`+planRun+`"}`, approvals[0])
+	})
+
+	t.Run("without a terminal, --detect-run approves the plan of that run without asking", func(t *testing.T) {
+		testlogin.LoggedInTo(t, server.URL)
+		cmd := New()
+		cmd.SetIn(strings.NewReader(""))
+		cmd.SetOut(io.Discard)
+		cmd.SetArgs([]string{"approve-run", buildingBlockUuid, "--detect-run", planRun})
+
+		require.NoError(t, cmd.ExecuteContext(t.Context()))
+		require.Len(t, approvals, 2)
+		assert.JSONEq(t, `{"predecessorRunUuid": "`+planRun+`"}`, approvals[1])
 	})
 
 	t.Run("a plan that changed after it was shown has to be reviewed again", func(t *testing.T) {
 		approveAnswer = gohttp.StatusConflict
 		action, _ := newTestRunAction(t, server, "y\n")
 
-		require.EqualError(t, action.approve(t.Context()), "the plan of run "+waitingRun+" changed after you saw it. Run the command again to review the new plan")
+		require.EqualError(t, action.approve(t.Context(), uuid.Nil()), "the plan of run "+waitingRun+" changed after you saw it. Run the command again to review the new plan")
 	})
 }

@@ -49,11 +49,12 @@ type runAction struct {
 	format            internal.OutputFormat
 }
 
-func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format internal.OutputFormat) (runAction, error) {
+// newRunAction needs a terminal to ask for a confirmation unless the caller has confirmed already,
+// by naming the plan or the run it decided on, so that the command never acts on one it did not see.
+func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format internal.OutputFormat, confirmed bool) (runAction, error) {
 	p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
-	// A script cannot approve or abort: the decision belongs to a person who saw the run.
-	if !p.UsesTerminal() {
-		return runAction{}, fmt.Errorf("%s needs a terminal, because it asks you to confirm", cmd.Name())
+	if !confirmed && !p.UsesTerminal() {
+		return runAction{}, fmt.Errorf("%s needs a terminal, because it asks you to confirm. '%s --help' shows how to run it without a terminal", cmd.Name(), cmd.CommandPath())
 	}
 	meshStack, err := internal.ResolveClient(cmd.Context())
 	if err != nil {
