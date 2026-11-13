@@ -9,6 +9,8 @@ import (
 
 type MeshProjectGroupBinding struct {
 	MeshProjectBinding
+
+	Status *MeshGroupBindingStatus `json:"status,omitempty" tfsdk:"status"`
 }
 
 type MeshProjectGroupBindingClient interface {
