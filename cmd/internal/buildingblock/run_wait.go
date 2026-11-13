@@ -46,11 +46,13 @@ func (w RunWait) AwaitReaction(ctx context.Context, before client.MeshBuildingBl
 	return reacted, block, withMeshPanelLink(err, block)
 }
 
-// AwaitEnd returns the building block once meshStack has reacted to a write since before, and the run
-// is no longer running.
-func (w RunWait) AwaitEnd(ctx context.Context, before client.MeshBuildingBlockV2Status) (jsontext.Value, *client.MeshBuildingBlockV2, error) {
-	if _, _, err := w.AwaitReaction(ctx, before); err != nil {
-		return nil, nil, err
+// AwaitEnd returns the building block once its run is no longer running. Given a before, it first
+// waits until meshStack has reacted to a write since before; a nil before is the run going on now.
+func (w RunWait) AwaitEnd(ctx context.Context, before *client.MeshBuildingBlockV2Status) (jsontext.Value, *client.MeshBuildingBlockV2, error) {
+	if before != nil {
+		if _, _, err := w.AwaitReaction(ctx, *before); err != nil {
+			return nil, nil, err
+		}
 	}
 	ended, block, err := w.poll(ctx, w.endEvery, func(block *client.MeshBuildingBlockV2) (bool, error) {
 		return block.RunEndedSince(client.MeshBuildingBlockV2Status{})

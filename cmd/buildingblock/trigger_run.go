@@ -47,7 +47,7 @@ With --` + waitFlagName + `, the command waits until the run has ended. This is 
 				accepted = *answer.Status
 			}
 			if wait {
-				return awaitRunEnd(ctx, cmd.OutOrStdout(), output.Format, meshStack.Raw, buildingBlockUuid, accepted)
+				return awaitRunEnd(ctx, cmd.OutOrStdout(), output.Format, meshStack.Raw, buildingBlockUuid, &accepted)
 			}
 			runWait := buildingblock.NewRunWait(meshStack.Raw, buildingBlockUuid)
 			reacted, block, err := runWait.AwaitReaction(ctx, accepted)

@@ -44,9 +44,11 @@ func TestWaitFailsOnAnOutcomeThatNeedsSomeoneToAct(t *testing.T) {
 		return stdout.String(), err
 	}
 
-	t.Run("wait needs the building block from before the write", func(t *testing.T) {
-		_, err := run("", "wait", waitedBuildingBlock)
-		require.ErrorContains(t, err, `required flag(s) "before" not set`)
+	t.Run("without --before, wait prints the building block whose run has ended", func(t *testing.T) {
+		current.Store(new(buildingBlockWithRun("NO_ACTION", "run-1")))
+		stdout, err := run("", "wait", waitedBuildingBlock)
+		require.NoError(t, err)
+		assert.Contains(t, stdout, `"action": "NO_ACTION"`)
 	})
 
 	t.Run("a failed run fails the wait with its action and the meshPanel link", func(t *testing.T) {
