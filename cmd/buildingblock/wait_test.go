@@ -57,9 +57,10 @@ func TestWaitFailsOnAnOutcomeThatNeedsSomeoneToAct(t *testing.T) {
 		assert.Contains(t, stdout, `"action": "REVIEW_ERRORS"`, "the building block still goes to stdout")
 	})
 
-	t.Run("a run that waits for approval fails the wait and names the waiting and the detect run", func(t *testing.T) {
-		current.Store(new(strings.Replace(buildingBlockWithRun("APPROVE_RUN", "run-2"), `"latestRunUuid"`, `"latestDryRunUuid": "run-1", "latestRunUuid"`, 1)))
+	t.Run("a run that waits for approval fails the wait with its action and points to its plan", func(t *testing.T) {
+		current.Store(new(buildingBlockWithRun("APPROVE_RUN", "run-2")))
 		_, err := run(before, "wait", waitedBuildingBlock, "--before=-")
-		require.ErrorContains(t, err, "run run-2 of building block "+waitedBuildingBlock+" is waiting for approval of the plan from the detect run run-1")
+		require.ErrorContains(t, err, "is paused at action APPROVE_RUN")
+		require.ErrorContains(t, err, "meshstack buildingblockrun plan run-2")
 	})
 }

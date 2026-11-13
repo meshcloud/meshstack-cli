@@ -49,8 +49,9 @@ type runAction struct {
 	format            internal.OutputFormat
 }
 
-// newRunAction needs a terminal to ask for a confirmation unless the caller has confirmed already,
-// by naming the plan or the run it decided on, so that the command never acts on one it did not see.
+// newRunAction needs a terminal to ask for a confirmation, unless the caller names the plan to approve
+// or the run to abort. A name binds the command to that plan or run, but does not show that anyone
+// has reviewed it.
 func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format internal.OutputFormat, confirmed bool) (runAction, error) {
 	p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
 	if !confirmed && !p.UsesTerminal() {

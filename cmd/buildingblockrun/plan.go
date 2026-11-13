@@ -21,11 +21,13 @@ func newPlan() *cobra.Command {
 		Short: "Show the plan that a building block run is waiting to have approved",
 		Long: `Show the plan that a building block run is waiting to have approved, as text.
 
-A run that waits for approval has no logs of its own. Its plan is in the logs of the run before it, the detect run, which planned the changes. The command prints the logs of the detect run and names it. Give the waiting run by its uuid; 'meshstack buildingblock list' shows it as status.latestRunUuid of a building block whose status.action is APPROVE_RUN.
+A run that waits for approval has no logs of its own. Its plan is in the logs of the run before it, the detect run, which planned the changes. The command prints the logs of the detect run, and a line with the uuid of the detect run. Give the waiting run by its uuid; 'meshstack buildingblock list' shows it as status.latestRunUuid of a building block whose status.action is APPROVE_RUN.
 
-To approve the plan without a terminal, pass the uuid of the detect run to 'meshstack buildingblock approve-run <building-block-uuid> --detect-run <run-uuid>'. The approval fails if meshStack has planned the run again in the meantime.`,
+The command prints a line '<step>: <status>' for each step, and the lines of a step's messages after '<step> |'. Filter on '|' to read only the messages.
+
+To approve the plan without a terminal, pass the uuid of the detect run to 'meshstack buildingblock approve-run <building-block-uuid> --detect-run <run-uuid>', and approve only if the user allows it. The approval fails if meshStack has planned the run again in the meantime.`,
 		Example: `  meshstack buildingblockrun plan 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c
-  meshstack bbrun plan 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c | grep 'Plan:'`,
+  meshstack bbrun plan 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c | grep '| Plan:'`,
 		Args: internal.UuidArg(&runUuid),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
@@ -49,7 +51,7 @@ To approve the plan without a terminal, pass the uuid of the detect run to 'mesh
 					detectRun.Metadata.Uuid, runUuid))
 				return nil
 			}
-			slog.InfoContext(ctx, fmt.Sprintf("Run %s is waiting for approval of this plan from the detect run %s. Approve it with 'meshstack buildingblock approve-run %s --detect-run %s'",
+			slog.InfoContext(ctx, fmt.Sprintf("Run %s is waiting for approval of this plan from the detect run %s. If the user allows it, approve the plan with 'meshstack buildingblock approve-run %s --detect-run %s'",
 				runUuid, detectRun.Metadata.Uuid, run.Spec.BuildingBlock.Uuid, detectRun.Metadata.Uuid))
 			return nil
 		},
@@ -69,7 +71,9 @@ func ReadRun(ctx context.Context, meshStack client.Client, runUuid uuid.UUID) (c
 // waiting to have approved.
 func ReadPlan(ctx context.Context, meshStack client.Client, run client.MeshBuildingBlockRun) (client.MeshBuildingBlockRun, client.MeshBuildingBlockRunLogs, error) {
 	if run.Links.Predecessor == nil {
-		return client.MeshBuildingBlockRun{}, client.MeshBuildingBlockRunLogs{}, fmt.Errorf("meshStack does not say which run planned run %s", run.Metadata.Uuid)
+		return client.MeshBuildingBlockRun{}, client.MeshBuildingBlockRunLogs{}, fmt.Errorf(
+			"run %s has no predecessor, so no plan waits for its approval. Give the run that waits for approval: the status.latestRunUuid of a building block whose status.action is APPROVE_RUN",
+			run.Metadata.Uuid)
 	}
 	detectRun, err := meshStack.BuildingBlockRunAction.ReadRun(ctx, *run.Links.Predecessor)
 	if err != nil {

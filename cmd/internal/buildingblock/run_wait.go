@@ -74,11 +74,14 @@ func (w RunWait) Outcome(block *client.MeshBuildingBlockV2) error {
 		return w.StartFailure(block)
 	case status.RunFailed():
 		err = fmt.Errorf("the run of building block %s ended with action %s", w.buildingBlockUuid, status.Action)
-	case status.Action == client.BuildingBlockActionApproveRun:
-		err = fmt.Errorf("run %s of building block %s is waiting for approval of the plan from the detect run %s. Review the plan with 'meshstack buildingblockrun plan %s'",
-			status.GetLatestRunUuid(), w.buildingBlockUuid, status.GetLatestDryRunUuid(), status.GetLatestRunUuid())
 	case status.IsWaitingForInput():
 		err = fmt.Errorf("the run of building block %s is paused at action %s and continues only after someone acts on it", w.buildingBlockUuid, status.Action)
+		if status.Action == client.BuildingBlockActionApproveRun {
+			// status.latestDryRunUuid is null here, because the waiting run is newer than its detect run.
+			// 'bbrun plan' finds the detect run through the waiting run's predecessor.
+			waiting := status.GetLatestRunUuid()
+			err = fmt.Errorf("%w. Run %s waits for approval: review its plan with 'meshstack buildingblockrun plan %s'", err, waiting, waiting)
+		}
 	}
 	return withMeshPanelLink(err, block)
 }

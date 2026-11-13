@@ -92,6 +92,7 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 		require.NoError(t, cmd.ExecuteContext(t.Context()))
 		assert.Equal(t, "Plan: SUCCEEDED\nPlan | + resource \"x\" will be created\n", stdout.String())
 		assert.Contains(t, captured.String(), "from the detect run "+planRun)
+		assert.Contains(t, captured.String(), "approve-run "+buildingBlockUuid+" --detect-run "+planRun+"'")
 	})
 
 	t.Run("a plan that is not approved stays waiting", func(t *testing.T) {
@@ -121,6 +122,23 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 		require.NoError(t, cmd.ExecuteContext(t.Context()))
 		require.Len(t, approvals, 2)
 		assert.JSONEq(t, `{"predecessorRunUuid": "`+planRun+`"}`, approvals[1])
+	})
+
+	t.Run("--detect-run of another plan is refused, and the user has to see the plan", func(t *testing.T) {
+		const otherRun = "a0000000-0000-4000-8000-000000000009"
+		approveAnswer = gohttp.StatusConflict
+		testlogin.LoggedInTo(t, server.URL)
+		cmd := New()
+		cmd.SetIn(strings.NewReader(""))
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs([]string{"approve-run", buildingBlockUuid, "--detect-run", otherRun})
+
+		err := cmd.ExecuteContext(t.Context())
+		require.ErrorContains(t, err, "run "+waitingRun+" waits for another plan than the one of detect run "+otherRun)
+		require.ErrorContains(t, err, "Show the user the plan from 'meshstack buildingblockrun plan "+waitingRun+"'")
+		require.Len(t, approvals, 3)
+		assert.JSONEq(t, `{"predecessorRunUuid": "`+otherRun+`"}`, approvals[2])
 	})
 
 	t.Run("a plan that changed after it was shown has to be reviewed again", func(t *testing.T) {
