@@ -22,20 +22,27 @@ func newWait() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "wait <building-block-uuid> --before <file|->",
+		Use:   "wait <building-block-uuid> [--before <file|->]",
 		Short: "Wait until the run of a building block has ended",
-		Long: `Wait until meshStack has reacted to a write of a building block, and until the run that the write started has ended. Give the building block by its uuid.
+		Long: `Wait until the run of a building block has ended. Give the building block by its uuid.
 
-meshStack responds to a write before it starts the run. So right after the write, the building block still shows the action of the previous run. Pass that response with --` + beforeFlagName + `: the response of a create (POST), an update (PUT) or a trigger-run, or a read taken before the change. The command first waits up to a minute until meshStack has reacted, following the rules of https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run. Then it waits until the run has ended. Press Ctrl-C to stop waiting.
+Without --` + beforeFlagName + `, the command waits for the run that is going on now, such as a run that someone started or approved. If no run is going on, the command prints the building block at once.
 
-The command prints the building block. It fails and names the action if the run failed, was aborted or could not start, or if the run is waiting for a person or a dependency.`,
-		Example: `  meshstack api -X PUT /api/meshobjects/meshbuildingblocks/0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --request-json block.json |
+After a write of the building block, pass meshStack's response to the write with --` + beforeFlagName + `. meshStack responds to a write before it starts the run, so right after the write, the building block still shows the action of the previous run. The response can be that of a create (POST), an update (PUT) or a trigger-run, or a read taken before the change. The command first waits up to a minute until meshStack has reacted, following the rules of https://docs.meshcloud.io/concepts/building-block/#waiting-for-a-run, and then until the run has ended.
+
+Press Ctrl-C to stop waiting. The command prints the building block. It fails and names the action if the run failed, was aborted or could not start, or if the run is waiting for a person or a dependency.`,
+		Example: `  meshstack bb wait 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
+  meshstack api -X PUT /api/meshobjects/meshbuildingblocks/0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --request-json block.json |
     meshstack bb wait 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 --before=-`,
 		Args: internal.UuidArg(&buildingBlockUuid),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			before, err := readBefore(cmd, beforeInput, buildingBlockUuid)
-			if err != nil {
-				return err
+			var before *client.MeshBuildingBlockV2Status
+			if cmd.Flags().Changed(beforeFlagName) {
+				read, err := readBefore(cmd, beforeInput, buildingBlockUuid)
+				if err != nil {
+					return err
+				}
+				before = &read
 			}
 			meshStack, err := internal.ResolveClient(cmd.Context())
 			if err != nil {
@@ -47,7 +54,6 @@ The command prints the building block. It fails and names the action if the run 
 
 	output.RegisterForItem(cmd.Flags())
 	beforeInput.Register(cmd.Flags(), beforeFlagName, "file with the building block from before the write, or - to read it from stdin")
-	_ = cmd.MarkFlagRequired(beforeFlagName)
 
 	return cmd
 }
@@ -70,8 +76,8 @@ func readBefore(cmd *cobra.Command, input internal.JsonInputFlag[client.MeshBuil
 }
 
 // awaitRunEnd writes the building block once its run has ended, and fails on an outcome someone has
-// to act on.
-func awaitRunEnd(ctx context.Context, out io.Writer, format internal.OutputFormat, raw *client.RawClient, buildingBlockUuid uuid.UUID, before client.MeshBuildingBlockV2Status) error {
+// to act on. A nil before waits for the run going on now.
+func awaitRunEnd(ctx context.Context, out io.Writer, format internal.OutputFormat, raw *client.RawClient, buildingBlockUuid uuid.UUID, before *client.MeshBuildingBlockV2Status) error {
 	wait := buildingblock.NewRunWait(raw, buildingBlockUuid)
 	ended, block, err := wait.AwaitEnd(ctx, before)
 	if err != nil {
@@ -80,7 +86,7 @@ func awaitRunEnd(ctx context.Context, out io.Writer, format internal.OutputForma
 	if err = format.WriteItem(out, ended); err != nil {
 		return err
 	}
-	if err = wait.Outcome(block); err != nil {
+	if err = wait.Outcome(ctx, block); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("The run of building block %s ended with action %s.", buildingBlockUuid, block.Status.Action))

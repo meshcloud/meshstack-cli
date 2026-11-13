@@ -28,7 +28,7 @@ skill and the help disagree, trust the help.
 | `meshstack workspace list` | | workspaces this login can see |
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
-| `meshstack buildingblock wait <uuid> --before <file\|->` | `bb` | waits until the run of one block has ended |
+| `meshstack buildingblock wait <uuid> [--before <file\|->]` | `bb` | waits until the run of one block has ended |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
@@ -380,9 +380,18 @@ meshstack api -X PUT /api/meshobjects/meshbuildingblocks/<uuid> --request-json b
   meshstack bb wait <uuid> --before=-
 ```
 
-Both fail, and name the action, when the run failed or waits for a person or a dependency. When the
+To wait for a run that is already going, such as one that an approval started, leave out
+`--before`:
+
+```sh
+meshstack bb wait <uuid>
+```
+
+All of them fail, and name the action, when the run failed or waits for a person or a dependency. When the
 run waits for approval, they name the waiting run and the detect run that planned it: see
-[Approval gates and preflight runs](#approval-gates-and-preflight-runs).
+[Approval gates and preflight runs](#approval-gates-and-preflight-runs). A run that creates building
+blocks, such as a starterkit, fails when one of them waits for approval. Then the error names that
+building block: approve its run, and run the parent again.
 
 A block that deletes itself at the end of its run, like a starterkit, is gone before `bb wait` can
 read the outcome. Poll its runs instead: `meshstack bbrun list --building-block <uuid> --workspace
