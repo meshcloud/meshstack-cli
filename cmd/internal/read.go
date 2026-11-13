@@ -18,8 +18,12 @@ type JsonInputFlag[T any] struct {
 }
 
 func (f *JsonInputFlag[T]) Register(flags *pflag.FlagSet, name, usage string) {
+	f.RegisterP(flags, name, "", usage)
+}
+
+func (f *JsonInputFlag[T]) RegisterP(flags *pflag.FlagSet, name, shorthand, usage string) {
 	f.name = name
-	flags.Var(f, name, usage)
+	flags.VarP(f, name, shorthand, usage)
 }
 
 func (f *JsonInputFlag[T]) String() string {

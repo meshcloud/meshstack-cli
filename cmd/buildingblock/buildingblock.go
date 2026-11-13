@@ -32,6 +32,7 @@ func New() *cobra.Command {
 	}
 
 	cmd.AddCommand(newList())
+	cmd.AddCommand(newCreate())
 	cmd.AddCommand(newTriggerRun())
 	cmd.AddCommand(newWait())
 	cmd.AddCommand(newUpgrade())
