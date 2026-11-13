@@ -68,6 +68,25 @@ func (r *RawClient) Get[M any](ctx context.Context, uuid uuid.UUID, pathElems ..
 		http.WithAccept(api.MeshObjectMimeType()))
 }
 
+// Post creates an object of M from payload, its JSON as meshStack takes it.
+func (r *RawClient) Post[M any](ctx context.Context, payload jsontext.Value) (jsontext.Value, error) {
+	api, err := r.api[M]()
+	if err != nil {
+		return nil, err
+	}
+	return api.DoRequest[jsontext.Value](ctx, http.MethodPost, api.ApiUrl, http.WithJsonPayload(payload, api.MeshObjectMimeType()))
+}
+
+// Put replaces the object of M with the uuid by payload, its JSON as meshStack takes it.
+func (r *RawClient) Put[M any](ctx context.Context, uuid uuid.UUID, payload jsontext.Value) (jsontext.Value, error) {
+	api, err := r.api[M]()
+	if err != nil {
+		return nil, err
+	}
+	return api.DoRequest[jsontext.Value](ctx, http.MethodPut, api.ApiUrl.JoinPath(uuid.String()),
+		http.WithJsonPayload(payload, api.MeshObjectMimeType()), http.Retryable())
+}
+
 // DoRequest joins path onto the endpoint, even one that names a host, so that the bearer token
 // never leaves for another host. The answer is of any content type, such as a plan artifact's
 // application/octet-stream, so it is returned unparsed.
