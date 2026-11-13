@@ -341,6 +341,12 @@ has planned the run again since:
 ```sh
 meshstack bb approve-run <uuid> --detect-run <detect-run-uuid>
 ```
+
+To reject a waiting run instead, abort it by its uuid:
+
+```sh
+meshstack bb abort-run <uuid> --run <waiting-run-uuid>
+```
  A
 Terraform apply that updates such a block ends with the provider warning `Building block run is
 waiting for input or approval` — that is the gate, not an error.
