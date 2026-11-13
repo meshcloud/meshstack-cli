@@ -58,12 +58,6 @@ the docs.
 
 <rules id="always-on">
 
-- **Self-explanatory code.** Move the fact into a name, a type, a check or a test: the compiler and
-  CI keep those true, while a comment goes stale in silence. A comment stays only when you could not
-  have written it by reading the code, and only when it changes what the reader does — the reason
-  for a decision, a rejected alternative, an external constraint with its source, a link to code
-  this must stay in step with. (*meshcloud-internal*: the `self-explanatory-code` skill of
-  `../meshfed-release`.)
 - **Lint and format only via `task lint`**, and **never run `gofmt` or `go vet` separately** — a
   differently built gofmt enforces different formatting. A `PostToolUse` hook in
   `.claude/settings.json` formats every `.go` file an agent writes, so it rarely reaches the gate.
@@ -90,6 +84,19 @@ the docs.
   decision tree and settle every open question with a recommended answer first. (*meshcloud-internal*:
   the `grill-me` skill of `../meshfed-release`.)
 
+</rules>
+
+<rules id="no-code-comments">
+**An agent writes no code comment**, unless:
+
+- an existing comment must be updated to stay true;
+- the user explicitly asked for it;
+- a tool requires it, such as the compiler (`//go:embed`), the linter (the reason of a `//nolint`,
+  a doc comment `revive` asks for) or `go test` (`// Output:`);
+- the passage of this file that asks for the comment says "This overrides the no-code-comments
+  rule".
+
+If you cannot express a fact in the code, write it in the commit message instead.
 </rules>
 
 ## Commands
@@ -139,4 +146,4 @@ checkout, so a missed ldflag fails nothing. Check `dist/*/meshstack --version` a
 </rules>
 
 Pin every GitHub Action by commit SHA with the version in a trailing comment, as the existing
-workflows do.
+workflows do. This overrides the no-code-comments rule.
