@@ -74,6 +74,9 @@ func (w RunWait) Outcome(block *client.MeshBuildingBlockV2) error {
 		return w.StartFailure(block)
 	case status.RunFailed():
 		err = fmt.Errorf("the run of building block %s ended with action %s", w.buildingBlockUuid, status.Action)
+	case status.Action == client.BuildingBlockActionApproveRun:
+		err = fmt.Errorf("run %s of building block %s is waiting for approval of the plan from the detect run %s. Review the plan with 'meshstack buildingblockrun plan %s'",
+			status.GetLatestRunUuid(), w.buildingBlockUuid, status.GetLatestDryRunUuid(), status.GetLatestRunUuid())
 	case status.IsWaitingForInput():
 		err = fmt.Errorf("the run of building block %s is paused at action %s and continues only after someone acts on it", w.buildingBlockUuid, status.Action)
 	}

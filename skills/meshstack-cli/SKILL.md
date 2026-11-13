@@ -380,7 +380,9 @@ meshstack api -X PUT /api/meshobjects/meshbuildingblocks/<uuid> --request-json b
   meshstack bb wait <uuid> --before=-
 ```
 
-Both fail, and name the action, when the run failed or waits for a person or a dependency.
+Both fail, and name the action, when the run failed or waits for a person or a dependency. When the
+run waits for approval, they name the waiting run and the detect run that planned it: see
+[Approval gates and preflight runs](#approval-gates-and-preflight-runs).
 
 A block that deletes itself at the end of its run, like a starterkit, is gone before `bb wait` can
 read the outcome. Poll its runs instead: `meshstack bbrun list --building-block <uuid> --workspace
