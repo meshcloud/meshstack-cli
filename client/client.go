@@ -9,7 +9,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
-var MinMeshStackVersion = version.MustParse("2026.36.0")
+var MinMeshStackVersion = version.MustParse("2026.47.0")
 
 // Version is re-exported because MinMeshStackVersion is one and internal/version is closed to
 // another module.
