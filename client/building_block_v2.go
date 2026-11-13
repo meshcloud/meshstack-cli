@@ -46,6 +46,7 @@ var (
 	BuildingBlockActionUpgradeAvailable     = BuildingBlockActions.Entry("UPGRADE_AVAILABLE")
 	BuildingBlockActionReviewErrors         = BuildingBlockActions.Entry("REVIEW_ERRORS")
 	BuildingBlockActionReviewAbortedRun     = BuildingBlockActions.Entry("REVIEW_ABORTED_RUN")
+	BuildingBlockActionUnlockRuns           = BuildingBlockActions.Entry("UNLOCK_RUNS")
 	BuildingBlockActionNoAction             = BuildingBlockActions.Entry("NO_ACTION")
 )
 
@@ -198,14 +199,31 @@ type MeshBuildingBlockV2ListFilter struct {
 	Sort                         SortCriteria `json:"sort"`
 }
 
+type BuildingBlockSkipRunOn string
+
+var (
+	BuildingBlockSkipRunOns              = enum.Enum[BuildingBlockSkipRunOn]{}
+	BuildingBlockSkipRunOnVersionUpgrade = BuildingBlockSkipRunOns.Entry("VERSION_UPGRADE")
+)
+
+// MeshBuildingBlockV2UpdateOptions go out as query parameters, and a zero field as none, so the
+// zero value works against a meshStack that does not know them.
+type MeshBuildingBlockV2UpdateOptions struct {
+	// SkipRunOn locks the building block when the update matches one of the values: meshStack saves
+	// the update and starts no run until Unlock.
+	SkipRunOn []enum.Entry[BuildingBlockSkipRunOn] `json:"skipRunOn"`
+}
+
 type MeshBuildingBlockV2Client interface {
 	Read(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
 	ReadFunc(uuid string) func(ctx context.Context) (*MeshBuildingBlockV2, error)
 	List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error)
 	Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
-	Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
+	Update(ctx context.Context, bb *MeshBuildingBlockV2, options MeshBuildingBlockV2UpdateOptions) (*MeshBuildingBlockV2, error)
 	Delete(ctx context.Context, uuid string, purge bool) error
 	TriggerRun(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
+	Lock(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
+	Unlock(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
 }
 
 type meshBuildingBlockV2Client struct {
@@ -234,11 +252,11 @@ func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingB
 	return c.meshObject.Post(ctx, bb)
 }
 
-func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
+func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingBlockV2, options MeshBuildingBlockV2UpdateOptions) (*MeshBuildingBlockV2, error) {
 	if bb.Metadata.Uuid == nil {
 		return nil, errors.New("cannot update building block without UUID")
 	}
-	return c.meshObject.Put(ctx, *bb.Metadata.Uuid, bb)
+	return c.meshObject.Put(ctx, *bb.Metadata.Uuid, bb, http.WithUrlQuery(options))
 }
 
 func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purge bool) error {
@@ -260,6 +278,11 @@ func (status MeshBuildingBlockV2Status) IsRunning() bool {
 
 func (status MeshBuildingBlockV2Status) IsWaitingForInput() bool {
 	return slices.Contains(buildingBlockActionsWaitingForInput, status.Action)
+}
+
+// IsLocked says that meshStack starts no run of the block until someone unlocks it.
+func (status MeshBuildingBlockV2Status) IsLocked() bool {
+	return status.Action == BuildingBlockActionUnlockRuns
 }
 
 func (status MeshBuildingBlockV2Status) RunFailed() bool {
@@ -354,4 +377,21 @@ func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string
 	return c.meshObject.PostAtPath[*MeshBuildingBlockV2](ctx, struct {
 		DryRun bool `json:"dryRun"`
 	}{}, bbUuid, "trigger-run")
+}
+
+// Lock stops meshStack from starting any further run of a building block until Unlock. A run that
+// is going on goes to its end. meshStack answers 200 without a change for a block that is locked.
+func (c meshBuildingBlockV2Client) Lock(ctx context.Context, bbUuid string) (*MeshBuildingBlockV2, error) {
+	return c.postAction(ctx, bbUuid, "lock")
+}
+
+// Unlock lets meshStack decide again whether a locked building block runs. meshStack answers 200
+// without a change for a block that is not locked.
+func (c meshBuildingBlockV2Client) Unlock(ctx context.Context, bbUuid string) (*MeshBuildingBlockV2, error) {
+	return c.postAction(ctx, bbUuid, "unlock")
+}
+
+func (c meshBuildingBlockV2Client) postAction(ctx context.Context, bbUuid, action string) (*MeshBuildingBlockV2, error) {
+	return c.meshObject.DoRequest[*MeshBuildingBlockV2](ctx, http.MethodPost, c.meshObject.ApiUrl.JoinPath(bbUuid, action),
+		http.WithAccept(c.meshObject.MeshObjectMimeType()))
 }
