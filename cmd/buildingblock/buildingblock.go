@@ -13,6 +13,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/client"
 	"github.com/meshcloud/meshstack-cli/cmd/buildingblock/tfstate"
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
 )
@@ -76,6 +77,20 @@ func (a runAction) readBuildingBlock(ctx context.Context) (jsontext.Value, linke
 		return nil, block, err
 	}
 	return raw, block, json.Unmarshal(raw, &block)
+}
+
+const runFlagName = "run"
+
+// readNamedRun reads the run that the caller names with --run, which has to belong to the building block.
+func (a runAction) readNamedRun(ctx context.Context, runUuid uuid.UUID) (client.MeshBuildingBlockRun, error) {
+	run, err := buildingblockrun.ReadRun(ctx, a.meshStack, runUuid)
+	if err != nil {
+		return run, err
+	}
+	if run.Spec.BuildingBlock.Uuid != a.buildingBlockUuid.String() {
+		return run, fmt.Errorf("run %s belongs to building block %s, not to %s", runUuid, run.Spec.BuildingBlock.Uuid, a.buildingBlockUuid)
+	}
+	return run, nil
 }
 
 // report reads the building block again and writes it, because a run hides the actions

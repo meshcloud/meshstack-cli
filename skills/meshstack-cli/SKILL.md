@@ -29,7 +29,7 @@ skill and the help disagree, trust the help.
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
 | `meshstack buildingblock wait <uuid> --before <file\|->` | `bb` | waits until the run of one block has ended |
-| `meshstack buildingblock approve-run <uuid> --detect-run <run-uuid>` | `bb` | approves the plan that `bbrun plan` shows, once the user allows it |
+| `meshstack buildingblock approve-run <uuid> --run <run-uuid> --detect-run <run-uuid>` | `bb` | approves the plan that `bbrun plan` shows, once the user allows it |
 | `meshstack buildingblock abort-run <uuid> --run <run-uuid>` | `bb` | aborts one run of a block, also one in progress |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
@@ -344,12 +344,12 @@ Report the `Plan:` line and anything unexpected, and hand the user a deep link (
 Terraform apply that updates such a block ends with the provider warning `Building block run is
 waiting for input or approval` — that is the gate, not an error.
 
-Approve the run only if the user allows it for this plan. Then pass the detect run that `bbrun plan`
-prints. The approval fails if meshStack has planned the run again since. The plan has changed then:
-show the user the new plan, and approve only if they allow it again.
+Approve the run only if the user allows it for this plan. Then pass the waiting run and the detect
+run that `bbrun plan` prints. The approval fails if meshStack has planned the run again since. The
+plan has changed then: show the user the new plan, and approve only if they allow it again.
 
 ```sh
-meshstack bb approve-run <uuid> --detect-run <detect-run-uuid>
+meshstack bb approve-run <uuid> --run <waiting-run-uuid> --detect-run <detect-run-uuid>
 ```
 
 The command prints the block as it reads it right after the approval, which is no `--before` for

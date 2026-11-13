@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/meshcloud/meshstack-cli/client"
-	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 )
 
@@ -36,7 +35,7 @@ Without a terminal, pass the uuid of the run to abort with --` + runFlagName + `
 		Args: internal.UuidArg(&buildingBlockUuid),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			named := runUuid != uuid.Nil()
+			named := cmd.Flags().Changed(runFlagName)
 			action, err := newRunAction(cmd, buildingBlockUuid, output.Format, named)
 			if err != nil {
 				return err
@@ -53,8 +52,6 @@ Without a terminal, pass the uuid of the run to abort with --` + runFlagName + `
 
 	return cmd
 }
-
-const runFlagName = "run"
 
 func (a runAction) abort(ctx context.Context) error {
 	_, block, err := a.readBuildingBlock(ctx)
@@ -89,12 +86,9 @@ func (a runAction) abort(ctx context.Context) error {
 }
 
 func (a runAction) abortNamedRun(ctx context.Context, runUuid uuid.UUID) error {
-	run, err := buildingblockrun.ReadRun(ctx, a.meshStack, runUuid)
+	run, err := a.readNamedRun(ctx, runUuid)
 	if err != nil {
 		return err
-	}
-	if run.Spec.BuildingBlock.Uuid != a.buildingBlockUuid.String() {
-		return fmt.Errorf("run %s belongs to building block %s, not to %s", runUuid, run.Spec.BuildingBlock.Uuid, a.buildingBlockUuid)
 	}
 	if run.Links.Abort == nil {
 		return fmt.Errorf("run %s of building block %s has the status %s and cannot be aborted, or you are not allowed to abort it",
