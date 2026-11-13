@@ -12,8 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/meshcloud/meshstack-cli/cmd/buildingblockrun"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/cmd/internal/prompt"
+	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
@@ -77,6 +79,19 @@ func TestApproveRunApprovesOnlyThePlanItShowed(t *testing.T) {
 
 		require.EqualError(t, cmd.ExecuteContext(t.Context()), "approve-run needs a terminal, because it asks you to confirm")
 		assert.Empty(t, server.TakeRequests())
+	})
+
+	t.Run("bbrun plan prints the plan of the waiting run and names the detect run", func(t *testing.T) {
+		testlogin.LoggedInTo(t, server.URL)
+		captured := logs.Capture(t)
+		cmd := buildingblockrun.New()
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetArgs([]string{"plan", waitingRun})
+
+		require.NoError(t, cmd.ExecuteContext(t.Context()))
+		assert.Equal(t, "Plan: SUCCEEDED\nPlan | + resource \"x\" will be created\n", stdout.String())
+		assert.Contains(t, captured.String(), "from the detect run "+planRun)
 	})
 
 	t.Run("a plan that is not approved stays waiting", func(t *testing.T) {

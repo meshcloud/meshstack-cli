@@ -64,17 +64,7 @@ func (a runAction) approve(ctx context.Context) error {
 		return fmt.Errorf("the latest run %s of building block %s (action %s) is not waiting for approval, or you are not allowed to approve it",
 			run.Metadata.Uuid, a.buildingBlockUuid, block.Status.Action)
 	}
-	if run.Links.Predecessor == nil {
-		return fmt.Errorf("run %s is waiting for approval, but meshStack does not say which run created its plan", run.Metadata.Uuid)
-	}
-	plan, err := a.meshStack.BuildingBlockRunAction.ReadRun(ctx, *run.Links.Predecessor)
-	if err != nil {
-		return err
-	}
-	if plan.Links.DownloadLogs == nil {
-		return fmt.Errorf("cannot read the logs of run %s, which created the plan for run %s", plan.Metadata.Uuid, run.Metadata.Uuid)
-	}
-	logs, err := a.meshStack.BuildingBlockRunAction.ReadLogs(ctx, *plan.Links.DownloadLogs)
+	plan, logs, err := buildingblockrun.ReadPlan(ctx, a.meshStack, run)
 	if err != nil {
 		return err
 	}

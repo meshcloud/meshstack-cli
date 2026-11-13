@@ -34,6 +34,7 @@ skill and the help disagree, trust the help.
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
 | `meshstack buildingblockrun list [--building-block <uuid>]` | `bbrun` | runs, newest first |
 | `meshstack buildingblockrun logs <run-uuid>` | `bbrun` | the steps of one run, with their output |
+| `meshstack buildingblockrun plan <run-uuid>` | `bbrun` | the plan that a run waits to have approved |
 | `meshstack eventlog list` | | event logs, newest first |
 | `meshstack api <path> [-X method] [--request-json file\|-]` | | any meshStack API call, with this login |
 | `meshstack api-docs [<path>] [--describe <kind>]` | | what the API docs say about a request |
@@ -325,11 +326,11 @@ Every call starts a run, so trigger once and then wait.
 A definition with `approvalPolicies` does not apply a gated change straight away. meshStack first
 runs a **preflight**: a dry run, listed with `spec.behavior == "DETECT"`. The `APPLY` run after it
 waits, with the block's action `APPROVE_RUN`, until someone approves it in meshPanel. The approver sees the
-preflight's plan, so read it yourself before you ask for the approval:
+preflight's plan, so read it yourself before you ask for the approval. `bbrun plan` takes the waiting
+run, the block's `status.latestRunUuid`, and prints the plan of the preflight before it:
 
 ```sh
-meshstack bbrun logs <preflight-run-uuid> -o ndjson |
-  jq -r '.steps[].systemMessage // ""' |
+meshstack bbrun plan <waiting-run-uuid> |
   grep -E "will be (created|destroyed|updated|replaced)|must be replaced|Plan:"
 ```
 
