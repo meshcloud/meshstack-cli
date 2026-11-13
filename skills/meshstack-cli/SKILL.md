@@ -29,6 +29,7 @@ skill and the help disagree, trust the help.
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
 | `meshstack buildingblock wait <uuid> [--before <file\|->]` | `bb` | waits until the run of one block has ended |
+| `meshstack buildingblock upgrade <uuid> [--input <name>=<value>]` | `bb` | upgrades one block to the latest released version of its definition |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
@@ -443,3 +444,17 @@ jq -n '{kind: "meshBuildingBlock", spec: {
 
 The order's author is the logged-in user, so a starterkit grants them its roles. A draft definition
 version can only be ordered in the workspace that owns it.
+
+## Upgrading a building block
+
+`bb upgrade` moves a block to the latest released version of its definition and keeps its input
+values. Give a value for each input that the new version adds, such as a payment method:
+
+```sh
+meshstack bb upgrade <uuid> --wait \
+  --input 'payment_method={"kind": "meshPaymentMethod", "name": "<payment-method>"}'
+```
+
+A value that is valid JSON goes out as that JSON, any other value as a string. Changing the version
+needs admin rights or the right of the workspace that owns the definition to manage its building
+blocks.
