@@ -22,6 +22,7 @@ func New() *cobra.Command {
 
 	cmd.AddCommand(newList())
 	cmd.AddCommand(newLogs())
+	cmd.AddCommand(newPlan())
 
 	return cmd
 }

@@ -6,8 +6,8 @@ description: >
   (metadata/spec/status) that makes filtering cheap, and `meshstack api` / `api-docs` for
   everything the other commands do not cover. Use when asked to list, inspect or debug workspaces,
   building blocks, building block definitions or building block runs, to report on the health of
-  the building blocks a platform team provides, to trigger or wait for a run, or to order a
-  building block.
+  the building blocks a platform team provides, to trigger or wait for a run, to review and approve
+  a run that waits for approval, to abort a run, or to order a building block.
 ---
 
 # meshStack CLI
@@ -29,11 +29,14 @@ skill and the help disagree, trust the help.
 | `meshstack buildingblock list` | `bb` | building blocks (deployed instances), newest first |
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
 | `meshstack buildingblock wait <uuid> --before <file\|->` | `bb` | waits until the run of one block has ended |
+| `meshstack buildingblock approve-run <uuid> --run <run-uuid> --detect-run <run-uuid>` | `bb` | approves the plan that `bbrun plan` shows, once the user allows it |
+| `meshstack buildingblock abort-run <uuid> --run <run-uuid>` | `bb` | aborts one run of a block, also one in progress |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
 | `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
 | `meshstack buildingblockrun list [--building-block <uuid>]` | `bbrun` | runs, newest first |
 | `meshstack buildingblockrun logs <run-uuid>` | `bbrun` | the steps of one run, with their output |
+| `meshstack buildingblockrun plan <run-uuid>` | `bbrun` | the plan that a run waits to have approved |
 | `meshstack eventlog list` | | event logs, newest first |
 | `meshstack api <path> [-X method] [--request-json file\|-]` | | any meshStack API call, with this login |
 | `meshstack api-docs [<path>] [--describe <kind>]` | | what the API docs say about a request |
@@ -317,25 +320,55 @@ meshstack bb trigger-run <uuid> -o ndjson | jq -r '.status.latestRunUuid'
 It waits until meshStack has started the run, and prints the block; `status.latestRunUuid` names
 the new run. It never approves: when the definition gates manual triggers
 (`spec.approvalPolicies.manualTriggers`), meshStack starts a preflight run, which
-`status.latestDryRunUuid` names, and the run after it waits until a person approves it in meshPanel.
+`status.latestDryRunUuid` names at first, and the run after it waits until a person approves it, in
+meshPanel or with `bb approve-run` (see
+[Approval gates and preflight runs](#approval-gates-and-preflight-runs)).
 Every call starts a run, so trigger once and then wait.
 
 ## Approval gates and preflight runs
 
 A definition with `approvalPolicies` does not apply a gated change straight away. meshStack first
 runs a **preflight**: a dry run, listed with `spec.behavior == "DETECT"`. The `APPLY` run after it
-waits, with the block's action `APPROVE_RUN`, until someone approves it in meshPanel. The approver sees the
-preflight's plan, so read it yourself before you ask for the approval:
+waits, with the block's action `APPROVE_RUN`, until someone approves it in meshPanel or with
+`bb approve-run`. The approver sees the preflight's plan, so read it yourself before you ask for the
+approval. `bbrun plan` takes the waiting run, the block's `status.latestRunUuid`, and prints the plan
+of the preflight before it. The command prints a line `<step>: <status>` for each step and the lines
+of a step's messages after `<step> |`, so filter on the bar:
 
 ```sh
-meshstack bbrun logs <preflight-run-uuid> -o ndjson |
-  jq -r '.steps[].systemMessage // ""' |
-  grep -E "will be (created|destroyed|updated|replaced)|must be replaced|Plan:"
+meshstack bbrun plan <waiting-run-uuid> |
+  grep -E '\| .*(will be (created|destroyed|updated|replaced)|must be replaced|Plan:)'
 ```
 
 Report the `Plan:` line and anything unexpected, and hand the user a deep link (below). A
 Terraform apply that updates such a block ends with the provider warning `Building block run is
 waiting for input or approval` — that is the gate, not an error.
+
+Approve the run only if the user allows it for this plan. Then pass the waiting run and the detect
+run that `bbrun plan` prints. The approval fails if meshStack has planned the run again since. The
+plan has changed then: show the user the new plan, and approve only if they allow it again.
+
+```sh
+meshstack bb approve-run <uuid> --run <waiting-run-uuid> --detect-run <detect-run-uuid>
+```
+
+The command prints the block as it reads it right after the approval, which is no `--before` for
+`bb wait`. To wait for the approved run, follow its logs. The command exits with status 0 if the run
+succeeded:
+
+```sh
+meshstack bbrun logs <waiting-run-uuid> --follow
+```
+
+To reject a waiting run instead, if the user asks you to, abort it by its uuid. The command does not
+ask, and it aborts a run in any state: if someone approved the run since you read the block, the
+apply in progress stops, and its changes can stay half done. So read the block again just before,
+and abort only if its `status.action` is still `APPROVE_RUN`. The same command aborts a run in
+progress, if the user asks you to:
+
+```sh
+meshstack bb abort-run <uuid> --run <waiting-run-uuid>
+```
 
 ## Linking into meshPanel
 
@@ -366,7 +399,9 @@ meshstack api -X PUT /api/meshobjects/meshbuildingblocks/<uuid> --request-json b
   meshstack bb wait <uuid> --before=-
 ```
 
-Both fail, and name the action, when the run failed or waits for a person or a dependency.
+Both fail, and name the action, when the run failed or waits for a person or a dependency. When the
+run waits for approval, they also point to `bbrun plan` for the waiting run: see
+[Approval gates and preflight runs](#approval-gates-and-preflight-runs).
 
 A block that deletes itself at the end of its run, like a starterkit, is gone before `bb wait` can
 read the outcome. Poll its runs instead: `meshstack bbrun list --building-block <uuid> --workspace
