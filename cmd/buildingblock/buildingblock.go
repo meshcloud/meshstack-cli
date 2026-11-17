@@ -35,6 +35,7 @@ func New() *cobra.Command {
 	cmd.AddCommand(newTriggerRun())
 	cmd.AddCommand(newWait())
 	cmd.AddCommand(newApproveRun())
+	cmd.AddCommand(newRejectRun())
 	cmd.AddCommand(newAbortRun())
 	cmd.AddCommand(tfstate.New())
 
@@ -51,7 +52,7 @@ type runAction struct {
 
 func newRunAction(cmd *cobra.Command, buildingBlockUuid uuid.UUID, format internal.OutputFormat) (runAction, error) {
 	p := prompt.New(cmd.InOrStdin(), cmd.ErrOrStderr())
-	// A script cannot approve or abort: the decision belongs to a person who saw the run.
+	// A script cannot approve, reject or abort: the decision belongs to a person who saw the run.
 	if !p.UsesTerminal() {
 		return runAction{}, fmt.Errorf("%s needs a terminal, because it asks you to confirm", cmd.Name())
 	}

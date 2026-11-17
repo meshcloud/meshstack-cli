@@ -19,6 +19,7 @@ type MeshBuildingBlockRunLinks struct {
 	Predecessor  *Link `json:"predecessor"`
 	DownloadLogs *Link `json:"downloadLogs"`
 	Approve      *Link `json:"approve"`
+	Reject       *Link `json:"reject"`
 	Abort        *Link `json:"abort"`
 }
 
@@ -54,8 +55,16 @@ func (c *MeshBuildingBlockRunActionClient) ApproveRun(ctx context.Context, appro
 	return err
 }
 
+func (c *MeshBuildingBlockRunActionClient) RejectRun(ctx context.Context, reject Link) error {
+	return c.postWithoutBody(ctx, reject)
+}
+
 func (c *MeshBuildingBlockRunActionClient) AbortRun(ctx context.Context, abort Link) error {
-	_, err := c.doAtLink[[]byte](ctx, http.MethodPost, abort,
+	return c.postWithoutBody(ctx, abort)
+}
+
+func (c *MeshBuildingBlockRunActionClient) postWithoutBody(ctx context.Context, link Link) error {
+	_, err := c.doAtLink[[]byte](ctx, http.MethodPost, link,
 		http.WithHeaders(gohttp.Header{"Content-Type": {c.run.MeshObjectMimeType()}}))
 	return err
 }

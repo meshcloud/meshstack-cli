@@ -26,6 +26,8 @@ func newAbortRun() *cobra.Command {
 		Short: "Abort the latest run of a building block",
 		Long: `Abort the latest run of a building block, or its dry run if the dry run is newer.
 
+To reject a run that is waiting for approval, use 'meshstack buildingblock reject-run'.
+
 The command shows the run and asks you to confirm, so it needs a terminal. After the abort, it prints the building block.`,
 		Example: `  meshstack buildingblock abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90
   meshstack bb abort-run 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90`,
@@ -57,6 +59,10 @@ func (a runAction) abort(ctx context.Context) error {
 	run, err := a.meshStack.BuildingBlockRunAction.ReadRun(ctx, *latest)
 	if err != nil {
 		return err
+	}
+	if run.Links.Abort == nil && run.Links.Reject != nil {
+		return fmt.Errorf("run %s of building block %s is waiting for approval, and you may reject it but not abort it. Reject it with 'meshstack buildingblock reject-run %s'",
+			run.Metadata.Uuid, a.buildingBlockUuid, a.buildingBlockUuid)
 	}
 	if run.Links.Abort == nil {
 		return fmt.Errorf("run %s of building block %s (action %s) has the status %s and cannot be aborted, or you are not allowed to abort it",
