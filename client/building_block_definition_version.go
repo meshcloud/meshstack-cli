@@ -71,6 +71,7 @@ var (
 	MeshBuildingBlockInputAssignmentTypeWorkspaceIdentifier         = MeshBuildingBlockInputAssignmentTypes.Entry("WORKSPACE_IDENTIFIER")
 	MeshBuildingBlockInputAssignmentTypeProjectIdentifier           = MeshBuildingBlockInputAssignmentTypes.Entry("PROJECT_IDENTIFIER")
 	MeshBuildingBlockInputAssignmentTypeFullPlatformIdentifier      = MeshBuildingBlockInputAssignmentTypes.Entry("FULL_PLATFORM_IDENTIFIER")
+	MeshBuildingBlockInputAssignmentTypeLandingZoneIdentifier       = MeshBuildingBlockInputAssignmentTypes.Entry("LANDING_ZONE_IDENTIFIER")
 	MeshBuildingBlockInputAssignmentTypeTenantBuildingBlockUuid     = MeshBuildingBlockInputAssignmentTypes.Entry("TENANT_BUILDING_BLOCK_UUID")
 	MeshBuildingBlockInputAssignmentTypeStatic                      = MeshBuildingBlockInputAssignmentTypes.Entry("STATIC")
 	MeshBuildingBlockInputAssignmentTypeUserPermissions             = MeshBuildingBlockInputAssignmentTypes.Entry("USER_PERMISSIONS")
