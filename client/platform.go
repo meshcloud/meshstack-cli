@@ -48,6 +48,7 @@ type PlatformAvailability struct {
 	Restriction            string            `json:"restriction" tfsdk:"restriction"`
 	PublicationState       string            `json:"publicationState" tfsdk:"publication_state"`
 	RestrictedToWorkspaces types.Set[string] `json:"restrictedToWorkspaces,omitempty" tfsdk:"restricted_to_workspaces"`
+	HiddenInMarketplace    bool              `json:"hiddenInMarketplace" tfsdk:"hidden_in_marketplace"`
 }
 
 type PlatformConfig struct {
