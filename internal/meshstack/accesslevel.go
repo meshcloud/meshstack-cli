@@ -58,7 +58,7 @@ func (l AccessLevel) Detail() string {
 	case AccessWrite:
 		return "Read and change but no sensitive operations"
 	case AccessRead:
-		return "List and read only."
+		return "List and read only"
 	}
 	return ""
 }
