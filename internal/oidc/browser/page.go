@@ -16,16 +16,19 @@ var (
 	pageHtml string
 	//go:embed logo.svg
 	logoSvg []byte
+	//go:embed help.svg
+	helpSvg []byte
 )
 
 var (
 	pageTemplate = template.Must(template.New("page").Parse(pageHtml))
 	// A data URI, so the page needs nothing else from the loopback server.
-	logo = template.URL("data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(logoSvg)) //nolint:gosec // the embedded logo, not input
+	logo     = template.URL("data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(logoSvg)) //nolint:gosec // the embedded logo, not input
+	helpIcon = template.URL("data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(helpSvg)) //nolint:gosec // the embedded icon, not input
 )
 
 type pageData struct {
-	Logo                                  template.URL
+	Logo, HelpIcon                        template.URL
 	Title, Endpoint, AccessLevel, Message string
 	Failed                                bool
 	Form                                  *accessLevelForm
@@ -58,6 +61,7 @@ func newAccessLevelForm(nonce string, selected meshstack.AccessLevel) *accessLev
 
 func page(ctx context.Context, w gohttp.ResponseWriter, status int, data pageData) {
 	data.Logo = logo
+	data.HelpIcon = helpIcon
 	data.Failed = status >= gohttp.StatusBadRequest
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
