@@ -44,7 +44,7 @@ func (l AccessLevel) Label() string {
 	case AccessFull:
 		return "Full access"
 	case AccessWrite:
-		return "No delete"
+		return "Safe access"
 	case AccessRead:
 		return "Read-only"
 	}
@@ -54,11 +54,25 @@ func (l AccessLevel) Label() string {
 func (l AccessLevel) Detail() string {
 	switch l {
 	case AccessFull:
-		return "Everything your roles allow, including deleting and approving building block runs."
+		return "Everything your roles allow, including sensitive operations"
 	case AccessWrite:
-		return "Read and change, but never delete or approve building block runs."
+		return "Read and change but no sensitive operations"
 	case AccessRead:
 		return "List and read only."
+	}
+	return ""
+}
+
+func (l AccessLevel) DetailHelp() string {
+	if l == AccessFull || l == AccessWrite {
+		return "Sensitive operations are deleting meshObjects and approving or rejecting building block runs."
+	}
+	return ""
+}
+
+func (l AccessLevel) Recommendation() string {
+	if l == AccessWrite {
+		return "Recommended for work with agents"
 	}
 	return ""
 }

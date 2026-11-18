@@ -45,6 +45,16 @@ func TestTheAccessLevelPagePreselectsThePreviousLevel(t *testing.T) {
 	assert.NotContains(t, recorder.Body.String(), `value="read" required checked`)
 }
 
+func TestTheAccessLevelPageExplainsSensitiveOperationsOnTheLevelsThatNameThem(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	newLoginPages("").handler().ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), gohttp.MethodGet, "/", nil))
+
+	require.Equal(t, gohttp.StatusOK, recorder.Code)
+	body := recorder.Body.String()
+	assert.Equal(t, 2, strings.Count(body, `data-help="Sensitive operations are deleting meshObjects and approving or rejecting building block runs."`))
+	assert.Equal(t, 1, strings.Count(body, "Recommended for work with agents"))
+}
+
 func TestAChosenAccessLevelRedirectsToTheIdentityProvider(t *testing.T) {
 	for _, test := range []struct {
 		name       string

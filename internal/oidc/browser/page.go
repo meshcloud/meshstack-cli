@@ -37,18 +37,20 @@ type accessLevelForm struct {
 }
 
 type accessLevelOption struct {
-	Value, Label, Detail string
-	Selected             bool
+	Value, Label, Detail, DetailHelp, Recommendation string
+	Selected                                         bool
 }
 
 func newAccessLevelForm(nonce string, selected meshstack.AccessLevel) *accessLevelForm {
 	form := &accessLevelForm{Nonce: nonce}
 	for _, level := range meshstack.AccessLevels {
 		form.Levels = append(form.Levels, accessLevelOption{
-			Value:    string(level),
-			Label:    level.Label(),
-			Detail:   level.Detail(),
-			Selected: level == selected,
+			Value:          string(level),
+			Label:          level.Label(),
+			Detail:         level.Detail(),
+			DetailHelp:     level.DetailHelp(),
+			Recommendation: level.Recommendation(),
+			Selected:       level == selected,
 		})
 	}
 	return form
