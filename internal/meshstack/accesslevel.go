@@ -54,9 +54,9 @@ func (l AccessLevel) Label() string {
 func (l AccessLevel) Detail() string {
 	switch l {
 	case AccessFull:
-		return "Everything your roles allow, including deleting."
+		return "Everything your roles allow, including deleting and approving building block runs."
 	case AccessWrite:
-		return "Read and change, but never delete."
+		return "Read and change, but never delete or approve building block runs."
 	case AccessRead:
 		return "List and read only."
 	}
