@@ -15,6 +15,7 @@
   label { display: flex; gap: .75rem; padding: .75rem; margin-bottom: .5rem; border: 1px solid #dee2e6; border-radius: .375rem; cursor: pointer; }
   label:has(input:checked) { border-color: #0d6efd; background: #e7f1ff; }
   .detail { display: block; color: #6c757d; font-size: .875rem; }
+  .recommendation { font-size: .75rem; }
   .help { position: relative; margin-left: .25rem; cursor: help; }
   .help img { height: 1em; vertical-align: -.125em; }
   .help::after { content: attr(data-help); position: absolute; z-index: 1; bottom: calc(100% + .5rem); left: 50%;
@@ -52,7 +53,7 @@
       <div><strong>{{.Label}}</strong>
         <span class="detail">{{.Detail}}{{with .DetailHelp}}<span class="help" tabindex="0" role="button" aria-label="{{.}}" data-help="{{.}}"><img src="{{$.HelpIcon}}" alt=""></span>{{end}}</span>
         {{- with .Recommendation}}
-        <span class="detail">{{.}}</span>
+        <span class="detail recommendation">{{.}}</span>
         {{- end}}</div></label>
     {{- end}}
     <button type="submit">Continue to log in</button>
