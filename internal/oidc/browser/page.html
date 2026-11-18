@@ -51,7 +51,7 @@
     {{- range .Levels}}
     <label><input type="radio" name="access" value="{{.Value}}" required{{if .Selected}} checked{{end}}>
       <div><strong>{{.Label}}</strong>
-        <span class="detail">{{.Detail}}{{with .DetailHelp}}<span class="help" tabindex="0" role="button" aria-label="{{.}}" data-help="{{.}}"><img src="{{$.HelpIcon}}" alt=""></span>{{end}}</span>
+        <span class="detail">{{.Detail}}{{with .DetailHelp}}<span class="help" tabindex="0" role="img" aria-label="{{.}}" data-help="{{.}}"><img src="{{$.HelpIcon}}" alt=""></span>{{end}}</span>
         {{- with .Recommendation}}
         <span class="detail recommendation">{{.}}</span>
         {{- end}}</div></label>
