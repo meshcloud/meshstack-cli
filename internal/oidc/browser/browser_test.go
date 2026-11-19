@@ -1,6 +1,8 @@
 package browser
 
 import (
+	"encoding/base64"
+	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
@@ -110,7 +113,10 @@ func TestALoginThatKeycloakGrantsAnotherAccessLevelIsEnded(t *testing.T) {
 	pages.flow.RevocationEndpoint = new(xurl.MustParsef("%s/revoke", server.URL))
 	pages.chosen = meshstack.AccessFull
 	tokenWith := func(scopes string) oidc.Token {
-		return oidc.Token{RefreshToken: "offline-" + scopes, Scope: "openid offline_access " + scopes}
+		claims := fmt.Sprintf(`{"scope":"openid offline_access %s"}`, scopes)
+		var accessToken jwt.JWT
+		require.NoError(t, accessToken.UnmarshalText([]byte("e30."+base64.RawURLEncoding.EncodeToString([]byte(claims))+".sig")))
+		return oidc.Token{AccessToken: accessToken, RefreshToken: "offline-" + scopes, Scope: "openid offline_access cli-access-full"}
 	}
 
 	t.Run("the chosen level is stored", func(t *testing.T) {

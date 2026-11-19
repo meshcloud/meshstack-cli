@@ -19,6 +19,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/io"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 )
 
@@ -235,11 +236,7 @@ func (l *loginPages) receiveRedirect(w gohttp.ResponseWriter, r *gohttp.Request)
 
 func (l *loginPages) grantedLevel(ctx context.Context, token oidc.Token) (meshstack.AccessLevel, error) {
 	chosen := l.chosenLevel()
-	var scopes scope.Scopes
-	for granted := range strings.FieldsSeq(token.Scope) {
-		scopes = append(scopes, scope.Scope(granted))
-	}
-	granted, ok := meshstack.AccessLevelOf(scopes)
+	granted, ok := meshstack.AccessLevelOf(token.AccessToken.GetClaim(jwt.ScopeClaim))
 	switch {
 	case ok && granted == chosen:
 		return granted, nil
