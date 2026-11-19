@@ -76,6 +76,8 @@ type MeshBuildingBlockInput struct {
 	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitzero" tfsdk:"-"`
 	AssignmentType enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
 
+	UpdateableByConsumer *bool `json:"updateableByConsumer,omitzero" tfsdk:"-"`
+
 	// IsSensitive decides the case of Value: [types.Secret] when true, [types.Any] otherwise.
 	// [types.Variant] decodes into X first, so UnmarshalJSONFrom moves a non-sensitive value that also
 	// decodes as a Secret over to Y.
