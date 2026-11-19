@@ -11,7 +11,6 @@ import (
 	"net"
 	gohttp "net/http"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -71,15 +70,11 @@ func Login(ctx context.Context, endpoint xurl.URL, client oidc.Client, previous 
 	if err != nil {
 		return oidc.Token{}, "", err
 	}
-	chosen := login.chosenLevel()
-	if slices.Contains(strings.Fields(token.Scope), string(chosen.Scope())) {
-		return token, chosen, nil
+	level, err := login.grantedLevel(ctx, token)
+	if err != nil {
+		return oidc.Token{}, "", err
 	}
-	if chosen != meshstack.AccessFull {
-		return oidc.Token{}, "", fmt.Errorf("this meshStack does not support access levels yet: %s did not grant the access level %q, "+
-			"so the login would have full access; log in again and choose %q", client.Issuer, chosen.Label(), meshstack.AccessFull.Label())
-	}
-	return token, "", nil
+	return token, level, nil
 }
 
 // Previous is the login of the profile that a new login replaces.
@@ -236,6 +231,32 @@ func (l *loginPages) receiveRedirect(w gohttp.ResponseWriter, r *gohttp.Request)
 		Message:     "You can close this tab and return to your terminal.",
 	})
 	l.arrive(callback{code: query.Get("code")})
+}
+
+func (l *loginPages) grantedLevel(ctx context.Context, token oidc.Token) (meshstack.AccessLevel, error) {
+	chosen := l.chosenLevel()
+	var scopes scope.Scopes
+	for granted := range strings.FieldsSeq(token.Scope) {
+		scopes = append(scopes, scope.Scope(granted))
+	}
+	granted, ok := meshstack.AccessLevelOf(scopes)
+	if !ok {
+		if chosen == meshstack.AccessFull {
+			return "", nil
+		}
+		return "", fmt.Errorf("this meshStack does not support access levels yet: %s did not grant the access level %q, "+
+			"so the login would have full access; log in again and choose %q", l.flow.Issuer, chosen.Label(), meshstack.AccessFull.Label())
+	}
+	if granted == chosen {
+		return granted, nil
+	}
+	if err := l.flow.RevokeRefreshToken(ctx, token.RefreshToken); err != nil {
+		return "", fmt.Errorf("%s granted the access level %q instead of %q, because it kept the access level of an earlier login, "+
+			"and cannot end that login: %w; log in once with %q, then again with %q",
+			l.flow.Issuer, granted.Label(), chosen.Label(), err, granted.Label(), chosen.Label())
+	}
+	return "", fmt.Errorf("%s granted the access level %q instead of %q, because it kept the access level of an earlier login; "+
+		"that login is now ended, so log in again and choose %q", l.flow.Issuer, granted.Label(), chosen.Label(), chosen.Label())
 }
 
 // arrive keeps the first result: a second callback, such as a reloaded tab, must not block.
