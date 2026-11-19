@@ -128,7 +128,10 @@ func TestAccBrowserLogin(t *testing.T) {
 		full := newCLI(t, endpoint)
 
 		err := loginWith(full, "full")
-		require.Error(t, err, "keycloak granted full access although the browser session already holds a login with safe access")
+		if err == nil {
+			t.Fatalf("the login with full access passed, storing the level %q while its token grants %q",
+				storedAccessLevel(t, full), tokenAccessLevel(t, full))
+		}
 		require.ErrorContains(t, err, `granted the access level "Safe access" instead of "Full access"`)
 		assert.NoFileExists(t, full.credentialsJson())
 		assert.Equal(t, gohttp.StatusBadRequest, refreshStatus(t, issuer, safeRefreshToken),

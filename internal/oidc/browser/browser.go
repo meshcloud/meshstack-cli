@@ -67,10 +67,15 @@ func Login(ctx context.Context, endpoint xurl.URL, client oidc.Client, previous 
 	if err != nil {
 		return oidc.Token{}, "", err
 	}
-	token, err := login.flow.Exchange(ctx, code)
+	exchanged, err := login.flow.Exchange(ctx, code)
 	if err != nil {
 		return oidc.Token{}, "", err
 	}
+	token, err := client.Refresh(ctx, exchanged.RefreshToken, scope.Scopes{scope.OpenId, scope.OfflineAccess})
+	if err != nil {
+		return oidc.Token{}, "", fmt.Errorf("cannot renew the new login at %s to read the access level it keeps: %w", client.Issuer, err)
+	}
+	token.RefreshToken = cmp.Or(token.RefreshToken, exchanged.RefreshToken)
 	level, err := login.grantedLevel(ctx, token)
 	if err != nil {
 		return oidc.Token{}, "", err
