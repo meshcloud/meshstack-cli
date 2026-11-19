@@ -163,8 +163,8 @@ Field names worth knowing:
   `spec.deletionMode`, `spec.dependencyRefs`, `spec.implementation` (for example `terraform` with
   `repositoryUrl`, `repositoryPath`, `refName`), and `spec.inputs` / `spec.outputs` as maps of name
   to a declaration (`displayName`, `type`, `assignmentType`, `isSensitive`, `argument` for a
-  statically bound value). `spec.runnerRef.uuid` is the runner that executes the runs of building blocks on that version.
-  `status.usageCount` counts the blocks on that version.
+  statically bound value). `spec.runnerRef.uuid` is the runner that executes the runs of building
+  blocks on that version. `status.usageCount` counts the blocks on that version.
 - **Run** — `metadata.uuid`, `spec.runNumber`, `spec.behavior` (`APPLY`, `DETECT`), `status` (a
   plain string here, not an object). `spec.buildingBlock` repeats the block's placement, but its
   `projectIdentifier` and `fullPlatformIdentifier` are usually null — prefer the block's own
@@ -266,8 +266,8 @@ meshstack bbd list --limit unlimited -o ndjson |
 ```
 
 A released version keeps its runner, so each line with a `usageCount` above 0 has building blocks
-that someone must upgrade to a version that uses another runner. A draft version changes its runner in
-place.
+that someone must upgrade to a version that uses another runner. You can change the runner of a
+draft version in place.
 
 What a definition version declares as inputs, and how each one is assigned:
 
