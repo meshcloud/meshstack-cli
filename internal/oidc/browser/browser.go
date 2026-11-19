@@ -240,20 +240,26 @@ func (l *loginPages) grantedLevel(ctx context.Context, token oidc.Token) (meshst
 		scopes = append(scopes, scope.Scope(granted))
 	}
 	granted, ok := meshstack.AccessLevelOf(scopes)
-	if !ok {
-		if chosen == meshstack.AccessFull {
-			return "", nil
-		}
-		return "", fmt.Errorf("this meshStack does not support access levels yet: %s did not grant the access level %q, "+
-			"so the login would have full access; log in again and choose %q", l.flow.Issuer, chosen.Label(), meshstack.AccessFull.Label())
-	}
-	if granted == chosen {
+	switch {
+	case ok && granted == chosen:
 		return granted, nil
+	case !ok && chosen == meshstack.AccessFull:
+		return "", nil
 	}
-	if err := l.flow.RevokeRefreshToken(ctx, token.RefreshToken); err != nil {
+	revokeErr := l.flow.RevokeRefreshToken(ctx, token.RefreshToken)
+	switch {
+	case !ok && revokeErr != nil:
+		return "", fmt.Errorf("%s granted no access level instead of %q, so the login would have full access, and cannot end that login: %w; "+
+			"log in again and choose %q, or %q if this meshStack does not support access levels yet",
+			l.flow.Issuer, chosen.Label(), revokeErr, chosen.Label(), meshstack.AccessFull.Label())
+	case !ok:
+		return "", fmt.Errorf("%s granted no access level instead of %q, so the login would have full access; that login is now ended, "+
+			"so log in again and choose %q, or %q if this meshStack does not support access levels yet",
+			l.flow.Issuer, chosen.Label(), chosen.Label(), meshstack.AccessFull.Label())
+	case revokeErr != nil:
 		return "", fmt.Errorf("%s granted the access level %q instead of %q, because it kept the access level of an earlier login, "+
 			"and cannot end that login: %w; log in once with %q, then again with %q",
-			l.flow.Issuer, granted.Label(), chosen.Label(), err, granted.Label(), chosen.Label())
+			l.flow.Issuer, granted.Label(), chosen.Label(), revokeErr, granted.Label(), chosen.Label())
 	}
 	return "", fmt.Errorf("%s granted the access level %q instead of %q, because it kept the access level of an earlier login; "+
 		"that login is now ended, so log in again and choose %q", l.flow.Issuer, granted.Label(), chosen.Label(), chosen.Label())

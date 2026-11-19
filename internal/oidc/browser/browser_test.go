@@ -138,6 +138,15 @@ func TestALoginThatKeycloakGrantsAnotherAccessLevelIsEnded(t *testing.T) {
 		assert.Equal(t, []string{"offline-cli-access-write"}, revoked)
 	})
 
+	t.Run("safe access granted without any access level ends the login", func(t *testing.T) {
+		pages.chosen = meshstack.AccessWrite
+
+		_, err := pages.grantedLevel(t.Context(), tokenWith("email"))
+
+		require.ErrorContains(t, err, `granted no access level instead of "Safe access"`)
+		assert.Equal(t, []string{"offline-cli-access-write", "offline-email"}, revoked)
+	})
+
 	t.Run("a login that cannot be ended names the two logins that fix it", func(t *testing.T) {
 		revokeFails = true
 		pages.chosen = meshstack.AccessRead

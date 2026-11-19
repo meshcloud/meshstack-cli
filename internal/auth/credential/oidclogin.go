@@ -54,6 +54,22 @@ func (oidcLogin *OidcLogin) StoreLogin(oidcToken oidc.Token) {
 	oidcLogin.Cache.ScopedTokens[tokenCacheKey(token.GetClaim(jwt.WorkspaceClaim))] = token
 }
 
+func (oidcLogin *OidcLogin) GrantedLevel() meshstack.AccessLevel {
+	if oidcLogin.Cache == nil {
+		return oidcLogin.AccessLevel
+	}
+	var latest jwt.JWT
+	for _, token := range oidcLogin.Cache.ScopedTokens {
+		if token.GetClaim(jwt.ExpiryClaim).After(latest.GetClaim(jwt.ExpiryClaim).Time) {
+			latest = token
+		}
+	}
+	if level, ok := meshstack.AccessLevelOf(latest.GetClaim(jwt.ScopeClaim)); ok {
+		return level
+	}
+	return oidcLogin.AccessLevel
+}
+
 func (oidcLogin *OidcLogin) CachedToken(ctx context.Context, getWorkspace getWorkspaceFunc) (token jwt.JWT, found bool) {
 	if oidcLogin.Cache == nil {
 		return
