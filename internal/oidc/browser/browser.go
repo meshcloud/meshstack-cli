@@ -11,7 +11,6 @@ import (
 	"net"
 	gohttp "net/http"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/io"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
 	"github.com/meshcloud/meshstack-cli/internal/oidc/scope"
 )
 
@@ -67,19 +67,20 @@ func Login(ctx context.Context, endpoint xurl.URL, client oidc.Client, previous 
 	if err != nil {
 		return oidc.Token{}, "", err
 	}
-	token, err := login.flow.Exchange(ctx, code)
+	exchanged, err := login.flow.Exchange(ctx, code)
 	if err != nil {
 		return oidc.Token{}, "", err
 	}
-	chosen := login.chosenLevel()
-	if slices.Contains(strings.Fields(token.Scope), string(chosen.Scope())) {
-		return token, chosen, nil
+	token, err := client.Refresh(ctx, exchanged.RefreshToken, scope.Scopes{scope.OpenId, scope.OfflineAccess})
+	if err != nil {
+		return oidc.Token{}, "", fmt.Errorf("cannot renew the new login at %s to read the access level it keeps: %w", client.Issuer, err)
 	}
-	if chosen != meshstack.AccessFull {
-		return oidc.Token{}, "", fmt.Errorf("this meshStack does not support access levels yet: %s did not grant the access level %q, "+
-			"so the login would have full access; log in again and choose %q", client.Issuer, chosen.Label(), meshstack.AccessFull.Label())
+	token.RefreshToken = cmp.Or(token.RefreshToken, exchanged.RefreshToken)
+	level, err := login.grantedLevel(ctx, token)
+	if err != nil {
+		return oidc.Token{}, "", err
 	}
-	return token, "", nil
+	return token, level, nil
 }
 
 // Previous is the login of the profile that a new login replaces.
@@ -236,6 +237,34 @@ func (l *loginPages) receiveRedirect(w gohttp.ResponseWriter, r *gohttp.Request)
 		Message:     "You can close this tab and return to your terminal.",
 	})
 	l.arrive(callback{code: query.Get("code")})
+}
+
+func (l *loginPages) grantedLevel(ctx context.Context, token oidc.Token) (meshstack.AccessLevel, error) {
+	chosen := l.chosenLevel()
+	granted, ok := meshstack.AccessLevelOf(token.AccessToken.GetClaim(jwt.ScopeClaim))
+	switch {
+	case ok && granted == chosen:
+		return granted, nil
+	case !ok && chosen == meshstack.AccessFull:
+		return "", nil
+	}
+	revokeErr := l.flow.RevokeRefreshToken(ctx, token.RefreshToken)
+	switch {
+	case !ok && revokeErr != nil:
+		return "", fmt.Errorf("%s granted no access level instead of %q, so the login would have full access, and cannot end that login: %w; "+
+			"log in again and choose %q, or %q if this meshStack does not support access levels yet",
+			l.flow.Issuer, chosen.Label(), revokeErr, chosen.Label(), meshstack.AccessFull.Label())
+	case !ok:
+		return "", fmt.Errorf("%s granted no access level instead of %q, so the login would have full access; that login is now ended, "+
+			"so log in again and choose %q, or %q if this meshStack does not support access levels yet",
+			l.flow.Issuer, chosen.Label(), chosen.Label(), meshstack.AccessFull.Label())
+	case revokeErr != nil:
+		return "", fmt.Errorf("%s granted the access level %q instead of %q, because it kept the access level of an earlier login, "+
+			"and cannot end that login: %w; log in once with %q, then again with %q",
+			l.flow.Issuer, granted.Label(), chosen.Label(), revokeErr, granted.Label(), chosen.Label())
+	}
+	return "", fmt.Errorf("%s granted the access level %q instead of %q, because it kept the access level of an earlier login; "+
+		"that login is now ended, so log in again and choose %q", l.flow.Issuer, granted.Label(), chosen.Label(), chosen.Label())
 }
 
 // arrive keeps the first result: a second callback, such as a reloaded tab, must not block.

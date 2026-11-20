@@ -1,6 +1,8 @@
 package browser
 
 import (
+	"encoding/base64"
+	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,8 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
+	"github.com/meshcloud/meshstack-cli/internal/http"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/oidc"
+	"github.com/meshcloud/meshstack-cli/internal/oidc/jwt"
+	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 )
 
 func newLoginPages(previous meshstack.AccessLevel) *loginPages {
@@ -87,4 +92,74 @@ func TestAnAccessLevelFromAnotherPageIsRefused(t *testing.T) {
 	assert.Equal(t, gohttp.StatusForbidden, submitAccessLevel(t, pages, "another-nonce", "full").Code)
 	assert.Equal(t, gohttp.StatusBadRequest, submitAccessLevel(t, pages, "the-nonce", "admin").Code)
 	assert.Empty(t, pages.chosenLevel())
+}
+
+func TestALoginThatKeycloakGrantsAnotherAccessLevelIsEnded(t *testing.T) {
+	var revoked []string
+	revokeFails := false
+	server := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		revoked = append(revoked, r.PostFormValue("token"))
+		if revokeFails {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(gohttp.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"temporarily_unavailable","error_description":"try later"}`))
+		}
+	}))
+	defer server.Close()
+
+	pages := newLoginPages("")
+	pages.flow.Client.Client = http.NewClient(fakemeshstack.UserAgent)
+	pages.flow.Issuer = xurl.MustParsef("https://keycloak.example/realms/meshfed")
+	pages.flow.RevocationEndpoint = new(xurl.MustParsef("%s/revoke", server.URL))
+	pages.chosen = meshstack.AccessFull
+	tokenWith := func(scopes string) oidc.Token {
+		claims := fmt.Sprintf(`{"scope":"openid offline_access %s"}`, scopes)
+		var accessToken jwt.JWT
+		require.NoError(t, accessToken.UnmarshalText([]byte("e30."+base64.RawURLEncoding.EncodeToString([]byte(claims))+".sig")))
+		return oidc.Token{AccessToken: accessToken, RefreshToken: "offline-" + scopes, Scope: "openid offline_access cli-access-full"}
+	}
+
+	t.Run("the chosen level is stored", func(t *testing.T) {
+		level, err := pages.grantedLevel(t.Context(), tokenWith("cli-access-full"))
+
+		require.NoError(t, err)
+		assert.Equal(t, meshstack.AccessFull, level)
+		assert.Empty(t, revoked)
+	})
+
+	t.Run("a meshStack without access levels stores none for full access", func(t *testing.T) {
+		level, err := pages.grantedLevel(t.Context(), tokenWith("email"))
+
+		require.NoError(t, err)
+		assert.Empty(t, level)
+		assert.Empty(t, revoked)
+	})
+
+	t.Run("full access granted as safe access ends the login", func(t *testing.T) {
+		level, err := pages.grantedLevel(t.Context(), tokenWith("cli-access-write"))
+
+		require.ErrorContains(t, err, `granted the access level "Safe access" instead of "Full access"`)
+		require.ErrorContains(t, err, `log in again and choose "Full access"`)
+		assert.Empty(t, level)
+		assert.Equal(t, []string{"offline-cli-access-write"}, revoked)
+	})
+
+	t.Run("safe access granted without any access level ends the login", func(t *testing.T) {
+		pages.chosen = meshstack.AccessWrite
+
+		_, err := pages.grantedLevel(t.Context(), tokenWith("email"))
+
+		require.ErrorContains(t, err, `granted no access level instead of "Safe access"`)
+		assert.Equal(t, []string{"offline-cli-access-write", "offline-email"}, revoked)
+	})
+
+	t.Run("a login that cannot be ended names the two logins that fix it", func(t *testing.T) {
+		revokeFails = true
+		pages.chosen = meshstack.AccessRead
+
+		_, err := pages.grantedLevel(t.Context(), tokenWith("cli-access-write"))
+
+		require.ErrorContains(t, err, "try later")
+		require.ErrorContains(t, err, `log in once with "Safe access", then again with "Read-only"`)
+	})
 }

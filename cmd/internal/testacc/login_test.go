@@ -113,6 +113,35 @@ func TestAccBrowserLogin(t *testing.T) {
 		assert.Equal(t, "full", tokenAccessLevel(t, c), "the token keeps the access level of the earlier login")
 	})
 
+	t.Run("a profile that keycloak grants the access level of another profile's login gets its own on the next login", func(t *testing.T) {
+		browser := panelLogin(t, issuer, withWorkspace.Username, withWorkspace.Password)
+		loginWith := func(c *cli, level string) error {
+			run := startLogin(t, c, "1")
+			continueKeycloakLogin(t, browser, run.awaitStartURL(t), level, withWorkspace.Username)
+			err := run.wait()
+			t.Logf("`meshstack login` with %s access said:\n%s", level, run.output.String())
+			return err
+		}
+		safe := newCLI(t, endpoint)
+		require.NoError(t, loginWith(safe, "write"))
+		safeRefreshToken := cachedRefreshToken(t, safe)
+		full := newCLI(t, endpoint)
+
+		err := loginWith(full, "full")
+		if err == nil {
+			t.Fatalf("the login with full access passed, storing the level %q while its token grants %q",
+				storedAccessLevel(t, full), tokenAccessLevel(t, full))
+		}
+		require.ErrorContains(t, err, `granted the access level "Safe access" instead of "Full access"`)
+		assert.NoFileExists(t, full.credentialsJson())
+		assert.Equal(t, gohttp.StatusBadRequest, refreshStatus(t, issuer, safeRefreshToken),
+			"ending the login with safe access must end the session the other profile shares")
+
+		require.NoError(t, loginWith(full, "full"))
+		assert.Equal(t, "full", storedAccessLevel(t, full))
+		assert.Equal(t, "full", tokenAccessLevel(t, full), "keycloak still grants the access level of the ended login")
+	})
+
 	t.Run("a logout ends the session of the browser login", func(t *testing.T) {
 		c := newCLI(t, endpoint)
 		run := startLogin(t, c, "1")
@@ -123,14 +152,7 @@ func TestAccBrowserLogin(t *testing.T) {
 		output, err := c.run("", "auth", "logout")
 		require.NoErrorf(t, err, "the logout failed:\n%s", output)
 
-		refresh := url.Values{"client_id": {"meshstack-cli"}, "grant_type": {"refresh_token"}, "refresh_token": {refreshToken}}
-		req, err := gohttp.NewRequestWithContext(t.Context(), gohttp.MethodPost, issuer+"/protocol/openid-connect/token", strings.NewReader(refresh.Encode()))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		refreshed, err := gohttp.DefaultClient.Do(req)
-		require.NoError(t, err)
-		_ = refreshed.Body.Close()
-		assert.Equal(t, gohttp.StatusBadRequest, refreshed.StatusCode, "keycloak still refreshes the token of the logged out login")
+		assert.Equal(t, gohttp.StatusBadRequest, refreshStatus(t, issuer, refreshToken), "keycloak still refreshes the token of the logged out login")
 	})
 
 	t.Run("a login holds the profiles until the browser comes back", browserLoginHoldsTheProfiles(endpoint, withWorkspace))
@@ -171,6 +193,18 @@ func firstLoginWithAWorkspace(t *testing.T, logins []devLogin) devLogin {
 	found := slices.IndexFunc(logins, func(login devLogin) bool { return len(login.Workspaces) > 0 })
 	require.NotEqualf(t, -1, found, "%s carries no login with a workspace", envTestUsers)
 	return logins[found]
+}
+
+func refreshStatus(t *testing.T, issuer, refreshToken string) int {
+	t.Helper()
+	refresh := url.Values{"client_id": {"meshstack-cli"}, "grant_type": {"refresh_token"}, "refresh_token": {refreshToken}}
+	req, err := gohttp.NewRequestWithContext(t.Context(), gohttp.MethodPost, issuer+"/protocol/openid-connect/token", strings.NewReader(refresh.Encode()))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	refreshed, err := gohttp.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = refreshed.Body.Close()
+	return refreshed.StatusCode
 }
 
 func storedAccessLevel(t *testing.T, c *cli) string {

@@ -21,10 +21,10 @@ func (s Session) resolveOidcLoginCredential(ctx context.Context, previous *crede
 	}
 	var replaced browser.Previous
 	if previous != nil {
-		replaced.Level = previous.AccessLevel
 		if err = CacheFor(s.CurrentProfile, previous).Load(ctx); err != nil {
 			return Credential{}, err
 		}
+		replaced.Level = previous.GrantedLevel()
 		if previous.Cache != nil {
 			replaced.RefreshToken = previous.Cache.RefreshToken
 		}
