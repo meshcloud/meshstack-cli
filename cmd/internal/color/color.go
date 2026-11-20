@@ -87,7 +87,7 @@ func (e env) isOff(name string) bool {
 // evidence, and a log viewer outside the list, such as Jenkins without its AnsiColor plugin, shows
 // the escape codes as text. So does the system log of a building block run in meshPanel. Its
 // runner starts a script or tofu with neither CI nor TERM set, which keeps a run plain: see
-// cleanSystemEnv in tf-block-runner/tfrun of ../building-block-runner.
+// cleanSystemEnv in ../building-block-runner/internal/executor/tf/tfcmd.go.
 func (e env) ciProfile() colorprofile.Profile {
 	has := func(name string) bool { _, found := e[name]; return found }
 	switch {

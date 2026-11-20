@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
-var ApiKeyClientIdSetting = setting.Setting[uuid.UUID]{
+var ApiKeyClientIdSetting = setting.Setting[string]{
 	Env: "MESHSTACK_API_KEY",
 	Short: func(envKey string) string {
 		return fmt.Sprintf("The client id of a meshStack API key to authenticate with, together with its secret from %s. Also read from %s.", ApiKeyClientSecretSetting.EnvKey(), envKey)
@@ -19,7 +18,7 @@ var ApiKeyClientIdSetting = setting.Setting[uuid.UUID]{
 	Long: func(envKey string) string {
 		return fmt.Sprintf("The client id of a meshStack API key to authenticate with, together with its secret, also read from `%s`.", envKey)
 	},
-	Parse: setting.ParseTextUnmarshaler[uuid.UUID],
+	Parse: setting.ParseText[string],
 }
 
 var ApiKeyClientSecretSetting = setting.Setting[string]{

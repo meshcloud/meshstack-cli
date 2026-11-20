@@ -1,13 +1,10 @@
 package client
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
-	"github.com/meshcloud/meshstack-cli/internal/http"
 )
 
 type TenantLifecycleState string
@@ -28,16 +25,17 @@ type MeshTenantLifecycleAction struct {
 	Timestamp string `json:"timestamp" tfsdk:"-"`
 }
 
+//nolint:recvcheck // a nil tenant is one that is gone, and meshObjectId reads one that is there
 type MeshTenant struct {
 	Metadata MeshTenantMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshTenantSpec     `json:"spec" tfsdk:"spec"`
-	Status   MeshTenantStatus   `json:"status" tfsdk:"status"`
+	Status   MeshTenantStatus   `json:"status,omitzero" tfsdk:"status"`
 }
 
 type MeshTenantMetadata struct {
-	Uuid             string `json:"uuid" tfsdk:"uuid"`
-	OwnedByProject   string `json:"ownedByProject" tfsdk:"owned_by_project"`
-	OwnedByWorkspace string `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
+	Uuid             *string `json:"uuid,omitzero" tfsdk:"uuid"`
+	OwnedByProject   string  `json:"ownedByProject" tfsdk:"owned_by_project"`
+	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
 }
 
 type MeshTenantSpec struct {
@@ -46,7 +44,7 @@ type MeshTenantSpec struct {
 	LandingZoneRef   *NamedRef `json:"landingZoneRef" tfsdk:"landing_zone_ref"`
 	// RequestedQuotas is an input at creation only: the backend does not return it on read, so the
 	// Terraform resource keeps the configured value from its state.
-	RequestedQuotas map[string]RequestQuotaValue `json:"requestedQuotas" tfsdk:"requested_quotas"`
+	RequestedQuotas map[string]RequestQuotaValue `json:"requestedQuotas,omitempty" tfsdk:"requested_quotas"`
 }
 
 type MeshTenantStatus struct {
@@ -82,24 +80,7 @@ type AppliedQuotaValue struct {
 	Value int64 `json:"value" tfsdk:"value"`
 }
 
-type MeshTenantCreate struct {
-	Metadata MeshTenantCreateMetadata `json:"metadata" tfsdk:"metadata"`
-	Spec     MeshTenantCreateSpec     `json:"spec" tfsdk:"spec"`
-}
-
-type MeshTenantCreateMetadata struct {
-	OwnedByProject   string `json:"ownedByProject" tfsdk:"owned_by_project"`
-	OwnedByWorkspace string `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-}
-
-type MeshTenantCreateSpec struct {
-	PlatformRef      UuidRef                      `json:"platformRef" tfsdk:"platform_ref"`
-	LandingZoneRef   *NamedRef                    `json:"landingZoneRef" tfsdk:"landing_zone_ref"`
-	PlatformTenantId *string                      `json:"platformTenantId" tfsdk:"platform_tenant_id"`
-	RequestedQuotas  map[string]RequestQuotaValue `json:"requestedQuotas,omitempty" tfsdk:"requested_quotas"`
-}
-
-type MeshTenantQuery struct {
+type MeshTenantFilter struct {
 	Workspace      string  `json:"workspaceIdentifier"`
 	Project        *string `json:"projectIdentifier"`
 	Platform       *string `json:"platformIdentifier"`
@@ -108,43 +89,7 @@ type MeshTenantQuery struct {
 	PlatformTenant *string `json:"platformTenantId"`
 }
 
-type MeshTenantClient interface {
-	Read(ctx context.Context, uuid string) (*MeshTenant, error)
-	ReadFunc(uuid string) func(ctx context.Context) (*MeshTenant, error)
-	List(ctx context.Context, query MeshTenantQuery) ([]MeshTenant, error)
-	Create(ctx context.Context, tenant *MeshTenantCreate) (*MeshTenant, error)
-	Delete(ctx context.Context, uuid string) error
-}
-
-type meshTenantClient struct {
-	meshObject internal.MeshObjectClient[MeshTenant]
-}
-
-func newTenantClient(ctx context.Context, httpClient internal.HttpClient) MeshTenantClient {
-	return meshTenantClient{internal.NewMeshObjectClient[MeshTenant](ctx, httpClient, "v4")}
-}
-
-func (c meshTenantClient) Read(ctx context.Context, uuid string) (*MeshTenant, error) {
-	return c.ReadFunc(uuid)(ctx)
-}
-
-func (c meshTenantClient) ReadFunc(uuid string) func(ctx context.Context) (*MeshTenant, error) {
-	return func(ctx context.Context) (*MeshTenant, error) {
-		return c.meshObject.Get(ctx, uuid)
-	}
-}
-
-func (c meshTenantClient) Create(ctx context.Context, tenant *MeshTenantCreate) (*MeshTenant, error) {
-	return c.meshObject.Post(ctx, tenant)
-}
-
-func (c meshTenantClient) List(ctx context.Context, query MeshTenantQuery) ([]MeshTenant, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(query))
-}
-
-func (c meshTenantClient) Delete(ctx context.Context, uuid string) error {
-	return c.meshObject.Delete(ctx, uuid)
-}
+type MeshTenantClient = MeshObjectClient[MeshTenant, MeshTenantFilter]
 
 func (tenant *MeshTenant) CreationSuccessful() (done bool, err error) {
 	switch {
@@ -165,6 +110,10 @@ func (tenant *MeshTenant) DeletionState() string {
 		return tenantNotObserved
 	}
 	return tenant.Status.Lifecycle.deletionState()
+}
+
+func (tenant MeshTenant) meshObjectId() string {
+	return *tenant.Metadata.Uuid
 }
 
 const tenantNotObserved = "no successful read after the delete request"

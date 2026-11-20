@@ -1,12 +1,5 @@
 package client
 
-import (
-	"context"
-
-	"github.com/meshcloud/meshstack-cli/client/internal"
-	"github.com/meshcloud/meshstack-cli/internal/http"
-)
-
 type MeshProject struct {
 	Metadata MeshProjectMetadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshProjectSpec     `json:"spec" tfsdk:"spec"`
@@ -15,8 +8,8 @@ type MeshProject struct {
 type MeshProjectMetadata struct {
 	Name             string  `json:"name" tfsdk:"name"`
 	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-	CreatedOn        string  `json:"createdOn" tfsdk:"created_on"`
-	DeletedOn        *string `json:"deletedOn" tfsdk:"deleted_on"`
+	CreatedOn        string  `json:"createdOn,omitzero" tfsdk:"created_on"`
+	DeletedOn        *string `json:"deletedOn,omitzero" tfsdk:"deleted_on"`
 }
 
 type MeshProjectSpec struct {
@@ -26,60 +19,17 @@ type MeshProjectSpec struct {
 	SubstitutePaymentMethodIdentifier *string             `json:"substitutePaymentMethodIdentifier" tfsdk:"substitute_payment_method_identifier"`
 }
 
-type MeshProjectCreate struct {
-	Metadata MeshProjectCreateMetadata `json:"metadata" tfsdk:"metadata"`
-	Spec     MeshProjectSpec           `json:"spec" tfsdk:"spec"`
+func NewMeshProjectId(workspace, name string) string {
+	return workspace + "." + name
 }
 
-type MeshProjectCreateMetadata struct {
-	Name             string `json:"name" tfsdk:"name"`
-	OwnedByWorkspace string `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
-}
-
-type MeshProjectClient interface {
-	Read(ctx context.Context, workspace string, name string) (*MeshProject, error)
-	List(ctx context.Context, workspaceIdentifier string, paymentMethodIdentifier *string) ([]MeshProject, error)
-	Create(ctx context.Context, project *MeshProjectCreate) (*MeshProject, error)
-	Update(ctx context.Context, project *MeshProjectCreate) (*MeshProject, error)
-	Delete(ctx context.Context, workspace string, name string) error
-}
-
-type meshProjectClient struct {
-	meshObject internal.MeshObjectClient[MeshProject]
-}
-
-func newProjectClient(ctx context.Context, httpClient internal.HttpClient) MeshProjectClient {
-	return meshProjectClient{internal.NewMeshObjectClient[MeshProject](ctx, httpClient, "v2")}
-}
-
-func (c meshProjectClient) Read(ctx context.Context, workspace string, name string) (*MeshProject, error) {
-	return c.meshObject.Get(ctx, c.projectId(workspace, name))
-}
-
-type meshProjectListQuery struct {
+type MeshProjectFilter struct {
 	WorkspaceIdentifier string  `json:"workspaceIdentifier"`
 	PaymentIdentifier   *string `json:"paymentIdentifier"`
 }
 
-func (c meshProjectClient) List(ctx context.Context, workspaceIdentifier string, paymentMethodIdentifier *string) ([]MeshProject, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(meshProjectListQuery{
-		WorkspaceIdentifier: workspaceIdentifier,
-		PaymentIdentifier:   paymentMethodIdentifier,
-	}))
-}
+type MeshProjectClient = MeshObjectClient[MeshProject, MeshProjectFilter]
 
-func (c meshProjectClient) Create(ctx context.Context, project *MeshProjectCreate) (*MeshProject, error) {
-	return c.meshObject.Post(ctx, project)
-}
-
-func (c meshProjectClient) Update(ctx context.Context, project *MeshProjectCreate) (*MeshProject, error) {
-	return c.meshObject.Put(ctx, c.projectId(project.Metadata.OwnedByWorkspace, project.Metadata.Name), project)
-}
-
-func (c meshProjectClient) Delete(ctx context.Context, workspace string, name string) error {
-	return c.meshObject.Delete(ctx, c.projectId(workspace, name))
-}
-
-func (c meshProjectClient) projectId(workspace string, name string) string {
-	return workspace + "." + name
+func (project MeshProject) meshObjectId() string {
+	return NewMeshProjectId(project.Metadata.OwnedByWorkspace, project.Metadata.Name)
 }

@@ -3,7 +3,6 @@ package auth
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"testing"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/fakemeshstack"
 	"github.com/meshcloud/meshstack-cli/internal/testutil/testlogin"
 )
@@ -57,7 +57,7 @@ func TestStatusOfAnApiTokenFromTheEnvironment(t *testing.T) {
 	t.Run("is Markdown where the output is no terminal", func(t *testing.T) {
 		output := executeStatus(t)
 
-		assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n")
+		assert.Contains(t, output, "| Profile | none |\n| --- | --- |\n")
 		assert.Contains(t, output, "| Credential | API token, from env MESHSTACK_API_TOKEN |\n")
 		assert.Contains(t, output, "|  | User runner |\n")
 		assert.Contains(t, output, "| meshStack | 2026.40.0 |\n")

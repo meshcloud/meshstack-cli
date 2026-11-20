@@ -3,30 +3,25 @@ package client
 import (
 	"context"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
+	"github.com/meshcloud/meshstack-cli/client/http"
+	"github.com/meshcloud/meshstack-cli/client/types/version"
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
-	"github.com/meshcloud/meshstack-cli/internal/http"
-	"github.com/meshcloud/meshstack-cli/internal/version"
 )
 
 var MinMeshStackVersion = version.MustParse("2026.36.0")
 
-// Version is re-exported because MinMeshStackVersion is one and internal/version is closed to
-// another module.
 type Version = version.Version
 
 type HttpError = http.Error
-
-type Authorization = http.Authorization
 
 type Client struct {
 	ApiKey                         MeshApiKeyClient
 	BuildingBlockV2                MeshBuildingBlockV2Client
 	BuildingBlockRun               MeshBuildingBlockRunClient
-	BuildingBlockRunAction         *MeshBuildingBlockRunActionClient
 	BuildingBlockDefinition        MeshBuildingBlockDefinitionClient
 	BuildingBlockDefinitionVersion MeshBuildingBlockDefinitionVersionClient
 	BuildingBlockRunner            MeshBuildingBlockRunnerClient
+	EventLog                       MeshEventLogClient
 	Integration                    MeshIntegrationClient
 	LandingZone                    MeshLandingZoneClient
 	Location                       MeshLocationClient
@@ -43,54 +38,41 @@ type Client struct {
 	Workspace                      MeshWorkspaceClient
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
-	Raw                            *RawClient
 
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
 	Endpoint xurl.URL
+	// HttpClient sends the bearer token to any host, so join its path onto Endpoint.
+	HttpClient http.AuthorizedClient
 }
 
-func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Authorization) Client {
-	authorizedClient := internal.HttpClient{
-		AuthorizedClient: client.WithAuthorization(auth),
-		EndpointUrl:      endpoint,
-	}
-	buildingBlockV2 := newBuildingBlockV2Client(ctx, authorizedClient)
-	buildingBlockDefinition := newBuildingBlockDefinitionClient(ctx, authorizedClient)
-	buildingBlockDefinitionVersion := newBuildingBlockDefinitionVersionClient(ctx, authorizedClient)
-	buildingBlockRun := newBuildingBlockRunClient(ctx, authorizedClient)
-	workspace := newWorkspaceClient(ctx, authorizedClient)
+func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth http.Authorization) Client {
+	c := client.WithAuthorization(auth)
 	return Client{
-		ApiKey:                         newApiKeyClient(ctx, authorizedClient),
-		BuildingBlockV2:                buildingBlockV2,
-		BuildingBlockRun:               buildingBlockRun,
-		BuildingBlockRunAction:         newBuildingBlockRunActionClient(authorizedClient, buildingBlockRun),
-		BuildingBlockDefinition:        buildingBlockDefinition,
-		BuildingBlockDefinitionVersion: buildingBlockDefinitionVersion,
-		BuildingBlockRunner:            newBuildingBlockRunnerClient(ctx, authorizedClient),
-		Integration:                    newIntegrationClient(ctx, authorizedClient),
-		LandingZone:                    newLandingZoneClient(ctx, authorizedClient),
-		Location:                       newLocationClient(ctx, authorizedClient),
+		ApiKey:                         newMeshObjectClient[MeshApiKey, NoFilter](ctx, c, endpoint, "v1-preview"),
+		BuildingBlockV2:                newMeshObjectClient[MeshBuildingBlockV2, MeshBuildingBlockV2Filter](ctx, c, endpoint, buildingBlockV2ApiVersion),
+		BuildingBlockRun:               meshBuildingBlockRunClient{newMeshObjectClient[MeshBuildingBlockRun, MeshBuildingBlockRunFilter](ctx, c, endpoint, buildingBlockRunApiVersion)},
+		BuildingBlockDefinition:        newMeshObjectClient[MeshBuildingBlockDefinition, MeshBuildingBlockDefinitionFilter](ctx, c, endpoint, "v1-preview"),
+		BuildingBlockDefinitionVersion: newMeshObjectClient[MeshBuildingBlockDefinitionVersion, MeshBuildingBlockDefinitionVersionFilter](ctx, c, endpoint, "v1-preview"),
+		BuildingBlockRunner:            newMeshObjectClient[MeshBuildingBlockRunner, MeshBuildingBlockRunnerFilter](ctx, c, endpoint, "v1-preview"),
+		EventLog:                       newMeshObjectClient[MeshEventLog, MeshEventLogFilter](ctx, c, endpoint, "v1"),
+		Integration:                    newMeshObjectClient[MeshIntegration, NoFilter](ctx, c, endpoint, "v1"),
+		LandingZone:                    newMeshObjectClient[MeshLandingZone, MeshLandingZoneFilter](ctx, c, endpoint, "v1"),
+		Location:                       newMeshObjectClient[MeshLocation, NoFilter](ctx, c, endpoint, "v1"),
 		MeshInfo:                       NewMeshInfoClient(client, endpoint),
-		PaymentMethod:                  newPaymentMethodClient(ctx, authorizedClient),
-		Platform:                       newPlatformClient(ctx, authorizedClient),
-		PlatformType:                   newPlatformTypeClient(ctx, authorizedClient),
-		Project:                        newProjectClient(ctx, authorizedClient),
-		ProjectGroupBinding:            newProjectGroupBindingClient(ctx, authorizedClient),
-		ProjectUserBinding:             newProjectUserBindingClient(ctx, authorizedClient),
-		ServiceInstance:                newServiceInstanceClient(ctx, authorizedClient),
-		TagDefinition:                  newTagDefinitionClient(ctx, authorizedClient),
-		Tenant:                         newTenantClient(ctx, authorizedClient),
-		Workspace:                      workspace,
-		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, authorizedClient),
-		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, authorizedClient),
-		Raw: newRawClient(authorizedClient).
-			with(workspace.meshObject).
-			with(buildingBlockV2.meshObject).
-			with(buildingBlockRun.meshObject).
-			with(buildingBlockDefinition.meshObject).
-			withOwnOrder(buildingBlockDefinitionVersion.meshObject).
-			with(newEventLogMeshObject(ctx, authorizedClient)),
+		PaymentMethod:                  newMeshObjectClient[MeshPaymentMethod, NoFilter](ctx, c, endpoint, "v2"),
+		Platform:                       newMeshObjectClient[MeshPlatform, MeshPlatformFilter](ctx, c, endpoint, "v2"),
+		PlatformType:                   newMeshObjectClient[MeshPlatformType, MeshPlatformTypeFilter](ctx, c, endpoint, "v1"),
+		Project:                        newMeshObjectClient[MeshProject, MeshProjectFilter](ctx, c, endpoint, "v2"),
+		ProjectGroupBinding:            newMeshObjectClient[MeshProjectGroupBinding, MeshProjectBindingFilter](ctx, c, endpoint, "v3"),
+		ProjectUserBinding:             newMeshObjectClient[MeshProjectUserBinding, MeshProjectBindingFilter](ctx, c, endpoint, "v3"),
+		ServiceInstance:                newMeshObjectClient[MeshServiceInstance, MeshServiceInstanceFilter](ctx, c, endpoint, "v2"),
+		TagDefinition:                  newMeshObjectClient[MeshTagDefinition, NoFilter](ctx, c, endpoint, "v1"),
+		Tenant:                         newMeshObjectClient[MeshTenant, MeshTenantFilter](ctx, c, endpoint, "v4"),
+		Workspace:                      newMeshObjectClient[MeshWorkspace, NoFilter](ctx, c, endpoint, "v2"),
+		WorkspaceGroupBinding:          newMeshObjectClient[MeshWorkspaceGroupBinding, MeshWorkspaceBindingFilter](ctx, c, endpoint, "v2"),
+		WorkspaceUserBinding:           newMeshObjectClient[MeshWorkspaceUserBinding, MeshWorkspaceBindingFilter](ctx, c, endpoint, "v2"),
 
-		Endpoint: endpoint,
+		Endpoint:   endpoint,
+		HttpClient: c,
 	}
 }

@@ -6,15 +6,26 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 )
 
-func Unmarshal(in []byte, out any) error {
-	return json.Unmarshal(in, out)
+type UnmarshalerFrom = json.UnmarshalerFrom
+
+func Unmarshal(in []byte, out any, opts ...Options) error {
+	return json.Unmarshal(in, out, opts...)
 }
 
-func UnmarshalFrom(ctx context.Context, file string, out any, unmarshalers ...*json.Unmarshalers) (err error) {
+func UnmarshalRead(in io.Reader, out any, opts ...Options) error {
+	return json.UnmarshalRead(in, out, opts...)
+}
+
+func UnmarshalDecode(in *jsontext.Decoder, out any, opts ...Options) error {
+	return json.UnmarshalDecode(in, out, opts...)
+}
+
+func UnmarshalFrom(ctx context.Context, file string, out any, opts ...Options) (err error) {
 	var f *os.File
 	//nolint:gosec // G304: internal/config builds every path here from the config dir and validated names
 	f, err = os.Open(file)
@@ -29,15 +40,12 @@ func UnmarshalFrom(ctx context.Context, file string, out any, unmarshalers ...*j
 			slog.DebugContext(ctx, "Unmarshaled json from "+file)
 		}
 	}()
-	err = json.UnmarshalDecode(jsontext.NewDecoder(f), &out,
-		json.WithUnmarshalers(json.JoinUnmarshalers(unmarshalers...)),
-	)
-	return
+	return UnmarshalRead(f, out, opts...)
 }
 
-func ModifyAfterUnmarshal[T any](modifier func(target *T)) *json.Unmarshalers {
+func ModifyAfterUnmarshal[T any](modifier func(target *T)) Options {
 	var decoding bool
-	return json.UnmarshalFromFunc(func(decoder *jsontext.Decoder, t *T) error {
+	return WithUnmarshalers(UnmarshalFromFunc(func(decoder *jsontext.Decoder, t *T) error {
 		if decoding {
 			// The nested decode below dispatches here again, and json.JoinUnmarshalers reads
 			// errors.ErrUnsupported as "leave this value to the default behavior".
@@ -45,10 +53,10 @@ func ModifyAfterUnmarshal[T any](modifier func(target *T)) *json.Unmarshalers {
 		}
 		decoding = true
 		defer func() { decoding = false }()
-		if err := json.UnmarshalDecode(decoder, t); err != nil {
+		if err := UnmarshalDecode(decoder, t); err != nil {
 			return err
 		}
 		modifier(t)
 		return nil
-	})
+	}))
 }

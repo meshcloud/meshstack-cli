@@ -6,7 +6,6 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
-	"uuid"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +22,7 @@ var credentialOnly = Parse("test", `{{template "credential" .}}`)
 func TestABrowserLoginShowsItsUserAccessAndSessionEnd(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		status := auth.CredentialStatus{
-			Profile: "dev", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
+			Profile: "dev", LoginHint: "meshstack login --profile dev", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
 			Kind: credential.OidcLoginName, Sources: []string{"file credentials/dev.json"},
 			Workspace: "ops",
 			Token: &auth.TokenStatus{
@@ -48,7 +47,7 @@ func TestABrowserLoginShowsItsUserAccessAndSessionEnd(t *testing.T) {
 
 func TestAnApiKeyShowsItsClientIdAndNoCachedTokenYet(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		clientId := uuid.MustParse("11111111-45bf-42ba-a965-2097b9d0d181")
+		clientId := "11111111-45bf-42ba-a965-2097b9d0d181"
 		status := auth.CredentialStatus{
 			Profile: "ci", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
 			Kind: credential.ApiKeyName, Sources: []string{"env MESHSTACK_API_KEY", "env MESHSTACK_API_SECRET"},
@@ -77,7 +76,7 @@ func TestAnApiKeyShowsItsClientIdAndNoCachedTokenYet(t *testing.T) {
 
 func TestAnExpiredApiTokenSaysItCannotBeRenewed(t *testing.T) {
 	status := auth.CredentialStatus{
-		Profile: "run", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
+		Profile: "run", LoginHint: "meshstack login --profile run", Endpoint: xurl.MustParsef("https://meshstack.example.com"),
 		Kind: credential.ManualName, Sources: []string{"env MESHSTACK_API_TOKEN"},
 		Token: &auth.TokenStatus{ExpiresAt: time.Now().Add(-time.Hour), Workspace: "ops", ClientId: "11111111-45bf-42ba-a965-2097b9d0d181"},
 	}

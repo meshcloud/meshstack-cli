@@ -3,10 +3,11 @@ package openapi
 import (
 	"cmp"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // OperationDoc is what the API docs say about an operation, for a person to read.
@@ -41,7 +42,7 @@ type Body struct {
 
 // Field is a property anywhere in a body. Its Path joins the property names from the top with dots,
 // and writes the items of an array as [], as in spec.parentBuildingBlockRefs[].uuid, and the values
-// of a map as the name *, as the API docs do.
+// of a map as {}, as in spec.inputs{}.value.
 type Field struct {
 	Path        string
 	Type        string
@@ -58,14 +59,18 @@ func (f Field) Depth() int {
 }
 
 type schema struct {
-	Ref         string         `json:"$ref"`
-	Type        string         `json:"type"`
-	Format      string         `json:"format"`
-	Description string         `json:"description"`
-	Required    []string       `json:"required"`
-	Properties  object         `json:"properties"`
-	Items       jsontext.Value `json:"items"`
-	resolvedRef string
+	Ref                  string           `json:"$ref"`
+	Type                 string           `json:"type"`
+	Format               string           `json:"format"`
+	Description          string           `json:"description"`
+	Required             []string         `json:"required"`
+	Properties           object           `json:"properties"`
+	Items                jsontext.Value   `json:"items"`
+	AdditionalProperties jsontext.Value   `json:"additionalProperties"`
+	AllOf                []jsontext.Value `json:"allOf"`
+	OneOf                []jsontext.Value `json:"oneOf"`
+	AnyOf                []jsontext.Value `json:"anyOf"`
+	resolvedRef          string
 }
 
 // Doc reads the operation of a Spec, or of a selection of it, which keeps every component.
@@ -74,12 +79,13 @@ func (s Spec) Doc(operation Operation) (OperationDoc, error) {
 		Summary     string `json:"summary"`
 		Description string `json:"description"`
 		Parameters  []struct {
-			Name        string `json:"name"`
-			In          string `json:"in"`
-			Required    bool   `json:"required"`
-			Description string `json:"description"`
-			Schema      schema `json:"schema"`
-			PathKey     string `json:"x-meshstack-path-key"`
+			Name             string            `json:"name"`
+			In               string            `json:"in"`
+			Required         bool              `json:"required"`
+			Description      string            `json:"description"`
+			Schema           jsontext.Value    `json:"schema"`
+			PathKey          string            `json:"x-meshstack-path-key"`
+			PathKeyByVersion map[string]string `json:"x-meshstack-path-key-by-version"`
 		} `json:"parameters"`
 		RequestBody struct {
 			Content object `json:"content"`
@@ -91,13 +97,17 @@ func (s Spec) Doc(operation Operation) (OperationDoc, error) {
 	}
 	doc := OperationDoc{Summary: parsed.Summary, Description: parsed.Description}
 	for _, parameter := range parsed.Parameters {
+		typeName, err := s.typeName(parameter.Schema, nil)
+		if err != nil {
+			return doc, fmt.Errorf("parameter %s: %w", parameter.Name, err)
+		}
 		doc.Parameters = append(doc.Parameters, Parameter{
 			Name:        parameter.Name,
 			In:          parameter.In,
 			Required:    parameter.Required,
-			Type:        parameter.Schema.typeName(nil),
+			Type:        typeName,
 			Description: parameter.Description,
-			PathKey:     parameter.PathKey,
+			PathKey:     cmp.Or(parameter.PathKeyByVersion[operation.LatestApiVersion().String()], parameter.PathKey),
 		})
 	}
 	var err error
@@ -151,15 +161,22 @@ func (s Spec) fields(path string, raw jsontext.Value, refs []string) ([]Field, e
 	if resolved.Items != nil {
 		return s.fields(path+"[]", resolved.Items, refs)
 	}
+	if values := resolved.mapValues(); values != nil {
+		return s.fields(path+"{}", values, refs)
+	}
 	var fields []Field
 	for _, property := range resolved.Properties {
 		child, _, err := s.resolve(property.value, refs)
 		if err != nil {
 			return nil, err
 		}
+		typeName, err := s.typeName(property.value, refs)
+		if err != nil {
+			return nil, err
+		}
 		field := Field{
 			Path:        strings.TrimPrefix(path+"."+property.name, "."),
-			Type:        child.typeName(s.itemsOf(child, refs)),
+			Type:        typeName,
 			Required:    slices.Contains(resolved.Required, property.name),
 			Description: child.Description,
 		}
@@ -172,51 +189,86 @@ func (s Spec) fields(path string, raw jsontext.Value, refs []string) ([]Field, e
 	return fields, nil
 }
 
-// resolve follows $ref into the components. A schema it cannot follow keeps its Ref.
+// resolve also follows an allOf of one schema, in which the API docs wrap a $ref to describe it.
 func (s Spec) resolve(raw jsontext.Value, refs []string) (schema, []string, error) {
 	var resolved schema
 	if err := json.Unmarshal(raw, &resolved); err != nil {
 		return resolved, refs, err
 	}
-	resolvedRef := resolved.Ref
-	for resolved.Ref != "" && !slices.Contains(refs, resolved.Ref) {
-		i := slices.IndexFunc(s.components, func(c component) bool { return c.ref() == resolved.Ref })
-		if i < 0 {
+	var resolvedRef string
+	for {
+		var next jsontext.Value
+		switch {
+		case resolved.Ref != "" && !slices.Contains(refs, resolved.Ref):
+			i := slices.IndexFunc(s.components, func(c component) bool { return c.ref() == resolved.Ref })
+			if i < 0 {
+				return resolved, refs, nil
+			}
+			refs = append(slices.Clip(refs), resolved.Ref)
+			resolvedRef = resolved.Ref
+			next = s.components[i].value
+		case resolved.Ref == "" && len(resolved.AllOf) == 1:
+			next = resolved.AllOf[0]
+		default:
+			resolved.resolvedRef = resolvedRef
 			return resolved, refs, nil
 		}
-		refs = append(slices.Clip(refs), resolved.Ref)
 		description := resolved.Description
 		resolved = schema{}
-		if err := json.Unmarshal(s.components[i].value, &resolved); err != nil {
+		if err := json.Unmarshal(next, &resolved); err != nil {
 			return resolved, refs, err
 		}
 		resolved.Description = cmp.Or(description, resolved.Description)
 	}
-	resolved.resolvedRef = resolvedRef
-	return resolved, refs, nil
 }
 
-func (s Spec) itemsOf(array schema, refs []string) *schema {
-	if array.Items == nil {
-		return nil
+func (s Spec) typeName(raw jsontext.Value, refs []string) (string, error) {
+	if raw == nil {
+		return "", nil
 	}
-	items, _, err := s.resolve(array.Items, refs)
+	resolved, refs, err := s.resolve(raw, refs)
 	if err != nil {
-		return nil
+		return "", err
 	}
-	return &items
+	if variants := slices.Concat(resolved.OneOf, resolved.AnyOf); len(variants) > 0 && resolved.name() == "" {
+		names := make([]string, len(variants))
+		for i, variant := range variants {
+			if names[i], err = s.typeName(variant, refs); err != nil {
+				return "", err
+			}
+		}
+		return "one of " + strings.Join(names, ", "), nil
+	}
+	if values := resolved.mapValues(); values != nil {
+		var valueType string
+		valueType, err = s.typeName(values, refs)
+		return "map of " + cmp.Or(valueType, "any"), err
+	}
+	if resolved.Items == nil {
+		return resolved.name(), nil
+	}
+	items, err := s.typeName(resolved.Items, refs)
+	return strings.TrimSpace(resolved.name() + " of " + items), err
 }
 
-func (s schema) typeName(items *schema) string {
+func (s schema) name() string {
 	name := s.Type
-	if _, component, isRef := strings.CutLast(cmp.Or(s.Ref, s.resolvedRef), "/"); isRef {
+	if _, component, isRef := strings.CutLast(cmp.Or(s.Ref, s.resolvedRef), "/"); isRef && (s.Ref != "" || s.Type == "" || s.Type == "object") {
 		name = component
 	}
 	if s.Format != "" {
 		name += " (" + s.Format + ")"
 	}
-	if items != nil {
-		return strings.TrimSpace(name + " of " + items.typeName(nil))
-	}
 	return name
+}
+
+func (s schema) mapValues() jsontext.Value {
+	switch s.AdditionalProperties.Kind() {
+	case jsontext.KindTrue:
+		return jsontext.Value("{}")
+	case jsontext.KindBeginObject:
+		return s.AdditionalProperties
+	default:
+		return nil
+	}
 }

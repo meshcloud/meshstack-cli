@@ -5,23 +5,23 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	gohttp "net/http"
+	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/meshcloud/meshstack-cli/client/http"
 	"github.com/meshcloud/meshstack-cli/internal/auth"
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
-	"github.com/meshcloud/meshstack-cli/internal/tfstate/apiproxy"
 )
 
 const (
@@ -103,9 +103,8 @@ func (p *Proxy) Serve(ctx context.Context, run func(env []string)) (requests int
 		// With an API key as well, the provider since v0.26.0 refuses to pick one of the two.
 		auth.ApiKeyClientIdSetting.EnvKey() + "=",
 		auth.ApiKeyClientSecretSetting.EnvKey() + "=",
-		// The provider since v0.26.0 refuses a stored profile whose endpoint is not the proxy's, and
-		// creates a profile it does not find without storing it.
-		profile.NameSetting.EnvKey() + "=" + execProfile,
+		// A profile named in the environment has another endpoint than the proxy.
+		profile.NameSetting.EnvKey() + "=",
 	})
 
 	err = server.Shutdown(context.WithoutCancel(ctx))
@@ -145,8 +144,6 @@ func (p *Proxy) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) {
 	}
 }
 
-const execProfile = "meshstack-tfstate-exec"
-
 // newApiToken wraps password in the shape of a JWT that expires in a year, because the provider
 // since v0.26.0 refuses a token that is no JWT, or that has expired. Nobody checks its signature.
 func newApiToken(password string) string {
@@ -171,8 +168,12 @@ func (p *Proxy) forward(w gohttp.ResponseWriter, r *gohttp.Request) {
 		p.refuse(w, r, gohttp.StatusForbidden, fmt.Errorf("%w, so the command cannot %s %s", ErrReadOnlyApi, r.Method, r.URL.Path))
 		return
 	}
-	apiproxy.New(p.Api, p.Endpoint, func(w gohttp.ResponseWriter, r *gohttp.Request, err error) {
-		p.fail(w, r, fmt.Errorf("cannot pass %s %s on to meshStack: %w", r.Method, r.URL.Path, err))
+	(&httputil.ReverseProxy{
+		Rewrite:   func(out *httputil.ProxyRequest) { out.SetURL(p.Endpoint) },
+		Transport: p.Api.ProxyTransport(),
+		ErrorHandler: func(w gohttp.ResponseWriter, r *gohttp.Request, err error) {
+			p.fail(w, r, fmt.Errorf("cannot pass %s %s on to meshStack: %w", r.Method, r.URL.Path, err))
+		},
 	}).ServeHTTP(w, r)
 }
 
@@ -283,7 +284,7 @@ func (p *Proxy) write(w gohttp.ResponseWriter, r *gohttp.Request) {
 			p.refuse(w, r, gohttp.StatusInternalServerError, fmt.Errorf("cannot back up the stored state, so it stays as it is: %w", err))
 			return
 		}
-		slog.InfoContext(ctx, "Saved the stored state of building block "+p.Store.BuildingBlock.String()+" to "+path)
+		slog.InfoContext(ctx, "Saved the stored state of building block "+p.Store.BuildingBlock+" to "+path)
 	}
 
 	lockId := r.URL.Query().Get("ID")
@@ -305,8 +306,7 @@ func (p *Proxy) failOrPassLock(w gohttp.ResponseWriter, r *gohttp.Request, err e
 		p.fail(w, r, err)
 		return
 	}
-	var holder LockInfo
-	_ = json.Unmarshal(httpErr.ResponseBody, &holder)
+	holder, _ := httpErr.BodyAsJson[LockInfo]()
 	slog.WarnContext(r.Context(), fmt.Sprintf("meshStack refused to %s the state of building block %s, because %q holds the lock %s",
 		action, p.Store.BuildingBlock, holder.Who, holder.ID))
 	passLock(w, httpErr)

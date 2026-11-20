@@ -1,7 +1,6 @@
 package testacc
 
 import (
-	"encoding/json/v2"
 	"os"
 	"slices"
 	"strings"
@@ -9,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 // workspaceHoldingABuildingBlock is for the steps that need a building block, which a listing

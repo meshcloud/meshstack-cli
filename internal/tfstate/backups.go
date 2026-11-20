@@ -5,14 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	"uuid"
 )
 
 type Backups string
 
 // save names the file by the time down to the nanosecond, so that two writes within one second keep
 // a backup each.
-func (b Backups) save(buildingBlock uuid.UUID, state []byte, at time.Time) (path string, err error) {
+func (b Backups) save(buildingBlock string, state []byte, at time.Time) (path string, err error) {
 	if err = os.MkdirAll(string(b), 0o700); err != nil {
 		return "", err
 	}

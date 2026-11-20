@@ -6,7 +6,9 @@ import (
 	"io"
 	gohttp "net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -29,12 +31,10 @@ const (
 )
 
 func TestApi(t *testing.T) {
-	meshStack := newFakeMeshStack(t)
-	testlogin.LoggedInTo(t, meshStack.URL)
 	apiDocs, err := os.ReadFile(apiDocsFile)
 	require.NoError(t, err)
-	docs := fakemeshstack.Start(t, fakemeshstack.Options{ApiDocs: apiDocs})
-	t.Setenv("MESHSTACK_API_DOCS_URL", docs.URL+fakemeshstack.ApiDocsPath)
+	meshStack := newFakeMeshStack(t, apiDocs)
+	testlogin.LoggedInTo(t, meshStack.URL)
 	postBlock := func(t *testing.T, body string, args ...string) (recordedRequest, error) {
 		t.Helper()
 		_, err := meshStack.run(t, api.New(), body, append([]string{"-X", "POST", "/api/meshobjects/meshbuildingblocks", "--request-json", "-"}, args...)...)
@@ -66,12 +66,12 @@ func TestApi(t *testing.T) {
 	t.Run("fails without a login before it downloads the API docs", func(t *testing.T) {
 		t.Setenv(config.DirectorySetting.EnvKey(), t.TempDir())
 		t.Setenv(auth.ApiTokenSetting.EnvKey(), "")
-		docs.TakeRequests()
+		docsRequests := meshStack.docsRequests.Load()
 
 		_, err := meshStack.run(t, api.New(), "", "/api/meshobjects/meshbuildingblocks")
 
-		require.ErrorContains(t, err, "selects no credential")
-		assert.Empty(t, docs.TakeRequests())
+		require.ErrorContains(t, err, "no credential for the endpoint")
+		assert.Equal(t, docsRequests, meshStack.docsRequests.Load())
 		assert.Empty(t, meshStack.requests)
 	})
 
@@ -126,41 +126,35 @@ func TestApi(t *testing.T) {
 		}
 	})
 
-	t.Run("writes the body of a failed answer, and fails with a hint to api-docs on a client error", func(t *testing.T) {
+	t.Run("fails with the error of meshStack, and with a hint to api-docs on a client error", func(t *testing.T) {
 		for status, wantError := range map[int]string{
-			gohttp.StatusConflict:   "meshStack answered HTTP 409: still in use. Run meshstack api-docs /api/x -H 'Accept: application/json' -X DELETE to see what the API expects",
-			gohttp.StatusBadGateway: "meshStack answered HTTP 502: still in use",
-			gohttp.StatusForbidden:  "auth scope profile default: meshStack answered HTTP 403: still in use",
+			gohttp.StatusConflict:   "POST " + meshStack.URL + "/api/x: meshStack answered HTTP 409: still in use\nRun meshstack api-docs /api/x -H 'Accept: application/json' -X POST to see what the API expects",
+			gohttp.StatusBadGateway: "POST " + meshStack.URL + "/api/x: meshStack answered HTTP 502: still in use",
+			gohttp.StatusForbidden:  "auth manual for " + meshStack.URL + ": POST " + meshStack.URL + "/api/x: meshStack answered HTTP 403: still in use",
 		} {
 			meshStack.answer(status, `{"message":"still in use"}`)
 
-			stdout, err := meshStack.run(t, api.New(), "", "-X", "DELETE", "/api/x", "-H", "Accept: application/json")
+			stdout, err := meshStack.run(t, api.New(), "", "-X", "POST", "/api/x", "-H", "Accept: application/json")
 
 			require.EqualError(t, err, wantError)
-			assert.JSONEq(t, "{\n  \"message\": \"still in use\"\n}\n", stdout)
+			assert.Empty(t, stdout)
 		}
 	})
 
-	t.Run("points to api-docs on a 404 only for a path the API docs do not list", func(t *testing.T) {
-		for path, wantError := range map[string]string{
-			"/api/x": "meshStack answered HTTP 404: gone (errorCode NotFound). Run meshstack api-docs /api/x -X GET -H 'Accept: application/json' to see what the API expects",
-			"/api/meshobjects/meshtenants/0c9ef6d1-5c5d-4b0c-9a4b-1e0e3c1f2a3b": "meshStack answered HTTP 404: gone (errorCode NotFound)",
-		} {
-			meshStack.answer(gohttp.StatusNotFound, `{"errorCode":"NotFound","message":"gone"}`)
+	t.Run("points to api-docs on a 404 for a path the API docs do not list", func(t *testing.T) {
+		meshStack.answer(gohttp.StatusNotFound, `{"errorCode":"NotFound","message":"gone"}`)
 
-			_, err := meshStack.run(t, api.New(), "", path, "-H", "Accept: application/json")
+		_, err := meshStack.run(t, api.New(), "", "/api/x", "-H", "Accept: application/json")
 
-			require.EqualError(t, err, wantError)
-		}
+		require.EqualError(t, err, "GET "+meshStack.URL+"/api/x: meshStack answered HTTP 404: gone (errorCode NotFound)\nRun meshstack api-docs /api/x -X GET -H 'Accept: application/json' to see what the API expects")
 	})
 
 	t.Run("adds the clientVersionHint of a failed answer to the error", func(t *testing.T) {
 		meshStack.answer(gohttp.StatusNotFound, `{"errorCode":"NoHandlerFound","message":"no handler","errorId":"abc","clientVersionHint":"Upgrade the meshStack CLI to v0.9.0."}`)
 
-		stdout, err := meshStack.run(t, api.New(), "", "/api/x", "-H", "Accept: application/json")
+		_, err := meshStack.run(t, api.New(), "", "/api/x", "-H", "Accept: application/json")
 
-		require.EqualError(t, err, "meshStack answered HTTP 404: no handler (errorCode NoHandlerFound, errorId abc)\nUpgrade the meshStack CLI to v0.9.0.")
-		assert.Contains(t, stdout, "clientVersionHint")
+		require.EqualError(t, err, "GET "+meshStack.URL+"/api/x: meshStack answered HTTP 404: no handler (errorCode NoHandlerFound, errorId abc)\nUpgrade the meshStack CLI to v0.9.0.")
 	})
 
 	t.Run("asks for the media type the API docs list for a path of no version", func(t *testing.T) {
@@ -198,7 +192,7 @@ func TestApi(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Contains(t, stdout, "| POST | `/api/meshobjects/meshbuildingblocks` | v1, v2-preview |")
-		assert.Contains(t, stdout, "| GET, DELETE | `/api/meshobjects/meshtenants/{uuid}` | v4 |")
+		assert.Contains(t, stdout, "| GET, DELETE | `/api/meshobjects/meshtenants/{tenant}` | v3, v4 |")
 
 		stdout, err = meshStack.run(t, api.NewDocs(), "", "-o", "json")
 
@@ -210,7 +204,7 @@ func TestApi(t *testing.T) {
 		stdout, err := meshStack.run(t, api.NewDocs(), "", "-X", "DELETE")
 
 		require.NoError(t, err)
-		assert.Equal(t, "| Methods | Path | API versions |\n|---|---|---|\n| DELETE | `/api/meshobjects/meshtenants/{uuid}` |  |\n", stdout)
+		assert.Equal(t, "| Methods | Path | API versions |\n|---|---|---|\n| DELETE | `/api/meshobjects/meshtenants/{tenant}` |  |\n", stdout)
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "-X", "PATCH")
 
@@ -235,7 +229,8 @@ func TestApi(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Contains(t, stdout, "# meshBuildingBlock\n\n## create: `POST /api/meshobjects/meshbuildingblocks`\n\n"+
-				"API version "+request.wantVersion+"\n\n**Create a building block**\n\nCreates a building block.\n\n### Parameters", request.args)
+				"API version "+request.wantVersion+"\n\n**Create building block**\n\n"+
+				"Create a new meshBuildingBlock with inputs and parent building block relationships\n\n### Request body", request.args)
 			assert.Contains(t, stdout, "### Request body `application/vnd.meshcloud.api.meshbuildingblock."+request.wantVersion+".hal+json`", request.args)
 		}
 	})
@@ -245,14 +240,23 @@ func TestApi(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "# meshTenant\n\n"+
-			"## show: `GET /api/meshobjects/meshtenants/{uuid}`\n\nAPI version v4\n\n"+
+			"## show: `GET /api/meshobjects/meshtenants/{tenant}`\n\nAPI version v4\n\n**Get tenant**\n\n"+
+			"### Parameters\n\n| Name | In | Type | Required | Description |\n|---|---|---|---|---|\n"+
+			"| `tenant` | path | string | yes |  |\n\n"+
 			"### Response 200 `application/vnd.meshcloud.api.meshtenant.v4.hal+json`\n\n"+
-			"## delete: `DELETE /api/meshobjects/meshtenants/{uuid}`\n\nNo API version\n\n### Response 202\n", stdout)
+			"## delete: `DELETE /api/meshobjects/meshtenants/{tenant}`\n\nNo API version\n\n**Delete tenant**\n\n"+
+			"### Parameters\n\n| Name | In | Type | Required | Description |\n|---|---|---|---|---|\n"+
+			"| `tenant` | path | string | yes | DELETE takes the UUID or the full tenant identifier. |\n"+
+			"| `purge` | query | boolean |  | Removes the meshTenant from meshStack at once. |\n\n"+
+			"### Response 202\n\n"+
+			"### Response 400 `application/json`\n\n| Field | Type | Required | Description |\n|---|---|---|---|\n"+
+			"| `errorCode` | string | yes |  |\n| `message` | string | yes | A message that describes the error. |\n", stdout)
 
 		stdout, err = meshStack.run(t, api.NewDocs(), "", "-X", "GET", "/api/meshobjects/meshtenants/abc", "--api-version", "v3")
 
 		require.NoError(t, err)
-		assert.Contains(t, stdout, "## show: `GET /api/meshobjects/meshtenants/{tenantIdentifier}`\n\nAPI version v3\n")
+		assert.Contains(t, stdout, "## show: `GET /api/meshobjects/meshtenants/{tenant}`\n\nAPI version v3\n")
+		assert.Contains(t, stdout, "### Response 200 `application/vnd.meshcloud.api.meshtenant.v3.hal+json`\n")
 		assert.NotContains(t, stdout, "DELETE")
 	})
 
@@ -260,9 +264,13 @@ func TestApi(t *testing.T) {
 		stdout, err := meshStack.run(t, api.NewDocs(), "", "/api/meshobjects/meshtenants/abc", "-X", "GET", "-o", "json")
 
 		require.NoError(t, err)
-		assert.JSONEq(t, `{"paths": {"/api/meshobjects/meshtenants/{uuid}": {"get": {
-			"operationId": "meshTenantV4",
-			"responses": {"200": {"description": "200", "content": {"application/vnd.meshcloud.api.meshtenant.v4.hal+json": {}}}}
+		assert.JSONEq(t, `{"paths": {"/api/meshobjects/meshtenants/{tenant}": {"get": {
+			"tags": ["Tenants"],
+			"summary": "Get tenant",
+			"operationId": "meshTenantGet",
+			"parameters": [{"name": "tenant", "in": "path", "required": true, "schema": {"type": "string"}, "x-meshstack-path-key": "metadata.uuid", "x-meshstack-path-key-by-version": {"v3": "metadata.tenantIdentifier"}}],
+			"responses": {"200": {"description": "The tenant", "content": {"application/vnd.meshcloud.api.meshtenant.v4.hal+json": {"x-meshstack-lifecycle": {"meshObject": "meshTenant.v4", "state": "GA"}}}}},
+			"x-position": 110
 		}}}}`, stdout)
 
 		_, err = meshStack.run(t, api.NewDocs(), "", "/api/meshobjects/meshunknowns")
@@ -274,17 +282,36 @@ func TestApi(t *testing.T) {
 		stdout, err := meshStack.run(t, api.NewDocs(), "", "--describe", "bb")
 
 		require.NoError(t, err)
-		assert.Contains(t, stdout, "# meshBuildingBlock\n\n## create: `POST /api/meshobjects/meshbuildingblocks`\n\nAPI version v2-preview\n\n**Create a building block**\n\nCreates a building block.\n\n### Parameters")
+		assert.Contains(t, stdout, "# meshBuildingBlock\n\n## create: `POST /api/meshobjects/meshbuildingblocks`\n\nAPI version v2-preview\n\n**Create building block**\n\n"+
+			"Create a new meshBuildingBlock with inputs and parent building block relationships\n\n### Request body `"+blockV2Preview+"`")
 		assert.Contains(t, stdout, "### Response 201 `"+blockV2Preview+"`")
 		assert.Contains(t, stdout, "### Response 400 `application/json`")
 
 		stdout, err = meshStack.run(t, api.NewDocs(), "", "--describe", "tenant.delete", "-o", "json")
 
 		require.NoError(t, err)
-		assert.JSONEq(t, `{"paths": {"/api/meshobjects/meshtenants/{uuid}": {"delete": {
-			"operationId": "meshTenantDeleteV4",
-			"responses": {"202": {"description": "202"}}
-		}}}}`, stdout)
+		assert.JSONEq(t, `{
+			"paths": {"/api/meshobjects/meshtenants/{tenant}": {"delete": {
+				"tags": ["Tenants"],
+				"summary": "Delete tenant",
+				"operationId": "meshTenantDelete",
+				"parameters": [
+					{"name": "tenant", "in": "path", "description": "DELETE takes the UUID or the full tenant identifier.", "required": true, "schema": {"type": "string"}, "x-meshstack-path-key": "metadata.uuid"},
+					{"name": "purge", "in": "query", "description": "Removes the meshTenant from meshStack at once.", "required": false, "schema": {"type": "boolean"}}
+				],
+				"responses": {
+					"202": {"description": "Deletion of tenant started"},
+					"400": {"description": "The request is invalid. The message names the invalid part.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomErrorMessage"}}}}
+				},
+				"x-position": 112
+			}}},
+			"components": {"schemas": {"CustomErrorMessage": {
+				"required": ["errorCode", "message"],
+				"type": "object",
+				"properties": {"errorCode": {"type": "string"}, "message": {"type": "string", "description": "A message that describes the error."}},
+				"description": "The body of every error response."
+			}}}
+		}`, stdout)
 	})
 
 	t.Run("api-docs --describe takes a kind of the API docs, and neither a path nor a request", func(t *testing.T) {
@@ -303,6 +330,7 @@ func TestApi(t *testing.T) {
 
 	t.Run("without a writable config directory, api sends the request as given and api-docs fails", func(t *testing.T) {
 		dir := os.Getenv(config.DirectorySetting.EnvKey())
+		require.NoError(t, os.RemoveAll(filepath.Join(dir, "api-docs")), "the earlier steps stored the API docs") //nolint:gosec // G703: the config directory of this test
 		// G302 counts a directory's x bit, without which nothing can enter it.
 		require.NoError(t, os.Chmod(dir, 0o500))       //nolint:gosec // G302: see above
 		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // G302: see above
@@ -332,12 +360,18 @@ type recordedRequest struct {
 type fakeMeshStack struct {
 	*fakemeshstack.Server
 
-	requests []recordedRequest
+	requests     []recordedRequest
+	docsRequests atomic.Int32
 }
 
-func newFakeMeshStack(t *testing.T) *fakeMeshStack {
+func newFakeMeshStack(t *testing.T, apiDocs []byte) *fakeMeshStack {
 	t.Helper()
 	meshStack := &fakeMeshStack{Server: fakemeshstack.Start(t, fakemeshstack.Options{})}
+	serveApiDocs := fakemeshstack.ServeApiDocs(apiDocs)
+	meshStack.Route("GET "+fakemeshstack.ApiDocsPath, func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		meshStack.docsRequests.Add(1)
+		serveApiDocs(w, r)
+	})
 	meshStack.answer(gohttp.StatusOK, `{}`)
 	return meshStack
 }
@@ -362,6 +396,9 @@ func (f *fakeMeshStack) run(t *testing.T, cmd *cobra.Command, stdin string, args
 	err := cmd.ExecuteContext(t.Context())
 	f.requests = nil
 	for _, r := range f.TakeRequests() {
+		if r.URL.Path == fakemeshstack.ApiDocsPath {
+			continue
+		}
 		f.requests = append(f.requests, recordedRequest{
 			method:        r.Method,
 			pathAndQuery:  r.URL.RequestURI(),

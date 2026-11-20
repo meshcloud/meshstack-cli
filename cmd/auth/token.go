@@ -26,7 +26,7 @@ Paste the token as the Bearer token in the API docs to try a request against you
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), token)
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(token))
 			return err
 		},
 	}

@@ -2,14 +2,12 @@ package buildingblockrun
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"strings"
 	"time"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -21,9 +19,8 @@ const followFlagName = "follow"
 
 func newLogs() *cobra.Command {
 	var (
-		output  internal.OutputFlag
-		follow  bool
-		runUuid uuid.UUID
+		output internal.OutputFlag
+		follow bool
 	)
 
 	cmd := &cobra.Command{
@@ -37,8 +34,9 @@ With --` + followFlagName + `, the command prints new log lines as text until th
 		Example: `  meshstack buildingblockrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c -o ndjson
   meshstack bbrun logs 7f3a2b1c-8d4e-4f6a-9b0c-1d2e3f4a5b6c --follow`,
-		Args: internal.UuidArg(&runUuid),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: internal.UuidArg,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runUuid := args[0]
 			ctx := cmd.Context()
 			meshStack, err := internal.ResolveClient(ctx)
 			if err != nil {
@@ -46,10 +44,14 @@ With --` + followFlagName + `, the command prints new log lines as text until th
 			}
 			if follow {
 				return followRun(ctx, cmd.OutOrStdout(), runUuid, func(ctx context.Context) (runSnapshot, error) {
-					return readRun(ctx, meshStack, runUuid)
+					return readSnapshot(ctx, meshStack, runUuid)
 				})
 			}
-			logs, err := meshStack.Raw.Get[client.MeshBuildingBlockRun](ctx, runUuid, "logs")
+			run, err := readRun(ctx, meshStack, runUuid)
+			if err != nil {
+				return err
+			}
+			logs, err := run.Links.Get[client.MeshBuildingBlockRunLogs](ctx, "downloadLogs")
 			if err != nil {
 				return err
 			}
@@ -78,7 +80,7 @@ const (
 const (
 	pollInterval = 2 * time.Second
 	maxPollWait  = time.Minute
-	// The HTTP client has retried each failed poll for minutes already, see internal/http.
+	// The HTTP client has retried each failed poll for minutes already, see client/http.
 	maxFailedPollsInARow = 5
 )
 
@@ -87,27 +89,33 @@ type runSnapshot struct {
 	steps  []client.MeshBuildingBlockRunStepLog
 }
 
-// readRun reads the run's status before its logs, so that the logs of a finished run are its
-// last ones.
-func readRun(ctx context.Context, meshStack client.Client, runUuid uuid.UUID) (runSnapshot, error) {
-	rawRun, err := meshStack.Raw.Get[client.MeshBuildingBlockRun](ctx, runUuid)
+var errRunNotFound = errors.New("building block run not found")
+
+func readRun(ctx context.Context, meshStack client.Client, runUuid string) (client.MeshBuildingBlockRun, error) {
+	run, err := meshStack.BuildingBlockRun.Read(ctx, runUuid)
+	switch {
+	case err != nil:
+		return client.MeshBuildingBlockRun{}, err
+	case run == nil:
+		return client.MeshBuildingBlockRun{}, fmt.Errorf("%w: %s", errRunNotFound, runUuid)
+	}
+	return *run, nil
+}
+
+// readSnapshot reads the status before the logs, so that a finished run's logs are its last ones.
+func readSnapshot(ctx context.Context, meshStack client.Client, runUuid string) (runSnapshot, error) {
+	run, err := readRun(ctx, meshStack, runUuid)
 	if err != nil {
 		return runSnapshot{}, err
 	}
-	var run struct {
-		Status string `json:"status"`
-	}
-	if err = json.Unmarshal(rawRun, &run); err != nil {
-		return runSnapshot{}, err
-	}
-	logs, err := meshStack.BuildingBlockRun.GetLogs(ctx, runUuid.String())
+	logs, err := run.Links.Get[client.MeshBuildingBlockRunLogs](ctx, "downloadLogs")
 	if err != nil {
 		return runSnapshot{}, err
 	}
 	return runSnapshot{status: run.Status, steps: logs.Steps}, nil
 }
 
-func followRun(ctx context.Context, w io.Writer, runUuid uuid.UUID, read func(context.Context) (runSnapshot, error)) error {
+func followRun(ctx context.Context, w io.Writer, runUuid string, read func(context.Context) (runSnapshot, error)) error {
 	var (
 		written      writtenLogs
 		readOnce     bool
@@ -153,7 +161,7 @@ func followRun(ctx context.Context, w io.Writer, runUuid uuid.UUID, read func(co
 	}
 }
 
-func stoppedFollowing(runUuid uuid.UUID) error {
+func stoppedFollowing(runUuid string) error {
 	return fmt.Errorf("stopped following building block run %s before it finished", runUuid)
 }
 
@@ -161,10 +169,10 @@ func stoppedFollowing(runUuid uuid.UUID) error {
 // deleted, from a failure that can clear.
 func isClientError(err error) bool {
 	httpErr, ok := errors.AsType[client.HttpError](err)
-	return ok && httpErr.IsClientError()
+	return ok && httpErr.IsClientError() || errors.Is(err, errRunNotFound)
 }
 
-func (run runSnapshot) failure(runUuid uuid.UUID) error {
+func (run runSnapshot) failure(runUuid string) error {
 	var abortedStep string
 	for _, step := range run.steps {
 		switch step.Status {

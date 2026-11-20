@@ -13,6 +13,9 @@ import (
 const retryDelay = 25 * time.Millisecond
 
 func New(path string) Locker {
+	if path == "" {
+		return Locker{m: &sync.RWMutex{}}
+	}
 	return Locker{m: &sync.RWMutex{}, pathLock: path + ".lock"}
 }
 
@@ -54,6 +57,9 @@ func (l Locker) lock(ctx context.Context, read bool) (unlock func() error, err e
 	inMemory := l.inMemoryLocker(read)
 	if err := inMemory.SpinLock(ctx); err != nil {
 		return nil, err
+	}
+	if l.pathLock == "" {
+		return sync.OnceValue(inMemory.Unlock), nil
 	}
 	file := l.fileLocker(read)
 	if err := file.SpinLock(ctx); err != nil {

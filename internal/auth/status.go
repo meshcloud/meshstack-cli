@@ -9,7 +9,6 @@ import (
 	"maps"
 	"slices"
 	"time"
-	"uuid"
 
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
@@ -22,7 +21,8 @@ import (
 // CredentialStatus never carries a secret. A part that cannot be read is logged as a warning and
 // left at its zero value.
 type CredentialStatus struct {
-	Profile   profile.Name        `json:"profile"`
+	Profile   profile.Name        `json:"profile,omitzero"`
+	LoginHint string              `json:"-"`
 	Endpoint  xurl.URL            `json:"endpoint"`
 	Kind      credential.Name     `json:"credential"`
 	Sources   []string            `json:"sources"`
@@ -91,17 +91,18 @@ func BrowserLoginEnded(ctx context.Context, p *profile.Profile) bool {
 }
 
 type ApiKeyStatus struct {
-	ClientId uuid.UUID `json:"clientId"`
+	ClientId string `json:"clientId"`
 }
 
 // Status reads only the stored credential and its cached token, and calls no meshStack. It never
 // renews a browser login, which would rotate its refresh token.
 func (s Session) Status(ctx context.Context) CredentialStatus {
 	status := CredentialStatus{
-		Profile:  s.CurrentProfile.Name,
-		Endpoint: s.CurrentProfile.Endpoint,
-		Kind:     s.Credential.Name(),
-		Sources:  s.Credential.Sources,
+		Profile:   s.CurrentProfile.Name,
+		LoginHint: s.CurrentProfile.LoginHint(),
+		Endpoint:  s.CurrentProfile.Endpoint,
+		Kind:      s.Credential.Name(),
+		Sources:   s.Credential.Sources,
 	}
 	workspace, err := s.getWorkspace()
 	if err != nil && !errors.Is(err, setting.ErrNoSourceProvidedValue) {
@@ -139,7 +140,7 @@ func (s Session) unusedCredentials(ctx context.Context, workspace meshstack.Work
 	}
 	for _, name := range credential.Names {
 		cred := stored.ByName(name)
-		if cred == nil || name == s.Credential.Name() && s.Credential.Stored {
+		if cred == nil || cred.Identity() == s.Credential.Identity() {
 			continue
 		}
 		if err := CacheFor(s.CurrentProfile, cred).Load(ctx); err != nil {
@@ -148,7 +149,7 @@ func (s Session) unusedCredentials(ctx context.Context, workspace meshstack.Work
 		entry := UnusedCredential{Kind: name, Selected: name == s.CurrentProfile.Credential}
 		switch cred := cred.(type) {
 		case *credential.ApiKey:
-			entry.ClientId = cred.ClientId.String()
+			entry.ClientId = cred.ClientId
 		case *credential.OidcLogin:
 			if token, found := oidcTokenFor(cred, workspace); found {
 				entry.Token = tokenStatusOf(token)

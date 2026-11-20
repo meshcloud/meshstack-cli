@@ -2,7 +2,6 @@ package client
 
 import (
 	"embed"
-	"encoding/json/v2"
 	"path"
 	"testing"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meshcloud/meshstack-cli/client/types"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
 //go:embed testdata/building_block_definition_version_input

@@ -19,13 +19,17 @@ func newList() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (
-				filter client.MeshBuildingBlockV2ListFilter
+				filter client.MeshBuildingBlockV2Filter
 				err    error
 			)
 			if filter.WorkspaceIdentifier, err = internal.ListWorkspace(cmd.Context()); err != nil {
 				return err
 			}
-			return flags.Run[client.MeshBuildingBlockV2](cmd, filter)
+			meshStack, err := internal.ResolveClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return flags.Run(cmd, meshStack.BuildingBlockV2, filter)
 		},
 	}
 

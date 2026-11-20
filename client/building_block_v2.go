@@ -1,27 +1,18 @@
 package client
 
 import (
-	"context"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
 
-	"github.com/meshcloud/meshstack-cli/client/internal"
 	"github.com/meshcloud/meshstack-cli/client/types"
 	"github.com/meshcloud/meshstack-cli/client/types/enum"
-	"github.com/meshcloud/meshstack-cli/internal/http"
+	"github.com/meshcloud/meshstack-cli/client/types/hal"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 )
 
-type BuildingBlockLifecycleState string
-
-var (
-	BuildingBlockLifecycleStates                 = enum.Enum[BuildingBlockLifecycleState]{}
-	BuildingBlockLifecycleStateActive            = BuildingBlockLifecycleStates.Entry("ACTIVE")
-	BuildingBlockLifecycleStateMarkedForDeletion = BuildingBlockLifecycleStates.Entry("MARKED_FOR_DELETION")
-	BuildingBlockLifecycleStateDeleted           = BuildingBlockLifecycleStates.Entry("DELETED")
-)
+const buildingBlockV2ApiVersion = "v2-preview"
 
 type BuildingBlockHealthStatus string
 
@@ -49,16 +40,14 @@ var (
 	BuildingBlockActionNoAction             = BuildingBlockActions.Entry("NO_ACTION")
 )
 
+type MeshBuildingBlockV2Metadata = MeshObjectByUuidMetadata
+
+//nolint:recvcheck // a nil block is one that is gone, and meshObjectId reads one that is there
 type MeshBuildingBlockV2 struct {
 	Metadata MeshBuildingBlockV2Metadata `json:"metadata" tfsdk:"metadata"`
 	Spec     MeshBuildingBlockV2Spec     `json:"spec" tfsdk:"spec"`
 	Status   *MeshBuildingBlockV2Status  `json:"status" tfsdk:"status"`
-	Links    MeshBuildingBlockV2Links    `json:"_links,omitzero" tfsdk:"-"`
-}
-
-type MeshBuildingBlockV2Metadata struct {
-	Uuid             *string `json:"uuid" tfsdk:"uuid"`
-	OwnedByWorkspace string  `json:"ownedByWorkspace" tfsdk:"owned_by_workspace"`
+	Links    hal.Links                   `json:"_links,omitzero" tfsdk:"-"`
 }
 
 type MeshBuildingBlockV2Spec struct {
@@ -72,9 +61,11 @@ type MeshBuildingBlockV2Spec struct {
 }
 
 type MeshBuildingBlockInput struct {
-	Value          types.SecretOrAny                                `json:"value" tfsdk:"value"`
-	ValueType      *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitzero" tfsdk:"-"`
-	AssignmentType enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
+	Value                types.SecretOrAny                                `json:"value" tfsdk:"value"`
+	ValueType            *enum.Entry[MeshBuildingBlockIOType]             `json:"valueType,omitzero" tfsdk:"-"`
+	AssignmentType       enum.Entry[MeshBuildingBlockInputAssignmentType] `json:"assignmentType,omitempty" tfsdk:"-"`
+	UpdateableByConsumer bool                                             `json:"updateableByConsumer" tfsdk:"-"`
+	IsOptional           bool                                             `json:"isOptional" tfsdk:"-"`
 
 	// IsSensitive decides the case of Value: [types.Secret] when true, [types.Any] otherwise.
 	// [types.Variant] decodes into X first, so UnmarshalJSONFrom moves a non-sensitive value that also
@@ -120,12 +111,8 @@ type MeshBuildingBlockV2DefinitionVersionRef struct {
 
 type MeshBuildingBlockV2TargetRef struct {
 	Kind string  `json:"kind" tfsdk:"kind"`
-	Uuid *string `json:"uuid" tfsdk:"uuid"`
-	Name *string `json:"name" tfsdk:"name"`
-}
-
-type MeshBuildingBlockV2Lifecycle struct {
-	State enum.Entry[BuildingBlockLifecycleState] `json:"state" tfsdk:"state"`
+	Uuid *string `json:"uuid,omitzero" tfsdk:"uuid"`
+	Name *string `json:"name,omitzero" tfsdk:"name"`
 }
 
 type MeshBuildingBlockV2Status struct {
@@ -133,7 +120,7 @@ type MeshBuildingBlockV2Status struct {
 	Action       enum.Entry[BuildingBlockAction]       `json:"action" tfsdk:"action"`
 	Outputs      map[string]MeshBuildingBlockOutput    `json:"outputs" tfsdk:"outputs"`
 	ForcePurge   bool                                  `json:"forcePurge" tfsdk:"force_purge"`
-	Lifecycle    MeshBuildingBlockV2Lifecycle          `json:"lifecycle" tfsdk:"-"`
+	Lifecycle    MeshLifecycle                         `json:"lifecycle" tfsdk:"-"`
 	// LatestRunUuid tracks the latest *modifying* (apply/destroy) run and excludes dry runs. It is nil
 	// only when no such run exists: run_transparency gates reading the run and its system messages, not
 	// this identifier (MeshBuildingBlockV2RepresentationModelAssembler.resolveLatestRunUuid).
@@ -171,11 +158,11 @@ type MeshBuildingBlockOutput struct {
 	AssignmentType enum.Entry[MeshBuildingBlockDefinitionOutputAssignmentType] `json:"assignmentType" tfsdk:"assignment_type"`
 }
 
-// MeshBuildingBlockV2ListFilter never matches a soft-deleted building block: the endpoint lists
+// MeshBuildingBlockV2Filter never matches a soft-deleted building block: the endpoint lists
 // only active ones. The json tags are the query parameter names and must match the @RequestParam
 // names of fetchBuildingBlocksV2 in the meshStack backend, which ignores an unknown parameter, so
 // a typo turns the filter off without an error.
-type MeshBuildingBlockV2ListFilter struct {
+type MeshBuildingBlockV2Filter struct {
 	WorkspaceIdentifier *string `json:"workspaceIdentifier"`
 	ProjectIdentifier   *string `json:"projectIdentifier"`
 	PlatformIdentifier  *string `json:"platformIdentifier"`
@@ -193,59 +180,14 @@ type MeshBuildingBlockV2ListFilter struct {
 	Action       []string `json:"action"`
 	// ManagedByWorkspaceIdentifier and ManagedByDefinitionUuid list the building blocks of the
 	// definitions a platform operator owns, and need the MANAGED_BUILDINGBLOCK_LIST permission.
-	ManagedByWorkspaceIdentifier *string      `json:"managedByWorkspaceIdentifier"`
-	ManagedByDefinitionUuid      *string      `json:"managedByDefinitionUuid"`
-	Sort                         SortCriteria `json:"sort"`
+	ManagedByWorkspaceIdentifier *string `json:"managedByWorkspaceIdentifier"`
+	ManagedByDefinitionUuid      *string `json:"managedByDefinitionUuid"`
 }
 
-type MeshBuildingBlockV2Client interface {
-	Read(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
-	ReadFunc(uuid string) func(ctx context.Context) (*MeshBuildingBlockV2, error)
-	List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error)
-	Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
-	Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error)
-	Delete(ctx context.Context, uuid string, purge bool) error
-	TriggerRun(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error)
-}
+type MeshBuildingBlockV2Client = MeshObjectClient[MeshBuildingBlockV2, MeshBuildingBlockV2Filter]
 
-type meshBuildingBlockV2Client struct {
-	meshObject internal.MeshObjectClient[MeshBuildingBlockV2]
-}
-
-func newBuildingBlockV2Client(ctx context.Context, httpClient internal.HttpClient) meshBuildingBlockV2Client {
-	return meshBuildingBlockV2Client{internal.NewMeshObjectClient[MeshBuildingBlockV2](ctx, httpClient, "v2-preview")}
-}
-
-func (c meshBuildingBlockV2Client) Read(ctx context.Context, uuid string) (*MeshBuildingBlockV2, error) {
-	return c.ReadFunc(uuid)(ctx)
-}
-
-func (c meshBuildingBlockV2Client) ReadFunc(uuid string) func(ctx context.Context) (*MeshBuildingBlockV2, error) {
-	return func(ctx context.Context) (*MeshBuildingBlockV2, error) {
-		return c.meshObject.Get(ctx, uuid)
-	}
-}
-
-func (c meshBuildingBlockV2Client) List(ctx context.Context, filter MeshBuildingBlockV2ListFilter) ([]MeshBuildingBlockV2, error) {
-	return c.meshObject.List(ctx, http.WithUrlQuery(filter))
-}
-
-func (c meshBuildingBlockV2Client) Create(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
-	return c.meshObject.Post(ctx, bb)
-}
-
-func (c meshBuildingBlockV2Client) Update(ctx context.Context, bb *MeshBuildingBlockV2) (*MeshBuildingBlockV2, error) {
-	if bb.Metadata.Uuid == nil {
-		return nil, errors.New("cannot update building block without UUID")
-	}
-	return c.meshObject.Put(ctx, *bb.Metadata.Uuid, bb)
-}
-
-func (c meshBuildingBlockV2Client) Delete(ctx context.Context, uuid string, purge bool) error {
-	if purge {
-		return c.meshObject.DeleteAtPath(ctx, uuid, "purge")
-	}
-	return c.meshObject.Delete(ctx, uuid)
+type MeshBuildingBlockV2RunTrigger struct {
+	DryRun bool `json:"dryRun"`
 }
 
 var (
@@ -314,7 +256,7 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful(before MeshBuildingBlockV2Stat
 	case bb == nil:
 		// A 404: the block is gone, for example together with its definition.
 		done = true
-	case bb.Status != nil && bb.Status.Lifecycle.State == BuildingBlockLifecycleStateDeleted:
+	case bb.Status != nil && bb.Status.Lifecycle.State == MeshLifecycleStateDeleted:
 		// A soft-deleted block does not return 404: the backend keeps returning it with DELETED.
 		// MARKED_FOR_DELETION means the deletion still runs, so polling goes on.
 		done = true
@@ -330,12 +272,8 @@ func (bb *MeshBuildingBlockV2) DeletionSuccessful(before MeshBuildingBlockV2Stat
 	return
 }
 
-// MeshPanelLink is "" for a block read from a meshStack that sends no meshPanel link.
-func (bb *MeshBuildingBlockV2) MeshPanelLink() string {
-	if bb == nil || bb.Links.MeshPanel == nil {
-		return ""
-	}
-	return bb.Links.MeshPanel.Href
+func (bb MeshBuildingBlockV2) meshObjectId() string {
+	return bb.Metadata.meshObjectId()
 }
 
 func (bb *MeshBuildingBlockV2) uuidOrUnknown() string {
@@ -343,15 +281,4 @@ func (bb *MeshBuildingBlockV2) uuidOrUnknown() string {
 		return *bb.Metadata.Uuid
 	}
 	return "<unknown>"
-}
-
-// TriggerRun answers with the building block as meshStack left it on accepting the run: Action,
-// LatestRunUuid, RunStartFailure and RunStartFailedOn still report the request before, because
-// meshStack starts the run, or records why it could not, only after it answered.
-func (c meshBuildingBlockV2Client) TriggerRun(ctx context.Context, bbUuid string) (*MeshBuildingBlockV2, error) {
-	// dryRun is not optional to the endpoint once a body is sent, so it goes out as false rather
-	// than being omitted.
-	return c.meshObject.PostAtPath[*MeshBuildingBlockV2](ctx, struct {
-		DryRun bool `json:"dryRun"`
-	}{}, bbUuid, "trigger-run")
 }

@@ -1,7 +1,6 @@
 package profile
 
 import (
-	"encoding/json/v2"
 	"log/slog"
 	"maps"
 	"slices"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
+	"github.com/meshcloud/meshstack-cli/internal/json"
 	"github.com/meshcloud/meshstack-cli/internal/logs"
 	"github.com/meshcloud/meshstack-cli/internal/profile"
 )
@@ -86,42 +86,28 @@ func TestShow(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, output, "| Profile | dev |\n")
 		assert.Contains(t, output, "| Credential | API token, from file ")
-		assert.Contains(t, output, "|  | No token cached yet |\n")
+		assert.Contains(t, output, "|  | Token expires 2100-01-01")
 		assert.Contains(t, output, "This is the current profile.")
 	})
 
-	t.Run("shows the current profile with a warning where it is for another endpoint, and that endpoint has several profiles", func(t *testing.T) {
+	t.Run("shows the endpoint alone where several profiles have it and none of them is current", func(t *testing.T) {
 		require.NoError(t, profiles.Put(t.Context(), nil, profile.Profile{Name: "staging", Endpoint: endpointB}))
-		captured := logs.Capture(t)
 
 		output, err := execute(t, "", "show", "--endpoint", "https://b.example.io")
 
 		require.NoError(t, err)
-		assert.Contains(t, output, "| Profile | dev |\n")
-		assert.Contains(t, captured.String(), "Profile 'dev' has the endpoint 'https://a.example.io', which does not match the endpoint 'https://b.example.io' from flag --endpoint, so commands fail with this profile")
-	})
-
-	t.Run("shows the profile a first command would create, without storing it, where no profile is current", func(t *testing.T) {
-		profiles.CurrentProfile = ""
-		require.NoError(t, profiles.Store(t.Context()))
-
-		output, err := execute(t, "", "show", "--endpoint", "https://b.example.io")
-
-		require.NoError(t, err)
-		assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n| Endpoint | https://b.example.io |\n")
-		assert.Contains(t, output, "This profile is not saved yet. It is saved on the first login.")
+		assert.Contains(t, output, "| Profile | none |\n| --- | --- |\n| Endpoint | https://b.example.io |\n")
+		assert.Contains(t, output, "| Credential | none, run `meshstack login --endpoint https://b.example.io` |\n")
+		assert.Contains(t, output, "No stored profile is used. A login saves one.")
 		requireStoredNames(t, "dev", "prod", "staging")
 	})
 
-	t.Run("shows the profile a first command would create without any profile or endpoint", func(t *testing.T) {
+	t.Run("fails without any profile or endpoint", func(t *testing.T) {
 		emptyConfigDir(t)
 
-		output, err := execute(t, "", "show")
+		_, err := execute(t, "", "show")
 
-		require.NoError(t, err)
-		assert.Contains(t, output, "| Profile | default |\n| --- | --- |\n| Endpoint | none |\n| Default workspace | none |\n")
-		assert.Contains(t, output, "This profile is not saved yet. It is saved on the first login.")
-		requireStoredNames(t)
+		require.ErrorContains(t, err, "or run 'meshstack login'")
 	})
 }
 

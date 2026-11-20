@@ -3,7 +3,6 @@ package tfstate
 import (
 	"errors"
 	"log/slog"
-	"uuid"
 
 	"github.com/spf13/cobra"
 
@@ -12,8 +11,6 @@ import (
 )
 
 func newShow() *cobra.Command {
-	var buildingBlockUuid uuid.UUID
-
 	return &cobra.Command{
 		Use:   "show <building-block-uuid>",
 		Short: "Show the state of a building block",
@@ -21,8 +18,9 @@ func newShow() *cobra.Command {
 
 By default, the command uses the state stored in the building block's own workspace, metadata.ownedByWorkspace. Use --` + internal.WorkspaceFlag.Name.String() + ` to choose another workspace.`,
 		Example: `  meshstack bb tfstate show 0b5c1d3e-5f1a-4c2b-9d7e-2a6f8e4b1c90 | jq .resources`,
-		Args:    internal.UuidArg(&buildingBlockUuid),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args:    internal.UuidArg,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			buildingBlockUuid := args[0]
 			ctx := cmd.Context()
 			meshStack, err := internal.ResolveClient(ctx)
 			if err != nil {
@@ -34,7 +32,7 @@ By default, the command uses the state stored in the building block's own worksp
 			}
 			state, err := store.Get(ctx)
 			if errors.Is(err, tfstate.ErrNoState) {
-				slog.InfoContext(ctx, "Building block "+buildingBlockUuid.String()+" has no state in workspace "+store.Workspace+" yet")
+				slog.InfoContext(ctx, "Building block "+buildingBlockUuid+" has no state in workspace "+store.Workspace+" yet")
 				return nil
 			} else if err != nil {
 				return withRightsHint(err)

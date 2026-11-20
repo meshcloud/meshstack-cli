@@ -18,7 +18,7 @@ func selectProfile(ctx context.Context, cmd *cobra.Command, p prompt.Prompt, pro
 		selected, err = profiles.Find(profile.Name(internal.ProfileFlag.Value))
 		return selected, true, err
 	}
-	selection, err := profiles.SelectionFor(ctx, profile.ResolveProfileOptions{SettingSources: internal.SettingSources()})
+	selection, err := profiles.SelectionFor(ctx, internal.SettingSources())
 	if err != nil {
 		return nil, false, err
 	}

@@ -1,8 +1,8 @@
 package api
 
 import (
+	"context"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	gohttp "net/http"
 	"net/url"
@@ -17,6 +17,9 @@ import (
 	"github.com/meshcloud/meshstack-cli/client/types/xurl"
 	"github.com/meshcloud/meshstack-cli/cmd/internal"
 	"github.com/meshcloud/meshstack-cli/internal/apidocs"
+	"github.com/meshcloud/meshstack-cli/internal/json"
+	"github.com/meshcloud/meshstack-cli/internal/meshstack"
+	"github.com/meshcloud/meshstack-cli/internal/setting"
 )
 
 const (
@@ -40,7 +43,7 @@ func (f *requestFlags) register(cmd *cobra.Command, defaultMethod, methodUsage s
 	cmd.Flags().StringArrayVarP(&f.headers, headerFlagName, "H", nil, "add a request header, as 'key: value'")
 	f.requestJson.Register(cmd.Flags(), requestJsonFlagName, "JSON file to send as the request body, or - for stdin")
 	cmd.Flags().StringVar(&f.apiVersion, apiVersionFlagName, "", "version of the meshObject API, such as v1 or v2-preview, instead of the latest")
-	cmd.Flags().BoolVar(&f.dev, devFlagName, false, "use the API docs of meshStack's development version")
+	cmd.Flags().BoolVar(&f.dev, devFlagName, false, "if the endpoint has no API docs, use those of meshStack's development version")
 }
 
 type request struct {
@@ -81,13 +84,19 @@ func (f *requestFlags) parse(cmd *cobra.Command, args []string) (request, error)
 	return r, nil
 }
 
-func (r *request) cutTo(endpoint xurl.URL) error {
-	path, held := endpoint.PathTo(r.target)
-	if !held {
-		return fmt.Errorf("%s is not under endpoint %s", r.target.Redacted(), endpoint)
+func (r *request) origin() string {
+	return r.target.Scheme + "://" + r.target.Host
+}
+
+func (r *request) originAsEndpoint() setting.Sources {
+	if !r.target.IsAbs() {
+		return nil
 	}
-	r.target = &url.URL{Path: path, RawQuery: r.target.RawQuery}
-	return nil
+	return setting.Sources{setting.LookupSource{
+		MatchingKey: meshstack.EndpointSetting.EnvKey(),
+		Description: "the URL " + r.target.Redacted(),
+		Func:        func(context.Context) (string, error) { return r.origin(), nil },
+	}}
 }
 
 func (f *requestFlags) selector(r request) (openapi.Selector, error) {
@@ -101,7 +110,7 @@ func (f *requestFlags) selector(r request) (openapi.Selector, error) {
 	if f.apiVersion != "" {
 		given = append(given, f.apiVersion)
 	}
-	if r.body.Kind() == '{' {
+	if r.body.Kind() == jsontext.KindBeginObject {
 		var body struct {
 			ApiVersion string `json:"apiVersion"`
 		}
@@ -124,14 +133,10 @@ func (f *requestFlags) selector(r request) (openapi.Selector, error) {
 	return selector, nil
 }
 
-func (f *requestFlags) loadApiDocs(cmd *cobra.Command, endpoint xurl.URL) (openapi.Spec, func(), error) {
-	httpClient, err := internal.ResolveClientOptions().HttpClient()
-	if err != nil {
-		return openapi.Spec{}, func() {}, err
-	}
+func (f *requestFlags) loadApiDocs(cmd *cobra.Command, endpoint xurl.URL) (openapi.Spec, error) {
 	return apidocs.Load(cmd.Context(), apidocs.Options{
 		Sources:  internal.SettingSources(),
-		Client:   httpClient,
+		Client:   internal.ResolveClientOptions().HttpClient(),
 		Endpoint: endpoint,
 		Version:  internal.Version,
 		Dev:      f.dev,

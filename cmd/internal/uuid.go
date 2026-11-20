@@ -9,21 +9,17 @@ import (
 
 // UuidFlag and [UuidArg] reject a malformed uuid while cobra parses the command line. meshStack
 // answers one with an empty list or a 404, which says nothing about a typo.
-type UuidFlag uuid.UUID
+type UuidFlag string
 
 func (f *UuidFlag) String() string {
-	if *f == (UuidFlag{}) {
-		return ""
-	}
-	return uuid.UUID(*f).String()
+	return string(*f)
 }
 
 func (f *UuidFlag) Set(value string) error {
-	parsed, err := uuid.Parse(value)
-	if err != nil {
+	if _, err := uuid.Parse(value); err != nil {
 		return err
 	}
-	*f = UuidFlag(parsed)
+	*f = UuidFlag(value)
 	return nil
 }
 
@@ -31,16 +27,12 @@ func (f *UuidFlag) Type() string {
 	return "uuid"
 }
 
-func UuidArg(id *uuid.UUID) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if err := cobra.ExactArgs(1)(cmd, args); err != nil {
-			return err
-		}
-		parsed, err := uuid.Parse(args[0])
-		if err != nil {
-			return fmt.Errorf("invalid argument %q: %w", args[0], err)
-		}
-		*id = parsed
-		return nil
+func UuidArg(cmd *cobra.Command, args []string) error {
+	if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+		return err
 	}
+	if _, err := uuid.Parse(args[0]); err != nil {
+		return fmt.Errorf("invalid argument %q: %w", args[0], err)
+	}
+	return nil
 }

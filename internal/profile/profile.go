@@ -25,13 +25,25 @@ func (p Profile) String() string {
 	return string(p.Name)
 }
 
-func (p Profile) EndpointSource() setting.FallbackSource {
-	return setting.FallbackSource{Source: setting.LookupSource{
-		Description: fmt.Sprintf("endpoint in profile %s", p.Name),
-		Func: func(_ context.Context) (string, error) {
-			return p.Endpoint.String(), nil
-		},
-	}}
+func (p Profile) LoginHint() string {
+	if p.Name == "" {
+		return "meshstack login --endpoint " + p.Endpoint.String()
+	}
+	return "meshstack login --profile " + string(p.Name)
+}
+
+func (ps *Profiles) LoginHint(name Name, endpoint xurl.URL) string {
+	if stored, ok := ps.Profiles[name]; ok {
+		return stored.LoginHint()
+	}
+	hint := "meshstack login"
+	if endpoint.URL != nil {
+		hint += " --endpoint " + endpoint.String()
+	}
+	if name != "" {
+		hint += " --profile " + string(name)
+	}
+	return hint
 }
 
 func (p Profile) WorkspaceSource() setting.FallbackSource {

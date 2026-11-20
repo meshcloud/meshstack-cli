@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"reflect"
+	"sync"
 
 	"github.com/meshcloud/meshstack-cli/internal/auth/credential"
 	"github.com/meshcloud/meshstack-cli/internal/json"
@@ -17,6 +19,8 @@ import (
 )
 
 const cacheVersion = 1
+
+var warnOfFailedCacheWrite sync.Once
 
 // cacheFile carries the identity the cached tokens were minted for, so that a cache
 // written by another api key or after a rotated secret is dropped instead of sent.
@@ -33,21 +37,17 @@ type Credential struct {
 
 	// Sources must never carry a secret, as a status shows them.
 	Sources []string
-	// Stored is set for the credential the profile stores, and not for one that settings provide.
-	Stored bool
-	// bringsItsToken is set for an API token that settings provide. A manual credential's identity
-	// is its endpoint alone, so the profile's cache would match it and replace that token with the
-	// one a login stored.
-	bringsItsToken bool
 
-	profile   profile.Name
 	locker    lock.Locker
 	cachePath string
 }
 
 func CacheFor(p *profile.Profile, cred credential.Credential) Credential {
-	path := p.ConfigDir.CredentialsCacheJsonFor(p.Name, cred.Name())
-	return Credential{Credential: cred, profile: p.Name, locker: lock.New(path), cachePath: path}
+	var path string
+	if _, isToken := cred.(*credential.Manual); !isToken && p.Name != "" {
+		path = p.ConfigDir.CredentialsCacheJsonFor(p.Name, cred.Name())
+	}
+	return Credential{Credential: cred, locker: lock.New(path), cachePath: path}
 }
 
 func (c Credential) Load(ctx context.Context) error {
@@ -75,7 +75,9 @@ func (c Credential) Modify(ctx context.Context, action func() error) error {
 		err = action()
 		if matched {
 			if writeErr := c.write(ctx); writeErr != nil {
-				slog.DebugContext(ctx, fmt.Sprintf("Cannot update cache %s, continuing with the token in memory: %s", c.cachePath, writeErr.Error()))
+				warnOfFailedCacheWrite.Do(func() {
+					slog.WarnContext(ctx, fmt.Sprintf("Cannot update cache %s, continuing with the token in memory: %s", c.cachePath, writeErr.Error()))
+				})
 			}
 		}
 		return err
@@ -119,7 +121,7 @@ func (c Credential) WriteOver(ctx context.Context) (restore func(context.Context
 }
 
 func (c Credential) read(ctx context.Context) (matched bool, err error) {
-	if c.bringsItsToken {
+	if c.cachePath == "" {
 		return false, nil
 	}
 	var file cacheFile
@@ -133,21 +135,24 @@ func (c Credential) read(ctx context.Context) (matched bool, err error) {
 	switch {
 	case file.Version != cacheVersion:
 		// Not an error: the cache only saves minting a token, and a login writes a compatible one.
-		slog.WarnContext(ctx, fmt.Sprintf("Ignoring cache %s of version %d, as this meshstack reads version %d; run 'meshstack login --profile %s' to update it",
-			c.cachePath, file.Version, cacheVersion, c.profile))
+		slog.WarnContext(ctx, fmt.Sprintf("Ignoring cache %s of version %d, as this meshstack reads version %d; a login updates it",
+			c.cachePath, file.Version, cacheVersion))
 	case file.Identity != c.Identity().Hash:
 		// Debug, not Warn: a credential from the environment next to the profile's own is normal.
 		slog.DebugContext(ctx, fmt.Sprintf("Ignoring cache %s, it was minted for another identity", c.cachePath))
 	default:
 		matched = true
 		credential.WithCacheOf(c.Credential, func(cache reflect.Value) {
-			err = json.Unmarshal(file.Cache, cache.Addr().Interface())
+			err = json.UnmarshalRead(bytes.NewReader(file.Cache), cache.Addr().Interface())
 		})
 	}
 	return
 }
 
 func (c Credential) write(ctx context.Context) (err error) {
+	if c.cachePath == "" {
+		return nil
+	}
 	file := cacheFile{
 		Version:  cacheVersion,
 		Identity: c.Identity().Hash,

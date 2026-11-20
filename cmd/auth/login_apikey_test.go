@@ -10,14 +10,13 @@ import (
 	"github.com/meshcloud/meshstack-cli/internal/meshstack"
 )
 
-func TestLoginRejectsAnApiKeyIdOfNoUuidWhileItParsesTheFlags(t *testing.T) {
+func TestLoginRejectsAnEmptyApiKeyIdWhileItParsesTheFlags(t *testing.T) {
 	configDir := withEmptyConfigDir(t)
 
 	tests := []struct {
 		arg     string
 		wantErr string
 	}{
-		{arg: "--apikey=my-key", wantErr: `invalid argument "my-key" for "--apikey" flag: invalid uuid`},
 		{arg: "--apikey=", wantErr: `invalid argument "" for "--apikey" flag: the API key id is empty; give a bare --apikey to read it from the environment`},
 	}
 	for _, tt := range tests {
@@ -38,5 +37,5 @@ func TestABareApiKeyFlagLeavesTheIdToTheEnvironment(t *testing.T) {
 
 	_, err := execute(t, "login", "--apikey")
 
-	assert.EqualError(t, err, "value from source 'env MESHSTACK_API_KEY' could not be parsed: invalid uuid\ntry setting flag --apikey")
+	assert.ErrorContains(t, err, "cannot login with api key my-key at https://meshstack.example.io/api/login")
 }
