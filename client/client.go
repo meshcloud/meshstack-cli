@@ -40,9 +40,11 @@ type Client struct {
 	ServiceInstance                MeshServiceInstanceClient
 	TagDefinition                  MeshTagDefinitionClient
 	Tenant                         MeshTenantClient
+	User                           MeshUserClient
 	Workspace                      MeshWorkspaceClient
 	WorkspaceGroupBinding          MeshWorkspaceGroupBindingClient
 	WorkspaceUserBinding           MeshWorkspaceUserBindingClient
+	WorkspaceUserGroup             MeshWorkspaceUserGroupClient
 	Raw                            *RawClient
 
 	// Endpoint is read by the Terraform provider's meshstack_instance data source.
@@ -80,9 +82,11 @@ func New(ctx context.Context, endpoint xurl.URL, client http.Client, auth Author
 		ServiceInstance:                newServiceInstanceClient(ctx, authorizedClient),
 		TagDefinition:                  newTagDefinitionClient(ctx, authorizedClient),
 		Tenant:                         newTenantClient(ctx, authorizedClient),
+		User:                           newUserClient(ctx, authorizedClient),
 		Workspace:                      workspace,
 		WorkspaceGroupBinding:          newWorkspaceGroupBindingClient(ctx, authorizedClient),
 		WorkspaceUserBinding:           newWorkspaceUserBindingClient(ctx, authorizedClient),
+		WorkspaceUserGroup:             newWorkspaceUserGroupClient(ctx, authorizedClient),
 		Raw: newRawClient(authorizedClient).
 			with(workspace.meshObject).
 			with(buildingBlockV2.meshObject).

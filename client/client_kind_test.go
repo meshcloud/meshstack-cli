@@ -26,7 +26,9 @@ func TestKind(t *testing.T) {
 	assert.Equal(t, internal.InferKind[MeshServiceInstance](), MeshObjectKind.ServiceInstance)
 	assert.Equal(t, internal.InferKind[MeshTagDefinition](), MeshObjectKind.TagDefinition)
 	assert.Equal(t, internal.InferKind[MeshTenant](), MeshObjectKind.Tenant)
+	assert.Equal(t, internal.InferKind[MeshUser](), MeshObjectKind.User)
 	assert.Equal(t, internal.InferKind[MeshWorkspace](), MeshObjectKind.Workspace)
 	assert.Equal(t, internal.InferKind[MeshWorkspaceGroupBinding](), MeshObjectKind.WorkspaceGroupBinding)
 	assert.Equal(t, internal.InferKind[MeshWorkspaceUserBinding](), MeshObjectKind.WorkspaceUserBinding)
+	assert.Equal(t, internal.InferKind[MeshWorkspaceUserGroup](), MeshObjectKind.WorkspaceUserGroup)
 }

@@ -21,9 +21,11 @@ type meshObjectKind struct {
 	ServiceInstance                string
 	TagDefinition                  string
 	Tenant                         string
+	User                           string
 	Workspace                      string
 	WorkspaceGroupBinding          string
 	WorkspaceUserBinding           string
+	WorkspaceUserGroup             string
 }
 
 var MeshObjectKind = meshObjectKind{
@@ -47,7 +49,9 @@ var MeshObjectKind = meshObjectKind{
 	ServiceInstance:                "meshServiceInstance",
 	TagDefinition:                  "meshTagDefinition",
 	Tenant:                         "meshTenant",
+	User:                           "meshUser",
 	Workspace:                      "meshWorkspace",
 	WorkspaceGroupBinding:          "meshWorkspaceGroupBinding",
 	WorkspaceUserBinding:           "meshWorkspaceUserBinding",
+	WorkspaceUserGroup:             "meshWorkspaceUserGroup",
 }
