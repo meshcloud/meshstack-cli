@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"fmt"
-	"io"
 	gohttp "net/http"
 	"testing"
 
@@ -23,15 +22,13 @@ func TestTriggerRunPrintsTheBuildingBlockAndFailsWithTheReasonMeshStackCouldNotS
 		buildingBlockUuid = "b1d2c3e4-0000-4000-8000-000000000001"
 		reason            = "meshStack could not start a run for this Building Block.\n\nAsk your platform team to look up the details in the meshStack logs."
 	)
-	failure := func(failedOn string) string {
-		return fmt.Sprintf(`{"metadata": {"uuid": %q, "ownedByWorkspace": "my-workspace"}, "spec": {}, `+
-			`"status": {"action": "PENDING", "latestRunUuid": "a0000000-0000-4000-8000-000000000001", "runStartFailure": %q, "runStartFailedOn": %q}}`,
-			buildingBlockUuid, reason, failedOn)
-	}
-	meshStack := fakemeshstack.Start(t, fakemeshstack.Options{BuildingBlocks: []any{jsontext.Value(failure("2026-10-01T10:05:00Z"))}})
+	failure := fmt.Sprintf(`{"metadata": {"uuid": %q, "ownedByWorkspace": "my-workspace"}, "spec": {}, `+
+		`"status": {"action": "REVIEW_ERRORS", "latestRunUuid": "a0000000-0000-4000-8000-000000000001", "runStartFailure": %q, "runStartFailedOn": "2026-10-01T10:05:00Z"}}`,
+		buildingBlockUuid, reason)
+	meshStack := fakemeshstack.Start(t, fakemeshstack.Options{BuildingBlocks: []any{jsontext.Value(failure)}})
 	meshStack.Route("POST /api/meshobjects/meshbuildingblocks/{uuid}/trigger-run", func(w gohttp.ResponseWriter, _ *gohttp.Request) {
 		w.WriteHeader(gohttp.StatusAccepted)
-		_, _ = io.WriteString(w, failure("2026-10-01T10:00:00Z"))
+		_, _ = fmt.Fprintf(w, `{"metadata": {"uuid": %q}, "spec": {}, "status": {"action": "PENDING", "latestRunUuid": "a0000000-0000-4000-8000-000000000001"}}`, buildingBlockUuid)
 	})
 	testlogin.LoggedInTo(t, meshStack.URL)
 
