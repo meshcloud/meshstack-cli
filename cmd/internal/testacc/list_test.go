@@ -76,7 +76,8 @@ func everyListCommandAnswers(c *cli) func(*testing.T) {
 		list("buildingblock", "list")
 		list("buildingblockrun", "list")
 		list("eventlog", "list")
-		definition := firstUuid(list("buildingblockdefinition", "list"))
+		list("buildingblockdefinition", "list", "--include-all-published=false")
+		definition := firstUuid(list("buildingblockdefinition", "marketplace"))
 		if definition == "" {
 			t.Log("the local stack holds no building block definition, so no version list ran")
 			return

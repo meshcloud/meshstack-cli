@@ -20,7 +20,7 @@ func New() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(newList())
+	cmd.AddCommand(newList(), newMarketplace())
 
 	return cmd
 }

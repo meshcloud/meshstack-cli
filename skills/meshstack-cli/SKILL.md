@@ -30,7 +30,8 @@ skill and the help disagree, trust the help.
 | `meshstack buildingblock trigger-run <uuid>` | `bb` | starts a run of one block |
 | `meshstack buildingblock wait <uuid> --before <file\|->` | `bb` | waits until the run of one block has ended |
 | `meshstack buildingblock tfstate` | `bb` | reads and writes the OpenTofu state of one block |
-| `meshstack buildingblockdefinition list` | `bbd` | definitions — what platform teams offer |
+| `meshstack buildingblockdefinition list [--include-all-published=false]` | `bbd` | definitions — your workspace's and those published to the whole platform; `=false` lists only your workspace's |
+| `meshstack buildingblockdefinition marketplace` | `bbd` | the same as `list` with its default |
 | `meshstack buildingblockdefinitionversion list --definition <uuid>` | `bbdv` | the versions of one definition |
 | `meshstack buildingblockrun list [--building-block <uuid>]` | `bbrun` | runs, newest first |
 | `meshstack buildingblockrun logs <run-uuid>` | `bbrun` | the steps of one run, with their output |
@@ -112,7 +113,8 @@ workspace identifier as meshPanel shows it (`metadata.name`, for example
   An admin can still read across workspaces from a session in the admin workspace.
 - A wrong identifier errors too, so a missing workspace means a wrong identifier or a missing role,
   not an empty result.
-- On `bbd list`, `--workspace` means *owned by* that workspace.
+- On `bbd list` and `bbd marketplace`, only an explicit `--workspace` filters the list, and it means
+  *owned by* that workspace. `MESHSTACK_WORKSPACE` and the profile's workspace do not filter it.
 
 ## Always pipe ndjson through jq
 
