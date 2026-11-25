@@ -31,6 +31,8 @@ type MeshWorkspaceUserGroupFilter struct {
 	WorkspaceIdentifier string `json:"workspaceIdentifier"`
 	Username            string `json:"username"`
 	SourceSystem        string `json:"sourceSystem"`
+	Egid                string `json:"egid"`
+	DisplayName         string `json:"displayName"`
 }
 
 type MeshWorkspaceUserGroupClient = MeshObjectClient[MeshWorkspaceUserGroup, MeshWorkspaceUserGroupFilter]
