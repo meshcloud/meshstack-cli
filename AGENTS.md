@@ -74,12 +74,15 @@ the docs.
   parameters, which a Go method cannot have. Inline a helper of a few lines that has one caller. A
   string or map that several functions pass around gets a named type with methods, as
   `internal.KindCommand` is.
-- **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`). While the CLI is at
-  0.x, a breaking change, of `client/` included, takes no `!`: every minor release may break.
-  goreleaser writes the release notes from these subjects, as `changelog:` in `.goreleaser.yml`
-  sets out, so the subject is what a user reads there. Give every change of `client/` the `client`
-  scope, as in `refactor(client): …`: it puts the change in the group the Terraform provider's
-  maintainers read before they bump the module.
+- **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `chore:`, `feat!:` for
+  breaking). A breaking change of `client/` takes the `!` too, because the Terraform provider's
+  maintainers read the breaking changes before they bump the module. Give every change of `client/`
+  the `client` scope, as in `refactor(client): …`. Pull requests are rebase-merged, so every commit
+  title lands on `main` and decides whether the commit gets a release note entry.
+- **Release note entries live in the pull request description.** Every `feat` commit, every `fix`
+  commit and every commit with `!` gets one leading blockquote in the description of its pull
+  request. `tools/releaser` builds the release notes from these when a tag is pushed, and `main` is
+  always ready to tag. Load the **`release-notes`** skill to write them or to pick the version.
 - **Stress-test a plan before writing code.** For any non-trivial change, walk each branch of the
   decision tree and settle every open question with a recommended answer first. (*meshcloud-internal*:
   the `grill-me` skill of `../meshfed-release`.)
@@ -129,10 +132,10 @@ go test ./cmd/internal/testacc/... -run TestAcc
 
 ## Releasing
 
-Pushing a `vN.N.N` tag runs `.github/workflows/release.yml`: goreleaser publishes the archives and
-checksums, and the image goes to GHCR only, as `ghcr.io/meshcloud/meshstack-cli`. Every other
-channel the release publishes to is a job of that workflow or a publish section of `.goreleaser.yml`,
-and its one-time setup is described there.
+Pushing a `vN.N.N` tag runs `.github/workflows/release.yml`: `tools/releaser` writes the release
+notes, goreleaser publishes them with the archives and checksums, and the image goes to GHCR only,
+as `ghcr.io/meshcloud/meshstack-cli`. Every other channel the release publishes to is a job of that
+workflow or a publish section of `.goreleaser.yml`, and its one-time setup is described there.
 
 <rules id="release-version">
 The version reaches the binary through an ldflag on

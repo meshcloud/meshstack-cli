@@ -48,24 +48,6 @@ checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
 
-changelog:
-  use: github
-  sort: asc
-  groups:
-    # The Terraform provider imports client/, and while the CLI is at 0.x a breaking change takes no
-    # `!`. This group is where the provider's maintainers find what they have to adapt to.
-    - title: Client API
-      regexp: '^(feat|fix|refactor|perf)\(client\)!?:'
-      order: 0
-    - title: Features
-      regexp: '^feat(\(.+\))?!?:'
-      order: 1
-    - title: Fixes
-      regexp: '^fix(\(.+\))?!?:'
-      order: 2
-    - title: Others
-      order: 99
-
 # Opens a pull request to microsoft/winget-pkgs. The pull request comes from the fork
 # jannymeshi/winget-pkgs, because goreleaser has to push the manifest branch somewhere, and a bot
 # account keeps that fork out of the meshcloud organization. One-time setup:

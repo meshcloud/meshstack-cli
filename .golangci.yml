@@ -124,6 +124,12 @@ linters:
       - path: docs/demo/
         linters:
           - gosec
+      # The releaser is a front end of its own: it names itself to GitHub, and its stdout is the
+      # release notes.
+      - path: tools/releaser/
+        linters:
+          - forbidigo
+        text: (user agent of the front end|stdout is a command's output)
 
   settings:
     # The process has one HTTP client, built in client/http.
