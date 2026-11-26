@@ -49,6 +49,12 @@ resource "github_repository_ruleset" "protect_default_branch" {
   }
 
   rules {
+    commit_message_pattern {
+      name     = "Conventional Commits title"
+      operator = "regex"
+      pattern  = "^(feat|fix|docs|test|ci|chore|refactor|build|perf|revert)(\\([^)]+\\))?!?: .+"
+    }
+
     pull_request {
       required_approving_review_count   = 1
       required_review_thread_resolution = true
